@@ -17,11 +17,11 @@ void main() async {
 
   await Firebase.initializeApp(
     options: const FirebaseOptions(
-      apiKey: 'AIzaSyAMcD8bz4fA9s5-MFXz2vlDErLVAdy8YfE',
-      appId: '1:302830226901:android:c768d699c649114216415c',
-      messagingSenderId: '302830226901',
-      projectId: 'sehatak-latform',
-      storageBucket: 'sehatak-latform.firebasestorage.app',
+      apiKey: 'AIzaSyD_frsfhn0jde9cWVUW3hXjGcnMIQmY51k',
+      appId: '1:1053269106596:android:de2128024cd023a973ab31',
+      messagingSenderId: '1053269106596',
+      projectId: 'sehatak-platform',
+      storageBucket: 'sehatak-platform.firebasestorage.app',
     ),
   );
 
