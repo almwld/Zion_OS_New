@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sehatak/core/constants/app_colors.dart';
+import 'package:sehatak/presentation/screens/lab/labs_list_screen.dart';
+import 'package:sehatak/presentation/screens/medical_reports/medical_reports_screen.dart';
 
 class PatientMedicalHistory extends StatefulWidget {
   const PatientMedicalHistory({super.key});
@@ -8,20 +10,13 @@ class PatientMedicalHistory extends StatefulWidget {
 }
 
 class _PatientMedicalHistoryState extends State<PatientMedicalHistory> {
-  String _selectedTab = 'تحاليل';
+  String _tab = 'تحاليل';
 
-  final List<Map<String, dynamic>> _labTests = [
-    {'name': 'Complete Blood Count (CBC)', 'date': '10 May 2026', 'status': 'مكتمل', 'result': 'Normal', 'doctor': 'Dr. Ayesha Rahman', 'price': '800', 'icon': '🩸'},
-    {'name': 'Lipid Profile', 'date': '05 May 2026', 'status': 'مكتمل', 'result': 'High Cholesterol', 'doctor': 'Dr. Usman Khan', 'price': '1200', 'icon': '🧪'},
-    {'name': 'Thyroid Panel', 'date': '20 Apr 2026', 'status': 'مكتمل', 'result': 'Normal', 'doctor': 'Dr. Hassan Raza', 'price': '1500', 'icon': '🔬'},
-    {'name': 'HbA1c', 'date': '15 Apr 2026', 'status': 'قيد الانتظار', 'result': 'Awaiting', 'doctor': 'Dr. Fatima Siddiqui', 'price': '900', 'icon': '💉'},
-    {'name': 'Urine Analysis', 'date': '01 Apr 2026', 'status': 'مكتمل', 'result': 'Normal', 'doctor': 'Dr. Ayesha Rahman', 'price': '500', 'icon': '🧫'},
-  ];
-
-  final List<Map<String, dynamic>> _imaging = [
-    {'name': 'Chest X-Ray', 'date': '08 May 2026', 'status': 'مكتمل', 'report': 'Clear', 'doctor': 'Dr. Kamran Ahmed', 'price': '600', 'icon': '🩻'},
-    {'name': 'MRI Spine', 'date': '25 Apr 2026', 'status': 'مكتمل', 'report': 'Mild Disc Bulge', 'doctor': 'Dr. Kamran Ahmed', 'price': '8000', 'icon': '🔍'},
-    {'name': 'Ultrasound Abdomen', 'date': '10 Apr 2026', 'status': 'مكتمل', 'report': 'Normal', 'doctor': 'Dr. Hassan Raza', 'price': '1500', 'icon': '📡'},
+  final List<Map<String, dynamic>> _tests = [
+    {'name': 'تعداد دم كامل CBC', 'date': '10 مايو 2026', 'status': 'مكتمل', 'result': 'طبيعي', 'doctor': 'د. حسن رضا', 'price': '800'},
+    {'name': 'دهون ثلاثية', 'date': '5 مايو 2026', 'status': 'مكتمل', 'result': 'مرتفع', 'doctor': 'د. عثمان خان', 'price': '1200'},
+    {'name': 'سكر تراكمي HbA1c', 'date': '20 أبريل 2026', 'status': 'قيد الانتظار', 'result': 'قيد المعالجة', 'doctor': 'د. حسن رضا', 'price': '900'},
+    {'name': 'فيتامين د', 'date': '15 أبريل 2026', 'status': 'مكتمل', 'result': 'منخفض', 'doctor': 'د. عائشة ملك', 'price': '350'},
   ];
 
   @override
@@ -29,109 +24,46 @@ class _PatientMedicalHistoryState extends State<PatientMedicalHistory> {
     return Scaffold(
       appBar: AppBar(title: const Text('التحاليل والأشعة', style: TextStyle(fontWeight: FontWeight.bold)), actions: [IconButton(icon: const Icon(Icons.filter_list), onPressed: () {})]),
       body: Column(children: [
-        // تبويبات
-        Container(
-          margin: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            _tabButton('تحاليل', _selectedTab == 'تحاليل'),
-            _tabButton('أشعة', _selectedTab == 'أشعة'),
-          ]),
-        ),
-        // بطاقات ملخصة
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(children: [
-            _summaryCard('كل الفحوصات', '8', Icons.science, AppColors.info),
-            const SizedBox(width: 10),
-            _summaryCard('مكتمل', '6', Icons.check_circle, AppColors.success),
-            const SizedBox(width: 10),
-            _summaryCard('قيد الانتظار', '2', Icons.pending, AppColors.warning),
-          ]),
-        ),
-        const SizedBox(height: 14),
-        // قائمة التحاليل
+        Container(margin: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.surfaceContainerLow, borderRadius: BorderRadius.circular(12)), child: Row(children: [
+          _tabBtn('تحاليل', _tab == 'تحاليل'), _tabBtn('أشعة', _tab == 'أشعة'),
+        ])),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Row(children: [
+          _stat('الكل', '4', AppColors.primary), const SizedBox(width: 8),
+          _stat('مكتمل', '3', AppColors.success), const SizedBox(width: 8),
+          _stat('قيد الانتظار', '1', AppColors.warning),
+        ])),
+        const SizedBox(height: 8),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            itemCount: _selectedTab == 'تحاليل' ? _labTests.length : _imaging.length,
-            itemBuilder: (context, index) {
-              final item = _selectedTab == 'تحاليل' ? _labTests[index] : _imaging[index];
-              return _buildTestCard(item);
-            },
-          ),
+          child: ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: _tests.length, itemBuilder: (ctx, i) {
+            final t = _tests[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]),
+              child: Row(children: [
+                Container(width: 40, height: 40, decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.06), borderRadius: BorderRadius.circular(10)), child: const Center(child: Text('🧪', style: TextStyle(fontSize: 20)))),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(t['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text('${t['doctor']} • ${t['date']}', style: const TextStyle(fontSize: 9, color: AppColors.grey)),
+                  Text('${t['price']} ر.ي', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                ])),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: t['status'] == 'مكتمل' ? AppColors.success.withOpacity(0.1) : AppColors.warning.withOpacity(0.1), borderRadius: BorderRadius.circular(4)), child: Text(t['status'], style: TextStyle(fontSize: 8, color: t['status'] == 'مكتمل' ? AppColors.success : AppColors.warning))),
+                  const SizedBox(height: 4),
+                  if (t['result'] != null) Text(t['result'], style: TextStyle(fontSize: 9, color: t['result'] == 'طبيعي' ? AppColors.success : AppColors.warning)),
+                ]),
+              ]),
+            );
+          }),
         ),
       ]),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add),
-        label: const Text('احجز فحص'),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LabsListScreen())),
+        backgroundColor: AppColors.primary, icon: const Icon(Icons.add), label: const Text('حجز فحص'),
       ),
     );
   }
 
-  Widget _tabButton(String title, bool selected) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedTab = title),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(color: selected ? AppColors.primary : Colors.transparent, borderRadius: BorderRadius.circular(10)),
-          child: Text(title, textAlign: TextAlign.center, style: TextStyle(color: selected ? Colors.white : AppColors.darkGrey, fontWeight: FontWeight.bold, fontSize: 13)),
-        ),
-      ),
-    );
-  }
-
-  Widget _summaryCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
-        child: Column(children: [Icon(icon, color: color, size: 22), const SizedBox(height: 4), Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)), Text(title, style: const TextStyle(fontSize: 9, color: AppColors.grey))]),
-      ),
-    );
-  }
-
-  Widget _buildTestCard(Map<String, dynamic> test) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)]),
-      child: Row(children: [
-        Container(width: 45, height: 45, decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Center(child: Text(test['icon'], style: const TextStyle(fontSize: 20)))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(test['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(height: 2),
-          Text('Dr: ${test['doctor']}', style: const TextStyle(fontSize: 11, color: AppColors.darkGrey)),
-          Text('${test['date']} • Rs. ${test['price']}', style: const TextStyle(fontSize: 10, color: AppColors.grey)),
-        ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: test['status'] == 'مكتمل' ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(test['status'], style: TextStyle(color: test['status'] == 'مكتمل' ? Colors.green : Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 4),
-          if (test['result'] != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: test['result'] == 'Normal' ? Colors.green.withOpacity(0.1) : AppColors.warning.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(test['result'] ?? test['report'], style: TextStyle(fontSize: 9, color: test['result'] == 'Normal' ? Colors.green : AppColors.warning)),
-            ),
-          ],
-        ]),
-        const SizedBox(width: 4),
-        const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.grey),
-      ]),
-    );
-  }
+  Widget _tabBtn(String t, bool s) => Expanded(child: GestureDetector(onTap: () => setState(() => _tab = t), child: Container(padding: const EdgeInsets.symmetric(vertical: 10), decoration: BoxDecoration(color: s ? AppColors.primary : Colors.transparent, borderRadius: BorderRadius.circular(10)), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: s ? Colors.white : AppColors.darkGrey, fontWeight: FontWeight.bold, fontSize: 13)))));
+  Widget _stat(String l, String v, Color c) => Expanded(child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: c.withOpacity(0.06), borderRadius: BorderRadius.circular(10)), child: Column(children: [Text(v, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: c)), Text(l, style: const TextStyle(fontSize: 9, color: AppColors.grey))])));
 }

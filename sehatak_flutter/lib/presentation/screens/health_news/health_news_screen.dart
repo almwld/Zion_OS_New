@@ -7,7 +7,7 @@ class HealthNewsScreen extends StatelessWidget {
   final List<Map<String, dynamic>> _news = const [
     {'title': 'حملة تطعيم شلل الأطفال', 'source': 'وزارة الصحة', 'time': 'منذ ساعتين', 'summary': 'أطلقت وزارة الصحة حملة وطنية لتطعيم الأطفال ضد شلل الأطفال', 'icon': '💉', 'color': AppColors.primary, 'urgent': true},
     {'title': 'تحذير من موجة حر', 'source': 'الأرصاد', 'time': 'منذ 4 ساعات', 'summary': 'تحذير من ارتفاع درجات الحرارة ونصائح للوقاية من ضربات الشمس', 'icon': '🌡️', 'color': AppColors.error, 'urgent': true},
-    {'title': 'افتتاح مركز طبي جديد', 'source': 'صحتك', 'time': 'منذ 6 ساعات', 'summary': 'افتتاح مركز صحي متكامل في صنعاء يخدم 50 ألف نسمة', 'icon': '🏥', 'color': AppColors.success, 'urgent': false},
+    {'title': 'افتتاح مركز طبي جديد', 'source': 'منصة صحتك', 'time': 'منذ 6 ساعات', 'summary': 'افتتاح مركز صحي متكامل في صنعاء يخدم 50 ألف نسمة', 'icon': '🏥', 'color': AppColors.success, 'urgent': false},
     {'title': 'دراسة: فوائد المشي', 'source': 'جامعة صنعاء', 'time': 'منذ 12 ساعة', 'summary': 'دراسة تؤكد أن المشي 30 دقيقة يومياً يقلل أمراض القلب بنسبة 30%', 'icon': '🚶', 'color': AppColors.info, 'urgent': false},
     {'title': 'نقص دواء الضغط', 'source': 'نقابة الصيادلة', 'time': 'أمس', 'summary': 'تحذير من نقص بعض أدوية الضغط في الصيدليات', 'icon': '⚠️', 'color': AppColors.warning, 'urgent': false},
   ];

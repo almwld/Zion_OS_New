@@ -1,60 +1,183 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:equatable/equatable.dart';
 
-class UserModel {
+class UserModel extends Equatable {
   final String id;
-  final String? fullName;
-  final String? email;
-  final String? phone;
+  final String fullName;
+  final String email;
+  final String phone;
   final String? avatar;
-  final String? userType;
+  final String? nationalId;
+  final DateTime? dateOfBirth;
+  final String? gender;
+  final String? bloodType;
+  final String? address;
+  final String? city;
+  final String? country;
+  final String userType;
+  final bool isActive;
   final bool isVerified;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
-  UserModel({
+  const UserModel({
     required this.id,
-    this.fullName,
-    this.email,
-    this.phone,
+    required this.fullName,
+    required this.email,
+    required this.phone,
     this.avatar,
-    this.userType,
+    this.nationalId,
+    this.dateOfBirth,
+    this.gender,
+    this.bloodType,
+    this.address,
+    this.city,
+    this.country,
+    this.userType = 'patient',
+    this.isActive = true,
     this.isVerified = false,
+    this.createdAt,
+    this.updatedAt,
   });
-
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return UserModel(
-      id: doc.id,
-      fullName: data['fullName'] ?? '',
-      email: data['email'] ?? '',
-      phone: data['phone'] ?? '',
-      avatar: data['avatar'] ?? '',
-      userType: data['role'] ?? 'patient',
-      isVerified: data['isVerified'] ?? false,
-    );
-  }
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'] ?? '',
-      fullName: json['fullName'] ?? json['full_name'],
-      email: json['email'],
-      phone: json['phone'],
+      fullName: json['full_name'] ?? '',
+      email: json['email'] ?? '',
+      phone: json['phone'] ?? '',
       avatar: json['avatar'],
-      userType: json['role'] ?? 'patient',
-      isVerified: json['isVerified'] ?? false,
+      nationalId: json['national_id'],
+      dateOfBirth: json['date_of_birth'] != null
+          ? DateTime.parse(json['date_of_birth'])
+          : null,
+      gender: json['gender'],
+      bloodType: json['blood_type'],
+      address: json['address'],
+      city: json['city'],
+      country: json['country'],
+      userType: json['user_type'] ?? 'patient',
+      isActive: json['is_active'] ?? true,
+      isVerified: json['is_verified'] ?? false,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'fullName': fullName,
+      'full_name': fullName,
       'email': email,
       'phone': phone,
       'avatar': avatar,
-      'role': userType,
-      'isVerified': isVerified,
+      'national_id': nationalId,
+      'date_of_birth': dateOfBirth?.toIso8601String(),
+      'gender': gender,
+      'blood_type': bloodType,
+      'address': address,
+      'city': city,
+      'country': country,
+      'user_type': userType,
+      'is_active': isActive,
+      'is_verified': isVerified,
+      'created_at': createdAt?.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
-  String get displayName => fullName ?? 'مستخدم';
+  UserModel copyWith({
+    String? id,
+    String? fullName,
+    String? email,
+    String? phone,
+    String? avatar,
+    String? nationalId,
+    DateTime? dateOfBirth,
+    String? gender,
+    String? bloodType,
+    String? address,
+    String? city,
+    String? country,
+    String? userType,
+    bool? isActive,
+    bool? isVerified,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      avatar: avatar ?? this.avatar,
+      nationalId: nationalId ?? this.nationalId,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      gender: gender ?? this.gender,
+      bloodType: bloodType ?? this.bloodType,
+      address: address ?? this.address,
+      city: city ?? this.city,
+      country: country ?? this.country,
+      userType: userType ?? this.userType,
+      isActive: isActive ?? this.isActive,
+      isVerified: isVerified ?? this.isVerified,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        id,
+        fullName,
+        email,
+        phone,
+        avatar,
+        nationalId,
+        dateOfBirth,
+        gender,
+        bloodType,
+        address,
+        city,
+        country,
+        userType,
+        isActive,
+        isVerified,
+        createdAt,
+        updatedAt,
+      ];
+}
+
+class AuthResponse extends Equatable {
+  final String token;
+  final String refreshToken;
+  final UserModel user;
+
+  const AuthResponse({
+    required this.token,
+    required this.refreshToken,
+    required this.user,
+  });
+
+  factory AuthResponse.fromJson(Map<String, dynamic> json) {
+    return AuthResponse(
+      token: json['token'] ?? '',
+      refreshToken: json['refresh_token'] ?? '',
+      user: UserModel.fromJson(json['user'] ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'token': token,
+      'refresh_token': refreshToken,
+      'user': user.toJson(),
+    };
+  }
+
+  @override
+  List<Object?> get props => [token, refreshToken, user];
 }

@@ -1,6 +1,6 @@
 class AppStrings {
   // App Info
-  static const String appName = 'صحتك';
+  static const String appName = 'منصة صحتك';
   static const String appVersion = '1.0.0';
   static const String appSlogan = 'رعايتك الصحية بين يديك';
 

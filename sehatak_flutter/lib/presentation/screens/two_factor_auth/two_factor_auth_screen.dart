@@ -9,7 +9,7 @@ class TwoFactorAuthScreen extends StatefulWidget {
 
 class _TwoFactorAuthScreenState extends State<TwoFactorAuthScreen> {
   bool _isEnabled = false;
-  String _selectedMethod = 'تطبيق المصادقة';
+  String _selectedMethod = 'منصة المصادقة';
   
   // كود تجريبي للعرض
   final String _secretKey = 'JBSW Y3DP EBPW C3TP';
@@ -122,7 +122,7 @@ class _TwoFactorAuthScreenState extends State<TwoFactorAuthScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('1. امسح رمز QR أو أدخل المفتاح', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 const SizedBox(height: 8),
-                const Text('افتح تطبيق المصادقة (Google Authenticator) وامسح الرمز:', style: TextStyle(fontSize: 12, color: AppColors.darkGrey)),
+                const Text('افتح منصة المصادقة (Google Authenticator) وامسح الرمز:', style: TextStyle(fontSize: 12, color: AppColors.darkGrey)),
                 const SizedBox(height: 12),
                 Center(
                   child: Container(
@@ -217,7 +217,7 @@ class _TwoFactorAuthScreenState extends State<TwoFactorAuthScreen> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('طريقة المصادقة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        RadioListTile<String>(value: 'تطبيق المصادقة', groupValue: _selectedMethod, title: const Text('تطبيق المصادقة'), subtitle: const Text('Google Authenticator'), activeColor: AppColors.primary, onChanged: (v) => setState(() => _selectedMethod = v!)),
+        RadioListTile<String>(value: 'منصة المصادقة', groupValue: _selectedMethod, title: const Text('منصة المصادقة'), subtitle: const Text('Google Authenticator'), activeColor: AppColors.primary, onChanged: (v) => setState(() => _selectedMethod = v!)),
         RadioListTile<String>(value: 'رسالة نصية', groupValue: _selectedMethod, title: const Text('رسالة نصية SMS'), subtitle: const Text('رمز عبر رسالة نصية'), activeColor: AppColors.primary, onChanged: (v) => setState(() => _selectedMethod = v!)),
         RadioListTile<String>(value: 'بريد إلكتروني', groupValue: _selectedMethod, title: const Text('البريد الإلكتروني'), subtitle: const Text('رمز عبر البريد'), activeColor: AppColors.primary, onChanged: (v) => setState(() => _selectedMethod = v!)),
       ]),

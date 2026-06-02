@@ -9,45 +9,16 @@ class RiskCalculatorScreen extends StatefulWidget {
 
 class _RiskCalculatorScreenState extends State<RiskCalculatorScreen> {
   int _age = 40;
-  bool _smoker = false;
-  bool _diabetic = false;
-  bool _hypertensive = false;
-  bool _obese = false;
-  bool _familyHistory = false;
+  bool _smoker = false, _diabetic = false, _hypertensive = false, _obese = false, _family = false;
 
-  String get _riskLevel {
-    int score = 0;
-    if (_age > 45) score += 2;
-    if (_smoker) score += 3;
-    if (_diabetic) score += 3;
-    if (_hypertensive) score += 2;
-    if (_obese) score += 2;
-    if (_familyHistory) score += 1;
-    if (score <= 3) return 'منخفض';
-    if (score <= 7) return 'متوسط';
-    return 'مرتفع';
+  String get _level {
+    int s = 0;
+    if (_age > 45) s += 2; if (_smoker) s += 3; if (_diabetic) s += 3;
+    if (_hypertensive) s += 2; if (_obese) s += 2; if (_family) s += 1;
+    return s <= 3 ? 'منخفض' : s <= 7 ? 'متوسط' : 'مرتفع';
   }
 
-  Color get _riskColor {
-    switch (_riskLevel) {
-      case 'منخفض': return AppColors.success;
-      case 'متوسط': return AppColors.warning;
-      case 'مرتفع': return AppColors.error;
-      default: return AppColors.grey;
-    }
-  }
-
-  List<String> get _recommendations {
-    final list = <String>[];
-    if (_smoker) list.add('• أقلع عن التدخين فوراً');
-    if (_diabetic) list.add('• تحكم بمستوى السكر لديك');
-    if (_hypertensive) list.add('• راقب ضغط الدم بانتظام');
-    if (_obese) list.add('• ابدأ برنامجاً لإنقاص الوزن');
-    list.add('• مارس الرياضة 30 دقيقة يومياً');
-    list.add('• تناول غذاءً صحياً متوازناً');
-    list.add('• قم بفحص دوري سنوي');
-    return list;
-  }
+  Color get _color => _level == 'منخفض' ? AppColors.success : _level == 'متوسط' ? AppColors.warning : AppColors.error;
 
   @override
   Widget build(BuildContext context) {
@@ -56,63 +27,26 @@ class _RiskCalculatorScreenState extends State<RiskCalculatorScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // النتيجة
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(gradient: LinearGradient(colors: [_riskColor.withOpacity(0.7), _riskColor]), borderRadius: BorderRadius.circular(16)),
-            child: Column(children: [
-              const Text('مستوى الخطر', style: TextStyle(color: Colors.white70, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text(_riskLevel, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              const Text('للأمراض القلبية والسكتة الدماغية', style: TextStyle(color: Colors.white70, fontSize: 11))
-            ]),
-          ),
-          const SizedBox(height: 18),
-
-          // العوامل
-          Text('العوامل المؤثرة', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          _sliderSetting('العمر', _age.toString(), (v) => setState(() => _age = v.toInt()), 20, 80),
-          _switchSetting('التدخين', 'أدخن حالياً', _smoker, (v) => setState(() => _smoker = v)),
-          _switchSetting('السكري', 'مصاب بالسكري', _diabetic, (v) => setState(() => _diabetic = v)),
-          _switchSetting('ضغط الدم', 'مصاب بارتفاع ضغط الدم', _hypertensive, (v) => setState(() => _hypertensive = v)),
-          _switchSetting('السمنة', 'مؤشر كتلة جسم > 30', _obese, (v) => setState(() => _obese = v)),
-          _switchSetting('تاريخ عائلي', 'أمراض قلب في العائلة', _familyHistory, (v) => setState(() => _familyHistory = v)),
+          Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: LinearGradient(colors: [_color.withOpacity(0.7), _color]), borderRadius: BorderRadius.circular(16)), child: Column(children: [const Text('مستوى الخطر', style: TextStyle(color: Colors.white70)), Text(_level, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)), const Text('للأمراض القلبية', style: TextStyle(color: Colors.white70, fontSize: 11))])),
           const SizedBox(height: 16),
-
-          // التوصيات
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: _riskColor.withOpacity(0.05), borderRadius: BorderRadius.circular(14), border: Border.all(color: _riskColor.withOpacity(0.2))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('💡 توصيات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _riskColor)),
-              const SizedBox(height: 8),
-              ..._recommendations.map((r) => Text(r, style: const TextStyle(fontSize: 12, height: 1.5))),
-            ]),
-          ),
+          _s('العمر', _age.toDouble(), 20, 80, (v) => setState(() => _age = v.toInt())),
+          _sw('التدخين', _smoker, (v) => setState(() => _smoker = v)),
+          _sw('السكري', _diabetic, (v) => setState(() => _diabetic = v)),
+          _sw('ضغط الدم', _hypertensive, (v) => setState(() => _hypertensive = v)),
+          _sw('السمنة', _obese, (v) => setState(() => _obese = v)),
+          _sw('تاريخ عائلي', _family, (v) => setState(() => _family = v)),
+          Container(padding: const EdgeInsets.all(14), margin: const EdgeInsets.only(top: 12), decoration: BoxDecoration(color: _color.withOpacity(0.05), borderRadius: BorderRadius.circular(14), border: Border.all(color: _color.withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('💡 توصيات', style: TextStyle(fontWeight: FontWeight.bold, color: _color)), const SizedBox(height: 8),
+            if (_smoker) const Text('• أقلع عن التدخين', style: TextStyle(fontSize: 12)),
+            const Text('• مارس الرياضة 30 دقيقة يومياً', style: TextStyle(fontSize: 12)),
+            const Text('• تناول غذاءً صحياً متوازناً', style: TextStyle(fontSize: 12)),
+            const Text('• قم بفحص دوري سنوي', style: TextStyle(fontSize: 12)),
+          ])),
         ]),
       ),
     );
   }
 
-  Widget _sliderSetting(String label, String value, Function(double) onChange, double min, double max) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]),
-      child: Column(children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label), Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary))]),
-        Slider(value: double.parse(value), min: min, max: max, activeColor: AppColors.primary, onChanged: onChange),
-      ]),
-    );
-  }
-
-  Widget _switchSetting(String title, String subtitle, bool value, Function(bool) onChange) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]),
-      child: SwitchListTile(title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)), subtitle: Text(subtitle, style: const TextStyle(fontSize: 10, color: AppColors.grey)), value: value, activeColor: AppColors.primary, onChanged: onChange),
-    );
-  }
+  Widget _s(String l, double v, double min, double max, Function(double) cb) => Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)]), child: Column(children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l), Text('${v.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary))]), Slider(value: v, min: min, max: max, activeColor: AppColors.primary, onChanged: cb)]));
+  Widget _sw(String l, bool v, Function(bool) cb) => Container(margin: const EdgeInsets.only(bottom: 6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)), child: SwitchListTile(title: Text(l, style: const TextStyle(fontWeight: FontWeight.w500)), value: v, activeColor: AppColors.primary, onChanged: cb));
 }

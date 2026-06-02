@@ -1,37 +1,22 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_strings.dart';
-import '../../../core/constants/app_dimensions.dart';
-import 'otp_verification_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
-
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _phoneController = TextEditingController();
-  bool _isLoading = false;
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
-  }
+  final _phoneCtrl = TextEditingController();
+  bool _loading = false;
 
   void _sendOTP() {
-    if (_phoneController.text.isNotEmpty) {
-      setState(() => _isLoading = true);
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => OtpVerificationScreen(phone: _phoneController.text)),
-          );
-        }
+    if (_phoneCtrl.text.isNotEmpty) {
+      setState(() => _loading = true);
+      Future.delayed(const Duration(seconds: 2), () {
+        setState(() => _loading = false);
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const OtpVerificationScreen(phone: '')));
       });
     }
   }
@@ -39,49 +24,25 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(AppStrings.forgotPassword)),
+      appBar: AppBar(title: const Text('نسيت كلمة المرور')),
       body: Padding(
-        padding: const EdgeInsets.all(AppDimensions.paddingXXL),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 40),
-            const Icon(Icons.lock_reset, size: 80, color: AppColors.primary),
-            const SizedBox(height: 24),
-            Text(
-              AppStrings.forgotPassword,
-              style: Theme.of(context).textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'أدخل رقم هاتفك لإرسال رمز التحقق',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.grey),
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              textDirection: TextDirection.ltr,
-              decoration: InputDecoration(
-                labelText: AppStrings.phoneNumber,
-                prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
-                prefixText: '+967 ',
-              ),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: AppDimensions.buttonHeightL,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _sendOTP,
-                child: _isLoading
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
-                    : Text(AppStrings.sendOTP),
-              ),
-            ),
-          ],
-        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          const SizedBox(height: 40),
+          const Icon(Icons.lock_reset, size: 80, color: AppColors.primary),
+          const SizedBox(height: 24),
+          const Text('نسيت كلمة المرور', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          const Text('أدخل رقم هاتفك لإرسال رمز التحقق', style: TextStyle(color: AppColors.grey, fontSize: 14), textAlign: TextAlign.center),
+          const SizedBox(height: 32),
+          TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: 'رقم الهاتف', prefixIcon: const Icon(Icons.phone_android, color: AppColors.primary), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+          const SizedBox(height: 24),
+          SizedBox(height: 52, child: ElevatedButton(onPressed: _loading ? null : _sendOTP, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: _loading ? const CircularProgressIndicator(color: Colors.white) : const Text('إرسال رمز التحقق', style: TextStyle(fontSize: 17)))),
+        ]),
       ),
     );
   }
+
+  @override
+  void dispose() { _phoneCtrl.dispose(); super.dispose(); }
 }

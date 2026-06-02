@@ -11,7 +11,7 @@ class _FontSizeScreenState extends State<FontSizeScreen> {
   double _fontScale = 1.0;
   String _fontSize = 'متوسط';
 
-  final String _previewText = 'مرحباً بك في تطبيق صحتك\nهذا النص يوضح حجم الخط الحالي\nيمكنك تعديل حجم الخط من هنا';
+  final String _previewText = 'مرحباً بك في منصة صحتك\nهذا النص يوضح حجم الخط الحالي\nيمكنك تعديل حجم الخط من هنا';
 
   void _updateFontSize(double scale) {
     setState(() {

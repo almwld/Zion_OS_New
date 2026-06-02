@@ -1,182 +1,58 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_strings.dart';
-import '../../../core/constants/app_dimensions.dart';
-import 'login_screen.dart';
+import '../../bloc/auth_bloc/auth_bloc.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
-
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _agreeToTerms = false;
-  bool _isLoading = false;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  bool _agreeTerms = false;
+  bool _loading = false;
 
   void _register() {
-    if (_formKey.currentState!.validate() && _agreeToTerms) {
-      setState(() => _isLoading = true);
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false,
-          );
-        }
-      });
+    if (_nameCtrl.text.isNotEmpty && _phoneCtrl.text.isNotEmpty && _agreeTerms) {
+      context.read<AuthBloc>().add(SendOTP(_phoneCtrl.text.trim()));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إرسال رمز التحقق'), backgroundColor: AppColors.success),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(AppStrings.register),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppDimensions.paddingXXL),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: InputDecoration(
-                    labelText: AppStrings.fullName,
-                    prefixIcon: const Icon(Icons.person_outline, color: AppColors.primary),
-                  ),
-                  validator: (value) => value?.isEmpty ?? true ? AppStrings.requiredField : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  textDirection: TextDirection.ltr,
-                  decoration: InputDecoration(
-                    labelText: AppStrings.phoneNumber,
-                    prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
-                    prefixText: '+967 ',
-                  ),
-                  validator: (value) => value?.isEmpty ?? true ? AppStrings.requiredField : null,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  textDirection: TextDirection.ltr,
-                  decoration: InputDecoration(
-                    labelText: AppStrings.email,
-                    prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primary),
-                  ),
-                  validator: (value) {
-                    if (value?.isEmpty ?? true) return AppStrings.requiredField;
-                    if (!value!.contains('@')) return AppStrings.invalidEmail;
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: AppStrings.password,
-                    prefixIcon: const Icon(Icons.lock_outline, color: AppColors.primary),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: AppColors.grey),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value?.isEmpty ?? true) return AppStrings.requiredField;
-                    if (value!.length < 6) return AppStrings.passwordTooShort;
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _confirmPasswordController,
-                  obscureText: _obscureConfirmPassword,
-                  decoration: InputDecoration(
-                    labelText: AppStrings.confirmPassword,
-                    prefixIcon: const Icon(Icons.lock_outline, color: AppColors.primary),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility, color: AppColors.grey),
-                      onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value != _passwordController.text) return AppStrings.passwordsDontMatch;
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Checkbox(
-                      value: _agreeToTerms,
-                      onChanged: (value) => setState(() => _agreeToTerms = value ?? false),
-                      activeColor: AppColors.primary,
-                    ),
-                    Expanded(
-                      child: Text(
-                        AppStrings.termsAgree,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: AppDimensions.buttonHeightL,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _register,
-                    child: _isLoading
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: AppColors.white, strokeWidth: 2))
-                        : Text(AppStrings.register),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(AppStrings.alreadyHaveAccount, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.grey)),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(AppStrings.loginNow),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
+      appBar: AppBar(title: const Text('إنشاء حساب')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const SizedBox(height: 20),
+          const Icon(Icons.person_add, size: 70, color: AppColors.primary),
+          const SizedBox(height: 16),
+          const Text('انضم إلى منصة صحتك', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          const Text('أنشئ حسابك الصحي', style: TextStyle(color: AppColors.grey, fontSize: 14), textAlign: TextAlign.center),
+          const SizedBox(height: 30),
+          TextField(controller: _nameCtrl, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'الاسم الكامل', prefixIcon: const Icon(Icons.person), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: isDark ? const Color(0xFF1A2540) : AppColors.surfaceContainerLow.withOpacity(0.5))),
+          const SizedBox(height: 14),
+          TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: 'رقم الهاتف', hintText: '777123456', prefixIcon: const Icon(Icons.phone_android), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: isDark ? const Color(0xFF1A2540) : AppColors.surfaceContainerLow.withOpacity(0.5))),
+          const SizedBox(height: 14),
+          TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: 'البريد الإلكتروني (اختياري)', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: isDark ? const Color(0xFF1A2540) : AppColors.surfaceContainerLow.withOpacity(0.5))),
+          const SizedBox(height: 16),
+          Row(children: [Checkbox(value: _agreeTerms, activeColor: AppColors.primary, onChanged: (v) => setState(() => _agreeTerms = v!)), const Expanded(child: Text('أوافق على الشروط والأحكام', style: TextStyle(fontSize: 11)))],),
+          const SizedBox(height: 20),
+          SizedBox(height: 52, child: ElevatedButton(onPressed: (_agreeTerms && !_loading) ? _register : null, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: const Text('إنشاء حساب', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)))),
+        ]),
       ),
     );
   }
+
+  @override
+  void dispose() { _nameCtrl.dispose(); _phoneCtrl.dispose(); _emailCtrl.dispose(); super.dispose(); }
 }

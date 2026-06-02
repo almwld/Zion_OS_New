@@ -19,56 +19,35 @@ class VitalsDashboardScreen extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            _vitalCard('ضغط الدم', '128/82', 'mmHg', Icons.monitor_heart, AppColors.error, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BloodPressureScreen()))),
+            _vital('ضغط الدم', '128/82', 'mmHg', Icons.monitor_heart, AppColors.error, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BloodPressureScreen()))),
             const SizedBox(width: 10),
-            _vitalCard('السكر', '127', 'mg/dL', Icons.bloodtype, AppColors.info, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlucoseTrackerScreen()))),
+            _vital('السكر', '127', 'mg/dL', Icons.bloodtype, AppColors.info, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlucoseTrackerScreen()))),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            _vitalCard('الوزن', '72.5', 'kg', Icons.monitor_weight, AppColors.success, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeightTrackerScreen()))),
+            _vital('الوزن', '72.5', 'kg', Icons.monitor_weight, AppColors.success, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeightTrackerScreen()))),
             const SizedBox(width: 10),
-            _vitalCard('النبض', '72', 'bpm', Icons.favorite, AppColors.warning, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HeartRateScreen()))),
+            _vital('النبض', '72', 'bpm', Icons.favorite, AppColors.warning, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HeartRateScreen()))),
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            _vitalCard('النوم', '7.5', 'ساعة', Icons.bedtime, AppColors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SleepTrackerScreen()))),
+            _vital('النوم', '7.5', 'ساعة', Icons.bedtime, AppColors.purple, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SleepTrackerScreen()))),
             const SizedBox(width: 10),
-            _vitalCard('الخطوات', '6,420', 'خطوة', Icons.directions_walk, AppColors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StepCounterScreen()))),
+            _vital('الخطوات', '6,420', 'خطوة', Icons.directions_walk, AppColors.teal, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StepCounterScreen()))),
           ]),
           const SizedBox(height: 10),
-          _vitalCard('BMI', '23.7', 'kg/m²', Icons.calculate, AppColors.primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BMICalculatorScreen()))),
+          _vital('BMI', '23.7', 'kg/m²', Icons.calculate, AppColors.primary, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BMICalculatorScreen()))),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.06), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.warning.withOpacity(0.2))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [Icon(Icons.warning_amber, color: AppColors.warning), SizedBox(width: 6), Text('تنبيهات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
-              const SizedBox(height: 8),
-              const Text('• الضغط الانبساطي مرتفع قليلاً (82)', style: TextStyle(fontSize: 11)),
-              const Text('• السكر بعد الأكل مرتفع (180)', style: TextStyle(fontSize: 11)),
-              const Text('• أنت بحاجة 3,580 خطوة للوصول لهدفك', style: TextStyle(fontSize: 11)),
-            ]),
-          ),
+          Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.06), borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.warning.withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Row(children: [Icon(Icons.warning_amber, color: AppColors.warning), SizedBox(width: 6), Text('تنبيهات', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
+            const SizedBox(height: 8), const Text('• الضغط الانبساطي مرتفع قليلاً (82)', style: TextStyle(fontSize: 11)),
+            const Text('• السكر بعد الأكل مرتفع (180)', style: TextStyle(fontSize: 11)),
+            const Text('• 3,580 خطوة متبقية للهدف', style: TextStyle(fontSize: 11)),
+          ])),
         ]),
       ),
     );
   }
 
-  Widget _vitalCard(String label, String value, String unit, IconData icon, Color color, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)]),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Icon(icon, color: color, size: 20), const Spacer(), const Icon(Icons.arrow_forward_ios, size: 10, color: AppColors.grey)]),
-            const SizedBox(height: 8),
-            Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: color)),
-            Text('$unit  $label', style: const TextStyle(fontSize: 10, color: AppColors.grey)),
-          ]),
-        ),
-      ),
-    );
-  }
+  Widget _vital(String label, String value, String unit, IconData icon, Color color, VoidCallback onTap) => Expanded(child: GestureDetector(onTap: onTap, child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(icon, color: color, size: 20), const Spacer(), const Icon(Icons.arrow_forward_ios, size: 10, color: AppColors.grey)]), const SizedBox(height: 8), Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: color)), Text('$unit  $label', style: const TextStyle(fontSize: 10, color: AppColors.grey))]))));
 }

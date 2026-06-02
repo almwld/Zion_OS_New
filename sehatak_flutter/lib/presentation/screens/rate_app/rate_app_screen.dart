@@ -25,7 +25,7 @@ class _RateAppScreenState extends State<RateAppScreen> {
           const SizedBox(height: 10),
           const Icon(Icons.star, size: 70, color: AppColors.amber),
           const SizedBox(height: 16),
-          const Text('ما رأيك في تطبيق صحتك؟', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text('ما رأيك في منصة صحتك؟', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const Text('تقييمك يساعدنا في التحسين', style: TextStyle(color: AppColors.grey, fontSize: 13)),
           const SizedBox(height: 24),
 

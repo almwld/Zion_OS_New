@@ -8,32 +8,23 @@ class GlucoseTrackerScreen extends StatefulWidget {
 }
 
 class _GlucoseTrackerScreenState extends State<GlucoseTrackerScreen> {
-  final List<Map<String, dynamic>> _todayReadings = const [
-    {'time': 'قبل الفطور', 'value': 95, 'status': 'طبيعي', 'icon': '☀️'},
-    {'time': 'بعد الفطور', 'value': 140, 'status': 'مرتفع', 'icon': '🍳'},
-    {'time': 'قبل الغداء', 'value': 88, 'status': 'طبيعي', 'icon': '🌤️'},
-    {'time': 'بعد الغداء', 'value': 155, 'status': 'مرتفع', 'icon': '🍛'},
-    {'time': 'قبل العشاء', 'value': 102, 'status': 'طبيعي', 'icon': '🌅'},
-    {'time': 'بعد العشاء', 'value': 180, 'status': 'عالي', 'icon': '🌙'},
+  List<Map<String, dynamic>> _readings = [
+    {'time': 'قبل الفطور', 'value': 95, 'status': 'طبيعي'},
+    {'time': 'بعد الفطور', 'value': 140, 'status': 'مرتفع'},
+    {'time': 'قبل الغداء', 'value': 88, 'status': 'طبيعي'},
+    {'time': 'بعد الغداء', 'value': 155, 'status': 'مرتفع'},
+    {'time': 'قبل العشاء', 'value': 102, 'status': 'طبيعي'},
+    {'time': 'بعد العشاء', 'value': 180, 'status': 'عالي'},
   ];
+  final _value = TextEditingController();
+  String _time = 'قبل الفطور';
 
-  final List<Map<String, dynamic>> _weekReadings = const [
-    {'day': 'سبت', 'morning': 95, 'evening': 140},
-    {'day': 'أحد', 'morning': 102, 'evening': 135},
-    {'day': 'إثنين', 'morning': 88, 'evening': 155},
-    {'day': 'ثلاثاء', 'morning': 98, 'evening': 148},
-    {'day': 'أربعاء', 'morning': 92, 'evening': 142},
-    {'day': 'خميس', 'morning': 105, 'evening': 138},
-    {'day': 'جمعة', 'morning': 100, 'evening': 180},
-  ];
+  Color _c(String s) => s == 'طبيعي' ? AppColors.success : s == 'مرتفع' ? AppColors.warning : AppColors.error;
 
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'طبيعي': return AppColors.success;
-      case 'مرتفع': return AppColors.warning;
-      case 'عالي': return AppColors.error;
-      default: return AppColors.grey;
-    }
+  void _add() {
+    if (_value.text.isEmpty) return;
+    setState(() => _readings.insert(0, {'time': _time, 'value': int.parse(_value.text), 'status': int.parse(_value.text) < 110 ? 'طبيعي' : int.parse(_value.text) < 140 ? 'مرتفع' : 'عالي'}));
+    _value.clear(); Navigator.pop(context);
   }
 
   @override
@@ -42,39 +33,23 @@ class _GlucoseTrackerScreenState extends State<GlucoseTrackerScreen> {
       appBar: AppBar(title: const Text('تتبع السكر', style: TextStyle(fontWeight: FontWeight.bold))),
       body: SingleChildScrollView(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.blue.shade300, Colors.blue.shade700]), borderRadius: BorderRadius.circular(16)), child: Column(children: [
-          const Text('متوسط السكر التراكمي المقدر', style: TextStyle(color: Colors.white70, fontSize: 14)),
-          const Text('5.7%', style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold)),
-          const Text('HbA1c تقديري', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const Text('متوسط السكر التراكمي', style: TextStyle(color: Colors.white70)),
+          Text('${(_readings.fold(0, (s, r) => s + (r['value'] as int)) / (_readings.length * 18.0)).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold)),
         ])),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         Text('قراءات اليوم', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-        ..._todayReadings.map((r) => Container(
-          margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            Text(r['icon']!, style: const TextStyle(fontSize: 24)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(r['time']!, style: const TextStyle(fontWeight: FontWeight.w500))),
-            Text('${r['value']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primary)),
-            const SizedBox(width: 8),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: _statusColor(r['status']!).withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(r['status']!, style: TextStyle(fontSize: 9, color: _statusColor(r['status']!)))),
-          ]),
-        )),
-        const SizedBox(height: 18),
-        Text('نظرة أسبوعية', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-        Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)), height: 160, child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: _weekReadings.map((r) {
-          int m = r['morning'] as int;
-          int e = r['evening'] as int;
-          return Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-            Text('$e', style: const TextStyle(fontSize: 8, color: Colors.orange)),
-            Container(width: 14, height: (e - 70) / 110 * 100, decoration: BoxDecoration(color: Colors.orange.withOpacity(0.6), borderRadius: BorderRadius.circular(3))),
-            Text('$m', style: const TextStyle(fontSize: 8, color: Colors.blue)),
-            Container(width: 14, height: (m - 70) / 110 * 100, decoration: BoxDecoration(color: Colors.blue.withOpacity(0.6), borderRadius: BorderRadius.circular(3))),
-            const SizedBox(height: 4),
-            Text(r['day']!, style: const TextStyle(fontSize: 9, color: AppColors.grey)),
-          ]));
-        }).toList())),
+        for (final r in _readings) Container(margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Row(children: [const Icon(Icons.bloodtype, color: AppColors.error, size: 20), const SizedBox(width: 8), Expanded(child: Text(r['time'], style: const TextStyle(fontWeight: FontWeight.w500))), Text('${r['value']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: AppColors.primary)), const SizedBox(width: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: _c(r['status']).withOpacity(0.1), borderRadius: BorderRadius.circular(6)), child: Text(r['status'], style: TextStyle(fontSize: 9, color: _c(r['status']))))])),
       ])),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => showModalBottomSheet(context: context, builder: (_) => Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          DropdownButtonFormField(value: _time, items: ['قبل الفطور','بعد الفطور','قبل الغداء','بعد الغداء','قبل العشاء','بعد العشاء'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(), onChanged: (v) => setState(() => _time = v!)),
+          const SizedBox(height: 10),
+          TextField(controller: _value, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'القراءة', border: OutlineInputBorder())),
+          const SizedBox(height: 16),
+          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _add, child: const Text('إضافة')))
+        ]))),
+        backgroundColor: AppColors.primary, icon: const Icon(Icons.add), label: const Text('إضافة قراءة'),
+      ),
     );
   }
 }

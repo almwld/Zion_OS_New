@@ -11,7 +11,7 @@ class PrivacyScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const _Header(title: 'سياسة الخصوصية لتطبيق صحتك', subtitle: 'آخر تحديث: 1 مايو 2026'),
+          const _Header(title: 'سياسة الخصوصية لمنصة صحتك', subtitle: 'آخر تحديث: 1 مايو 2026'),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(14),
@@ -26,7 +26,7 @@ class PrivacyScreen extends StatelessWidget {
           const _Section(title: '5. حقوق المستخدم', content: '• الوصول إلى بياناتك الشخصية.\n• تصحيح البيانات غير الدقيقة.\n• حذف حسابك وبياناتك.\n• سحب الموافقة على معالجة البيانات.\n• تصدير بياناتك بصيغة مقروءة.'),
           const _Section(title: '6. ملفات تعريف الارتباط', content: '• نستخدم ملفات تعريف الارتباط لتحسين تجربة التطبيق.\n• يمكنك تعطيلها من إعدادات جهازك.\n• لا نستخدم ملفات تتبع طرف ثالث.'),
           const _Section(title: '7. الاحتفاظ بالبيانات', content: '• نحتفظ ببياناتك طوال فترة استخدامك للتطبيق.\n• بعد حذف الحساب، نحذف البيانات خلال 30 يوماً.\n• قد نحتفظ ببعض البيانات للأغراض القانونية.'),
-          const _Section(title: '8. تحديثات السياسة', content: '• سنخطرك بأي تغييرات جوهرية في سياسة الخصوصية.\n• استمرار استخدامك للتطبيق يعني موافقتك على التحديثات.'),
+          const _Section(title: '8. تحديثات السياسة', content: '• سنخطرك بأي تغييرات جوهرية في سياسة الخصوصية.\n• استمرار استخدامك للمنصة يعني موافقتك على التحديثات.'),
           const _Section(title: '9. تواصل معنا', content: 'لأي استفسار عن سياسة الخصوصية:\n📧 privacy@sehatak.com\n📱 +967 777 123 456\n🏢 شارع الزبيري، صنعاء، اليمن'),
           const SizedBox(height: 20),
         ]),

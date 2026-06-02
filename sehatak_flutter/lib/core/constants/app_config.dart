@@ -1,6 +1,6 @@
 class AppConfig {
   // App Info
-  static const String appName = 'صحتك';
+  static const String appName = 'منصة صحتك';
   static const String appVersion = '1.0.0';
   static const String appBuildNumber = '1';
   static const String packageName = 'com.sehatak.app';
@@ -26,7 +26,7 @@ class AppConfig {
 
   // Notifications
   static const String notificationChannelId = 'sehatak_notifications';
-  static const String notificationChannelName = 'صحتك';
+  static const String notificationChannelName = 'منصة صحتك';
   static const String notificationChannelDesc = 'إشعارات صحتك الطبية';
 
   // Biometric

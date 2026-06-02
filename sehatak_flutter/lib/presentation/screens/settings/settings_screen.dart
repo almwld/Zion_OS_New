@@ -100,7 +100,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _menuItem(Icons.star_rate, 'تقييم التطبيق', 'قيمنا على المتجر', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RateAppScreen()))),
           const SizedBox(height: 22),
 
-          // ========== حول التطبيق ==========
+          // ========== حول المنصة ==========
           _sectionTitle('حول التطبيق'),
           _menuItem(Icons.info_outline, 'عن صحتك', 'الإصدار 1.0.0', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
           _menuItem(Icons.share_rounded, 'مشاركة التطبيق', 'انشر الفائدة', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShareAppScreen()))),
