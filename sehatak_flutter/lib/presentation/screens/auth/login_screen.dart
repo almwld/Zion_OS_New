@@ -11,16 +11,17 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController(text: 'test@test.com');
-  final _passwordController = TextEditingController(text: '123456');
+  final _emailController = TextEditingController(text: 'mohd2024@test.com');
+  final _passwordController = TextEditingController(text: '1234567');
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is Authenticated) {
+          // انتقل مباشرة للصفحة الرئيسية
           Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -32,23 +33,24 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       },
-      child: Scaffold(
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(children: [
-              const SizedBox(height: 40),
-              const Icon(Icons.health_and_safety, size: 80, color: AppColors.primary),
-              const Text('صحتك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 40),
-              
-              // تسجيل الدخول
-              TextField(controller: _emailController, decoration: InputDecoration(labelText: 'الإيميل', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-              const SizedBox(height: 14),
-              TextField(controller: _passwordController, obscureText: true, decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-              const SizedBox(height: 24),
-              BlocBuilder<AuthBloc, AuthState>(
-                builder: (context, state) => SizedBox(
+      builder: (context, state) {
+        return Scaffold(
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(children: [
+                const SizedBox(height: 40),
+                const Icon(Icons.health_and_safety, size: 80, color: AppColors.primary),
+                const Text('صحتك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 40),
+                
+                // تسجيل الدخول
+                TextField(controller: _emailController, decoration: InputDecoration(labelText: 'الإيميل', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                const SizedBox(height: 14),
+                TextField(controller: _passwordController, obscureText: true, decoration: InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                const SizedBox(height: 24),
+                
+                SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
@@ -58,22 +60,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         password: _passwordController.text.trim(),
                       ));
                     },
-                    child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تسجيل الدخول', style: TextStyle(fontSize: 18)),
+                    child: state is AuthLoading 
+                      ? const CircularProgressIndicator(color: Colors.white) 
+                      : const Text('تسجيل الدخول', style: TextStyle(fontSize: 18)),
                   ),
                 ),
-              ),
-              
-              const SizedBox(height: 40),
-              const Divider(),
-              const SizedBox(height: 20),
-              const Text('إنشاء حساب جديد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 14),
-              TextField(controller: _nameController, decoration: InputDecoration(labelText: 'الاسم', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-              const SizedBox(height: 14),
-              TextField(controller: _phoneController, decoration: InputDecoration(labelText: 'الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-              const SizedBox(height: 24),
-              BlocBuilder<AuthBloc, AuthState>(
-                builder: (context, state) => SizedBox(
+                
+                const SizedBox(height: 40),
+                const Divider(),
+                const SizedBox(height: 20),
+                const Text('إنشاء حساب جديد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                TextField(controller: _nameController, decoration: InputDecoration(labelText: 'الاسم', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                const SizedBox(height: 14),
+                TextField(controller: _phoneController, decoration: InputDecoration(labelText: 'الهاتف', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                const SizedBox(height: 24),
+                
+                SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
@@ -85,14 +88,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         password: _passwordController.text.trim(),
                       ));
                     },
-                    child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إنشاء حساب', style: TextStyle(fontSize: 18)),
+                    child: state is AuthLoading 
+                      ? const CircularProgressIndicator(color: Colors.white) 
+                      : const Text('إنشاء حساب', style: TextStyle(fontSize: 18)),
                   ),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
