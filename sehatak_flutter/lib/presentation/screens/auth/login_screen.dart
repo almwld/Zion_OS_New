@@ -13,31 +13,24 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   
-  // متحكمات تسجيل الدخول
   final _loginEmail = TextEditingController();
   final _loginPass = TextEditingController();
   final _loginPhone = TextEditingController();
   final _otpCtrl = TextEditingController();
-  
-  // متحكمات التسجيل
   final _regName = TextEditingController();
   final _regEmail = TextEditingController();
   final _regPhone = TextEditingController();
   final _regPass = TextEditingController();
   final _regConfirmPass = TextEditingController();
   
-  // حالة OTP
   bool _otpSent = false;
-  String _devOtp = '';
   String _verificationId = '';
-  
-  // نوع المستخدم
-  String _userType = 'patient'; // patient أو doctor
-  
+  String _userType = 'patient';
+  bool _isLoginWithPhone = false;
   bool _obscurePass = true;
   bool _obscureConfirm = true;
   bool _agreeTerms = false;
-  bool _isLoginWithPhone = false;
+  bool _rememberMe = false;
 
   @override
   void initState() {
@@ -85,47 +78,34 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
             ),
             child: SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      // ========== الشعار ==========
-                      _buildLogo(isDark),
-                      const SizedBox(height: 30),
-                      
-                      // ========== البطاقة الرئيسية ==========
-                      Container(
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1A2540) : Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10)),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(children: [
+                  const SizedBox(height: 20),
+                  _buildLogo(),
+                  const SizedBox(height: 25),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1A2540) : Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10))],
+                    ),
+                    child: Column(children: [
+                      _buildTabs(isDark),
+                      _buildUserTypeSelector(isDark),
+                      SizedBox(
+                        height: _tabController.index == 0 ? (_isLoginWithPhone && _otpSent ? 300 : 380) : 520,
+                        child: TabBarView(
+                          controller: _tabController,
+                          children: [
+                            _buildLoginTab(isDark, state),
+                            _buildRegisterTab(isDark, state),
                           ],
                         ),
-                        child: Column(children: [
-                          // ========== التبويبات ==========
-                          _buildTabs(isDark),
-                          
-                          // ========== اختيار نوع المستخدم ==========
-                          _buildUserTypeSelector(isDark),
-                          
-                          // ========== المحتوى ==========
-                          SizedBox(
-                            height: _tabController.index == 0 ? 380 : 520,
-                            child: TabBarView(
-                              controller: _tabController,
-                              children: [
-                                _buildLoginTab(isDark, state),
-                                _buildRegisterTab(isDark, state),
-                              ],
-                            ),
-                          ),
-                        ]),
                       ),
-                    ],
+                    ]),
                   ),
-                ),
+                ]),
               ),
             ),
           ),
@@ -134,233 +114,250 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  // ==================== الشعار ====================
-  Widget _buildLogo(bool isDark) {
+  Widget _buildLogo() {
     return Column(children: [
       Container(
-        width: 90, height: 90,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15)],
-        ),
-        child: const Icon(Icons.health_and_safety, size: 50, color: AppColors.primary),
+        width: 80, height: 80,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15)]),
+        child: const Icon(Icons.health_and_safety, size: 45, color: AppColors.primary),
       ),
-      const SizedBox(height: 15),
-      const Text('صحتك', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Cairo')),
-      const Text('منصة الرعاية الصحية الشاملة', style: TextStyle(fontSize: 14, color: Colors.white70, fontFamily: 'Cairo')),
+      const SizedBox(height: 12),
+      const Text('صحتك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Cairo')),
+      const Text('منصة الرعاية الصحية', style: TextStyle(fontSize: 13, color: Colors.white70, fontFamily: 'Cairo')),
     ]);
   }
 
-  // ==================== التبويبات ====================
   Widget _buildTabs(bool isDark) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0B1121) : Colors.grey[100],
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: isDark ? const Color(0xFF0B1121) : Colors.grey[100], borderRadius: BorderRadius.circular(14)),
       child: TabBar(
         controller: _tabController,
-        indicator: BoxDecoration(
-          gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
-          borderRadius: BorderRadius.circular(14),
-        ),
+        indicator: BoxDecoration(gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]), borderRadius: BorderRadius.circular(12)),
         indicatorSize: TabBarIndicatorSize.tab,
         labelColor: Colors.white,
-        unselectedLabelColor: isDark ? Colors.grey[400] : Colors.grey[600],
+        unselectedLabelColor: Colors.grey[600],
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Cairo'),
         padding: const EdgeInsets.all(4),
-        tabs: const [
-          Tab(text: 'تسجيل الدخول'),
-          Tab(text: 'إنشاء حساب'),
-        ],
+        tabs: const [Tab(text: 'تسجيل الدخول'), Tab(text: 'إنشاء حساب')],
       ),
     );
   }
 
-  // ==================== اختيار نوع المستخدم ====================
   Widget _buildUserTypeSelector(bool isDark) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(children: [
-        Expanded(
-          child: _buildTypeCard('مريض', Icons.person, 'patient', isDark),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildTypeCard('طبيب', Icons.medical_services, 'doctor', isDark),
-        ),
+        Expanded(child: _typeCard('👤 مريض', Icons.person, 'patient', isDark)),
+        const SizedBox(width: 10),
+        Expanded(child: _typeCard('👨‍⚕️ طبيب', Icons.medical_services, 'doctor', isDark)),
       ]),
     );
   }
 
-  Widget _buildTypeCard(String title, IconData icon, String type, bool isDark) {
-    final selected = _userType == type;
+  Widget _typeCard(String title, IconData icon, String type, bool isDark) {
+    final sel = _userType == type;
     return GestureDetector(
       onTap: () => setState(() => _userType = type),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: selected 
-            ? AppColors.primary.withOpacity(0.1)
-            : (isDark ? const Color(0xFF0B1121) : Colors.grey[50]),
+          color: sel ? AppColors.primary.withOpacity(0.1) : (isDark ? const Color(0xFF0B1121) : Colors.grey[50]),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? AppColors.primary : Colors.grey[300]!, width: selected ? 2 : 1),
+          border: Border.all(color: sel ? AppColors.primary : Colors.grey[300]!, width: sel ? 2 : 1),
         ),
         child: Column(children: [
-          Icon(icon, color: selected ? AppColors.primary : Colors.grey, size: 28),
+          Icon(icon, color: sel ? AppColors.primary : Colors.grey, size: 26),
           const SizedBox(height: 4),
-          Text(title, style: TextStyle(color: selected ? AppColors.primary : Colors.grey, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+          Text(title, style: TextStyle(color: sel ? AppColors.primary : Colors.grey, fontWeight: FontWeight.bold, fontFamily: 'Cairo', fontSize: 12)),
         ]),
       ),
     );
   }
 
-  // ==================== تبويب تسجيل الدخول ====================
+  // ==================== LOGIN TAB ====================
   Widget _buildLoginTab(bool isDark, AuthState state) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        // تبديل بين الإيميل والهاتف
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          _buildMethodBtn('الإيميل', !_isLoginWithPhone),
+          _methodBtn('📧 الإيميل', !_isLoginWithPhone),
           const SizedBox(width: 8),
-          _buildMethodBtn('الهاتف', _isLoginWithPhone),
+          _methodBtn('📱 الهاتف', _isLoginWithPhone),
         ]),
         const SizedBox(height: 16),
         
         if (_isLoginWithPhone && !_otpSent) ...[
-          // ========== إدخال الهاتف ==========
-          TextField(
-            controller: _loginPhone,
-            keyboardType: TextInputType.phone,
-            textAlign: TextAlign.right,
-            decoration: InputDecoration(
-              labelText: 'رقم الهاتف',
-              hintText: '770123456',
-              prefixIcon: const Icon(Icons.phone_android),
-              prefixText: '+967 ',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true,
-              fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
-            ),
-          ),
+          _phoneField(isDark),
           const SizedBox(height: 16),
-          SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
-            onPressed: state is AuthLoading ? null : () {
-              context.read<AuthBloc>().add(LoginWithPhone(_loginPhone.text.trim()));
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إرسال رمز التحقق', style: TextStyle(fontSize: 16, fontFamily: 'Cairo')),
-          )),
+          _btn('إرسال رمز التحقق', state, () => context.read<AuthBloc>().add(LoginWithPhone(_loginPhone.text.trim()))),
         ] else if (_isLoginWithPhone && _otpSent) ...[
-          // ========== إدخال OTP ==========
-          const Icon(Icons.verified_user, size: 50, color: AppColors.primary),
-          const SizedBox(height: 8),
-          const Text('أدخل رمز التحقق', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontFamily: 'Cairo')),
-          Text('تم الإرسال إلى +967${_loginPhone.text}', style: TextStyle(color: Colors.grey[600], fontSize: 13, fontFamily: 'Cairo')),
+          _otpField(isDark),
           const SizedBox(height: 16),
-          TextField(
-            controller: _otpCtrl,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              counterText: '',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true,
-              fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
-            onPressed: state is AuthLoading ? null : () {
-              context.read<AuthBloc>().add(VerifyPhoneOTP(verificationId: _verificationId, otp: _otpCtrl.text.trim()));
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تحقق', style: TextStyle(fontSize: 16, fontFamily: 'Cairo')),
-          )),
-          TextButton(onPressed: () => setState(() => _otpSent = false), child: const Text('تغيير رقم الهاتف')),
+          _btn('تأكيد', state, () => context.read<AuthBloc>().add(VerifyPhoneOTP(verificationId: _verificationId, otp: _otpCtrl.text.trim()))),
+          TextButton(onPressed: () => setState(() { _otpSent = false; _otpCtrl.clear(); }), child: const Text('تغيير الرقم')),
         ] else ...[
-          // ========== تسجيل بالإيميل ==========
-          TextField(
-            controller: _loginEmail,
-            keyboardType: TextInputType.emailAddress,
-            textAlign: TextAlign.right,
-            decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50]),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _loginPass,
-            obscureText: _obscurePass,
-            textAlign: TextAlign.right,
-            decoration: InputDecoration(
-              labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline),
-              suffixIcon: IconButton(icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscurePass = !_obscurePass)),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: () {}, child: const Text('نسيت كلمة المرور؟'))),
-          const SizedBox(height: 8),
-          SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
-            onPressed: state is AuthLoading ? null : () => context.read<AuthBloc>().add(LoginWithEmail(email: _loginEmail.text.trim(), password: _loginPass.text.trim())),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-            child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16, fontFamily: 'Cairo')),
-          )),
+          _textField(isDark, _loginEmail, 'البريد الإلكتروني', Icons.email_outlined, TextInputType.emailAddress),
+          const SizedBox(height: 12),
+          _passField(isDark, _loginPass, 'كلمة المرور'),
+          const SizedBox(height: 4),
+          Row(children: [
+            Row(children: [
+              Checkbox(value: _rememberMe, activeColor: AppColors.primary, onChanged: (v) => setState(() => _rememberMe = v!), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              const Text('تذكرني', style: TextStyle(fontSize: 11, fontFamily: 'Cairo')),
+            ]),
+            const Spacer(),
+            TextButton(onPressed: () => context.read<AuthBloc>().add(ResetPassword(_loginEmail.text.trim())), child: const Text('نسيت كلمة المرور؟', style: TextStyle(fontSize: 11))),
+          ]),
+          const SizedBox(height: 4),
+          _btn('تسجيل الدخول', state, () => context.read<AuthBloc>().add(LoginWithEmail(email: _loginEmail.text.trim(), password: _loginPass.text.trim()))),
         ],
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Text('ليس لديك حساب؟', style: TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+          TextButton(onPressed: () => _tabController.animateTo(1), child: const Text('إنشاء حساب', style: TextStyle(fontWeight: FontWeight.bold))),
+        ]),
       ]),
     );
   }
 
-  // ==================== تبويب التسجيل ====================
+  // ==================== REGISTER TAB ====================
   Widget _buildRegisterTab(bool isDark, AuthState state) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(children: [
-        TextField(controller: _regName, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'الاسم الكامل', prefixIcon: const Icon(Icons.person_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50])),
-        const SizedBox(height: 12),
-        TextField(controller: _regEmail, keyboardType: TextInputType.emailAddress, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50])),
-        const SizedBox(height: 12),
-        TextField(controller: _regPhone, keyboardType: TextInputType.phone, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'رقم الهاتف', prefixIcon: const Icon(Icons.phone_android), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50])),
-        const SizedBox(height: 12),
-        TextField(controller: _regPass, obscureText: _obscurePass, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscurePass = !_obscurePass)), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50])),
-        const SizedBox(height: 12),
-        TextField(controller: _regConfirmPass, obscureText: _obscureConfirm, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'تأكيد كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(icon: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm)), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50])),
-        const SizedBox(height: 12),
-        Row(children: [
-          Checkbox(value: _agreeTerms, activeColor: AppColors.primary, onChanged: (v) => setState(() => _agreeTerms = v!)),
-          const Expanded(child: Text('أوافق على الشروط والأحكام', style: TextStyle(fontSize: 12, fontFamily: 'Cairo'))),
-        ]),
+        _textField(isDark, _regName, 'الاسم الكامل', Icons.person_outline, TextInputType.text),
+        const SizedBox(height: 10),
+        _textField(isDark, _regEmail, 'البريد الإلكتروني', Icons.email_outlined, TextInputType.emailAddress),
+        const SizedBox(height: 10),
+        _textField(isDark, _regPhone, 'رقم الهاتف', Icons.phone_android, TextInputType.phone),
+        const SizedBox(height: 10),
+        _passField(isDark, _regPass, 'كلمة المرور'),
+        const SizedBox(height: 10),
+        _passFieldConfirm(isDark, _regConfirmPass, 'تأكيد كلمة المرور'),
         const SizedBox(height: 8),
-        SizedBox(width: double.infinity, height: 52, child: ElevatedButton(
-          onPressed: (_agreeTerms && state is! AuthLoading) ? () {
-            context.read<AuthBloc>().add(RegisterWithEmail(name: _regName.text.trim(), email: _regEmail.text.trim(), phone: _regPhone.text.trim(), password: _regPass.text.trim()));
-          } : null,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-          child: state is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إنشاء حساب', style: TextStyle(fontSize: 16, fontFamily: 'Cairo')),
-        )),
+        Row(children: [
+          Checkbox(value: _agreeTerms, activeColor: AppColors.primary, onChanged: (v) => setState(() => _agreeTerms = v!), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          const Expanded(child: Text('أوافق على الشروط والأحكام', style: TextStyle(fontSize: 10, fontFamily: 'Cairo'))),
+        ]),
+        const SizedBox(height: 4),
+        _btn('إنشاء حساب', state, () {
+          if (!_agreeTerms) { _showError('يرجى الموافقة على الشروط'); return; }
+          if (_regPass.text != _regConfirmPass.text) { _showError('كلمتا المرور غير متطابقتين'); return; }
+          if (_regPass.text.length < 6) { _showError('كلمة المرور 6 أحرف على الأقل'); return; }
+          context.read<AuthBloc>().add(RegisterWithEmail(
+            name: _regName.text.trim(),
+            email: _regEmail.text.trim(),
+            phone: _regPhone.text.trim(),
+            password: _regPass.text.trim(),
+          ));
+        }),
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Text('لديك حساب؟', style: TextStyle(fontSize: 12, fontFamily: 'Cairo')),
+          TextButton(onPressed: () => _tabController.animateTo(0), child: const Text('تسجيل الدخول', style: TextStyle(fontWeight: FontWeight.bold))),
+        ]),
       ]),
     );
   }
 
-  Widget _buildMethodBtn(String text, bool selected) {
+  // ==================== WIDGETS ====================
+  Widget _textField(bool isDark, TextEditingController ctrl, String label, IconData icon, TextInputType type) {
+    return TextField(
+      controller: ctrl, keyboardType: type, textAlign: TextAlign.right,
+      decoration: InputDecoration(
+        labelText: label, prefixIcon: Icon(icon, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _passField(bool isDark, TextEditingController ctrl, String label) {
+    return TextField(
+      controller: ctrl, obscureText: _obscurePass, textAlign: TextAlign.right,
+      decoration: InputDecoration(
+        labelText: label, prefixIcon: const Icon(Icons.lock_outline, size: 20),
+        suffixIcon: IconButton(icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility, size: 20), onPressed: () => setState(() => _obscurePass = !_obscurePass)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _passFieldConfirm(bool isDark, TextEditingController ctrl, String label) {
+    return TextField(
+      controller: ctrl, obscureText: _obscureConfirm, textAlign: TextAlign.right,
+      decoration: InputDecoration(
+        labelText: label, prefixIcon: const Icon(Icons.lock_outline, size: 20),
+        suffixIcon: IconButton(icon: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility, size: 20), onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _phoneField(bool isDark) {
+    return TextField(
+      controller: _loginPhone, keyboardType: TextInputType.phone, textAlign: TextAlign.right,
+      decoration: InputDecoration(
+        labelText: 'رقم الهاتف', hintText: '770123456',
+        prefixIcon: const Icon(Icons.phone_android, size: 20), prefixText: '+967 ',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _phoneFieldReg(bool isDark) => _phoneField(isDark);
+
+  Widget _otpField(bool isDark) {
+    return Column(children: [
+      const Icon(Icons.verified_user, size: 45, color: AppColors.primary),
+      const SizedBox(height: 8),
+      Text('رمز التحقق المرسل إلى +967${_loginPhone.text}', style: TextStyle(color: Colors.grey[600], fontSize: 12, fontFamily: 'Cairo'), textAlign: TextAlign.center),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _otpCtrl, keyboardType: TextInputType.number, maxLength: 6,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 22, letterSpacing: 6, fontWeight: FontWeight.bold),
+        decoration: InputDecoration(counterText: '', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: isDark ? const Color(0xFF0B1121) : Colors.grey[50]),
+      ),
+    ]);
+  }
+
+  Widget _btn(String text, AuthState state, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity, height: 48,
+      child: ElevatedButton(
+        onPressed: state is AuthLoading ? null : onTap,
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 2),
+        child: state is AuthLoading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Text(text, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+      ),
+    );
+  }
+
+  Widget _methodBtn(String text, bool selected) {
     return GestureDetector(
-      onTap: () => setState(() { _isLoginWithPhone = text == 'الهاتف'; _otpSent = false; }),
+      onTap: () => setState(() { _isLoginWithPhone = text.contains('هاتف'); _otpSent = false; _otpCtrl.clear(); }),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.grey[300],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(text, style: TextStyle(color: selected ? Colors.white : Colors.grey[700], fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        decoration: BoxDecoration(color: selected ? AppColors.primary : Colors.grey[300], borderRadius: BorderRadius.circular(20)),
+        child: Text(text, style: TextStyle(color: selected ? Colors.white : Colors.grey[700], fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Cairo')),
       ),
     );
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red, behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg), backgroundColor: Colors.red,
+      behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      duration: const Duration(seconds: 3),
+    ));
   }
 }
