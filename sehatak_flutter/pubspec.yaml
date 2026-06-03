@@ -121,3 +121,7 @@ flutter_launcher_icons:
   webview_flutter: ^4.4.0
 dependency_overrides:
   flutter_local_notifications: ^18.0.0
+
+dependency_overrides:
+  flutter_local_notifications: ^18.0.0
+  flutter_local_notifications_linux: ^5.0.0
