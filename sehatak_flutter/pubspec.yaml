@@ -122,3 +122,4 @@ flutter_launcher_icons:
 
 dependency_overrides:
   flutter_local_notifications: ^18.0.0
+  agora_rtc_engine: ^6.3.0
