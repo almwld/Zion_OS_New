@@ -73,11 +73,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return BlocConsumer<AuthBloc, AuthState>(
       listener: (ctx, s) {
         if (s is Authenticated) {
-          Navigator.pushAndRemoveUntil(ctx, MaterialPageRoute(builder: (_) => const HomeScreen()), (r) => false);
+          // انتقال سريع مع انيميشن للرئيسية
+          Navigator.of(ctx).pushAndRemoveUntil(
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const HomeScreen(),
+              transitionsBuilder: (_, anim, __, child) {
+                return FadeTransition(opacity: anim, child: SlideTransition(
+                  position: Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+                  child: child,
+                ));
+              },
+              transitionDuration: const Duration(milliseconds: 500),
+            ),
+            (route) => false,
+          );
         }
         if (s is AuthError) _showMsg(s.message, true);
         if (s is AuthCodeSent) setState(() { _otpSent = true; _verId = s.verificationId; });
-        if (s is PasswordResetSent) _showMsg('تم الارسال', false);
+        if (s is PasswordResetSent) _showMsg('تم إرسال رابط إعادة التعيين', false);
       },
       builder: (ctx, s) {
         return Scaffold(
@@ -174,6 +187,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg), backgroundColor: error ? Colors.red : Colors.green,
       behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(seconds: 2),
     ));
   }
 }
