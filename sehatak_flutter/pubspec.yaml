@@ -119,9 +119,6 @@ flutter_launcher_icons:
   http: ^1.2.0
   socket_io_client: ^2.0.3
   webview_flutter: ^4.4.0
-dependency_overrides:
-  flutter_local_notifications: ^18.0.0
 
 dependency_overrides:
   flutter_local_notifications: ^18.0.0
-  flutter_local_notifications_linux: ^5.0.0
