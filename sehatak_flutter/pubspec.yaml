@@ -123,3 +123,12 @@ flutter_launcher_icons:
 dependency_overrides:
   flutter_local_notifications: ^18.0.0
   agora_rtc_engine: ^6.3.0
+
+# تقليل الحجم - استخدم فقط الخطوط المستخدمة
+flutter:
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
