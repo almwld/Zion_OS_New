@@ -35,7 +35,7 @@ dependencies:
   url_launcher: ^6.2.3
   share_plus: ^7.2.1
   local_auth: ^2.1.8
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^18.0.0
   google_maps_flutter: ^2.5.0
   shimmer: ^3.0.0
   cached_network_image: ^3.3.1
@@ -119,3 +119,5 @@ flutter_launcher_icons:
   http: ^1.2.0
   socket_io_client: ^2.0.3
   webview_flutter: ^4.4.0
+dependency_overrides:
+  flutter_local_notifications: ^18.0.0
