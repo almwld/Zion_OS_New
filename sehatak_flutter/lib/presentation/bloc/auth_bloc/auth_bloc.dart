@@ -73,8 +73,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   void _onAppStarted(AppStarted e, Emitter<AuthState> emit) {
-    if (_fb.currentUser != null) {
-      emit(Authenticated(UserModel(id: _fb.currentUser!.uid, email: _fb.currentUser!.email)));
+    if (_fb.auth.currentUser != null) {
+      emit(Authenticated(UserModel(id: _fb.auth.currentUser!.uid, email: _fb.auth.currentUser!.email)));
     } else {
       emit(Unauthenticated());
     }
@@ -97,15 +97,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       await _fb.auth.verifyPhoneNumber(
         phoneNumber: '+967${e.phone}',
-        verificationCompleted: (cred) async {
-          await _fb.auth.signInWithCredential(cred);
-        },
+        verificationCompleted: (cred) async { await _fb.auth.signInWithCredential(cred); },
         verificationFailed: (ex) => emit(AuthError(ex.message ?? 'خطأ')),
         codeSent: (id, token) => emit(AuthCodeSent(id)),
         codeAutoRetrievalTimeout: (id) {},
       );
     } catch (ex) {
-      emit(AuthError('فشل إرسال رمز التحقق'));
+      emit(AuthError('فشل إرسال الرمز'));
     }
   }
 
@@ -137,7 +135,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onResetPassword(ResetPassword e, Emitter<AuthState> emit) async {
-    if (e.email.isEmpty) { emit(AuthError('أدخل بريدك الإلكتروني أولاً')); return; }
+    if (e.email.isEmpty) { emit(AuthError('أدخل بريدك الإلكتروني')); return; }
     emit(AuthLoading());
     try {
       await _fb.auth.sendPasswordResetEmail(email: e.email.trim());
@@ -154,14 +152,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   String _msg(String code) {
     switch (code) {
-      case 'invalid-email': return 'إيميل غير صالح';
-      case 'user-not-found': return 'المستخدم غير موجود';
-      case 'wrong-password': return 'كلمة مرور خاطئة';
-      case 'email-already-in-use': return 'الإيميل مستخدم مسبقاً';
+      case 'invalid-email': return 'بريد إلكتروني غير صالح';
+      case 'user-not-found': return 'المستخدم غير موجود - أنشئ حساباً أولاً';
+      case 'wrong-password': return 'كلمة المرور غير صحيحة';
+      case 'email-already-in-use': return 'البريد مستخدم مسبقاً - سجل دخول';
       case 'weak-password': return 'كلمة المرور ضعيفة (6 أحرف على الأقل)';
       case 'network-request-failed': return 'لا يوجد اتصال بالإنترنت';
-      case 'too-many-requests': return 'محاولات كثيرة. انتظر قليلاً';
-      default: return 'خطأ: $code';
+      case 'too-many-requests': return 'محاولات كثيرة - انتظر قليلاً';
+      default: return code;
     }
   }
 }
