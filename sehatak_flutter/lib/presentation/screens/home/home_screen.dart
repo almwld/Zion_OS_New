@@ -23,7 +23,6 @@ import 'package:sehatak/presentation/screens/payment/payment_methods_screen.dart
 import 'package:sehatak/presentation/screens/health_community/health_community_screen.dart';
 import 'package:sehatak/presentation/bloc/auth_bloc/auth_bloc.dart';
 import 'package:sehatak/presentation/screens/auth/login_screen.dart';
-import 'package:sehatak/presentation/widgets/shimmer/shimmer_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

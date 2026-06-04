@@ -57,7 +57,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // صورة الملف الشخصي
               Stack(children: [
                 _isUploading
-                    ? _shimmerAvatar()
                     : _avatarUrl != null
                         ? CircleAvatar(
                             radius: 50,
@@ -133,7 +132,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _shimmerAvatar() {
     return Container(
       width: 100, height: 100,
       decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white24),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_colors.dart';
 import '../delivery/delivery_options_screen.dart';
-import '../../widgets/shimmer/shimmer_widgets.dart';
 
 class PharmacyScreen extends StatefulWidget {
   const PharmacyScreen({super.key});
