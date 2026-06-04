@@ -14,13 +14,17 @@ dependencies:
   bloc: ^8.1.2
   equatable: ^2.0.5
   
-  # Firebase (جديد)
+  # Firebase
   firebase_core: ^2.25.4
   firebase_auth: ^4.17.4
   cloud_firestore: ^4.14.0
-  firebase_storage: ^11.6.0
-  firebase_messaging: ^14.7.15
+  firebase_messaging: ^14.7.10
   firebase_analytics: ^10.8.0
+  firebase_crashlytics: ^3.4.9
+  google_sign_in: ^6.2.1
+  
+  # Agora
+  agora_rtc_engine: ^6.3.0
   
   dio: ^5.4.0
   retrofit: ^4.0.3
@@ -39,7 +43,7 @@ dependencies:
   url_launcher: ^6.2.3
   share_plus: ^7.2.1
   local_auth: ^2.1.8
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^18.0.0
   google_maps_flutter: ^2.5.0
   shimmer: ^3.0.0
   cached_network_image: ^3.3.1
