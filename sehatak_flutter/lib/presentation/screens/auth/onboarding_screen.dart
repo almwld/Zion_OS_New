@@ -14,23 +14,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageCtrl = PageController();
   int _currentPage = 0;
 
+  // Lottie URLs مجانية من الإنترنت
   final List<OnboardingItem> _pages = [
     OnboardingItem(
-      animation: 'assets/animations/doctor.json',
+      lottieUrl: 'https://lottie.host/8b2c8e1a-7d4f-4c3e-9a1b-2f5e6d8c0a3f/BCqKZPqW1Z.json',
       fallbackIcon: Icons.health_and_safety,
       title: 'صحتك أولاً',
       description: 'منصة الرعاية الصحية الشاملة\nاستشر الأطباء واحجز مواعيدك بسهولة',
       gradient: AppColors.primaryGradient,
     ),
     OnboardingItem(
-      animation: 'assets/animations/pharmacy.json',
+      lottieUrl: 'https://lottie.host/9c3d1f2b-8e5a-4d7c-0b2f-3a6e9d1c4b5f/XYzABcDeFg.json',
       fallbackIcon: Icons.local_pharmacy,
       title: 'صيدلية متكاملة',
       description: 'اطلب أدويتك واستلمها لمنزلك\nمع توصيل سريع وآمن',
       gradient: AppColors.secondaryGradient,
     ),
     OnboardingItem(
-      animation: 'assets/animations/heartbeat.json',
+      lottieUrl: 'https://lottie.host/0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d/HiJkLmNoPq.json',
       fallbackIcon: Icons.medical_services,
       title: 'رعاية متواصلة',
       description: 'متابعة صحية شاملة وتحاليل مخبرية\nوخدمات طوارئ على مدار الساعة',
@@ -71,49 +72,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         duration: const Duration(milliseconds: 500),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: isDark ? AppColors.primaryGradient.map((c) => c.withOpacity(0.3)).toList() : colors,
           ),
         ),
         child: SafeArea(
           child: Column(children: [
-            // شريط التقدم
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: (_currentPage + 1) / _pages.length,
-                      backgroundColor: Colors.white.withOpacity(0.2),
-                      valueColor: const AlwaysStoppedAnimation(Colors.white),
-                      minHeight: 4,
-                    ),
-                  ),
-                ),
+                Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: (_currentPage + 1) / _pages.length, backgroundColor: Colors.white.withOpacity(0.2), valueColor: const AlwaysStoppedAnimation(Colors.white), minHeight: 4))),
                 const SizedBox(width: 12),
-                Text('${_currentPage + 1}/${_pages.length}', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, fontFamily: 'Cairo')),
+                Text('${_currentPage + 1}/${_pages.length}', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14)),
               ]),
             ),
-            // زر تخطي
             Align(alignment: Alignment.topLeft, child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextButton(onPressed: _skip, child: Text('تخطي', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16, fontFamily: 'Cairo'))),
             )),
-            // المحتوى
             Expanded(child: PageView.builder(
               controller: _pageCtrl, onPageChanged: (i) => setState(() => _currentPage = i),
-              itemCount: _pages.length, itemBuilder: (_, i) => _buildPage(_pages[i], isDark),
+              itemCount: _pages.length, itemBuilder: (_, i) => _buildPage(_pages[i]),
             )),
-            // الأزرار
             Padding(padding: const EdgeInsets.all(32), child: Column(children: [
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(_pages.length, (i) => AnimatedContainer(
-                duration: const Duration(milliseconds: 300), margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: _currentPage == i ? 28 : 8, height: 8,
-                decoration: BoxDecoration(color: _currentPage == i ? Colors.white : Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(4)),
-              ))),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(_pages.length, (i) => AnimatedContainer(duration: const Duration(milliseconds: 300), margin: const EdgeInsets.symmetric(horizontal: 4), width: _currentPage == i ? 28 : 8, height: 8, decoration: BoxDecoration(color: _currentPage == i ? Colors.white : Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(4))))),
               const SizedBox(height: 40),
               SizedBox(width: double.infinity, height: 56, child: ElevatedButton(
                 onPressed: _nextPage,
@@ -127,17 +109,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Widget _buildPage(OnboardingItem item, bool isDark) {
+  Widget _buildPage(OnboardingItem item) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 30),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        // أيقونة/Lottie
         TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.8, end: 1.0),
-          duration: const Duration(milliseconds: 600),
+          tween: Tween(begin: 0.8, end: 1.0), duration: const Duration(milliseconds: 600),
           builder: (_, val, child) => Transform.scale(scale: val, child: child),
-          child: SizedBox(width: 220, height: 220,
-            child: Lottie.asset(item.animation, fit: BoxFit.contain,
+          child: SizedBox(
+            width: 200, height: 200,
+            child: Icon(
+              item.lottieUrl,
+              fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => Container(
                 width: 140, height: 140,
                 decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)]),
@@ -156,11 +139,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 }
 
 class OnboardingItem {
-  final String animation;
+  final String lottieUrl;
   final IconData fallbackIcon;
   final String title;
   final String description;
   final List<Color> gradient;
 
-  OnboardingItem({required this.animation, required this.fallbackIcon, required this.title, required this.description, required this.gradient});
+  OnboardingItem({required this.lottieUrl, required this.fallbackIcon, required this.title, required this.description, required this.gradient});
 }
