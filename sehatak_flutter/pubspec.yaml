@@ -51,3 +51,11 @@ flutter:
         - asset: assets/fonts/Cairo-Regular.ttf
         - asset: assets/fonts/Cairo-Bold.ttf
           weight: 700
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  flutter_local_notifications: ^18.0.0
+  google_maps_flutter: ^2.5.0
+  shimmer: ^3.0.0
+  lottie: ^2.7.0
+  fl_chart: ^0.66.0
+  confetti: ^0.7.0
