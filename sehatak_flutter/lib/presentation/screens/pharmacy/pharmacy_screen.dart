@@ -129,7 +129,7 @@ class _PharmacyScreenState extends State<PharmacyScreen> {
                     child: CachedNetworkImage(
                       imageUrl: m['image'],
                       height: 100, width: double.infinity, fit: BoxFit.cover,
-                      placeholder: (_, __) => const ShimmerContainer(height: 100, borderRadius: 0),
+                      placeholder: (_, __) => const SizedBox(height: 100, child: Center(child: CircularProgressIndicator())),
                       errorWidget: (_, __, ___) => Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.primary.withOpacity(0.3), AppColors.primaryDark.withOpacity(0.3)])), child: const Center(child: Icon(Icons.medication, color: Colors.white, size: 40))),
                     ),
                   ),

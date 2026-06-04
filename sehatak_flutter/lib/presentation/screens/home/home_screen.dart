@@ -11,7 +11,6 @@ import 'package:sehatak/presentation/screens/pharmacy/pharmacy_screen.dart';
 import 'package:sehatak/presentation/screens/emergencies/emergency_numbers.dart';
 import 'package:sehatak/presentation/bloc/theme_bloc/theme_bloc.dart';
 import 'package:sehatak/presentation/screens/health_tips/health_tips_screen.dart';
-import 'package:sehatak/presentation/screens/nearby/nearby_screen.dart';
 import 'package:sehatak/presentation/screens/patient/patient_appointments.dart';
 import 'package:sehatak/presentation/screens/patient/patient_dashboard.dart';
 import 'package:sehatak/presentation/screens/chat/chat_screen.dart';
@@ -192,7 +191,7 @@ IconButton(icon: const Icon(Icons.dark_mode, color: AppColors.primary), onPresse
           Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
             QuickServiceCard(icon: Icons.local_pharmacy, label: 'الصيدلية', color: AppColors.success, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PharmacyScreen()))),
             QuickServiceCard(icon: Icons.emergency, label: 'الطوارئ', color: AppColors.error, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyNumbers()))),
-            QuickServiceCard(icon: Icons.near_me, label: 'بالقرب منك', color: AppColors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NearbyScreen()))),
+            QuickServiceCard(icon: Icons.near_me, label: 'بالقرب منك', color: AppColors.teal, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DoctorsListScreen()))),
             QuickServiceCard(icon: Icons.shopping_cart, label: 'السلة', color: AppColors.orange, onTap: () => _requireAuth(context, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())))),
             QuickServiceCard(icon: Icons.science, label: 'التحاليل', color: AppColors.purple, onTap: () => _requireAuth(context, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LabsListScreen())))),
           ]),

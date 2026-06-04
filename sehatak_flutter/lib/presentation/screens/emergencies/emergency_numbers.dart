@@ -1,6 +1,7 @@
+import 'package:sehatak/presentation/screens/lab/labs_list_screen.dart';
+import 'package:sehatak/presentation/screens/doctor/doctors_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:sehatak/core/constants/app_colors.dart';
-import 'package:sehatak/presentation/screens/nearby/nearby_screen.dart';
 import 'package:sehatak/presentation/screens/first_aid/first_aid_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -63,7 +64,7 @@ class EmergencyNumbers extends StatelessWidget {
           // مستشفيات قريبة
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('مستشفيات قريبة', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NearbyScreen(type: 'hospitals'))), child: const Text('عرض الكل ›')),
+            TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DoctorsListScreen())), child: const Text('عرض الكل ›')),
           ]),
           ..._hospitals.map((h) => Container(
             margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(12),
@@ -73,7 +74,7 @@ class EmergencyNumbers extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(h['name'], style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)), Text('${h['city']} • ${h['distance']}', style: const TextStyle(fontSize: 10, color: AppColors.grey))])),
               IconButton(icon: const Icon(Icons.call, color: AppColors.success), onPressed: () => _call(h['number'])),
-              IconButton(icon: const Icon(Icons.navigation, color: AppColors.primary), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NearbyScreen()))),
+              IconButton(icon: const Icon(Icons.navigation, color: AppColors.primary), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DoctorsListScreen()))),
             ]),
           )),
           const SizedBox(height: 16),
