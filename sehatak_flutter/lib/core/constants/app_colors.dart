@@ -49,3 +49,8 @@ class AppColors {
   static const Color jeeb = Color(0xFF9C27B0);
   static const Color easy = Color(0xFF00BCD4);
 }
+
+// ألوان إضافية للملفات المحتاجة
+static const Color amber = Color(0xFFFFC107);
+static const Color outlineVariant = Color(0xFFCAC4D0);
+static const Color surfaceContainerLow = Color(0xFFF7F2FA);
