@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
 import 'package:sehatak/core/constants/app_colors.dart';
 import 'login_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,29 +13,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageCtrl = PageController();
   int _currentPage = 0;
 
-  // Lottie URLs مجانية من الإنترنت
   final List<OnboardingItem> _pages = [
-    OnboardingItem(
-      lottieUrl: 'https://lottie.host/8b2c8e1a-7d4f-4c3e-9a1b-2f5e6d8c0a3f/BCqKZPqW1Z.json',
-      fallbackIcon: Icons.health_and_safety,
-      title: 'صحتك أولاً',
-      description: 'منصة الرعاية الصحية الشاملة\nاستشر الأطباء واحجز مواعيدك بسهولة',
-      gradient: AppColors.primaryGradient,
-    ),
-    OnboardingItem(
-      lottieUrl: 'https://lottie.host/9c3d1f2b-8e5a-4d7c-0b2f-3a6e9d1c4b5f/XYzABcDeFg.json',
-      fallbackIcon: Icons.local_pharmacy,
-      title: 'صيدلية متكاملة',
-      description: 'اطلب أدويتك واستلمها لمنزلك\nمع توصيل سريع وآمن',
-      gradient: AppColors.secondaryGradient,
-    ),
-    OnboardingItem(
-      lottieUrl: 'https://lottie.host/0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d/HiJkLmNoPq.json',
-      fallbackIcon: Icons.medical_services,
-      title: 'رعاية متواصلة',
-      description: 'متابعة صحية شاملة وتحاليل مخبرية\nوخدمات طوارئ على مدار الساعة',
-      gradient: AppColors.medicalGradient,
-    ),
+    OnboardingItem(icon: Icons.health_and_safety, title: 'صحتك أولاً', description: 'منصة الرعاية الصحية الشاملة\nاستشر الأطباء واحجز مواعيدك بسهولة', gradient: AppColors.primaryGradient),
+    OnboardingItem(icon: Icons.local_pharmacy, title: 'صيدلية متكاملة', description: 'اطلب أدويتك واستلمها لمنزلك\nمع توصيل سريع وآمن', gradient: AppColors.secondaryGradient),
+    OnboardingItem(icon: Icons.medical_services, title: 'رعاية متواصلة', description: 'متابعة صحية شاملة وتحاليل مخبرية\nوخدمات طوارئ على مدار الساعة', gradient: AppColors.medicalGradient),
   ];
 
   void _nextPage() {
@@ -44,11 +24,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _pageCtrl.nextPage(duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
     } else {
       SharedPreferences.getInstance().then((p) => p.setBool('onboarding_shown', false)).then((_) {
-        Navigator.pushReplacement(context, PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const LoginScreen(),
-          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
-          transitionDuration: const Duration(milliseconds: 400),
-        ));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
       });
     }
   }
@@ -64,18 +40,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = _pages[_currentPage].gradient;
-    
     return Scaffold(
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: isDark ? AppColors.primaryGradient.map((c) => c.withOpacity(0.3)).toList() : colors,
-          ),
-        ),
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: colors)),
         child: SafeArea(
           child: Column(children: [
             Padding(
@@ -113,23 +82,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 30),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0.8, end: 1.0), duration: const Duration(milliseconds: 600),
-          builder: (_, val, child) => Transform.scale(scale: val, child: child),
-          child: SizedBox(
-            width: 200, height: 200,
-            child: Icon(
-              item.lottieUrl,
-              
-              errorBuilder: (_, __, ___) => Container(
-                width: 140, height: 140,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)]),
-                child: Icon(item.fallbackIcon, size: 70, color: Colors.white),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 40),
+        Container(width: 160, height: 160, decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)]), child: Icon(item.icon, size: 80, color: Colors.white)),
+        const SizedBox(height: 50),
         Text(item.title, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'Cairo'), textAlign: TextAlign.center),
         const SizedBox(height: 16),
         Text(item.description, style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.85), height: 1.6, fontFamily: 'Cairo'), textAlign: TextAlign.center),
@@ -139,11 +93,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 }
 
 class OnboardingItem {
-  final String lottieUrl;
-  final IconData fallbackIcon;
-  final String title;
-  final String description;
-  final List<Color> gradient;
-
-  OnboardingItem({required this.lottieUrl, required this.fallbackIcon, required this.title, required this.description, required this.gradient});
+  final IconData icon; final String title; final String description; final List<Color> gradient;
+  OnboardingItem({required this.icon, required this.title, required this.description, required this.gradient});
 }
