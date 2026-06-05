@@ -25,17 +25,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final BiometricService _bio = BiometricService();
   bool _hasBiometric = false;
   String _bioName = 'البصمة';
-  bool _isKeyboardOpen = false;
   final _focusNode = FocusNode();
+  bool _isKeyboardOpen = false;
 
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
     _checkBiometric();
-    _focusNode.addListener(() {
-      setState(() => _isKeyboardOpen = _focusNode.hasFocus);
-    });
+    _focusNode.addListener(() => setState(() => _isKeyboardOpen = _focusNode.hasFocus));
   }
 
   Future<void> _checkBiometric() async {
@@ -49,6 +47,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Future<void> _loginWithBiometric() async {
     final ok = await _bio.authenticate(reason: 'استخدم $_bioName لتسجيل الدخول');
     if (ok && mounted) context.read<AuthBloc>().add(LoginWithEmail(email: 'bio@sehatak.com', password: 'bio'));
+  }
+
+  void _enterAsGuest() {
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
   }
 
   @override
@@ -95,90 +97,78 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft, colors: d ? [const Color(0xFF0B1121), const Color(0xFF1A2540)] : AppColors.primaryGradient)),
             child: SafeArea(child: Center(child: SingleChildScrollView(
               padding: EdgeInsets.only(bottom: bottomInset),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(children: [
-                  // شعار يختفي عند فتح الكيبورد
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    height: _isKeyboardOpen ? 0 : 120,
-                    child: _isKeyboardOpen ? const SizedBox.shrink() : Column(children: [
-                      const SizedBox(height: 10),
-                      Container(width: 70, height: 70, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: const Icon(Icons.health_and_safety, size: 38, color: AppColors.primary)),
-                      const SizedBox(height: 8),
-                      const Text('صحتك', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                    ]),
-                  ),
-                  
-                  // بصمة - تختفي مع الكيبورد
-                  if (_hasBiometric && !_isKeyboardOpen) ...[
-                    GestureDetector(
-                      onTap: _loginWithBiometric,
-                      child: Container(width: 55, height: 55, decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: Icon(Icons.fingerprint, color: Colors.white, size: 30)),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('تسجيل الدخول بـ $_bioName', style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'Cairo')),
+              child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
+                // شعار
+                AnimatedContainer(duration: const Duration(milliseconds: 300), height: _isKeyboardOpen ? 0 : 110,
+                  child: _isKeyboardOpen ? const SizedBox.shrink() : Column(children: [
+                    const SizedBox(height: 10),
+                    Container(width: 70, height: 70, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)), child: const Icon(Icons.health_and_safety, size: 38, color: AppColors.primary)),
                     const SizedBox(height: 8),
-                    const Row(children: [Expanded(child: Divider(color: Colors.white30)), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('أو', style: TextStyle(color: Colors.white70))), Expanded(child: Divider(color: Colors.white30))]),
-                  ],
-                  
-                  // Google - يختفي مع الكيبورد
-                  if (!_isKeyboardOpen) ...[
-                    const SizedBox(height: 8),
-                    SizedBox(width: double.infinity, height: 44, child: OutlinedButton(
-                      onPressed: () => context.read<AuthBloc>().add(LoginWithGoogle()),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white30), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), backgroundColor: Colors.white.withOpacity(0.1)),
-                      child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.g_mobiledata, color: Colors.red, size: 22), SizedBox(width: 8), Text('المتابعة بـ Google', style: TextStyle(fontSize: 14, color: Colors.white))]),
-                    )),
-                    const SizedBox(height: 12),
-                  ],
-                  
-                  // بطاقة تسجيل الدخول
-                  Container(
-                    decoration: BoxDecoration(color: d ? const Color(0xFF1A2540) : Colors.white, borderRadius: BorderRadius.circular(20)),
-                    child: Column(children: [
-                      Container(margin: const EdgeInsets.all(14), decoration: BoxDecoration(color: d ? const Color(0xFF0B1121) : Colors.grey[100], borderRadius: BorderRadius.circular(14)), child: TabBar(controller: _tabCtrl, indicator: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(12)), labelColor: Colors.white, unselectedLabelColor: Colors.grey, padding: const EdgeInsets.all(4), tabs: const [Tab(text: 'تسجيل الدخول'), Tab(text: 'إنشاء حساب')])),
-                      SizedBox(height: _tabCtrl.index == 0 ? 240 : 430, child: TabBarView(controller: _tabCtrl, children: [
-                        _buildLoginTab(s),
-                        _buildRegisterTab(s),
+                    const Text('صحتك', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ]),
+                ),
+                
+                // بصمة
+                if (_hasBiometric && !_isKeyboardOpen) ...[
+                  GestureDetector(onTap: _loginWithBiometric, child: Container(width: 55, height: 55, decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: Icon(Icons.fingerprint, color: Colors.white, size: 30))),
+                  const SizedBox(height: 4),
+                  Text('تسجيل الدخول بـ $_bioName', style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'Cairo')),
+                  const SizedBox(height: 8),
+                  const Row(children: [Expanded(child: Divider(color: Colors.white30)), Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('أو', style: TextStyle(color: Colors.white70))), Expanded(child: Divider(color: Colors.white30))]),
+                ],
+                
+                // Google
+                if (!_isKeyboardOpen) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, height: 44, child: OutlinedButton(
+                    onPressed: () => context.read<AuthBloc>().add(LoginWithGoogle()),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white30), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), backgroundColor: Colors.white.withOpacity(0.1)),
+                    child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.g_mobiledata, color: Colors.red, size: 22), SizedBox(width: 8), Text('المتابعة بـ Google', style: TextStyle(fontSize: 14, color: Colors.white))]),
+                  )),
+                  const SizedBox(height: 12),
+                ],
+                
+                // بطاقة الدخول
+                Container(
+                  decoration: BoxDecoration(color: d ? const Color(0xFF1A2540) : Colors.white, borderRadius: BorderRadius.circular(20)),
+                  child: Column(children: [
+                    Container(margin: const EdgeInsets.all(14), decoration: BoxDecoration(color: d ? const Color(0xFF0B1121) : Colors.grey[100], borderRadius: BorderRadius.circular(14)), child: TabBar(controller: _tabCtrl, indicator: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(12)), labelColor: Colors.white, unselectedLabelColor: Colors.grey, padding: const EdgeInsets.all(4), tabs: const [Tab(text: 'تسجيل الدخول'), Tab(text: 'إنشاء حساب')])),
+                    SizedBox(height: _tabCtrl.index == 0 ? 240 : 430, child: TabBarView(controller: _tabCtrl, children: [
+                      Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+                        TextField(controller: _email, focusNode: _focusNode, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 12),
+                        TextField(controller: _pass, obscureText: _obscure, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 20),
+                        SizedBox(width: double.infinity, height: 48, child: ElevatedButton(onPressed: s is AuthLoading ? null : _login, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: s is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)))),
                       ])),
-                    ]),
-                  ),
-                ]),
-              ),
-            ))),
+                      Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+                        TextField(controller: _name, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'الاسم الكامل', prefixIcon: const Icon(Icons.person_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 10), TextField(controller: _regEmail, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 10), TextField(controller: _regPhone, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'رقم الهاتف', prefixIcon: const Icon(Icons.phone_android), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 10), TextField(controller: _regPass, obscureText: _obscure, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 10), TextField(controller: _regConfirm, obscureText: _obscure2, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'تأكيد كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+                        const SizedBox(height: 8), Row(children: [Checkbox(value: _agree, activeColor: AppColors.primary, onChanged: (v) => setState(() => _agree = v!)), const Text('أوافق على الشروط', style: TextStyle(fontSize: 11))]),
+                        const SizedBox(height: 8),
+                        SizedBox(width: double.infinity, height: 48, child: ElevatedButton(onPressed: s is AuthLoading ? null : _register, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: s is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إنشاء حساب', style: TextStyle(fontSize: 16)))),
+                      ])),
+                    ])),
+                  ]),
+                ),
+                
+                // وضع ضيف - زر في الأسفل
+                const SizedBox(height: 20),
+                TextButton.icon(
+                  onPressed: _enterAsGuest,
+                  icon: const Icon(Icons.explore, color: Colors.white),
+                  label: const Text('تصفح كضيف', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+                ),
+                const SizedBox(height: 10),
+              ])),
+            )),
           ),
         ),
       ),
     );
-  }
-
-  Widget _buildLoginTab(AuthState s) {
-    return Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-      TextField(controller: _email, focusNode: _focusNode, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 12),
-      TextField(controller: _pass, obscureText: _obscure, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 20),
-      SizedBox(width: double.infinity, height: 48, child: ElevatedButton(onPressed: s is AuthLoading ? null : _login, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: s is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)))),
-    ]));
-  }
-
-  Widget _buildRegisterTab(AuthState s) {
-    return Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-      TextField(controller: _name, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'الاسم الكامل', prefixIcon: const Icon(Icons.person_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 10),
-      TextField(controller: _regEmail, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'البريد الإلكتروني', prefixIcon: const Icon(Icons.email_outlined), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 10),
-      TextField(controller: _regPhone, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'رقم الهاتف', prefixIcon: const Icon(Icons.phone_android), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 10),
-      TextField(controller: _regPass, obscureText: _obscure, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 10),
-      TextField(controller: _regConfirm, obscureText: _obscure2, textAlign: TextAlign.right, decoration: InputDecoration(labelText: 'تأكيد كلمة المرور', prefixIcon: const Icon(Icons.lock_outline), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-      const SizedBox(height: 8),
-      Row(children: [Checkbox(value: _agree, activeColor: AppColors.primary, onChanged: (v) => setState(() => _agree = v!)), const Text('أوافق على الشروط', style: TextStyle(fontSize: 11))]),
-      const SizedBox(height: 8),
-      SizedBox(width: double.infinity, height: 48, child: ElevatedButton(onPressed: s is AuthLoading ? null : _register, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: s is AuthLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('إنشاء حساب', style: TextStyle(fontSize: 16)))),
-    ]));
   }
 
   void _showMsg(String msg, bool error) {

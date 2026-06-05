@@ -44,6 +44,7 @@ class ResendOTP extends AuthEvent {
 }
 class TickTimer extends AuthEvent { @override List<Object?> get props => []; }
 class Logout extends AuthEvent { @override List<Object?> get props => []; }
+class EnterAsGuest extends AuthEvent { @override List<Object?> get props => []; }
 
 abstract class AuthState extends Equatable {
   const AuthState();
@@ -85,6 +86,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<ResetPassword>(_onResetPassword);
     on<ResendOTP>(_onResendOTP);
     on<TickTimer>(_onTick);
+    on<EnterAsGuest>(_onGuest);
     on<Logout>(_onLogout);
   }
 
@@ -197,6 +199,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _onResendOTP(ResendOTP e, Emitter<AuthState> emit) async {
     add(LoginWithPhone(e.phone));
+  }
+
+  void _onGuest(EnterAsGuest e, Emitter<AuthState> emit) {
+    emit(Authenticated(UserModel(id: "guest", fullName: "ضيف", email: "guest@sehatak.com")));
   }
 
   Future<void> _onLogout(Logout e, Emitter<AuthState> emit) async {
