@@ -3,9 +3,15 @@ import 'dart:io';
 
 class KaliBootstrapService {
   static const String _kaliPath = '/data/local/kali';
-  static const String _bootstrapArchive = '/sdcard/kali-bootstrap.tar.gz';
+  
+  // المسارات المحتملة للأرشيف
+  static const List<String> _possibleArchives = [
+    '/sdcard/Zion Universal/bootstrap-aarch64.zip',
+    '/sdcard/kali-bootstrap.tar.gz',
+    '/sdcard/kali-armhf.tar.gz',
+  ];
 
-  /// الفحص والتجهيز الكامل باستخدام الحزمة الحقيقية
+  /// الفحص والتجهيز الكامل
   static Future<String> bootstrap() async {
     // 1. فحص إذا كانت التوزيعة موجودة بالفعل
     if (await _isKaliInstalled()) {
@@ -15,14 +21,21 @@ class KaliBootstrapService {
       return 'Kali Linux is already installed and ready.';
     }
 
-    // 2. فحص وجود الحزمة الحقيقية
-    final archive = File(_bootstrapArchive);
-    if (!await archive.exists()) {
-      return 'Bootstrap archive not found at $_bootstrapArchive. Please copy it first.';
+    // 2. البحث عن أي أرشيف متاح
+    String? archivePath;
+    for (final path in _possibleArchives) {
+      if (await File(path).exists()) {
+        archivePath = path;
+        break;
+      }
     }
 
-    // 3. تثبيت الحزمة الحقيقية
-    final installResult = await _installBootstrap();
+    if (archivePath == null) {
+      return 'No bootstrap archive found. Please copy bootstrap.zip to /sdcard/Zion Universal/';
+    }
+
+    // 3. تثبيت الأرشيف
+    final installResult = await _installArchive(archivePath);
     if (!installResult) return 'Failed to install bootstrap. Root required.';
 
     // 4. تجهيز بيئة chroot
@@ -32,7 +45,7 @@ class KaliBootstrapService {
     // 5. تشغيل الخدمات
     await _startServices();
 
-    return 'Kali Linux installed via bootstrap and ready.';
+    return 'Kali Linux installed successfully.';
   }
 
   /// فحص وجود التوزيعة
@@ -45,20 +58,31 @@ class KaliBootstrapService {
     }
   }
 
-  /// تثبيت الحزمة الحقيقية
-  static Future<bool> _installBootstrap() async {
+  /// تثبيت الأرشيف (يدعم Zip و Tar.Gz)
+  static Future<bool> _installArchive(String archivePath) async {
     try {
       // إنشاء المجلد
       await Process.run('su', ['-c', 'mkdir -p $_kaliPath'], runInShell: true);
 
-      // فك ضغط الحزمة الحقيقية
-      final result = await Process.run(
-        'su',
-        ['-c', 'tar -xzf $_bootstrapArchive -C $_kaliPath --numeric-owner'],
-        runInShell: true,
-      );
+      if (archivePath.endsWith('.zip')) {
+        // فك ضغط ملف zip
+        final result = await Process.run(
+          'su',
+          ['-c', 'unzip -o "$archivePath" -d $_kaliPath'],
+          runInShell: true,
+        );
+        return result.exitCode == 0;
+      } else if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
+        // فك ضغط ملف tar.gz
+        final result = await Process.run(
+          'su',
+          ['-c', 'tar -xzf "$archivePath" -C $_kaliPath --numeric-owner'],
+          runInShell: true,
+        );
+        return result.exitCode == 0;
+      }
 
-      return result.exitCode == 0;
+      return false;
     } catch (_) {
       return false;
     }
@@ -120,7 +144,7 @@ class KaliBootstrapService {
     return {
       'installed': installed,
       'path': _kaliPath,
-      'bootstrap': _bootstrapArchive,
+      'archives_checked': _possibleArchives,
     };
   }
 }
