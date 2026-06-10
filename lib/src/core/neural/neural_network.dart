@@ -1,7 +1,9 @@
 import 'dart:math';
-import 'dart:typed_data';
 
-/// طبقة الشبكة العصبية
+double _tanh(double x) {
+  return (exp(x) - exp(-x)) / (exp(x) + exp(-x));
+}
+
 class NeuralLayer {
   late List<List<double>> weights;
   late List<double> biases;
@@ -45,20 +47,15 @@ class NeuralLayer {
       case 'sigmoid':
         return 1 / (1 + exp(-x));
       case 'tanh':
-        return tanh(x);
+        return _tanh(x);
       default:
         return x;
     }
   }
-
-  List<List<double>> getWeights() => weights;
-  List<double> getBiases() => biases;
 }
 
-/// الشبكة العصبية الكاملة
 class NeuralNetwork {
   final List<NeuralLayer> layers;
-  double learningRate = 0.01;
 
   NeuralNetwork({required List<int> layerSizes}) : layers = [] {
     for (var i = 0; i < layerSizes.length - 1; i++) {
@@ -76,18 +73,5 @@ class NeuralNetwork {
       current = layer.forward(current);
     }
     return current;
-  }
-
-  int classify(List<double> input) {
-    final output = predict(input);
-    return output.indexOf(output.reduce(max));
-  }
-
-  void saveModel(String path) {
-    // حفظ الأوزان
-  }
-
-  void loadModel(String path) {
-    // تحميل الأوزان
   }
 }

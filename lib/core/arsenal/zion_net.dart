@@ -354,3 +354,18 @@ class _ZionNetWidgetState extends State<ZionNetWidget> {
     }
   }
 }
+
+// دوال إضافية مطلوبة
+extension ZionNetExtensions on ZionNet {
+  static Future<List<int>> portScan(String target, List<int> ports) async {
+    final openPorts = <int>[];
+    for (final port in ports) {
+      try {
+        final socket = await Socket.connect(target, port, timeout: Duration(seconds: 2));
+        await socket.close();
+        openPorts.add(port);
+      } catch (_) {}
+    }
+    return openPorts;
+  }
+}
