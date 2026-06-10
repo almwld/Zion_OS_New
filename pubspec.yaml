@@ -46,3 +46,8 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icons/app_icon.png"
+
+  # أصول التطبيق
+  assets:
+    - assets/icons/
+    - assets/bin/proot

@@ -133,3 +133,11 @@ class UnifiedCoreService {
 =================================================
 ''';
 }
+
+  case 'proot_status':
+    final prootPath = await KaliLoaderService.findProot();
+    if (prootPath != null) {
+      return '✅ proot موجود: $prootPath';
+    } else {
+      return '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';
+    }

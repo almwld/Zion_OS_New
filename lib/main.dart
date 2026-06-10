@@ -34,3 +34,28 @@ class ZionOS extends StatelessWidget {
     );
   }
 }
+import 'core/services/kali_loader_service.dart';
+
+// أضف هذا داخل main() قبل runApp
+Future<void> _initializeZion() async {
+  print('🚀 Initializing Project Zion...');
+  
+  // استخراج proot المدمج
+  final prootExtracted = await KaliLoaderService.extractEmbeddedProot();
+  if (prootExtracted) {
+    print('✅ Embedded proot ready');
+  } else {
+    print('⚠️ Could not extract proot, will search system');
+  }
+  
+  // فحص الحالة
+  final status = await KaliLoaderService.getStatus();
+  print('📊 Status: $status');
+}
+
+//然后在 main() 中调用:
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _initializeZion();
+  runApp(const ProviderScope(child: ProjectZionApp()));
+}
