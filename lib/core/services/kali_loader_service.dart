@@ -263,6 +263,7 @@ class KaliLoaderService {
     };
   }
   
+  static Future<bool> isAvailable() async { return await _isInstalled(); }
   static Future<int> getToolCount() async {
     final result = await execute('ls /usr/bin /usr/sbin /usr/local/bin 2>/dev/null | wc -l');
     return int.tryParse(result['stdout']?.trim() ?? '0') ?? 0;
@@ -315,3 +316,7 @@ class KaliLoaderService {
     return result['stdout'] ?? result['stderr'] ?? 'Error';
   }
 }
+
+  static Future<bool> isAvailable() async {
+    return await _isInstalled();
+  }

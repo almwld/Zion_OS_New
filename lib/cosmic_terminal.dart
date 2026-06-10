@@ -21,7 +21,7 @@ class _CosmicTerminalState extends State<CosmicTerminal> {
   }
 
   Future<void> _checkKali() async {
-    final available = await KaliLoaderService.isAvailable();
+    final available = await KaliLoaderService.getStatus();
     setState(() {
       _kaliAvailable = available;
       _output.add(available ? '✅ Kali Linux متصل (600+ أداة).' : '⚠️ Kali غير متصل. نفذ "kali_install".');
