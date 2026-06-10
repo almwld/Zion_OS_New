@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../settings/zion_settings.dart';
 import '../wifi/zion_wifi_panel.dart';
+import '../si/si_control_panel.dart';
+import '../windows/zion_file_manager.dart';
+import '../windows/zion_browser.dart';
+import '../windows/zion_text_editor.dart';
 import '../../../cosmic_terminal.dart';
 
 class GlassDesktop extends StatefulWidget {
@@ -164,7 +168,10 @@ class _GlassDesktopState extends State<GlassDesktop> {
     final icons = [
       {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const CosmicTerminal()},
       {'icon': Icons.wifi, 'label': 'WiFi', 'widget': const ZionWifiPanel()},
-      {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const Center(child: Text('SI Agent', style: TextStyle(color: Colors.white)))},
+      {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const SIControlPanel()},
+      {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager()},
+      {'icon': Icons.public, 'label': 'Browser', 'widget': const ZionBrowser()},
+      {'icon': Icons.edit, 'label': 'Editor', 'widget': const ZionTextEditor()},
       {'icon': Icons.settings, 'label': 'Settings', 'widget': const ZionSettings()},
     ];
 
@@ -286,6 +293,16 @@ class _GlassDesktopState extends State<GlassDesktop> {
   }
 
   Widget _buildStartMenu() {
+    final menuItems = [
+      {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const CosmicTerminal()},
+      {'icon': Icons.wifi, 'title': 'WiFi', 'widget': const ZionWifiPanel()},
+      {'icon': Icons.psychology, 'title': 'SI Agent', 'widget': const SIControlPanel()},
+      {'icon': Icons.folder, 'title': 'File Manager', 'widget': const ZionFileManager()},
+      {'icon': Icons.public, 'title': 'Browser', 'widget': const ZionBrowser()},
+      {'icon': Icons.edit, 'title': 'Text Editor', 'widget': const ZionTextEditor()},
+      {'icon': Icons.settings, 'title': 'Settings', 'widget': const ZionSettings()},
+    ];
+
     return Positioned(
       bottom: 70,
       left: 16,
@@ -319,23 +336,23 @@ class _GlassDesktopState extends State<GlassDesktop> {
                 ],
               ),
             ),
-            _buildMenuItem(Icons.terminal, 'Terminal', () => _openWindow('Terminal', const CosmicTerminal())),
-            _buildMenuItem(Icons.wifi, 'WiFi Panel', () => _openWindow('WiFi', const ZionWifiPanel())),
-            _buildMenuItem(Icons.psychology, 'SI Agent', () => _openWindow('SI Agent', const Center(child: Text('SI Agent')))),
-            _buildMenuItem(Icons.settings, 'Settings', () => _openWindow('Settings', const ZionSettings())),
+            ...menuItems.map((item) => ListTile(
+              leading: Icon(item['icon'] as IconData, color: const Color(0xFF00FF41)),
+              title: Text(item['title'] as String, style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                _toggleMenu();
+                _openWindow(item['title'] as String, item['widget'] as Widget);
+              },
+            )),
             const Divider(color: Colors.white24),
-            _buildMenuItem(Icons.exit_to_app, 'Exit', () => Navigator.pop(context), color: Colors.red),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app, color: Colors.red),
+              title: const Text('Exit', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.pop(context),
+            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap, {Color? color}) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0xFF00FF41)),
-      title: Text(title, style: TextStyle(color: color ?? Colors.white)),
-      onTap: onTap,
     );
   }
 
@@ -442,9 +459,3 @@ class DesktopWindow {
     required this.isMaximized,
   }) : savedSize = size, savedPosition = position;
 }
-
-// إضافة أيقونات جديدة في _buildDesktopIcons
-// أضف داخل قائمة icons:
-      {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager()},
-      {'icon': Icons.public, 'label': 'Browser', 'widget': const ZionBrowser()},
-      {'icon': Icons.edit, 'label': 'Editor', 'widget': const ZionTextEditor()},
