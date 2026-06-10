@@ -30,14 +30,6 @@ jobs:
           touch assets/images/.gitkeep
           touch assets/fonts/.gitkeep
       
-      - name: Clean Gradle cache
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew clean || true
-          cd ..
-          rm -rf ~/.gradle/caches/ || true
-      
       - name: Install dependencies
         run: flutter pub get
       
