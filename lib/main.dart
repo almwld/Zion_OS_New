@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'src/features/lock/lock_screen.dart';
 import 'src/features/desktop/glass_desktop.dart';
 
 void main() async {
@@ -26,7 +27,11 @@ class ZionOS extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
         primaryColor: Colors.green,
       ),
-      home: const GlassDesktop(),
+      initialRoute: '/lock',
+      routes: {
+        '/lock': (context) => const LockScreen(),
+        '/home': (context) => const GlassDesktop(),
+      },
     );
   }
 }
