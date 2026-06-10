@@ -1,10 +1,23 @@
 import 'package:flutter/material.dart';
-import '../settings/zion_settings.dart';
+import '../settings/main_settings.dart';
 import '../wifi/zion_wifi_panel.dart';
 import '../si/si_control_panel.dart';
 import '../windows/zion_file_manager.dart';
 import '../windows/zion_browser.dart';
 import '../windows/zion_text_editor.dart';
+import '../network/network_analyzer.dart';
+import '../system/process_manager.dart';
+import '../system/system_monitor.dart';
+import '../security/vulnerability_scanner.dart';
+import '../reports/report_generator.dart';
+import '../packages/package_manager.dart';
+import '../logs/log_viewer.dart';
+import '../scheduler/task_scheduler.dart';
+import '../storage/disk_usage_analyzer.dart';
+import '../backup/backup_manager.dart';
+import '../exploits/exploit_database.dart';
+import '../payloads/payload_generator.dart';
+import '../qr/qr_scanner.dart';
 import '../../../cosmic_terminal.dart';
 
 class GlassDesktop extends StatefulWidget {
@@ -37,7 +50,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
     });
   }
 
-  void _openWindow(String title, Widget content, {Size size = const Size(800, 600)}) {
+  void _openWindow(String title, Widget content, {Size size = const Size(900, 700)}) {
     setState(() {
       _windows.add(DesktopWindow(
         id: _nextWindowId++,
@@ -58,18 +71,14 @@ class _GlassDesktopState extends State<GlassDesktop> {
   void _minimizeWindow(int id) {
     setState(() {
       final index = _windows.indexWhere((w) => w.id == id);
-      if (index != -1) {
-        _windows[index].isMinimized = true;
-      }
+      if (index != -1) _windows[index].isMinimized = true;
     });
   }
 
   void _restoreWindow(int id) {
     setState(() {
       final index = _windows.indexWhere((w) => w.id == id);
-      if (index != -1) {
-        _windows[index].isMinimized = false;
-      }
+      if (index != -1) _windows[index].isMinimized = false;
     });
   }
 
@@ -154,7 +163,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
       ),
       child: const Center(
         child: Text(
-          'ZION OS\nv3.0',
+          'ZION OS\nv3.1',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, shadows: [
             Shadow(color: Color(0xFF00FF41), blurRadius: 10),
@@ -166,13 +175,31 @@ class _GlassDesktopState extends State<GlassDesktop> {
 
   Widget _buildDesktopIcons() {
     final icons = [
-      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const CosmicTerminal()},
-      {'icon': Icons.wifi, 'label': 'WiFi', 'widget': const ZionWifiPanel()},
-      {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const SIControlPanel()},
-      {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager()},
-      {'icon': Icons.public, 'label': 'Browser', 'widget': const ZionBrowser()},
-      {'icon': Icons.edit, 'label': 'Editor', 'widget': const ZionTextEditor()},
-      {'icon': Icons.settings, 'label': 'Settings', 'widget': const ZionSettings()},
+      // التطبيقات الأساسية
+      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const CosmicTerminal(), 'color': Colors.green},
+      {'icon': Icons.wifi, 'label': 'WiFi', 'widget': const ZionWifiPanel(), 'color': Colors.blue},
+      {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const SIControlPanel(), 'color': Colors.purple},
+      {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager(), 'color': Colors.orange},
+      {'icon': Icons.public, 'label': 'Browser', 'widget': const ZionBrowser(), 'color': Colors.teal},
+      {'icon': Icons.edit, 'label': 'Editor', 'widget': const ZionTextEditor(), 'color': Colors.pink},
+      {'icon': Icons.settings, 'label': 'Settings', 'widget': const MainSettings(), 'color': Colors.grey},
+      
+      // أدوات النظام
+      {'icon': Icons.network_check, 'label': 'Network', 'widget': const NetworkAnalyzer(), 'color': Colors.cyan},
+      {'icon': Icons.memory, 'label': 'Processes', 'widget': const ProcessManager(), 'color': Colors.orange},
+      {'icon': Icons.speed, 'label': 'Monitor', 'widget': const SystemMonitor(), 'color': Colors.purple},
+      {'icon': Icons.bug_report, 'label': 'Scanner', 'widget': const VulnerabilityScanner(), 'color': Colors.red},
+      {'icon': Icons.description, 'label': 'Reports', 'widget': const ReportGenerator(), 'color': Colors.blue},
+      
+      // أدوات إضافية
+      {'icon': Icons.package, 'label': 'Packages', 'widget': const PackageManager(), 'color': Colors.indigo},
+      {'icon': Icons.history, 'label': 'Logs', 'widget': const LogViewer(), 'color': Colors.amber},
+      {'icon': Icons.schedule, 'label': 'Scheduler', 'widget': const TaskScheduler(), 'color': Colors.teal},
+      {'icon': Icons.storage, 'label': 'Disk Usage', 'widget': const DiskUsageAnalyzer(), 'color': Colors.deepOrange},
+      {'icon': Icons.backup, 'label': 'Backup', 'widget': const BackupManager(), 'color': Colors.purple},
+      {'icon': Icons.security, 'label': 'Exploits', 'widget': const ExploitDatabase(), 'color': Colors.red},
+      {'icon': Icons.code, 'label': 'Payloads', 'widget': const PayloadGenerator(), 'color': Colors.green},
+      {'icon': Icons.qr_code, 'label': 'QR Scanner', 'widget': const QRScanner(), 'color': Colors.cyan},
     ];
 
     return Positioned.fill(
@@ -194,9 +221,9 @@ class _GlassDesktopState extends State<GlassDesktop> {
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.7),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF00FF41), width: 1),
+                        border: Border.all(color: icon['color'] as Color, width: 1),
                       ),
-                      child: Icon(icon['icon'] as IconData, color: const Color(0xFF00FF41), size: 32),
+                      child: Icon(icon['icon'] as IconData, color: icon['color'] as Color, size: 32),
                     ),
                     const SizedBox(height: 8),
                     Text(icon['label'] as String, style: const TextStyle(color: Colors.white70, fontSize: 11)),
@@ -284,11 +311,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
   Widget _buildWindowButton(Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 12,
-        height: 12,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
+      child: Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
     );
   }
 
@@ -299,8 +322,25 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.psychology, 'title': 'SI Agent', 'widget': const SIControlPanel()},
       {'icon': Icons.folder, 'title': 'File Manager', 'widget': const ZionFileManager()},
       {'icon': Icons.public, 'title': 'Browser', 'widget': const ZionBrowser()},
-      {'icon': Icons.edit, 'title': 'Text Editor', 'widget': const ZionTextEditor()},
-      {'icon': Icons.settings, 'title': 'Settings', 'widget': const ZionSettings()},
+      {'icon': Icons.edit, 'title': 'Editor', 'widget': const ZionTextEditor()},
+      {'icon': Icons.settings, 'title': 'Settings', 'widget': const MainSettings()},
+      const Divider(color: Colors.white24),
+      {'icon': Icons.network_check, 'title': 'Network Analyzer', 'widget': const NetworkAnalyzer()},
+      {'icon': Icons.memory, 'title': 'Process Manager', 'widget': const ProcessManager()},
+      {'icon': Icons.speed, 'title': 'System Monitor', 'widget': const SystemMonitor()},
+      {'icon': Icons.bug_report, 'title': 'Vuln Scanner', 'widget': const VulnerabilityScanner()},
+      {'icon': Icons.description, 'title': 'Report Generator', 'widget': const ReportGenerator()},
+      const Divider(color: Colors.white24),
+      {'icon': Icons.package, 'title': 'Package Manager', 'widget': const PackageManager()},
+      {'icon': Icons.history, 'title': 'Log Viewer', 'widget': const LogViewer()},
+      {'icon': Icons.schedule, 'title': 'Task Scheduler', 'widget': const TaskScheduler()},
+      {'icon': Icons.storage, 'title': 'Disk Usage', 'widget': const DiskUsageAnalyzer()},
+      {'icon': Icons.backup, 'title': 'Backup Manager', 'widget': const BackupManager()},
+      {'icon': Icons.security, 'title': 'Exploit DB', 'widget': const ExploitDatabase()},
+      {'icon': Icons.code, 'title': 'Payload Gen', 'widget': const PayloadGenerator()},
+      {'icon': Icons.qr_code, 'title': 'QR Scanner', 'widget': const QRScanner()},
+      const Divider(color: Colors.white24),
+      {'icon': Icons.exit_to_app, 'title': 'Exit', 'widget': null, 'color': Colors.red},
     ];
 
     return Positioned(
@@ -337,19 +377,17 @@ class _GlassDesktopState extends State<GlassDesktop> {
               ),
             ),
             ...menuItems.map((item) => ListTile(
-              leading: Icon(item['icon'] as IconData, color: const Color(0xFF00FF41)),
+              leading: Icon(item['icon'] as IconData, color: item['color'] as Color? ?? const Color(0xFF00FF41)),
               title: Text(item['title'] as String, style: const TextStyle(color: Colors.white)),
               onTap: () {
                 _toggleMenu();
-                _openWindow(item['title'] as String, item['widget'] as Widget);
+                if (item['title'] == 'Exit') {
+                  Navigator.pop(context);
+                } else {
+                  _openWindow(item['title'] as String, item['widget'] as Widget);
+                }
               },
             )),
-            const Divider(color: Colors.white24),
-            ListTile(
-              leading: const Icon(Icons.exit_to_app, color: Colors.red),
-              title: const Text('Exit', style: TextStyle(color: Colors.red)),
-              onTap: () => Navigator.pop(context),
-            ),
           ],
         ),
       ),
