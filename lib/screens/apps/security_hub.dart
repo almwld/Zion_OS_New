@@ -11,12 +11,12 @@ class _SecurityHubAppState extends State<SecurityHubApp> {
   int _selectedCategory = 0;
   
   final List<Map<String, dynamic>> _categories = [
-    {'name': 'All', 'icon': Icons.apps, 'color': 0xFF00BCD4},
-    {'name': 'Protection', 'icon': Icons.shield, 'color': 0xFF00BCD4},
-    {'name': 'Privacy', 'icon': Icons.privacy_tip, 'color': 0xFF00BCD4},
-    {'name': 'Network', 'icon': Icons.network_wifi, 'color': 0xFF00BCD4},
-    {'name': 'System', 'icon': Icons.settings, 'color': 0xFF00BCD4},
-    {'name': 'Tools', 'icon': Icons.build, 'color': 0xFF00BCD4},
+    {'name': 'All', 'icon': Icons.apps},
+    {'name': 'Protection', 'icon': Icons.shield},
+    {'name': 'Privacy', 'icon': Icons.privacy_tip},
+    {'name': 'Network', 'icon': Icons.network_wifi},
+    {'name': 'System', 'icon': Icons.settings},
+    {'name': 'Tools', 'icon': Icons.build},
   ];
   
   final List<Map<String, dynamic>> _tools = [
@@ -90,7 +90,7 @@ class _SecurityHubAppState extends State<SecurityHubApp> {
           
           // Categories
           Container(
-            height: 50,
+            height: 45,
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
