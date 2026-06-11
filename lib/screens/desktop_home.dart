@@ -26,6 +26,7 @@ import 'apps/email_client.dart';
 import 'apps/date_calculator.dart';
 import 'apps/unit_converter.dart';
 import 'apps/battery_saver.dart';
+import 'apps/gallery_app.dart';
 import 'apps/backup_manager.dart';
 import 'apps/cleaner.dart';
 import 'apps/app_lock.dart';
@@ -79,6 +80,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "DATE CALC", "icon": Icons.calculate, "category": "TOOLS", "screen": const DateCalculatorApp()},
     {"name": "UNIT CONV", "icon": Icons.science, "category": "TOOLS", "screen": const UnitConverterApp()},
     {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "TOOLS", "screen": const BatterySaverApp()},
+    {"name": "GALLERY", "icon": Icons.photo_library, "category": "TOOLS", "screen": const GalleryApp()},
     {"name": "BACKUP", "icon": Icons.backup, "category": "TOOLS", "screen": const BackupManagerApp()},
     {"name": "CLEANER", "icon": Icons.cleaning_services, "category": "TOOLS", "screen": const CleanerApp()},
     {"name": "APP LOCK", "icon": Icons.lock, "category": "TOOLS", "screen": const AppLockApp()},
