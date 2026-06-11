@@ -14,6 +14,10 @@ import 'apps/settings_app.dart';
 import 'apps/file_manager.dart';
 import 'apps/web_browser.dart';
 import 'apps/text_analyzer.dart';
+import 'apps/qr_scanner_simple.dart';
+import 'apps/calendar_simple.dart';
+import 'apps/gallery_simple.dart';
+import 'apps/documents_simple.dart';
 import 'apps/calculator.dart';
 import 'apps/notes_app.dart';
 import 'apps/weather_app.dart';
@@ -26,15 +30,15 @@ import 'apps/email_client.dart';
 import 'apps/date_calculator.dart';
 import 'apps/unit_converter.dart';
 import 'apps/percentage_calculator.dart';
-import 'apps/qr_scanner_simple.dart';
-import 'apps/calendar_simple.dart';
-import 'apps/gallery_simple.dart';
-import 'apps/documents_simple.dart';
 import 'apps/system_monitor.dart';
 import 'apps/task_manager.dart';
 import 'apps/network_analyzer.dart';
 import 'apps/disk_analyzer.dart';
 import 'apps/process_manager.dart';
+import 'apps/system_info.dart';
+import 'apps/network_tools.dart';
+import 'apps/performance_monitor.dart';
+import 'apps/battery_saver.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -98,6 +102,10 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "NET ANALYZER", "icon": Icons.analytics, "category": "TOOLS", "screen": const NetworkAnalyzerApp()},
     {"name": "DISK ANALYZER", "icon": Icons.storage, "category": "TOOLS", "screen": const DiskAnalyzerApp()},
     {"name": "PROCESS", "icon": Icons.code, "category": "TOOLS", "screen": const ProcessManagerApp()},
+    {"name": "SYS INFO", "icon": Icons.info, "category": "TOOLS", "screen": const SystemInfoApp()},
+    {"name": "NET TOOLS", "icon": Icons.wifi, "category": "TOOLS", "screen": const NetworkToolsApp()},
+    {"name": "PERF MON", "icon": Icons.speed, "category": "TOOLS", "screen": const PerformanceMonitorApp()},
+    {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "TOOLS", "screen": const BatterySaverApp()},
   ];
 
   @override
