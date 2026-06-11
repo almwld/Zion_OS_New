@@ -6,6 +6,8 @@ import 'apps/exploit_db.dart';
 import 'apps/crypto_tool.dart';
 import 'apps/stealth_mode.dart';
 import 'apps/password_cracker.dart';
+import 'apps/ddos_attack.dart';
+import 'apps/forensics.dart';
 
 class DesktopHome extends StatefulWidget {
   const DesktopHome({super.key});
@@ -33,8 +35,8 @@ class _DesktopHomeState extends State<DesktopHome> {
     {"name": "Crypto Tool", "icon": Icons.lock, "category": "Defense", "screen": const CryptoToolApp()},
     {"name": "Stealth Mode", "icon": Icons.visibility_off, "category": "Defense", "screen": const StealthModeApp()},
     {"name": "Password Cracker", "icon": Icons.vpn_key, "category": "Attack", "screen": const PasswordCrackerApp()},
-    {"name": "DDoS", "icon": Icons.speed, "category": "Attack", "screen": null},
-    {"name": "Forensics", "icon": Icons.search, "category": "Analysis", "screen": null},
+    {"name": "DDoS Attack", "icon": Icons.speed, "category": "Attack", "screen": const DDoSAttackApp()},
+    {"name": "Forensics", "icon": Icons.search, "category": "Analysis", "screen": const ForensicsApp()},
     {"name": "Settings", "icon": Icons.settings, "category": "Tools", "screen": null},
   ];
 
