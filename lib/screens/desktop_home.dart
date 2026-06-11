@@ -45,6 +45,7 @@ import 'apps/app_lock.dart';
 import 'apps/notification_manager.dart';
 import 'apps/data_usage.dart';
 import 'apps/password_manager.dart';
+import 'apps/vpn_manager.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -118,6 +119,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "NOTIFY", "icon": Icons.notifications, "category": "TOOLS", "screen": const NotificationManagerApp()},
     {"name": "DATA USAGE", "icon": Icons.data_usage, "category": "TOOLS", "screen": const DataUsageApp()},
     {"name": "PWD MGR", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const PasswordManagerApp()},
+    {"name": "VPN", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const VPNManagerApp()},
   ];
 
   @override
