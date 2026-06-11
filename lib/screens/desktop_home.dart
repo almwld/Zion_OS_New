@@ -3,6 +3,7 @@ import 'apps/terminal_app.dart';
 import 'apps/network_scanner.dart';
 import 'apps/wifi_scanner.dart';
 import 'apps/exploit_db.dart';
+import 'apps/crypto_tool.dart';
 
 class DesktopHome extends StatefulWidget {
   const DesktopHome({super.key});
@@ -27,7 +28,7 @@ class _DesktopHomeState extends State<DesktopHome> {
     {"name": "Network Scanner", "icon": Icons.network_wifi, "category": "Analysis", "screen": const NetworkScannerApp()},
     {"name": "WiFi Scanner", "icon": Icons.wifi, "category": "Attack", "screen": const WiFiScannerApp()},
     {"name": "Exploit DB", "icon": Icons.bug_report, "category": "Attack", "screen": const ExploitDBApp()},
-    {"name": "Crypto Tool", "icon": Icons.lock, "category": "Defense", "screen": null},
+    {"name": "Crypto Tool", "icon": Icons.lock, "category": "Defense", "screen": const CryptoToolApp()},
     {"name": "Stealth", "icon": Icons.visibility_off, "category": "Defense", "screen": null},
     {"name": "DDoS", "icon": Icons.speed, "category": "Attack", "screen": null},
     {"name": "Forensics", "icon": Icons.search, "category": "Analysis", "screen": null},
