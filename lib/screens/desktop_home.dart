@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../models/app_model.dart';
-import '../widgets/radar_chart_widget.dart';
+import 'dart:math';
 import 'apps/terminal_app.dart';
 import 'apps/network_scanner.dart';
 import 'apps/wifi_scanner.dart';
@@ -21,56 +19,91 @@ class DesktopHome extends StatefulWidget {
   State<DesktopHome> createState() => _DesktopHomeState();
 }
 
-class _DesktopHomeState extends State<DesktopHome> {
+class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin {
   String _currentTime = "";
+  String _currentDate = "";
   int _selectedIndex = 0;
+  late AnimationController _holoController;
+  late AnimationController _scanController;
+  late Animation<double> _holoAnimation;
+  late Animation<double> _scanAnimation;
+  final Random _random = Random();
 
   final List<Map<String, dynamic>> _categories = [
-    {"name": "Attack", "icon": Icons.flash_on},
-    {"name": "Defense", "icon": Icons.shield},
-    {"name": "Analysis", "icon": Icons.analytics},
-    {"name": "Tools", "icon": Icons.build},
+    {"name": "⚡ ATTACK", "icon": Icons.flash_on, "color": 0xFF00FF41},
+    {"name": "🛡️ DEFENSE", "icon": Icons.shield, "color": 0xFF00FF41},
+    {"name": "📊 ANALYSIS", "icon": Icons.analytics, "color": 0xFF00FF41},
+    {"name": "🔧 TOOLS", "icon": Icons.build, "color": 0xFF00FF41},
   ];
 
   final List<Map<String, dynamic>> _apps = [
     // Tools
-    {"name": "Terminal", "icon": Icons.terminal, "category": "Tools", "screen": const TerminalApp()},
-    {"name": "Crypto Tool", "icon": Icons.lock, "category": "Tools", "screen": const CryptoToolApp()},
+    {"name": "TERMINAL", "icon": Icons.terminal, "category": "🔧 TOOLS", "screen": const TerminalApp()},
+    {"name": "CRYPTO", "icon": Icons.lock, "category": "🔧 TOOLS", "screen": const CryptoToolApp()},
+    {"name": "SETTINGS", "icon": Icons.settings, "category": "🔧 TOOLS", "screen": null},
     
     // Attack
-    {"name": "WiFi Scanner", "icon": Icons.wifi, "category": "Attack", "screen": const WiFiScannerApp()},
-    {"name": "Exploit DB", "icon": Icons.bug_report, "category": "Attack", "screen": const ExploitDBApp()},
-    {"name": "Password Cracker", "icon": Icons.vpn_key, "category": "Attack", "screen": const PasswordCrackerApp()},
-    {"name": "DDoS Attack", "icon": Icons.speed, "category": "Attack", "screen": const DDoSAttackApp()},
-    {"name": "Database Hacking", "icon": Icons.storage, "category": "Attack", "screen": const DatabaseHackingApp()},
-    {"name": "Cloud Attacks", "icon": Icons.cloud, "category": "Attack", "screen": const CloudAttacksApp()},
+    {"name": "WIFI", "icon": Icons.wifi, "category": "⚡ ATTACK", "screen": const WiFiScannerApp()},
+    {"name": "EXPLOIT", "icon": Icons.bug_report, "category": "⚡ ATTACK", "screen": const ExploitDBApp()},
+    {"name": "CRACKER", "icon": Icons.vpn_key, "category": "⚡ ATTACK", "screen": const PasswordCrackerApp()},
+    {"name": "DDOS", "icon": Icons.speed, "category": "⚡ ATTACK", "screen": const DDoSAttackApp()},
+    {"name": "DATABASE", "icon": Icons.storage, "category": "⚡ ATTACK", "screen": const DatabaseHackingApp()},
+    {"name": "CLOUD", "icon": Icons.cloud, "category": "⚡ ATTACK", "screen": const CloudAttacksApp()},
     
     // Analysis
-    {"name": "Network Scanner", "icon": Icons.network_wifi, "category": "Analysis", "screen": const NetworkScannerApp()},
-    {"name": "Forensics", "icon": Icons.search, "category": "Analysis", "screen": const ForensicsApp()},
+    {"name": "NETWORK", "icon": Icons.network_wifi, "category": "📊 ANALYSIS", "screen": const NetworkScannerApp()},
+    {"name": "FORENSICS", "icon": Icons.search, "category": "📊 ANALYSIS", "screen": const ForensicsApp()},
     
     // Defense
-    {"name": "Stealth Mode", "icon": Icons.visibility_off, "category": "Defense", "screen": const StealthModeApp()},
-    
-    {"name": "Settings", "icon": Icons.settings, "category": "Tools", "screen": null},
+    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "🛡️ DEFENSE", "screen": const StealthModeApp()},
   ];
 
   @override
   void initState() {
     super.initState();
-    _updateTime();
+    _updateDateTime();
+    
+    _holoController = AnimationController(
+      duration: const Duration(seconds: 3),
+      vsync: this,
+    )..repeat(reverse: true);
+    _holoAnimation = Tween<double>(begin: 0.2, end: 0.7).animate(_holoController);
+    
+    _scanController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+    _scanAnimation = Tween<double>(begin: 0, end: 1).animate(_scanController);
   }
 
-  void _updateTime() {
+  @override
+  void dispose() {
+    _holoController.dispose();
+    _scanController.dispose();
+    super.dispose();
+  }
+
+  void _updateDateTime() {
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         final now = DateTime.now();
         setState(() {
           _currentTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+          _currentDate = "${_getDay(now.weekday)} ${now.day} ${_getMonth(now.month)} ${now.year}";
         });
-        _updateTime();
+        _updateDateTime();
       }
     });
+  }
+
+  String _getDay(int weekday) {
+    const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    return days[weekday - 1];
+  }
+
+  String _getMonth(int month) {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return months[month - 1];
   }
 
   void _openApp(Map<String, dynamic> app) {
@@ -78,7 +111,7 @@ class _DesktopHomeState extends State<DesktopHome> {
       Navigator.push(context, MaterialPageRoute(builder: (_) => app['screen']));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('قيد التطوير...'), backgroundColor: Color(0xFF00FF41)),
+        const SnackBar(content: Text('COMING SOON'), backgroundColor: Color(0xFF00FF41)),
       );
     }
   }
@@ -89,110 +122,306 @@ class _DesktopHomeState extends State<DesktopHome> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Column(
+      body: Stack(
         children: [
-          Container(
-            height: 50,
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.95),
-              border: Border(bottom: BorderSide(color: const Color(0xFF00FF41).withOpacity(0.3))),
-            ),
-            child: Row(
-              children: [
-                Container(width: 50, child: const Icon(Icons.window, color: Color(0xFF00FF41))),
-                Expanded(child: Container()),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Text(_currentTime, style: const TextStyle(color: Color(0xFF00FF41), fontSize: 14)),
-                ),
-              ],
-            ),
-          ),
-          // Radar Chart - تحليل النظام
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: RadarChartWidget(),
-          ),
-          Container(
-            height: 50,
-            margin: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(25),
-              border: Border.all(color: const Color(0xFF00FF41).withOpacity(0.3)),
-            ),
-            child: Row(
-              children: List.generate(_categories.length, (index) {
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedIndex = index),
-                    child: Container(
-                      margin: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: _selectedIndex == index ? const Color(0xFF00FF41).withOpacity(0.2) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(_categories[index]['icon'], color: const Color(0xFF00FF41), size: 18),
-                          const SizedBox(width: 8),
-                          Text(_categories[index]['name'], style: const TextStyle(color: Color(0xFF00FF41), fontSize: 12)),
-                        ],
-                      ),
-                    ),
+          // خلفية Holographic
+          AnimatedBuilder(
+            animation: _holoAnimation,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.center,
+                    radius: 1.5,
+                    colors: [
+                      const Color(0xFF00FF41).withOpacity(_holoAnimation.value * 0.15),
+                      Colors.black,
+                      Colors.black,
+                    ],
                   ),
-                );
-              }),
-            ),
+                ),
+                child: CustomPaint(
+                  painter: HolographicGridPainter(_scanAnimation.value),
+                ),
+              );
+            },
           ),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(15),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 0.9,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: filteredApps.length,
-              itemBuilder: (context, index) {
-                final app = filteredApps[index];
-                return GestureDetector(
-                  onTap: () => _openApp(app),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Colors.white.withOpacity(0.05), Colors.white.withOpacity(0.02)],
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: const Color(0xFF00FF41).withOpacity(0.3)),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+          
+          Column(
+            children: [
+              // شريط الحالة - تصميم 2027
+              Container(
+                height: 110,
+                padding: const EdgeInsets.fromLTRB(25, 50, 25, 15),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // الوقت والتاريخ
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 45,
-                          height: 45,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00FF41).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(app['icon'], color: const Color(0xFF00FF41), size: 24),
+                        AnimatedBuilder(
+                          animation: _holoAnimation,
+                          builder: (context, child) {
+                            return ShaderMask(
+                              shaderCallback: (rect) => LinearGradient(
+                                colors: [
+                                  const Color(0xFF00FF41),
+                                  const Color(0xFF00FF41).withOpacity(_holoAnimation.value),
+                                ],
+                              ).createShader(rect),
+                              child: Text(
+                                _currentTime,
+                                style: const TextStyle(
+                                  fontSize: 38,
+                                  fontWeight: FontWeight.w300,
+                                  letterSpacing: 4,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                        const SizedBox(height: 8),
-                        Text(app['name'], style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        const SizedBox(height: 4),
+                        Text(
+                          _currentDate,
+                          style: const TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 1),
+                        ),
                       ],
                     ),
+                    
+                    // شعار Zion holographic
+                    AnimatedBuilder(
+                      animation: _holoAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          width: 55,
+                          height: 55,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF00FF41).withOpacity(0.3),
+                                const Color(0xFF00FF41).withOpacity(_holoAnimation.value),
+                              ],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00FF41).withOpacity(_holoAnimation.value),
+                                blurRadius: 20,
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Text(
+                              "Z",
+                              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Categories - تصميم Neo
+              Container(
+                height: 55,
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _categories.length,
+                  itemBuilder: (context, index) {
+                    final isSelected = _selectedIndex == index;
+                    final category = _categories[index];
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedIndex = index),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected 
+                              ? const Color(0xFF00FF41).withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: isSelected 
+                                ? const Color(0xFF00FF41) 
+                                : const Color(0xFF00FF41).withOpacity(0.2),
+                            width: isSelected ? 1.5 : 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          category['name'],
+                          style: TextStyle(
+                            color: isSelected ? const Color(0xFF00FF41) : Colors.white54,
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // Grid - تصميم Holographic Cards
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(20),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 0.85,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
                   ),
-                );
-              },
-            ),
+                  itemCount: filteredApps.length,
+                  itemBuilder: (context, index) {
+                    final app = filteredApps[index];
+                    return _buildHolographicCard(app);
+                  },
+                ),
+              ),
+              
+              // شريط سفلي - Holographic Dock
+              Container(
+                height: 75,
+                margin: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: const Color(0xFF00FF41).withOpacity(0.15)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildDockItem(Icons.home, true, () {}),
+                    _buildDockItem(Icons.apps, false, () {}),
+                    _buildDockItem(Icons.notifications_none, false, () {}),
+                    _buildDockItem(Icons.grid_view, false, () {}),
+                    _buildDockItem(Icons.person_outline, false, () {}),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+
+  Widget _buildHolographicCard(Map<String, dynamic> app) {
+    return GestureDetector(
+      onTap: () => _openApp(app),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(0.06),
+              Colors.white.withOpacity(0.02),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF00FF41).withOpacity(0.15)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 55,
+                  height: 55,
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [const Color(0xFF00FF41).withOpacity(0.15), Colors.transparent],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Icon(app['icon'], color: const Color(0xFF00FF41), size: 28),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              app['name'],
+              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: 30,
+              height: 1,
+              color: const Color(0xFF00FF41).withOpacity(0.3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDockItem(IconData icon, bool isActive, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF00FF41).withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          icon,
+          color: isActive ? const Color(0xFF00FF41) : Colors.white38,
+          size: 22,
+        ),
+      ),
+    );
+  }
+}
+
+// تأثير Holographic Grid
+class HolographicGridPainter extends CustomPainter {
+  final double scanValue;
+  
+  HolographicGridPainter(this.scanValue);
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF00FF41).withOpacity(0.04)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+    
+    // خطوط أفقية
+    for (var i = 0; i < 20; i++) {
+      final y = i * size.height / 20;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+    
+    // خطوط عمودية
+    for (var i = 0; i < 15; i++) {
+      final x = i * size.width / 15;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    
+    // خط المسح الضوئي
+    final scanPaint = Paint()
+      ..color = const Color(0xFF00FF41).withOpacity(0.1)
+      ..style = PaintingStyle.fill;
+    
+    final scanY = scanValue * size.height;
+    canvas.drawRect(Rect.fromLTWH(0, scanY - 2, size.width, 4), scanPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
