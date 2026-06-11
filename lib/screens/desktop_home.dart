@@ -34,6 +34,7 @@ import 'apps/system_monitor.dart';
 import 'apps/task_manager.dart';
 import 'apps/network_analyzer.dart';
 import 'apps/disk_analyzer.dart';
+import 'apps/process_manager.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -96,6 +97,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "TASKS", "icon": Icons.list_alt, "category": "TOOLS", "screen": const TaskManagerApp()},
     {"name": "NET ANALYZER", "icon": Icons.analytics, "category": "TOOLS", "screen": const NetworkAnalyzerApp()},
     {"name": "DISK ANALYZER", "icon": Icons.storage, "category": "TOOLS", "screen": const DiskAnalyzerApp()},
+    {"name": "PROCESS", "icon": Icons.code, "category": "TOOLS", "screen": const ProcessManagerApp()},
   ];
 
   @override
