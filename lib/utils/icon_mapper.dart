@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class IconMapper {
@@ -12,7 +12,6 @@ class IconMapper {
         colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
       );
     }
-    // Fallback to Material Icon
     return Icon(_getFallbackIcon(appName), size: size, color: const Color(0xFF00BCD4));
   }
 
@@ -67,9 +66,36 @@ class IconMapper {
       case "NOTES":
         return "assets/icons/svg_colors/notes.svg";
       case "CLOCK":
-        return "assets/icons/svg_colors/clock.svg";
+      case "ALARMS & CLOCK":
+        return "assets/icons/svg_colors/alarm.svg";
       case "CALCULATOR":
         return "assets/icons/svg_colors/calculator.svg";
+      // أيقونات جديدة
+      case "BACKUP":
+      case "BACKUP MANAGER":
+        return "assets/icons/svg_colors/backup.svg";
+      case "CLEANER":
+        return "assets/icons/svg_colors/cleaner.svg";
+      case "APP LOCK":
+        return "assets/icons/svg_colors/app_lock.svg";
+      case "NOTIFY":
+      case "NOTIFICATION MANAGER":
+        return "assets/icons/svg_colors/notify.svg";
+      case "GALLERY":
+        return "assets/icons/svg_colors/gallery.svg";
+      case "VIDEO":
+      case "VIDEO PLAYER":
+        return "assets/icons/svg_colors/video.svg";
+      case "CALENDAR":
+        return "assets/icons/svg_colors/calendar.svg";
+      case "QR CODE":
+      case "QR SCANNER":
+        return "assets/icons/svg_colors/qr.svg";
+      case "DOCUMENTS":
+        return "assets/icons/svg_colors/documents.svg";
+      case "BATTERY":
+      case "BATTERY SAVER":
+        return "assets/icons/svg_colors/battery.svg";
       default:
         return null;
     }
@@ -125,6 +151,26 @@ class IconMapper {
         return Icons.access_time;
       case "CALCULATOR":
         return Icons.calculate;
+      case "BACKUP":
+        return Icons.backup;
+      case "CLEANER":
+        return Icons.cleaning_services;
+      case "APP LOCK":
+        return Icons.lock;
+      case "NOTIFY":
+        return Icons.notifications;
+      case "GALLERY":
+        return Icons.photo_library;
+      case "VIDEO":
+        return Icons.play_circle_filled;
+      case "CALENDAR":
+        return Icons.calendar_today;
+      case "QR CODE":
+        return Icons.qr_code_scanner;
+      case "DOCUMENTS":
+        return Icons.description;
+      case "BATTERY":
+        return Icons.battery_charging_full;
       default:
         return Icons.apps;
     }
