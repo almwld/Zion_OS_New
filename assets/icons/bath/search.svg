@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64">
+  <defs>
+    <linearGradient id="searchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#004D40;stop-opacity:0.8" />
+    </linearGradient>
+  </defs>
+  <circle cx="11" cy="11" r="8" fill="url(#searchGrad)" opacity="0.1"/>
+  <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="url(#searchGrad)" stroke-width="1.5"/>
+  <circle cx="11" cy="11" r="3" stroke="#00E5FF" stroke-width="1" fill="none" opacity="0.5"/>
+</svg>

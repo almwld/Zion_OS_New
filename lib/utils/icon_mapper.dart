@@ -60,3 +60,25 @@ class IconMapper {
     }
   }
 }
+
+  // أيقونات Bath Style (الحمام/الاستحمام)
+  static Widget getBathIcon(String appName, {double size = 28}) {
+    String? path;
+    switch (appName) {
+      case "TERMINAL": path = "assets/icons/bath/terminal.svg"; break;
+      case "NETWORK": path = "assets/icons/bath/network.svg"; break;
+      case "WIFI": path = "assets/icons/bath/wifi.svg"; break;
+      case "SECURITY": path = "assets/icons/bath/shield.svg"; break;
+      case "CRYPTO": path = "assets/icons/bath/lock.svg"; break;
+      case "DDOS": path = "assets/icons/bath/speed.svg"; break;
+      case "DATABASE": path = "assets/icons/bath/database.svg"; break;
+      case "CLOUD": path = "assets/icons/bath/cloud.svg"; break;
+      case "FORENSICS": path = "assets/icons/bath/search.svg"; break;
+      case "SETTINGS": path = "assets/icons/bath/settings.svg"; break;
+      default: return null;
+    }
+    if (path != null) {
+      return SvgPicture.asset(path, width: size, height: size);
+    }
+    return null;
+  }
