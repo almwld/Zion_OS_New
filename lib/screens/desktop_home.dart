@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-
-// استيراد شاشات التطبيقات
 import 'apps/terminal_app.dart';
 import 'apps/network_scanner.dart';
 import 'apps/wifi_scanner.dart';
@@ -83,9 +81,9 @@ class _ZionDesktopState extends State<ZionDesktop> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
-    final iconSize = isSmallScreen ? 40.0 : 48.0;
-    final iconContainerSize = isSmallScreen ? 55.0 : 65.0;
-    final fontSize = isSmallScreen ? 10.0 : 11.0;
+    final iconSize = isSmallScreen ? 36.0 : 42.0;
+    final iconContainerSize = isSmallScreen ? 50.0 : 58.0;
+    final fontSize = isSmallScreen ? 9.0 : 10.0;
     
     final filteredApps = _apps.where((app) => app['category'] == _categories[_selectedIndex]['name']).toList();
 
@@ -126,7 +124,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
               ),
             ),
             
-            // Categories - تصميم مصغر
+            // Categories
             Container(
               height: 40,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -163,7 +161,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
               ),
             ),
             
-            // App Grid - أيقونات مصغرة
+            // App Grid
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -218,7 +216,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
               ),
             ),
             
-            // Dock - تصغير الأيقونات وتفعيلها
+            // Dock
             Container(
               height: 55,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -230,15 +228,15 @@ class _ZionDesktopState extends State<ZionDesktop> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildDockIcon(Icons.terminal, 'TERM', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL', orElse: () => {}))),
+                  _buildDockIcon(Icons.terminal, 'TERM', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL'))),
                   const SizedBox(width: 12),
-                  _buildDockIcon(Icons.wifi, 'WIFI', () => _openApp(_apps.firstWhere((a) => a['name'] == 'WIFI', orElse: () => {}))),
+                  _buildDockIcon(Icons.wifi, 'WIFI', () => _openApp(_apps.firstWhere((a) => a['name'] == 'WIFI'))),
                   const SizedBox(width: 12),
-                  _buildDockIcon(Icons.lock, 'LOCK', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CRYPTO', orElse: () => {}))),
+                  _buildDockIcon(Icons.lock, 'LOCK', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CRYPTO'))),
                   const SizedBox(width: 12),
-                  _buildDockIcon(Icons.visibility_off, 'HIDE', () => _openApp(_apps.firstWhere((a) => a['name'] == 'STEALTH', orElse: () => {}))),
+                  _buildDockIcon(Icons.visibility_off, 'HIDE', () => _openApp(_apps.firstWhere((a) => a['name'] == 'STEALTH'))),
                   const SizedBox(width: 12),
-                  _buildDockIcon(Icons.vpn_key, 'KEY', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CRACKER', orElse: () => {}))),
+                  _buildDockIcon(Icons.vpn_key, 'KEY', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CRACKER'))),
                   const SizedBox(width: 12),
                   Container(width: 1, height: 30, color: const Color(0xFF00BCD4).withOpacity(0.15)),
                   const SizedBox(width: 12),
@@ -259,8 +257,8 @@ class _ZionDesktopState extends State<ZionDesktop> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]),
               borderRadius: BorderRadius.circular(10),
