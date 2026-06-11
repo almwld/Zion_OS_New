@@ -450,3 +450,8 @@ class _SettingsAppState extends State<SettingsApp> {
     }
   }
 }
+
+  void _changeLanguage(String langCode) {
+    context.setLocale(Locale(langCode));
+    _saveSetting('language', langCode);
+  }

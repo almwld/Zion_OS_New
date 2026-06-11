@@ -311,3 +311,4 @@ class _LockScreenState extends State<LockScreen> with SingleTickerProviderStateM
     );
   }
 }
+// إضافة تأثير fade للشعار

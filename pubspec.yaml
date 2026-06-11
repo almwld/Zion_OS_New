@@ -71,3 +71,7 @@ flutter_launcher_icons:
 
 
   flutter_svg: ^2.0.9
+
+  easy_localization: ^3.0.3
+  flutter_localizations:
+    sdk: flutter
