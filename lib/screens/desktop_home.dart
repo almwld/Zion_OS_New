@@ -14,10 +14,6 @@ import 'apps/settings_app.dart';
 import 'apps/file_manager.dart';
 import 'apps/web_browser.dart';
 import 'apps/text_analyzer.dart';
-import 'apps/qr_scanner_simple.dart';
-import 'apps/calendar_simple.dart';
-import 'apps/gallery_simple.dart';
-import 'apps/documents_simple.dart';
 import 'apps/calculator.dart';
 import 'apps/notes_app.dart';
 import 'apps/weather_app.dart';
@@ -29,25 +25,12 @@ import 'apps/file_sharing.dart';
 import 'apps/email_client.dart';
 import 'apps/date_calculator.dart';
 import 'apps/unit_converter.dart';
-import 'apps/system_monitor.dart';
-import 'apps/task_manager.dart';
-import 'apps/network_analyzer.dart';
-import 'apps/disk_analyzer.dart';
-import 'apps/process_manager.dart';
-import 'apps/system_info.dart';
-import 'apps/network_tools.dart';
-import 'apps/performance_monitor.dart';
 import 'apps/battery_saver.dart';
 import 'apps/backup_manager.dart';
 import 'apps/cleaner.dart';
 import 'apps/app_lock.dart';
 import 'apps/notification_manager.dart';
-import 'apps/data_usage.dart';
-import 'apps/password_manager.dart';
-import 'apps/vpn_manager.dart';
-import 'apps/firewall.dart';
-import 'apps/device_admin.dart';
-import 'apps/notes_backup.dart';
+import '../widgets/floating_radar_chart.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -59,6 +42,7 @@ class ZionDesktop extends StatefulWidget {
 class _ZionDesktopState extends State<ZionDesktop> {
   String _currentTime = "";
   int _selectedIndex = 0;
+  bool _showRadarChart = true;
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "icon": Icons.flash_on},
@@ -68,30 +52,22 @@ class _ZionDesktopState extends State<ZionDesktop> {
   ];
 
   final List<Map<String, dynamic>> _apps = [
-    // ATTACK
+    {"name": "TERMINAL", "icon": Icons.terminal, "category": "TOOLS", "screen": const TerminalApp()},
+    {"name": "CRYPTO", "icon": Icons.lock, "category": "TOOLS", "screen": const CryptoToolApp()},
     {"name": "WIFI", "icon": Icons.wifi, "category": "ATTACK", "screen": const WiFiScannerApp()},
     {"name": "EXPLOIT", "icon": Icons.bug_report, "category": "ATTACK", "screen": const ExploitDBApp()},
     {"name": "CRACKER", "icon": Icons.vpn_key, "category": "ATTACK", "screen": const PasswordCrackerApp()},
     {"name": "DDOS", "icon": Icons.speed, "category": "ATTACK", "screen": const DDoSAttackApp()},
     {"name": "DATABASE", "icon": Icons.storage, "category": "ATTACK", "screen": const DatabaseHackingApp()},
     {"name": "CLOUD", "icon": Icons.cloud, "category": "ATTACK", "screen": const CloudAttacksApp()},
-    
-    // DEFENSE
-    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "DEFENSE", "screen": const StealthModeApp()},
-    {"name": "CRYPTO", "icon": Icons.lock, "category": "DEFENSE", "screen": const CryptoToolApp()},
-    
-    // ANALYSIS
     {"name": "NETWORK", "icon": Icons.network_wifi, "category": "ANALYSIS", "screen": const NetworkScannerApp()},
     {"name": "FORENSICS", "icon": Icons.search, "category": "ANALYSIS", "screen": const ForensicsApp()},
-    {"name": "TEXT ANALYZER", "icon": Icons.analytics, "category": "ANALYSIS", "screen": const TextAnalyzerApp()},
-    
-    // TOOLS
-    {"name": "TERMINAL", "icon": Icons.terminal, "category": "TOOLS", "screen": const TerminalApp()},
+    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "DEFENSE", "screen": const StealthModeApp()},
+    {"name": "SETTINGS", "icon": Icons.settings, "category": "TOOLS", "screen": const SettingsApp()},
     {"name": "FILE MANAGER", "icon": Icons.folder, "category": "TOOLS", "screen": const FileManagerApp()},
     {"name": "BROWSER", "icon": Icons.public, "category": "TOOLS", "screen": const WebBrowserApp()},
+    {"name": "TEXT ANALYZER", "icon": Icons.analytics, "category": "ANALYSIS", "screen": const TextAnalyzerApp()},
     {"name": "CALCULATOR", "icon": Icons.calculate, "category": "TOOLS", "screen": const CalculatorApp()},
-    {"name": "UNIT CONV", "icon": Icons.science, "category": "TOOLS", "screen": const UnitConverterApp()},
-    {"name": "DATE CALC", "icon": Icons.calculate, "category": "TOOLS", "screen": const DateCalculatorApp()},
     {"name": "NOTES", "icon": Icons.note, "category": "TOOLS", "screen": const NotesApp()},
     {"name": "WEATHER", "icon": Icons.wb_sunny, "category": "TOOLS", "screen": const WeatherApp()},
     {"name": "CURRENCY", "icon": Icons.attach_money, "category": "TOOLS", "screen": const CurrencyConverterApp()},
@@ -100,30 +76,13 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "RADIO", "icon": Icons.radio, "category": "TOOLS", "screen": const RadioApp()},
     {"name": "SHARE", "icon": Icons.share, "category": "TOOLS", "screen": const FileSharingApp()},
     {"name": "EMAIL", "icon": Icons.email, "category": "TOOLS", "screen": const EmailClient()},
-    {"name": "SETTINGS", "icon": Icons.settings, "category": "TOOLS", "screen": const SettingsApp()},
-    {"name": "QR CODE", "icon": Icons.qr_code_scanner, "category": "TOOLS", "screen": const QRScannerApp()},
-    {"name": "CALENDAR", "icon": Icons.calendar_today, "category": "TOOLS", "screen": const CalendarApp()},
-    {"name": "GALLERY", "icon": Icons.photo_library, "category": "TOOLS", "screen": const GalleryApp()},
-    {"name": "DOCUMENTS", "icon": Icons.description, "category": "TOOLS", "screen": const DocumentsApp()},
-    {"name": "MONITOR", "icon": Icons.assessment, "category": "TOOLS", "screen": const SystemMonitorApp()},
-    {"name": "TASKS", "icon": Icons.list_alt, "category": "TOOLS", "screen": const TaskManagerApp()},
-    {"name": "NET ANALYZER", "icon": Icons.analytics, "category": "TOOLS", "screen": const NetworkAnalyzerApp()},
-    {"name": "DISK ANALYZER", "icon": Icons.storage, "category": "TOOLS", "screen": const DiskAnalyzerApp()},
-    {"name": "PROCESS", "icon": Icons.code, "category": "TOOLS", "screen": const ProcessManagerApp()},
-    {"name": "SYS INFO", "icon": Icons.info, "category": "TOOLS", "screen": const SystemInfoApp()},
-    {"name": "NET TOOLS", "icon": Icons.wifi, "category": "TOOLS", "screen": const NetworkToolsApp()},
-    {"name": "PERF MON", "icon": Icons.speed, "category": "TOOLS", "screen": const PerformanceMonitorApp()},
+    {"name": "DATE CALC", "icon": Icons.calculate, "category": "TOOLS", "screen": const DateCalculatorApp()},
+    {"name": "UNIT CONV", "icon": Icons.science, "category": "TOOLS", "screen": const UnitConverterApp()},
     {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "TOOLS", "screen": const BatterySaverApp()},
     {"name": "BACKUP", "icon": Icons.backup, "category": "TOOLS", "screen": const BackupManagerApp()},
     {"name": "CLEANER", "icon": Icons.cleaning_services, "category": "TOOLS", "screen": const CleanerApp()},
     {"name": "APP LOCK", "icon": Icons.lock, "category": "TOOLS", "screen": const AppLockApp()},
     {"name": "NOTIFY", "icon": Icons.notifications, "category": "TOOLS", "screen": const NotificationManagerApp()},
-    {"name": "DATA USAGE", "icon": Icons.data_usage, "category": "TOOLS", "screen": const DataUsageApp()},
-    {"name": "PWD MGR", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const PasswordManagerApp()},
-    {"name": "VPN", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const VPNManagerApp()},
-    {"name": "FIREWALL", "icon": Icons.security, "category": "TOOLS", "screen": const FirewallApp()},
-    {"name": "DEV ADMIN", "icon": Icons.admin_panel_settings, "category": "TOOLS", "screen": const DeviceAdminApp()},
-    {"name": "NOTE BACKUP", "icon": Icons.backup, "category": "TOOLS", "screen": const NotesBackupApp()},
   ];
 
   @override
@@ -146,11 +105,14 @@ class _ZionDesktopState extends State<ZionDesktop> {
 
   void _openApp(Map<String, dynamic> app) {
     if (app['screen'] != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => app['screen']),
-      );
+      Navigator.push(context, MaterialPageRoute(builder: (_) => app['screen']));
     }
+  }
+
+  void _toggleRadar() {
+    setState(() {
+      _showRadarChart = !_showRadarChart;
+    });
   }
 
   @override
@@ -159,156 +121,159 @@ class _ZionDesktopState extends State<ZionDesktop> {
     final isSmallScreen = screenWidth < 600;
     final iconContainerSize = isSmallScreen ? 50.0 : 55.0;
     final iconSize = isSmallScreen ? 24.0 : 28.0;
-    
     final filteredApps = _apps.where((app) => app['category'] == _categories[_selectedIndex]['name']).toList();
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.center,
-            radius: 1.5,
-            colors: [const Color(0xFF00BCD4).withOpacity(0.05), Colors.black, Colors.black],
-          ),
-        ),
-        child: Column(
-          children: [
-            // Top Bar
-            Container(
-              height: 45,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.9),
-                border: Border(bottom: BorderSide(color: const Color(0xFF00BCD4).withOpacity(0.3))),
+      body: Stack(
+        children: [
+          // الخلفية وسطح المكتب
+          Container(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.center,
+                radius: 1.5,
+                colors: [const Color(0xFF00BCD4).withOpacity(0.05), Colors.black, Colors.black],
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('ZION OS', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold, fontSize: 14)),
-                  Row(
-                    children: [
-                      Icon(Icons.battery_full, color: const Color(0xFF00BCD4), size: 14),
-                      const SizedBox(width: 8),
-                      Icon(Icons.network_wifi, color: const Color(0xFF00BCD4), size: 14),
-                      const SizedBox(width: 12),
-                      Text(_currentTime, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
-                    ],
+            ),
+            child: Column(
+              children: [
+                // Top Bar
+                Container(
+                  height: 45,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.9),
+                    border: Border(bottom: BorderSide(color: const Color(0xFF00BCD4).withOpacity(0.3))),
                   ),
-                ],
-              ),
-            ),
-            
-            // Categories
-            Container(
-              height: 40,
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: List.generate(_categories.length, (index) {
-                  final isSelected = _selectedIndex == index;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedIndex = index),
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF00BCD4).withOpacity(0.15) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(0xFF00BCD4).withOpacity(isSelected ? 0.6 : 0.2),
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _categories[index]['name'],
-                            style: TextStyle(
-                              color: isSelected ? const Color(0xFF00BCD4) : Colors.white54,
-                              fontSize: 11,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ),
-            
-            // App Grid
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isSmallScreen ? 3 : 4,
-                  childAspectRatio: 0.85,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: filteredApps.length,
-                itemBuilder: (context, index) {
-                  final app = filteredApps[index];
-                  return GestureDetector(
-                    onTap: () => _openApp(app),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.03),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.15)),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('ZION OS', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold, fontSize: 14)),
+                      Row(
                         children: [
-                          Container(
-                            width: iconContainerSize,
-                            height: iconContainerSize,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00BCD4).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(app['icon'], color: const Color(0xFF00BCD4), size: iconSize),
+                          IconButton(
+                            icon: const Icon(Icons.radar, color: Color(0xFF00BCD4), size: 20),
+                            onPressed: _toggleRadar,
+                            tooltip: 'Radar Monitor',
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            app['name'],
-                            style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
-                            textAlign: TextAlign.center,
-                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.battery_full, color: const Color(0xFF00BCD4), size: 14),
+                          const SizedBox(width: 8),
+                          Icon(Icons.network_wifi, color: const Color(0xFF00BCD4), size: 14),
+                          const SizedBox(width: 12),
+                          Text(_currentTime, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+                // Categories
+                Container(
+                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: List.generate(_categories.length, (index) {
+                      final isSelected = _selectedIndex == index;
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _selectedIndex = index),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF00BCD4).withOpacity(0.15) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(isSelected ? 0.6 : 0.2)),
+                            ),
+                            child: Center(
+                              child: Text(
+                                _categories[index]['name'],
+                                style: TextStyle(color: isSelected ? const Color(0xFF00BCD4) : Colors.white54, fontSize: 11),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                // App Grid
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: isSmallScreen ? 3 : 4,
+                      childAspectRatio: 0.85,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
                     ),
-                  );
-                },
-              ),
+                    itemCount: filteredApps.length,
+                    itemBuilder: (context, index) {
+                      final app = filteredApps[index];
+                      return GestureDetector(
+                        onTap: () => _openApp(app),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.03),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.15)),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: iconContainerSize,
+                                height: iconContainerSize,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF00BCD4).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(app['icon'], color: const Color(0xFF00BCD4), size: iconSize),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                app['name'],
+                                style: const TextStyle(color: Colors.white70, fontSize: 10),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Dock
+                Container(
+                  height: 55,
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.15)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildDockIcon(Icons.terminal, 'TERM', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL'))),
+                      const SizedBox(width: 12),
+                      _buildDockIcon(Icons.folder, 'FILES', () => _openApp(_apps.firstWhere((a) => a['name'] == 'FILE MANAGER'))),
+                      const SizedBox(width: 12),
+                      _buildDockIcon(Icons.public, 'WEB', () => _openApp(_apps.firstWhere((a) => a['name'] == 'BROWSER'))),
+                      const SizedBox(width: 12),
+                      _buildDockIcon(Icons.calculate, 'CALC', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CALCULATOR'))),
+                      const SizedBox(width: 12),
+                      _buildDockIcon(Icons.settings, 'SET', () => _openApp(_apps.firstWhere((a) => a['name'] == 'SETTINGS'))),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            
-            // Dock
-            Container(
-              height: 55,
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.15)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildDockIcon(Icons.terminal, 'TERM', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL'))),
-                  const SizedBox(width: 12),
-                  _buildDockIcon(Icons.folder, 'FILES', () => _openApp(_apps.firstWhere((a) => a['name'] == 'FILE MANAGER'))),
-                  const SizedBox(width: 12),
-                  _buildDockIcon(Icons.public, 'WEB', () => _openApp(_apps.firstWhere((a) => a['name'] == 'BROWSER'))),
-                  const SizedBox(width: 12),
-                  _buildDockIcon(Icons.calculate, 'CALC', () => _openApp(_apps.firstWhere((a) => a['name'] == 'CALCULATOR'))),
-                  const SizedBox(width: 12),
-                  _buildDockIcon(Icons.settings, 'SET', () => _openApp(_apps.firstWhere((a) => a['name'] == 'SETTINGS'))),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+          // النافذة العائمة للرادار (إذا كانت ظاهرة)
+          if (_showRadarChart)
+            FloatingRadarChart(onClose: () => setState(() => _showRadarChart = false)),
+        ],
       ),
     );
   }
