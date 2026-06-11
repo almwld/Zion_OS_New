@@ -282,7 +282,7 @@ class _ProcessManagerAppState extends State<ProcessManagerApp> {
                   children: [
                     _buildStatItem('Processes', '$_totalProcesses', Icons.code),
                     _buildStatItem('Avg CPU', '${_avgCpu.toStringAsFixed(1)}%', Icons.memory),
-                    _buildStatItem('Avg RAM', '${_avgMem.toStringAsFixed(1)}%', Icons.ram),
+                    _buildStatItem('Avg RAM', '${_avgMem.toStringAsFixed(1)}%', Icons.memory),
                     _buildStatItem('System', '$_systemProcesses', Icons.computer),
                     _buildStatItem('User', '$_userProcesses', Icons.person),
                   ],

@@ -1,84 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/services/settings_service.dart';
+import 'core/theme/theme_manager.dart';
 import 'core/services/notification_service.dart';
-import 'core/services/biometric_service.dart';
+import 'core/services/backup_service.dart';
+import 'core/services/power_service.dart';
+import 'core/services/network_service.dart';
+import 'core/services/logging_service.dart';
+import 'core/services/browser_service.dart';
 import 'screens/lock_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  final settingsService = SettingsService();
   final notificationService = NotificationService();
-  final biometricService = BiometricService();
-  
-  await settingsService.init();
-  await notificationService.init();
-  await biometricService.init();
-  
+  final backupService = BackupService();
+  final powerService = PowerService();
+  final networkService = NetworkService();
+  final loggingService = LoggingService();
+  final browserService = BrowserService();
+  notificationService.init();
+  await backupService.init();
+  await powerService.init();
+  await networkService.init();
+  await loggingService.init();
+  await browserService.init();
   runApp(ZionOSApp(
-    settingsService: settingsService,
     notificationService: notificationService,
-    biometricService: biometricService,
+    backupService: backupService,
+    powerService: powerService,
+    networkService: networkService,
+    loggingService: loggingService,
+    browserService: browserService,
   ));
 }
 
 class ZionOSApp extends StatelessWidget {
-  final SettingsService settingsService;
   final NotificationService notificationService;
-  final BiometricService biometricService;
+  final BackupService backupService;
+  final PowerService powerService;
+  final NetworkService networkService;
+  final LoggingService loggingService;
+  final BrowserService browserService;
   
   const ZionOSApp({
     super.key,
-    required this.settingsService,
     required this.notificationService,
-    required this.biometricService,
+    required this.backupService,
+    required this.powerService,
+    required this.networkService,
+    required this.loggingService,
+    required this.browserService,
   });
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: settingsService),
         ChangeNotifierProvider.value(value: notificationService),
-        ChangeNotifierProvider.value(value: biometricService),
+        ChangeNotifierProvider.value(value: powerService),
+        ChangeNotifierProvider(create: (_) => ThemeManager()),
+        Provider.value(value: backupService),
+        Provider.value(value: networkService),
+        Provider.value(value: loggingService),
+        Provider.value(value: browserService),
       ],
-      child: Consumer<SettingsService>(
-        builder: (context, settings, child) {
+      child: Consumer<ThemeManager>(
+        builder: (context, themeManager, child) {
           return MaterialApp(
             title: 'Zion OS 2027',
             debugShowCheckedModeBanner: false,
-            theme: _getThemeData(settings),
+            theme: themeManager.getThemeData(),
             home: const LockScreen(),
           );
         },
       ),
-    );
-  }
-  
-  ThemeData _getThemeData(SettingsService settings) {
-    Color primaryColor;
-    switch (settings.themeColor) {
-      case 'Turquoise': primaryColor = const Color(0xFF00BCD4); break;
-      case 'Cyan': primaryColor = Colors.cyan; break;
-      case 'Green': primaryColor = Colors.green; break;
-      case 'Blue': primaryColor = Colors.blue; break;
-      case 'Purple': primaryColor = Colors.purple; break;
-      default: primaryColor = const Color(0xFF00BCD4);
-    }
-    
-    return ThemeData.dark().copyWith(
-      primaryColor: primaryColor,
-      colorScheme: ColorScheme.dark(primary: primaryColor),
-      scaffoldBackgroundColor: Colors.black,
-      textTheme: _getTextTheme(settings),
-    );
-  }
-  
-  TextTheme _getTextTheme(SettingsService settings) {
-    return const TextTheme(
-      bodyLarge: TextStyle(color: Colors.white),
-      bodyMedium: TextStyle(color: Colors.white70),
     );
   }
 }

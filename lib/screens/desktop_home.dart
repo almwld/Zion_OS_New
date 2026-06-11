@@ -29,7 +29,6 @@ import 'apps/file_sharing.dart';
 import 'apps/email_client.dart';
 import 'apps/date_calculator.dart';
 import 'apps/unit_converter.dart';
-import 'apps/percentage_calculator.dart';
 import 'apps/system_monitor.dart';
 import 'apps/task_manager.dart';
 import 'apps/network_analyzer.dart';
@@ -92,7 +91,6 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "BROWSER", "icon": Icons.public, "category": "TOOLS", "screen": const WebBrowserApp()},
     {"name": "CALCULATOR", "icon": Icons.calculate, "category": "TOOLS", "screen": const CalculatorApp()},
     {"name": "UNIT CONV", "icon": Icons.science, "category": "TOOLS", "screen": const UnitConverterApp()},
-    {"name": "PERCENT", "icon": Icons.percent, "category": "TOOLS", "screen": const PercentageCalculatorApp()},
     {"name": "DATE CALC", "icon": Icons.calculate, "category": "TOOLS", "screen": const DateCalculatorApp()},
     {"name": "NOTES", "icon": Icons.note, "category": "TOOLS", "screen": const NotesApp()},
     {"name": "WEATHER", "icon": Icons.wb_sunny, "category": "TOOLS", "screen": const WeatherApp()},
@@ -123,7 +121,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "DATA USAGE", "icon": Icons.data_usage, "category": "TOOLS", "screen": const DataUsageApp()},
     {"name": "PWD MGR", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const PasswordManagerApp()},
     {"name": "VPN", "icon": Icons.vpn_key, "category": "TOOLS", "screen": const VPNManagerApp()},
-    {"name": "FIREWALL", "icon": Icons.firewall, "category": "TOOLS", "screen": const FirewallApp()},
+    {"name": "FIREWALL", "icon": Icons.security, "category": "TOOLS", "screen": const FirewallApp()},
     {"name": "DEV ADMIN", "icon": Icons.admin_panel_settings, "category": "TOOLS", "screen": const DeviceAdminApp()},
     {"name": "NOTE BACKUP", "icon": Icons.backup, "category": "TOOLS", "screen": const NotesBackupApp()},
   ];

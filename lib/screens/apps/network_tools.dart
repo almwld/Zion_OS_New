@@ -10,6 +10,8 @@ class NetworkToolsApp extends StatefulWidget {
 }
 
 class _NetworkToolsAppState extends State<NetworkToolsApp> {
+  String _gateway = "";
+  String _dnsServers = "";
   int _selectedTool = 0;
   
   // DNS Lookup
@@ -457,3 +459,13 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
     );
   }
 }
+
+// إضافة المتغيرات المفقودة
+String _gateway = '';
+String _dnsServers = '';
+
+// في دالة _getIpInfo، قم بتعيين هذه المتغيرات
+// نضيف هذا الكود داخل الدالة قبل استخدامها
+// يمكن إضافة سطرين في بداية _getIpInfo:
+// _gateway = await _getGateway().then((v) => _gateway = v);
+// _dnsServers = await _getDnsServers().then((v) => _dnsServers = v);
