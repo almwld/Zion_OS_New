@@ -41,6 +41,7 @@ import 'apps/qr_scanner_simple.dart';
 import 'apps/documents_simple.dart';
 import 'apps/security_hub.dart';
 import 'apps/tools_hub.dart';
+import 'apps/performance_hub.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -72,6 +73,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
     {"name": "SETTINGS", "icon": Icons.settings, "category": "TOOLS", "screen": const SettingsApp()},
     {"name": "SECURITY HUB", "icon": Icons.security, "category": "TOOLS", "screen": const SecurityHubApp()},
     {"name": "TOOLS HUB", "icon": Icons.build, "category": "TOOLS", "screen": const ToolsHubApp()},
+    {"name": "PERF HUB", "icon": Icons.speed, "category": "TOOLS", "screen": const PerformanceHubApp()},
     {"name": "NOTES", "icon": Icons.note, "category": "TOOLS", "screen": const NotesApp()},
     {"name": "WEATHER", "icon": Icons.wb_sunny, "category": "TOOLS", "screen": const WeatherApp()},
     {"name": "MAPS", "icon": Icons.map, "category": "TOOLS", "screen": const MapsApp()},
