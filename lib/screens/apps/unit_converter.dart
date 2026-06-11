@@ -349,8 +349,8 @@ class _UnitConverterAppState extends State<UnitConverterApp> {
                     children: _getCommonConversions().map((conv) => GestureDetector(
                       onTap: () {
                         setState(() {
-                          _fromUnit = conv['from'];
-                          _toUnit = conv['to'];
+                          _fromUnit = conv['from'] ?? "";
+                          _toUnit = conv['to'] ?? "";
                           _inputController.text = '1';
                           _convert();
                         });
@@ -363,7 +363,7 @@ class _UnitConverterAppState extends State<UnitConverterApp> {
                           border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
                         ),
                         child: Text(
-                          conv['label'],
+                          conv['label'] ?? "",
                           style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12),
                         ),
                       ),

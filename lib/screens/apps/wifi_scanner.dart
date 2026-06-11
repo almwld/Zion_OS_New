@@ -102,9 +102,9 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
   IconData _getSignalIcon(int strength) {
     switch (strength) {
       case 4: return Icons.signal_cellular_4_bar;
-      case 3: return Icons.signal_cellular_3_bar;
-      case 2: return Icons.signal_cellular_2_bar;
-      default: return Icons.signal_cellular_1_bar;
+      case 3: return Icons.signal_cellular_alt;
+      case 2: return Icons.signal_cellular_alt;
+      default: return Icons.signal_cellular_alt;
     }
   }
 
