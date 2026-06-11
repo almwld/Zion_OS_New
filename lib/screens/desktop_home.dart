@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'apps/terminal_app.dart';
+import 'apps/network_scanner.dart';
+import 'apps/wifi_scanner.dart';
+import 'apps/exploit_db.dart';
 
 class DesktopHome extends StatefulWidget {
   const DesktopHome({super.key});
@@ -19,15 +23,15 @@ class _DesktopHomeState extends State<DesktopHome> {
   ];
 
   final List<Map<String, dynamic>> _apps = [
-    {"name": "Terminal", "icon": Icons.terminal, "category": "Tools"},
-    {"name": "Network Scanner", "icon": Icons.network_wifi, "category": "Analysis"},
-    {"name": "WiFi Suite", "icon": Icons.wifi, "category": "Attack"},
-    {"name": "Exploit DB", "icon": Icons.bug_report, "category": "Attack"},
-    {"name": "Crypto Tool", "icon": Icons.lock, "category": "Defense"},
-    {"name": "Stealth", "icon": Icons.visibility_off, "category": "Defense"},
-    {"name": "DDoS", "icon": Icons.speed, "category": "Attack"},
-    {"name": "Forensics", "icon": Icons.search, "category": "Analysis"},
-    {"name": "Settings", "icon": Icons.settings, "category": "Tools"},
+    {"name": "Terminal", "icon": Icons.terminal, "category": "Tools", "screen": const TerminalApp()},
+    {"name": "Network Scanner", "icon": Icons.network_wifi, "category": "Analysis", "screen": const NetworkScannerApp()},
+    {"name": "WiFi Scanner", "icon": Icons.wifi, "category": "Attack", "screen": const WiFiScannerApp()},
+    {"name": "Exploit DB", "icon": Icons.bug_report, "category": "Attack", "screen": const ExploitDBApp()},
+    {"name": "Crypto Tool", "icon": Icons.lock, "category": "Defense", "screen": null},
+    {"name": "Stealth", "icon": Icons.visibility_off, "category": "Defense", "screen": null},
+    {"name": "DDoS", "icon": Icons.speed, "category": "Attack", "screen": null},
+    {"name": "Forensics", "icon": Icons.search, "category": "Analysis", "screen": null},
+    {"name": "Settings", "icon": Icons.settings, "category": "Tools", "screen": null},
   ];
 
   @override
@@ -46,6 +50,16 @@ class _DesktopHomeState extends State<DesktopHome> {
         _updateTime();
       }
     });
+  }
+
+  void _openApp(Map<String, dynamic> app) {
+    if (app['screen'] != null) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => app['screen']));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('قيد التطوير...'), backgroundColor: Color(0xFF00FF41)),
+      );
+    }
   }
 
   @override
@@ -119,11 +133,7 @@ class _DesktopHomeState extends State<DesktopHome> {
               itemBuilder: (context, index) {
                 final app = filteredApps[index];
                 return GestureDetector(
-                  onTap: () {
-                    if (app['name'] == "Terminal") {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const TerminalApp()));
-                    }
-                  },
+                  onTap: () => _openApp(app),
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -160,7 +170,3 @@ class _DesktopHomeState extends State<DesktopHome> {
     );
   }
 }
-
-import 'apps/terminal_app.dart';
-
-import 'apps/terminal_app.dart';
