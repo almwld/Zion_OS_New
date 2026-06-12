@@ -1,73 +1,26 @@
 {
   "app_name": "زيون OS",
-  "lock_screen": "شاشة القفل",
-  "enter_pin": "أدخل الرقم السري",
-  "unlock": "فتح",
-  "loading": "جاري التحميل...",
-  "desktop": "سطح المكتب",
-  "attack": "هجوم",
-  "defense": "دفاع",
-  "analysis": "تحليل",
-  "tools": "أدوات",
   
-  "settings": {
-    "title": "الإعدادات",
-    "appearance": "المظهر",
-    "dark_mode": "الوضع الليلي",
-    "light_mode": "الوضع النهاري",
-    "theme_color": "لون الثيم",
-    "language": "اللغة",
-    "font_size": "حجم الخط",
-    "behavior": "السلوك",
-    "notifications": "الإشعارات",
-    "sound_effects": "المؤثرات الصوتية",
-    "vibration": "الاهتزاز",
-    "auto_update": "تحديث تلقائي",
-    "stealth_mode": "وضع التخفي",
-    "animation_speed": "سرعة الحركات",
-    "security": "الأمان",
-    "change_pin": "تغيير الرقم السري",
-    "current_pin": "الرقم الحالي",
-    "new_pin": "الرقم الجديد",
-    "confirm_pin": "تأكيد الرقم",
-    "biometric": "بصمة الإصبع",
-    "encryption": "التشفير",
-    "about": "حول",
-    "version": "الإصدار",
-    "build": "البناء",
-    "developer": "المطور",
-    "reset": "إعادة ضبط",
-    "reset_confirm": "هل أنت متأكد؟",
-    "reset_done": "تمت إعادة الضبط"
+  "lock_screen": {
+    "title": "شاشة القفل",
+    "enter_pin": "أدخل الرقم السري",
+    "unlock": "فتح",
+    "loading": "جاري التحميل...",
+    "incorrect_pin": "الرقم السري غير صحيح",
+    "biometric_hint": "استخدم بصمة الإصبع للفتح"
   },
   
-  "security": {
-    "pin_incorrect": "الرقم السري غير صحيح",
-    "pin_changed": "تم تغيير الرقم السري بنجاح",
-    "pin_invalid": "رقم سري غير صالح"
+  "desktop": {
+    "title": "سطح المكتب",
+    "welcome": "مرحباً بك في Zion OS",
+    "description": "نظام تشغيل متكامل للأمن والاختراق"
   },
   
-  "common": {
-    "yes": "نعم",
-    "no": "لا",
-    "cancel": "إلغاء",
-    "save": "حفظ",
-    "delete": "حذف",
-    "edit": "تعديل",
-    "add": "إضافة",
-    "search": "بحث",
-    "refresh": "تحديث",
-    "close": "إغلاق",
-    "back": "رجوع",
-    "next": "التالي",
-    "done": "تم",
-    "ok": "موافق",
-    "confirm": "تأكيد",
-    "saved": "تم الحفظ",
-    "error": "خطأ",
-    "success": "نجاح",
-    "warning": "تحذير",
-    "info": "معلومات"
+  "categories": {
+    "attack": "هجوم",
+    "defense": "دفاع",
+    "analysis": "تحليل",
+    "tools": "أدوات"
   },
   
   "apps": {
@@ -81,7 +34,7 @@
     "ddos_attack": "هجوم DDoS",
     "forensics": "التحليل الجنائي",
     "database_hacking": "اختراق قواعد البيانات",
-    "cloud_attacks": "هجمام السحابة",
+    "cloud_attacks": "هجمات السحابة",
     "settings": "الإعدادات",
     "file_manager": "مدير الملفات",
     "web_browser": "المتصفح",
@@ -118,31 +71,95 @@
     "automation_hub": "مركز الأتمتة"
   },
   
-  "monitor": {
-    "cpu": "المعالج",
-    "ram": "الذاكرة",
-    "storage": "التخزين",
-    "battery": "البطارية",
-    "network": "الشبكة",
-    "temperature": "الحرارة",
-    "processes": "العمليات",
-    "uptime": "مدة التشغيل",
-    "download": "تحميل",
-    "upload": "رفع",
-    "speed": "السرعة",
-    "usage": "الاستخدام"
+  "settings": {
+    "title": "الإعدادات",
+    "appearance": "المظهر",
+    "dark_mode": "الوضع الليلي",
+    "light_mode": "الوضع النهاري",
+    "theme_color": "لون الثيم",
+    "language": "اللغة",
+    "font_size": "حجم الخط",
+    "small": "صغير",
+    "medium": "متوسط",
+    "large": "كبير",
+    "security": "الأمان",
+    "change_pin": "تغيير الرقم السري",
+    "biometric": "بصمة الإصبع",
+    "encryption": "التشفير",
+    "about": "حول",
+    "version": "الإصدار",
+    "developer": "المطور",
+    "reset": "إعادة ضبط",
+    "reset_confirm": "هل أنت متأكد من إعادة ضبط جميع الإعدادات؟",
+    "reset_done": "تمت إعادة الضبط بنجاح"
   },
   
-  "status": {
-    "connected": "متصل",
-    "disconnected": "غير متصل",
-    "charging": "يشحن",
-    "discharging": "يفرغ",
-    "full": "كامل",
-    "low": "منخفض",
-    "critical": "حرج",
-    "good": "جيد",
-    "fair": "متوسط",
-    "poor": "ضعيف"
+  "security": {
+    "pin_incorrect": "الرقم السري غير صحيح",
+    "pin_changed": "تم تغيير الرقم السري بنجاح",
+    "pin_invalid": "رقم سري غير صالح",
+    "pin_short": "الرقم السري قصير جداً (الحد الأدنى 4 أرقام)",
+    "enter_old_pin": "أدخل الرقم السري الحالي",
+    "enter_new_pin": "أدخل الرقم السري الجديد",
+    "confirm_new_pin": "تأكيد الرقم السري الجديد",
+    "pin_mismatch": "الرقم السري الجديد غير متطابق"
+  },
+  
+  "common": {
+    "yes": "نعم",
+    "no": "لا",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "add": "إضافة",
+    "search": "بحث",
+    "refresh": "تحديث",
+    "close": "إغلاق",
+    "back": "رجوع",
+    "next": "التالي",
+    "done": "تم",
+    "ok": "موافق",
+    "confirm": "تأكيد",
+    "loading": "جاري التحميل...",
+    "error": "خطأ",
+    "success": "نجاح",
+    "warning": "تحذير",
+    "info": "معلومات",
+    "exit": "خروج"
+  },
+  
+  "wifi": {
+    "title": "محلل WiFi",
+    "scanning": "جاري المسح...",
+    "no_networks": "لم يتم العثور على شبكات",
+    "signal_strength": "قوة الإشارة",
+    "encryption": "التشفير",
+    "channel": "القناة",
+    "frequency": "التردد",
+    "speed": "السرعة",
+    "excellent": "ممتازة",
+    "good": "جيدة",
+    "fair": "متوسطة",
+    "poor": "ضعيفة",
+    "connect": "اتصال",
+    "save": "حفظ الشبكة"
+  },
+  
+  "files": {
+    "title": "مدير الملفات",
+    "internal_storage": "التخزين الداخلي",
+    "downloads": "التحميلات",
+    "documents": "المستندات",
+    "pictures": "الصور",
+    "music": "الموسيقى",
+    "videos": "الفيديوهات",
+    "copy": "نسخ",
+    "cut": "قص",
+    "paste": "لصق",
+    "delete": "حذف",
+    "rename": "إعادة تسمية",
+    "share": "مشاركة",
+    "properties": "خصائص"
   }
 }
