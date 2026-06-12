@@ -1,3 +1,4 @@
+import 'terminal_shortcuts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
@@ -272,3 +273,9 @@ class _TerminalAppState extends State<TerminalApp> {
     );
   }
 }
+
+  bool _showShortcuts = false;
+
+  void _toggleShortcuts() {
+    setState(() => _showShortcuts = !_showShortcuts);
+  }

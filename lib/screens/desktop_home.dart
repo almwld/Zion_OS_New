@@ -1,3 +1,4 @@
+import '../core/services/haptic_service.dart';
 import '../widgets/battery_info_dialog.dart';
 import '../widgets/quick_settings_panel.dart';
 import 'package:flutter/material.dart';
@@ -159,6 +160,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
   }
 
   void _openAppAsFloating(Map<String, dynamic> app) {
+    HapticService().lightImpact();
     if (app['screen'] != null) {
       _windowManagerKey.currentState?.openWindow(
         app['name'],
@@ -168,6 +170,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
   }
 
   void _openAppAsFullscreen(Map<String, dynamic> app) {
+    HapticService().mediumImpact();
     if (app['screen'] != null) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => app['screen']));
     }
