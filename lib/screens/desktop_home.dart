@@ -1,3 +1,4 @@
+import '../widgets/quick_settings_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -64,6 +65,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
   String _currentTime = "";
   int _selectedIndex = 0;
   bool _showRadarChart = true;
+  bool _showQuickSettings = false;
   late AnimationController _animationController;
 
   final List<Map<String, dynamic>> _categories = [
@@ -260,6 +262,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
                           // Radar Toggle with glass button
                           GestureDetector(
                             onTap: _toggleRadar,
+                              onTap: () => setState(() => _showQuickSettings = true),
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
@@ -404,6 +407,8 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
             
             // Floating Radar Chart
             if (_showRadarChart)
+          if (_showQuickSettings)
+            QuickSettingsPanel(onClose: () => setState(() => _showQuickSettings = false)),
               FloatingRadarChart(onClose: () => setState(() => _showRadarChart = false)),
           ],
         ),

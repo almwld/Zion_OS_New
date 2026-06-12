@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 class FloatingRadarChart extends StatefulWidget {
   final VoidCallback onClose;
@@ -11,10 +12,10 @@ class FloatingRadarChart extends StatefulWidget {
   State<FloatingRadarChart> createState() => _FloatingRadarChartState();
 }
 
-class _FloatingRadarChartState extends State<FloatingRadarChart> {
+class _FloatingRadarChartState extends State<FloatingRadarChart> with SingleTickerProviderStateMixin {
   Offset _position = Offset.zero;
-  double _width = 280;
-  double _height = 280;
+  double _radius = 100;
+  bool _isDragging = false;
   
   Map<String, double> _metrics = {
     'CPU': 0.0, 'RAM': 0.0, 'Storage': 0.0, 'Battery': 0.0,
@@ -28,26 +29,34 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   ];
   
   final List<Color> _colors = [
-    Colors.red, Colors.blue, Colors.green, Colors.orange, Colors.purple,
-    Colors.cyan, Colors.pink, Colors.amber, Colors.lime, Colors.teal,
-    Colors.indigo, Colors.deepPurple
+    Colors.redAccent, Colors.blueAccent, Colors.greenAccent, Colors.orangeAccent,
+    Colors.purpleAccent, Colors.cyanAccent, Colors.pinkAccent, Colors.amberAccent,
+    Colors.limeAccent, Colors.tealAccent, Colors.indigoAccent, Colors.deepPurpleAccent
   ];
   
   Timer? _updateTimer;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
     _position = Offset(
-      MediaQuery.of(context).size.width - _width - 20,
-      MediaQuery.of(context).size.height - _height - 100,
+      MediaQuery.of(context).size.width - _radius * 2 - 20,
+      MediaQuery.of(context).size.height - _radius * 2 - 100,
     );
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(_pulseController);
     _startRealTimeUpdates();
   }
 
   @override
   void dispose() {
     _updateTimer?.cancel();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -126,6 +135,7 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   }
 
   double _getNetworkLoad() => 0.2 + (DateTime.now().second % 80) / 100;
+  
   double _getTemperature() {
     try {
       final result = Process.runSync('cat', ['/sys/class/thermal/thermal_zone0/temp'], runInShell: true);
@@ -165,104 +175,72 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
     return Positioned(
       left: _position.dx,
       top: _position.dy,
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          width: _width,
-          height: _height,
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.92),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
-            boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12, spreadRadius: 2)],
-          ),
-          child: Column(
-            children: [
-              GestureDetector(
-                onPanUpdate: (details) {
-                  setState(() {
-                    _position += details.delta;
-                    _position = Offset(
-                      _position.dx.clamp(0, MediaQuery.of(context).size.width - _width),
-                      _position.dy.clamp(0, MediaQuery.of(context).size.height - _height - 50),
-                    );
-                  });
-                },
-                child: Container(
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00BCD4).withOpacity(0.2),
-                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _position += details.delta;
+            _position = Offset(
+              _position.dx.clamp(0, MediaQuery.of(context).size.width - _radius * 2),
+              _position.dy.clamp(0, MediaQuery.of(context).size.height - _radius * 2 - 50),
+            );
+          });
+        },
+        onScaleUpdate: (details) {
+          setState(() {
+            _radius = (_radius * details.scale).clamp(60.0, 150.0);
+          });
+        },
+        child: AnimatedBuilder(
+          animation: _pulseAnimation,
+          builder: (context, child) {
+            return Container(
+              width: _radius * 2,
+              height: _radius * 2,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00BCD4).withOpacity(0.4 * _pulseAnimation.value),
+                    blurRadius: 20 * _pulseAnimation.value,
+                    spreadRadius: 5 * _pulseAnimation.value,
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      const Icon(Icons.radar, color: Color(0xFF00BCD4), size: 18),
-                      const SizedBox(width: 8),
-                      const Text('Radar Monitor', style: TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () => setState(() { _width = 48; _height = 48; }),
-                        child: const Icon(Icons.minimize, color: Color(0xFF00BCD4), size: 18),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: widget.onClose,
-                        child: const Icon(Icons.close, color: Color(0xFF00BCD4), size: 18),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                  ),
-                ),
+                ],
               ),
-              Expanded(
-                child: GestureDetector(
-                  onScaleUpdate: (details) {
-                    setState(() {
-                      _width = (_width * details.scale).clamp(120.0, 500.0);
-                      _height = (_height * details.scale).clamp(120.0, 500.0);
-                    });
-                  },
+              child: ClipOval(
+                child: Container(
+                  color: Colors.black.withOpacity(0.85),
                   child: RadarChart(
                     RadarChartData(
                       dataSets: [
                         RadarDataSet(
-                          fillColor: const Color(0xFF00BCD4).withOpacity(0.2),
+                          fillColor: const Color(0xFF00BCD4).withOpacity(0.15),
                           borderColor: const Color(0xFF00BCD4),
                           borderWidth: 1.5,
-                          entryRadius: 3,
+                          entryRadius: 4,
                           dataEntries: _getRadarEntries(),
                         ),
                       ],
                       radarBorderData: const BorderSide(color: Color(0xFF00BCD4), width: 1),
-                      titlePositionPercentageOffset: 1.1,
-                      getTitle: (index, angle) => RadarChartTitle(text: _titles[index], angle: angle),
+                      titlePositionPercentageOffset: 1.25,
+                      getTitle: (index, angle) {
+                        return RadarChartTitle(
+                          text: _titles[index],
+                          angle: angle,
+                          style: TextStyle(
+                            color: _colors[index % _colors.length],
+                            fontSize: 8,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        );
+                      },
+                      tickCount: 5,
+                      ticksTextStyle: const TextStyle(color: Colors.white38, fontSize: 7),
                     ),
                   ),
                 ),
               ),
-              Container(
-                height: 24,
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _titles.map((title) {
-                      double val = _metrics[title] ?? 0;
-                      return Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: Text('$title: ${(val * 100).toStringAsFixed(0)}%', style: TextStyle(color: _colors[_titles.indexOf(title)], fontSize: 9)),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
