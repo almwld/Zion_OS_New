@@ -52,6 +52,7 @@ import 'apps/performance_hub.dart';
 import 'apps/network_hub.dart';
 import 'apps/privacy_hub.dart';
 import 'apps/automation_hub.dart';
+import 'stats_advanced.dart';
 import 'apps/root_terminal/root_terminal.dart';
 import 'apps/root_terminal/root_terminal.dart';
 
@@ -90,6 +91,7 @@ class _ZionDesktopState extends State<ZionDesktop> with SingleTickerProviderStat
     {"name": "NET HUB", "icon": Icons.network_check, "category": "TOOLS", "screen": const NetworkHubApp()},
     {"name": "PRIV HUB", "icon": Icons.privacy_tip, "category": "TOOLS", "screen": const PrivacyHubApp()},
     {"name": "AUTO HUB", "icon": Icons.settings, "category": "TOOLS", "screen": const AutomationHubApp()},
+    {"name": "STATS", "icon": Icons.assessment, "category": "TOOLS", "screen": const StatsAdvanced()},
     {"name": "ROOT TERM", "icon": Icons.terminal, "category": "TOOLS", "screen": const RootTerminalApp()},
     {"name": "ROOT TERM", "icon": Icons.terminal, "category": "TOOLS", "screen": const RootTerminalApp()},
     {"name": "NOTES", "icon": Icons.note, "category": "TOOLS", "screen": const NotesApp()},
