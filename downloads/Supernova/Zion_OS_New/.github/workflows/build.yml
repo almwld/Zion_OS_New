@@ -24,16 +24,29 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
       
-      - name: Clean everything (no cache)
-        run: |
-          rm -rf ~/.pub-cache
-          rm -rf build/
-          rm -rf .dart_tool/
-          rm -rf android/.gradle
-          rm -rf ios/.symlinks
-      
       - name: Install dependencies
         run: flutter pub get
+      
+      - name: 🔑 Generate launcher icons
+        run: flutter pub run flutter_launcher_icons:main
+      
+      - name: Create assets directories
+        run: |
+          mkdir -p assets/translations
+          mkdir -p assets/icons/svg_colors
+          mkdir -p assets/images
+          mkdir -p assets/fonts
+      
+      - name: Create placeholder translations
+        run: |
+          echo '{"app_name":"Zion OS","settings":"Settings","dark_mode":"Dark Mode","attack":"Attack","defense":"Defense","analysis":"Analysis","tools":"Tools"}' > assets/translations/en.json
+          echo '{"app_name":"زيون OS","settings":"الإعدادات","dark_mode":"الوضع الليلي","attack":"هجوم","defense":"دفاع","analysis":"تحليل","tools":"أدوات"}' > assets/translations/ar.json
+      
+      - name: Create placeholder SVG icons
+        run: |
+          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/terminal.svg
+          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/wifi.svg
+          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/calculator.svg
       
       - name: 🔨 Build APK
         run: flutter build apk --release --split-per-abi
