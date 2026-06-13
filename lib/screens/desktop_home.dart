@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../providers/theme_provider.dart';
-import '../widgets/floating_radar_chart.dart';
-import '../widgets/radar_chart_widget.dart';
-import '../widgets/background_selector.dart';
-import '../widgets/floating_window_manager.dart';
 import '../utils/icon_mapper.dart';
+import '../widgets/floating_radar_chart.dart';
+import '../widgets/floating_window_manager.dart';
 import 'apps/terminal_app.dart';
 import 'apps/network_scanner.dart';
 import 'apps/wifi_scanner.dart';
@@ -45,13 +43,6 @@ import 'apps/alarms_clock.dart';
 import 'apps/calendar_simple.dart';
 import 'apps/qr_scanner_simple.dart';
 import 'apps/documents_simple.dart';
-import 'apps/security_hub.dart';
-import 'apps/tools_hub.dart';
-import 'apps/performance_hub.dart';
-import 'apps/data_hub.dart';
-import 'apps/network_hub.dart';
-import 'apps/privacy_hub.dart';
-import 'apps/automation_hub.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -63,11 +54,8 @@ class ZionDesktop extends StatefulWidget {
 class _ZionDesktopState extends State<ZionDesktop> {
   final GlobalKey<FloatingWindowManagerState> _windowManagerKey = GlobalKey();
   String _currentTime = "";
-  String _currentDate = "";
-  int _batteryLevel = 85;
   int _selectedIndex = 0;
   bool _showRadarChart = true;
-  List<Widget> _openWindows = [];
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "attack", "icon": Icons.flash_on},
@@ -77,27 +65,10 @@ class _ZionDesktopState extends State<ZionDesktop> {
   ];
 
   final List<Map<String, dynamic>> _apps = [
-    // ATTACK
-    {"name": "WIFI", "icon": Icons.wifi, "category": "attack", "screen": const WiFiScannerApp()},
-    {"name": "EXPLOIT", "icon": Icons.bug_report, "category": "attack", "screen": const ExploitDBApp()},
-    {"name": "CRACKER", "icon": Icons.vpn_key, "category": "attack", "screen": const PasswordCrackerApp()},
-    {"name": "DDOS", "icon": Icons.speed, "category": "attack", "screen": const DDoSAttackApp()},
-    {"name": "DATABASE", "icon": Icons.storage, "category": "attack", "screen": const DatabaseHackingApp()},
-    {"name": "CLOUD", "icon": Icons.cloud, "category": "attack", "screen": const CloudAttacksApp()},
-    // DEFENSE
-    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "defense", "screen": const StealthModeApp()},
-    {"name": "CRYPTO", "icon": Icons.lock, "category": "defense", "screen": const CryptoToolApp()},
-    {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "defense", "screen": const BatterySaverApp()},
-    // ANALYSIS
-    {"name": "NETWORK", "icon": Icons.network_wifi, "category": "analysis", "screen": const NetworkScannerApp()},
-    {"name": "FORENSICS", "icon": Icons.search, "category": "analysis", "screen": const ForensicsApp()},
-    {"name": "TEXT ANALYZER", "icon": Icons.analytics, "category": "analysis", "screen": const TextAnalyzerApp()},
-    // TOOLS
     {"name": "TERMINAL", "icon": Icons.terminal, "category": "tools", "screen": const TerminalApp()},
     {"name": "FILE MANAGER", "icon": Icons.folder, "category": "tools", "screen": const FileManagerApp()},
     {"name": "BROWSER", "icon": Icons.public, "category": "tools", "screen": const WebBrowserApp()},
     {"name": "SETTINGS", "icon": Icons.settings, "category": "tools", "screen": const SettingsApp()},
-    {"name": "CALCULATOR", "icon": Icons.calculate, "category": "tools", "screen": const CalculatorApp()},
     {"name": "NOTES", "icon": Icons.note, "category": "tools", "screen": const NotesApp()},
     {"name": "WEATHER", "icon": Icons.wb_sunny, "category": "tools", "screen": const WeatherApp()},
     {"name": "MAPS", "icon": Icons.map, "category": "tools", "screen": const MapsApp()},
@@ -113,35 +84,42 @@ class _ZionDesktopState extends State<ZionDesktop> {
     {"name": "CLEANER", "icon": Icons.cleaning_services, "category": "tools", "screen": const CleanerApp()},
     {"name": "APP LOCK", "icon": Icons.lock, "category": "tools", "screen": const AppLockApp()},
     {"name": "NOTIFY", "icon": Icons.notifications, "category": "tools", "screen": const NotificationManagerApp()},
+    {"name": "CALCULATOR", "icon": Icons.calculate, "category": "tools", "screen": const CalculatorApp()},
     {"name": "UNIT CONV", "icon": Icons.science, "category": "tools", "screen": const UnitConverterApp()},
     {"name": "PERCENT", "icon": Icons.percent, "category": "tools", "screen": const PercentageCalculatorApp()},
     {"name": "DATE CALC", "icon": Icons.calculate, "category": "tools", "screen": const DateCalculatorApp()},
     {"name": "CURRENCY", "icon": Icons.attach_money, "category": "tools", "screen": const CurrencyConverterApp()},
     {"name": "TRANSLATOR", "icon": Icons.translate, "category": "tools", "screen": const TranslatorApp()},
+    {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "tools", "screen": const BatterySaverApp()},
+    {"name": "WIFI", "icon": Icons.wifi, "category": "attack", "screen": const WiFiScannerApp()},
+    {"name": "EXPLOIT", "icon": Icons.bug_report, "category": "attack", "screen": const ExploitDBApp()},
+    {"name": "CRACKER", "icon": Icons.vpn_key, "category": "attack", "screen": const PasswordCrackerApp()},
+    {"name": "DDOS", "icon": Icons.speed, "category": "attack", "screen": const DDoSAttackApp()},
+    {"name": "DATABASE", "icon": Icons.storage, "category": "attack", "screen": const DatabaseHackingApp()},
+    {"name": "CLOUD", "icon": Icons.cloud, "category": "attack", "screen": const CloudAttacksApp()},
+    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "defense", "screen": const StealthModeApp()},
+    {"name": "CRYPTO", "icon": Icons.lock, "category": "defense", "screen": const CryptoToolApp()},
+    {"name": "NETWORK", "icon": Icons.network_wifi, "category": "analysis", "screen": const NetworkScannerApp()},
+    {"name": "FORENSICS", "icon": Icons.search, "category": "analysis", "screen": const ForensicsApp()},
+    {"name": "TEXT ANALYZER", "icon": Icons.analytics, "category": "analysis", "screen": const TextAnalyzerApp()},
   ];
 
   @override
   void initState() {
     super.initState();
-    _updateDateTime();
-    _getBatteryLevel();
+    _updateTime();
   }
 
-  void _updateDateTime() {
+  void _updateTime() {
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         final now = DateTime.now();
         setState(() {
           _currentTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-          _currentDate = "${now.day}/${now.month}/${now.year}";
         });
-        _updateDateTime();
+        _updateTime();
       }
     });
-  }
-
-  void _getBatteryLevel() {
-    // محاكاة (سيتم ربطه بالبيانات الحقيقية لاحقاً)
   }
 
   void _openApp(Map<String, dynamic> app) {
@@ -150,51 +128,10 @@ class _ZionDesktopState extends State<ZionDesktop> {
     }
   }
 
-  void _showQuickSettings() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black.withOpacity(0.95),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Quick Settings', style: TextStyle(color: Color(0xFF00BCD4), fontSize: 18)),
-            const Divider(color: Color(0xFF00BCD4)),
-            ListTile(leading: const Icon(Icons.brightness_6, color: Color(0xFF00BCD4)), title: const Text('Dark Mode'), trailing: Switch(value: Provider.of<ThemeProvider>(context).isDarkMode, onChanged: (_) => Provider.of<ThemeProvider>(context, listen: false).toggleTheme())),
-            ListTile(leading: const Icon(Icons.wallpaper, color: Color(0xFF00BCD4)), title: const Text('Change Background'), onTap: () { Navigator.pop(_); showDialog(context: context, builder: (_) => const BackgroundSelector()); }),
-            ListTile(leading: const Icon(Icons.settings, color: Color(0xFF00BCD4)), title: const Text('Open Settings'), onTap: () { Navigator.pop(_); _openApp(_apps.firstWhere((a) => a['name'] == 'SETTINGS')); }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showBatteryInfo() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black.withOpacity(0.95),
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Battery', style: TextStyle(color: Color(0xFF00BCD4), fontSize: 18)),
-            const Divider(color: Color(0xFF00BCD4)),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.battery_full, color: Colors.green, size: 40),
-              const SizedBox(width: 16),
-              Text('$_batteryLevel%', style: const TextStyle(color: Colors.white, fontSize: 24)),
-            ]),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(value: _batteryLevel / 100, color: Colors.green),
-            const SizedBox(height: 16),
-            const Text('Estimated remaining: 8h 30m', style: TextStyle(color: Colors.white54)),
-          ],
-        ),
-      ),
-    );
+  void _toggleRadar() {
+    setState(() {
+      _showRadarChart = !_showRadarChart;
+    });
   }
 
   @override
@@ -209,49 +146,82 @@ class _ZionDesktopState extends State<ZionDesktop> {
         backgroundColor: isDark ? Colors.black : Colors.grey[50],
         body: Stack(
           children: [
-            // الخلفية
-            Container(decoration: BoxDecoration(gradient: RadialGradient(colors: isDark ? [const Color(0xFF0A2E38), Colors.black] : [const Color(0xFFE0F7FA), Colors.white]))),
-            // المحتوى الرئيسي
+            Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.topCenter,
+                  radius: 1.5,
+                  colors: isDark ? [const Color(0xFF0A2E38).withOpacity(0.3), Colors.black, Colors.black] : [const Color(0xFFE0F7FA), Colors.white, Colors.white],
+                ),
+              ),
+              child: CustomPaint(painter: GridPatternPainter(isDark: isDark)),
+            ),
             Column(
               children: [
-                // شريط الحالة المتقدم
+                // Status Bar
                 Container(
                   height: 60,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // الساعة والتاريخ (قابل للنقر)
-                      GestureDetector(
-                        onTap: _showQuickSettings,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+                        ),
+                        child: Row(
                           children: [
-                            Text(_currentTime, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 16, fontWeight: FontWeight.bold)),
-                            Text(_currentDate, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                            Container(
+                              width: 32, height: 32,
+                              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]), shape: BoxShape.circle),
+                              child: const Center(child: Text("Z", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                            ),
+                            const SizedBox(width: 8),
+                            Text("ZION OS", style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: 2)),
                           ],
                         ),
                       ),
-                      // البطارية (قابلة للنقر)
-                      GestureDetector(
-                        onTap: _showBatteryInfo,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                          child: Row(
-                            children: [
-                              Icon(Icons.battery_full, color: Colors.green, size: 18),
-                              const SizedBox(width: 4),
-                              Text('$_batteryLevel%', style: const TextStyle(color: Colors.white)),
-                            ],
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _toggleRadar,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+                              ),
+                              child: Icon(Icons.radar, color: _showRadarChart ? const Color(0xFF00BCD4) : Colors.grey, size: 20),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.2)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.battery_full, color: Color(0xFF00BCD4), size: 16),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.network_wifi, color: Color(0xFF00BCD4), size: 16),
+                                const SizedBox(width: 12),
+                                Text(_currentTime, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                // فئات التطبيقات
+                // Categories
                 Container(
                   height: 48,
                   margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -262,21 +232,23 @@ class _ZionDesktopState extends State<ZionDesktop> {
                       final isSelected = _selectedIndex == i;
                       return GestureDetector(
                         onTap: () => setState(() => _selectedIndex = i),
-                        child: Container(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
                           margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF00BCD4) : Colors.transparent,
+                            gradient: isSelected ? const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]) : null,
+                            color: isSelected ? null : Colors.transparent,
                             borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: const Color(0xFF00BCD4).withOpacity(isSelected ? 0 : 0.3)),
+                            border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFF00BCD4).withOpacity(0.3)),
                           ),
-                          child: Center(child: Text(_categories[i]['name'].tr(), style: TextStyle(color: isSelected ? Colors.black : const Color(0xFF00BCD4)))),
+                          child: Center(child: Text(_categories[i]['name'].tr(), style: TextStyle(color: isSelected ? Colors.white : const Color(0xFF00BCD4)))),
                         ),
                       );
                     },
                   ),
                 ),
-                // شبكة التطبيقات
+                // Apps Grid
                 Expanded(
                   child: GridView.builder(
                     padding: const EdgeInsets.all(20),
@@ -290,7 +262,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
                           children: [
                             Container(
                               width: iconSize, height: iconSize,
-                              decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(16)),
+                              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(16)),
                               child: IconMapper.getIcon(app['name'], size: iconSize * 0.5),
                             ),
                             const SizedBox(height: 8),
@@ -301,24 +273,27 @@ class _ZionDesktopState extends State<ZionDesktop> {
                     },
                   ),
                 ),
-                // شريط سفلي (Dock)
+                // Dock
                 Container(
                   height: 70,
                   margin: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.7), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.2))),
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.black : Colors.white).withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(25),
+                    border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.2)),
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildDockIcon(Icons.terminal, 'TERMINAL', _openApp),
-                      _buildDockIcon(Icons.folder, 'FILE MANAGER', _openApp),
-                      _buildDockIcon(Icons.public, 'BROWSER', _openApp),
-                      _buildDockIcon(Icons.settings, 'SETTINGS', _openApp),
+                      _buildDockIcon(Icons.terminal, 'terminal', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL'))),
+                      _buildDockIcon(Icons.folder, 'file_manager', () => _openApp(_apps.firstWhere((a) => a['name'] == 'FILE MANAGER'))),
+                      _buildDockIcon(Icons.public, 'browser', () => _openApp(_apps.firstWhere((a) => a['name'] == 'BROWSER'))),
+                      _buildDockIcon(Icons.security, 'settings', () => _openApp(_apps.firstWhere((a) => a['name'] == 'SETTINGS'))),
                     ],
                   ),
                 ),
               ],
             ),
-            // الرادار العائم
             if (_showRadarChart) FloatingRadarChart(onClose: () => setState(() => _showRadarChart = false)),
           ],
         ),
@@ -326,45 +301,34 @@ class _ZionDesktopState extends State<ZionDesktop> {
     );
   }
 
-  Widget _buildDockIcon(IconData icon, String appName, Function(Map<String, dynamic>) onTap) {
-    final app = _apps.firstWhere((a) => a['name'] == appName);
+  Widget _buildDockIcon(IconData icon, String label, VoidCallback onTap) {
+    final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
     return GestureDetector(
-      onTap: () => onTap(app),
+      onTap: onTap,
       child: Column(
         children: [
-          Container(width: 45, height: 45, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: Colors.white, size: 22)),
+          Container(width: 45, height: 45, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: Colors.white, size: 22)),
           const SizedBox(height: 4),
-          Text(appName.tr(), style: const TextStyle(color: Colors.white54, fontSize: 9)),
+          Text(label.tr(), style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 9)),
         ],
       ),
     );
   }
 }
 
-  // إضافة زر عائم للرادار (يظهر في الأسفل)
-
-  void _openAppWithFeedback(Map<String, dynamic> app) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening ${app['name'].tr()}...'), duration: const Duration(milliseconds: 500), backgroundColor: const Color(0xFF00BCD4)),
-    );
-    _openApp(app);
+class GridPatternPainter extends CustomPainter {
+  final bool isDark;
+  GridPatternPainter({required this.isDark});
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = (isDark ? const Color(0xFF00BCD4) : const Color(0xFF00838F)).withOpacity(0.04)
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+    const spacing = 30.0;
+    for (double x = 0; x < size.width; x += spacing) canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    for (double y = 0; y < size.height; y += spacing) canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
   }
-
-  // إضافة دالة تأكيد الخروج
-  Future<bool> _onWillPop() async {
-    return (await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exit Zion OS', style: TextStyle(color: Color(0xFF00BCD4))),
-        content: const Text('Are you sure you want to exit?', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Exit', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    )) ?? false;
-  }
-
-  // أضف هذا في بداية build
-  WillPopScope(
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
