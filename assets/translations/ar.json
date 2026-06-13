@@ -12,5 +12,18 @@
   "save": "حفظ",
   "cancel": "إلغاء",
   "loading": "جاري التحميل...",
-  "pin_incorrect": "الرقم السري غير صحيح"
+  "pin_incorrect": "الرقم السري غير صحيح",
+  "attack": "هجوم",
+  "defense": "دفاع",
+  "analysis": "تحليل",
+  "tools": "أدوات",
+  "battery": "البطارية",
+  "storage": "التخزين",
+  "network": "الشبكة",
+  "processes": "العمليات",
+  "uptime": "مدة التشغيل",
+  "temperature": "الحرارة",
+  "free": "حر",
+  "used": "مستخدم",
+  "total": "إجمالي"
 }
