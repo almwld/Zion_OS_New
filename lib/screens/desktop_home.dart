@@ -176,7 +176,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
                           children: [
                             Container(
                               width: 32, height: 32,
-                              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]), shape: BoxShape.circle),
+                              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]), shape: BoxShape.circle),
                               child: const Center(child: Text("Z", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
                             ),
                             const SizedBox(width: 8),
@@ -262,7 +262,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
                           children: [
                             Container(
                               width: iconSize, height: iconSize,
-                              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(16)),
+                              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(16)),
                               child: IconMapper.getIcon(app['name'], size: iconSize * 0.5),
                             ),
                             const SizedBox(height: 8),
@@ -307,7 +307,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
       onTap: onTap,
       child: Column(
         children: [
-          Container(width: 45, height: 45, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: Colors.white, size: 22)),
+          Container(width: 45, height: 45, decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: Colors.white, size: 22)),
           const SizedBox(height: 4),
           Text(label.tr(), style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 9)),
         ],

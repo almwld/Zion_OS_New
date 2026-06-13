@@ -35,7 +35,7 @@ class ZionOSApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: themeProvider.getThemeData(),
             localizationsDelegates: [
-              context.localizationDelegates,
+              ...context.localizationDelegates,
               GlobalMaterialLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
             ],
