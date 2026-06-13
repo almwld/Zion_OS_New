@@ -27,26 +27,19 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
       
-      - name: 🔑 Generate launcher icons
-        run: flutter pub run flutter_launcher_icons:main
-      
-      - name: Create assets directories
+      - name: Copy existing icons (no generation)
         run: |
-          mkdir -p assets/translations
-          mkdir -p assets/icons/svg_colors
-          mkdir -p assets/images
-          mkdir -p assets/fonts
-      
-      - name: Create placeholder translations
-        run: |
-          echo '{"app_name":"Zion OS","settings":"Settings","dark_mode":"Dark Mode","attack":"Attack","defense":"Defense","analysis":"Analysis","tools":"Tools"}' > assets/translations/en.json
-          echo '{"app_name":"زيون OS","settings":"الإعدادات","dark_mode":"الوضع الليلي","attack":"هجوم","defense":"دفاع","analysis":"تحليل","tools":"أدوات"}' > assets/translations/ar.json
-      
-      - name: Create placeholder SVG icons
-        run: |
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/terminal.svg
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/wifi.svg
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/calculator.svg
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+          # نسخ الأيقونة الموجودة إلى جميع المجلدات
+          cp assets/icons/app_icon.png android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp assets/icons/app_icon.png android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp assets/icons/app_icon.png android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp assets/icons/app_icon.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          cp assets/icons/app_icon.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
       
       - name: 🔨 Build APK
         run: flutter build apk --release --split-per-abi

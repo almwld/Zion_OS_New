@@ -64,3 +64,18 @@ flutter {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 }
+
+android {
+    sourceSets {
+        main {
+            res.srcDirs = [
+                'src/main/res',
+                'src/main/res/mipmap-hdpi',
+                'src/main/res/mipmap-mdpi', 
+                'src/main/res/mipmap-xhdpi',
+                'src/main/res/mipmap-xxhdpi',
+                'src/main/res/mipmap-xxxhdpi'
+            ]
+        }
+    }
+}
