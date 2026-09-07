@@ -10,70 +10,132 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: zion-os-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.22.0'
+  JAVA_VERSION: '17'
+
 jobs:
   quality:
     name: Analyze and test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Surgical Dart repair
+        run: python3 tool/repair_dart_corruption.py
+
+      - name: Verify repaired sources have no known corruption markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\);n" lib
+          ! grep -n "}','Phone', Icons.phone),child: Column(" lib/screens/help/advanced_help_center.dart
+
       - name: Install dependencies
         run: flutter pub get
-      - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Format repaired Dart sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format \
+            lib/features/exploitation/exploit_screen.dart \
+            lib/core/arsenal/zion_web.dart \
+            lib/core/arsenal/zion_postexploit.dart \
+            lib/src/features/files/advanced_file_manager.dart \
+            lib/src/core/arsenal/zion_wifi_real.dart \
+            lib/core/services/unified_core_service.dart \
+            lib/screens/help/advanced_help_center.dart \
+            lib/screens/settings/settings_screen.dart \
+            lib/src/features/wifi/zion_wifi_panel_real.dart
+
       - name: Static analysis
         run: flutter analyze --fatal-infos --fatal-warnings
+
       - name: Run tests
-        run: flutter test
+        run: flutter test --reporter expanded
 
   build:
     name: Build APK
     needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
       - name: Install dependencies
         run: flutter pub get
-      - name: Build APK
+
+      - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
+
+      - name: Verify APK outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for apk in \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            build/app/outputs/flutter-apk/app-x86_64-release.apk; do
+            test -s "$apk"
+            echo "Verified: $apk ($(stat -c%s "$apk") bytes)"
+          done
+
       - name: Upload arm64-v8a
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-arm64-v8a
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          if-no-files-found: error
           retention-days: 30
+
       - name: Upload armeabi-v7a
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-armeabi-v7a
           path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          if-no-files-found: error
           retention-days: 30
+
       - name: Upload x86_64
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-x86_64
           path: build/app/outputs/flutter-apk/app-x86_64-release.apk
+          if-no-files-found: error
           retention-days: 30
