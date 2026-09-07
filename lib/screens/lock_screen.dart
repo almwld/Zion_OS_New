@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/theme_provider.dart';
+import '../security/core/security_core.dart';
+import '../security/core/security_event.dart';
+import '../security/core/security_result.dart';
 import 'desktop_home.dart';
 
 class LockScreen extends StatefulWidget {
@@ -40,6 +43,29 @@ class _LockScreenState extends State<LockScreen> {
     });
   }
 
+  void _publishLockEvent(String type, String outcome) {
+    final core = context.read<SecurityCore>();
+    final result = SecurityResult(
+      id: 'lock-${DateTime.now().microsecondsSinceEpoch}',
+      timestamp: DateTime.now().toUtc(),
+      source: ResultSource.real,
+      severity: SecuritySeverity.info,
+      title: type,
+      description: 'Zion OS lock lifecycle event.',
+      confidence: 1,
+      metadata: <String, Object?>{'outcome': outcome},
+    );
+    core.publish(
+      SecurityEvent(
+        id: result.id,
+        timestamp: result.timestamp,
+        type: type,
+        result: result,
+        attributes: <String, Object?>{'outcome': outcome},
+      ),
+    );
+  }
+
   Future<void> _unlock() async {
     final provider = context.read<ThemeProvider>();
     if (!provider.isReady) return;
@@ -55,19 +81,24 @@ class _LockScreenState extends State<LockScreen> {
     if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
 
     if (!provider.hasPin) {
-      if (await provider.setInitialPin(pin) && mounted) _openDesktop();
+      if (await provider.setInitialPin(pin) && mounted) {
+        _publishLockEvent('lock.initialized', 'success');
+        _openDesktop();
+      }
       return;
     }
 
     if (provider.validatePin(pin)) {
       _failedAttempts = 0;
       _lockedUntil = null;
+      _publishLockEvent('lock.unlock', 'success');
       _openDesktop();
       return;
     }
 
     _failedAttempts++;
     _pinController.clear();
+    _publishLockEvent('lock.unlock', 'failure');
     if (_failedAttempts >= 5) {
       _lockedUntil = DateTime.now().add(const Duration(seconds: 30));
       _failedAttempts = 0;
