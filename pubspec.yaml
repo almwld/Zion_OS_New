@@ -3,13 +3,11 @@ description: Zion OS - منصة أمن سيبراني وتحليل دفاعي
 version: 4.5.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-
-  # UI
   provider: ^6.1.1
   flutter_riverpod: ^2.6.1
   riverpod: ^2.6.1
@@ -17,47 +15,31 @@ dependencies:
   google_fonts: ^6.1.0
   flutter_svg: ^2.0.9
   percent_indicator: ^4.2.5
-
-  # Storage
   shared_preferences: ^2.2.2
   path_provider: ^2.1.1
-
-  # Network
   http: ^1.1.0
   connectivity_plus: ^5.0.2
   network_info_plus: ^4.0.0
   web_socket_channel: ^2.4.5
   dartssh2: ^4.1.0
-
-  # Security
   crypto: ^3.0.3
   convert: ^3.1.1
   flutter_secure_storage: ^9.0.0
   permission_handler: ^11.0.1
   local_auth: ^2.2.0
   pqcrypto: ^0.4.1
-
-  # Device
+  cryptography: ^2.7.0
+  pointycastle: ^3.9.1
   device_info_plus: ^9.1.0
   battery_plus: ^5.0.0
   camera: ^0.11.0+2
   speech_to_text: ^6.6.0
-
-  # Charts
   fl_chart: ^0.68.0
-
-  # WebView
   webview_flutter: ^4.4.0
-
-  # Notifications
   flutter_local_notifications: ^17.2.3
   timezone: ^0.9.4
-
-  # Localization
   intl: ^0.19.0
   easy_localization: ^3.0.3
-
-  # Utils
   url_launcher: ^6.2.1
   share_plus: ^7.2.1
   image_picker: ^1.0.4
