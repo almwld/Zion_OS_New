@@ -93,10 +93,7 @@ jobs:
           edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
           def repair_unified(s):
-              # Remove the orphaned proot case appended after the class.
               s = re.sub(r"\n\s*case 'proot_status':.*\Z", '\n', s, count=1, flags=re.S)
-              # The dns method was closed twice on one line, which prematurely
-              # terminated the class. Remove exactly the extra class brace there.
               s = s.replace(
                   "} catch (e) { return 'DNS failed: $e'; } }\n  }\n",
                   "} catch (e) { return 'DNS failed: $e'; }\n  }\n",
@@ -106,16 +103,21 @@ jobs:
           edit('lib/core/services/unified_core_service.dart', repair_unified)
 
           def repair_help(s):
-              # Restore the intended scroll view at the start of the contact tab.
               s = s.replace(
                   "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
                   "return SingleChildScrollView(child: Column(",
                   1,
               )
-              # Remove the duplicated/truncated widget tail after the valid class.
               marker = "}','Phone', Icons.phone),child: Column("
               if marker in s:
                   s = s.split(marker, 1)[0].rstrip() + '\n'
+              # The repaired return wraps the existing Column in a ScrollView.
+              # Close both widgets before the method's closing brace.
+              s = s.replace(
+                  "      ],\n    );\n  }\n  \n  Widget _buildContactCard",
+                  "      ],\n    ));\n  }\n  \n  Widget _buildContactCard",
+                  1,
+              )
               return s
           edit('lib/screens/help/advanced_help_center.dart', repair_help)
 
