@@ -3,12 +3,13 @@ name: Build Zion OS APK
 on:
   push:
     branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -16,44 +17,36 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.38.10'
-          channel: 'stable'
+          channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Create missing asset directories
+      - name: Verify repository assets
+        shell: bash
         run: |
-          mkdir -p assets/translations
-          mkdir -p assets/icons/svg_colors
-          mkdir -p assets/images
-          mkdir -p assets/fonts
-          mkdir -p assets/wallpapers
-      - name: Create placeholder translations (English)
-        run: |
-          echo '{"app_name":"Zion OS","settings":"Settings","dark_mode":"Dark Mode","attack":"Attack","defense":"Defense","analysis":"Analysis","tools":"Tools","lock_screen":{"incorrect_pin":"Incorrect PIN"},"common":{"loading":"Loading..."}}' > assets/translations/en.json
-      - name: Create placeholder translations (Arabic)
-        run: |
-          echo '{"app_name":"زيون OS","settings":"الإعدادات","dark_mode":"الوضع الليلي","attack":"هجوم","defense":"دفاع","analysis":"تحليل","tools":"أدوات","lock_screen":{"incorrect_pin":"الرقم السري غير صحيح"},"common":{"loading":"جاري التحميل..."}}' > assets/translations/ar.json
-      - name: Create placeholder SVG icons (minimal)
-        run: |
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/terminal.svg
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/wifi.svg
-          echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/calculator.svg
+          test -f assets/translations/en.json
+          test -f assets/translations/ar.json
+          test -f assets/icons/app_icon.png
+          test -d assets/icons/svg_colors
+          test -d assets/images
+          test -d assets/fonts
 
-      - name: Generate launcher icons
-        run: flutter pub run flutter_launcher_icons:main
+      - name: Analyze
+        run: flutter analyze
 
-      - name: Clean previous builds
-        run: flutter clean
+      - name: Unit and widget tests
+        run: flutter test --coverage
 
-      - name: Build APK (split per ABI)
+      - name: Build release APK
         run: flutter build apk --release --split-per-abi
 
       - name: Upload arm64-v8a
