@@ -31,7 +31,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.38.10'
           channel: stable
           cache: true
 
@@ -111,8 +111,6 @@ jobs:
               marker = "}','Phone', Icons.phone),child: Column("
               if marker in s:
                   s = s.split(marker, 1)[0].rstrip() + '\n'
-              # The repaired return wraps the existing Column in a ScrollView.
-              # Close both widgets before the method's closing brace.
               s = s.replace(
                   "      ],\n    );\n  }\n  \n  Widget _buildContactCard",
                   "      ],\n    ));\n  }\n  \n  Widget _buildContactCard",
