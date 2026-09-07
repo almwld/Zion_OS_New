@@ -55,18 +55,25 @@ def repair_unified(source: str) -> str:
 
 
 def repair_help(source: str) -> str:
-    # Repair only the two known corruption signatures. Never rebuild or simplify
-    # the help center, so FAQ/search/categories/tutorials/contact remain intact.
+    # Repair only the known corruption signatures. Preserve FAQ/search,
+    # categories, tutorials, contact cards, and feedback functionality.
     source = source.replace(
         "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
         "return SingleChildScrollView(child: Column(",
         1,
     )
 
-    duplicate_tail = "}\n','Phone', Icons.phone),child: Column("
+    # The repaired ScrollView wraps the existing Column, so close both widgets.
+    source = source.replace(
+        "        ),\n      ],\n    );\n  }\n  \n  Widget _buildContactCard",
+        "        ),\n      ],\n    ));\n  }\n  \n  Widget _buildContactCard",
+        1,
+    )
+
+    # Remove only the duplicated/corrupted tail after _getIconData.
+    duplicate_tail = "}\n}','Phone', Icons.phone),child: Column("
     if duplicate_tail in source:
         source = source.split(duplicate_tail, 1)[0].rstrip() + "\n"
-
     return source
 
 
