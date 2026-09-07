@@ -1,0 +1,63 @@
+name: Zion OS Phase 1 Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zion-os-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.22.0'
+  JAVA_VERSION: '17'
+
+jobs:
+  quality:
+    name: Static analysis and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Surgical Dart repair
+        run: python3 tool/repair_dart_corruption.py
+
+      - name: Verify repair markers are absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\);n" lib
+          ! grep -n "','Phone', Icons.phone),child: Column(" lib/screens/help/advanced_help_center.dart
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Unit and widget tests
+        run: flutter test
