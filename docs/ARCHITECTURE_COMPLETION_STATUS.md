@@ -1,44 +1,57 @@
 # Zion OS — Integrated Architecture Status
 
-This document records what is implemented as executable code and what remains runtime-dependent. A UI is never treated as proof of capability.
+This document describes the production architecture. Code presence is not treated as proof of runtime capability.
 
-## Core
-- `lib/core/core_runtime.dart`: persistent multi-session manager, command event pipeline and runtime statistics.
-- Existing native PTY remains the real local terminal path where the Android native layer is available.
-- Window management already exists in `lib/core/wm/window_manager.dart`; floating-window UI exists separately. Full OS-level windowing remains an application-level Flutter window manager, not a replacement for Android's window manager.
+## Application core
+
+- `lib/main.dart` is the application entry point.
+- `provider` is the single application state/dependency-injection framework.
+- `SecurityCore` is created at startup and supplied through Provider.
+- `RuntimeIntegrity` performs deterministic startup checks and records the result in the audit log.
+- The application starts at the Lock Screen.
+
+## Terminal
+
+- `lib/features/terminal/terminal_service.dart` owns terminal history, authorization, audit events and process lifecycle.
+- `NativePtyAdapter` is the Android PTY bridge.
+- PTY availability is runtime-dependent. Unsupported devices report `UNAVAILABLE`; success is never simulated.
+- PTY source uses the Android native layer and must be validated on a real Android device.
 
 ## Network
-- `RealNetworkEngine`: real TCP probes and defensive host discovery.
-- `DnsResolver`: OS DNS resolution through `InternetAddress.lookup`.
-- `PacketInspector`: real IPv4/IPv6 header parsing for supplied packet bytes.
-- `LivePacketCapture`: explicitly `UNAVAILABLE` because unrestricted raw capture on Android requires a supported VPN/native/root capture path.
-- P2P LAN transport is implemented separately in `p2p_lan_service.dart` and is LAN discovery/data transport, not a global Internet DHT.
 
-## Security
-- AES-256-GCM, SHA-512, RSA key generation and P-256 ECDSA primitives are provided by vetted Dart crypto libraries.
-- Existing authorization gateway remains the policy boundary.
-- "Military crypto" is not treated as a technical algorithm name; the implementation uses standardized cryptographic primitives instead.
-- PQC is provided by ML-KEM-768 and ML-DSA-65 through `pqcrypto`; this is not a claim of FIPS/CMVP validation.
+- Production network features are defensive diagnostics and local-network discovery.
+- DNS uses OS resolution through `InternetAddress.lookup`.
+- Ping is attempted only when the runtime provides the binary.
+- HTTPS header inspection requires an `https://` URL.
+- TLS validation uses `SecureSocket`.
+- The network map no longer fabricates MAC addresses, hostnames or OS fingerprints.
 
-## AI Agent
-- Local MLP inference and online gradient updates are executable.
-- Q-learning is executable.
-- Oracle forecasting is statistical regression, not clairvoyance.
-- Guardian is a defensive rule layer.
-- Empathic analysis is lexical classification, not human-level emotional understanding.
-- No claim is made that this is a foundation model or autonomous AGI.
+## Security boundary
 
-## Integration
-- HTTP(S), WebSocket, generic LLM endpoint and cloud synchronization are real network clients.
-- External services remain `RUNTIME_DEPENDENT` until an endpoint/configuration is supplied and successfully exercised.
+The production registry intentionally contains defensive modules only. Autonomous propagation, credential attacks, password cracking, exploitation, persistence, evasion, botnet control and similar offensive execution are excluded from the production registry and command surface.
 
-## External systems
-- Termux/Kali/Ubuntu/Debian/Alpine/Arch are detected by runtime probes/markers.
-- Detection does not install a distribution or claim availability where the runtime lacks its filesystem/binaries.
-- PRoot/Kali support remains subject to packaged binary/assets and device ABI/runtime conditions.
+## Cryptography
 
-## Arsenal
-`ArsenalLayerGateway` is the composition boundary for defensive modules. It routes network inspection, packet analysis and SI analysis while preserving the authorization policy. Offensive execution, credential theft, password cracking, deauthentication, rogue-AP capture, SQL exploitation/data extraction, Metasploit execution and Hydra execution remain blocked.
+AES-256-GCM, SHA-512, RSA, P-256 and post-quantum primitives are exposed only through their dedicated defensive cryptographic services. Library integration is not a claim of FIPS/CMVP certification.
 
-## Verification rule
-A capability is only reported as `REAL` after its implementation succeeds. Otherwise the system reports `UNAVAILABLE`, `BLOCKED`, or `RUNTIME_DEPENDENT` with a reason.
+## External runtimes
+
+Termux, Linux distributions, PRoot and other external runtimes are runtime-dependent. Detection must not be interpreted as installation or availability. Missing binaries/filesystems must result in an explicit capability state.
+
+## CI and release verification
+
+The CI pipeline is intentionally strict:
+
+1. Install dependencies.
+2. Verify required source assets exist in Git.
+3. Run `flutter analyze`.
+4. Run `flutter test --coverage`.
+5. Build the release APK.
+
+CI does not create placeholder translations, icons or source assets. Missing repository content therefore fails the build instead of being silently synthesized.
+
+## Release gate
+
+A build is not considered production-ready until CI passes and a real Android device validates the Lock Screen, terminal, native PTY lifecycle, security authorization and defensive network diagnostics.
+
+Capability status values are `REAL`, `UNAVAILABLE`, `BLOCKED` or `RUNTIME_DEPENDENT`; no simulated success is permitted.
