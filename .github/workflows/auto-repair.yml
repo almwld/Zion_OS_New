@@ -1,0 +1,125 @@
+name: Zion OS Auto Repair
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zion-auto-repair-main
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Repair known syntax corruption
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # 1) Repair accidental literal "n" tokens introduced between Dart statements.
+          p = Path('lib/features/exploitation/exploit_screen.dart')
+          if p.exists():
+              s = p.read_text(encoding='utf-8')
+              s2 = re.sub(r"\);n[ \t]+", ");\n        ", s)
+              if s2 != s:
+                  p.write_text(s2, encoding='utf-8')
+
+          # 2) Fix an invalid trailing semicolon in an HttpClient request call.
+          p = Path('lib/core/arsenal/zion_web.dart')
+          if p.exists():
+              s = p.read_text(encoding='utf-8')
+              s2 = s.replace("body: '{\\\"query\\\": {\\\"match_all\\\": {}}}';", "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}',")
+              if s2 != s:
+                  p.write_text(s2, encoding='utf-8')
+
+          # 3) Move ViewMode to library scope; Dart does not permit enum declarations
+          #    inside a class body.
+          p = Path('lib/src/features/files/advanced_file_manager.dart')
+          if p.exists():
+              s = p.read_text(encoding='utf-8')
+              s2 = s.replace("class AdvancedFileManager extends StatefulWidget {", "enum ViewMode { grid, list }\n\nclass AdvancedFileManager extends StatefulWidget {")
+              s2 = s2.replace("\n  enum ViewMode { grid, list }\n", "\n")
+              if s2 != s:
+                  p.write_text(s2, encoding='utf-8')
+
+          # 4) Move late imports in zion_wifi_real.dart to the import section.
+          p = Path('lib/src/core/arsenal/zion_wifi_real.dart')
+          if p.exists():
+              s = p.read_text(encoding='utf-8')
+              late = [
+                  "import 'zion_router_exploits.dart';",
+                  "import 'zion_ai_password_guesser.dart';",
+                  "import 'zion_guest_network_hack.dart';",
+                  "import 'zion_upnp_hack.dart';",
+              ]
+              for item in late:
+                  s = s.replace("\n" + item, "")
+              anchor = "import 'package:wifi_p2p/wifi_p2p.dart';"
+              if anchor in s:
+                  s = s.replace(anchor, anchor + "\n" + "\n".join(late), 1)
+              p.write_text(s, encoding='utf-8')
+
+          # 5) Remove the stray proot_status switch case that was placed outside
+          #    UnifiedCoreService and add it to execute() before help handling.
+          p = Path('lib/core/services/unified_core_service.dart')
+          if p.exists():
+              s = p.read_text(encoding='utf-8')
+              stray = """\n}\n\n  case 'proot_status':\n    final prootPath = await KaliLoaderService.findProot();\n    if (prootPath != null) {\n      return '✅ proot موجود: $prootPath';\n    } else {\n      return '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';\n    }"""
+              if stray in s:
+                  s = s.replace(stray, "\n}")
+                  marker = "      if (command == 'help') return _helpText();"
+                  insertion = "      if (command == 'proot_status') {\n        final prootPath = await KaliLoaderService.findProot();\n        return prootPath != null\n            ? '✅ proot موجود: $prootPath'\n            : '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';\n      }\n\n"
+                  if marker in s:
+                      s = s.replace(marker, insertion + marker, 1)
+              p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Format Dart sources
+        run: dart format lib test
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Commit repaired sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then
+            echo 'No repair changes were required.'
+            exit 0
+          fi
+          git add lib test
+          git commit -m 'fix: repair Dart syntax and normalize sources'
+          git push origin main
