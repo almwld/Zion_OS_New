@@ -26,6 +26,13 @@ android {
         versionName = "1.0.0"
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     // Release builds must never use the debug keystore.
     // Add proper release signing through CI secrets before publishing.
     buildTypes {
