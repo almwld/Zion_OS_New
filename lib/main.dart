@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
+import 'package:provider/provider.dart' as provider;
 
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
@@ -27,8 +27,8 @@ Future<void> main() async {
   );
 
   runApp(
-    ProviderScope(
-      overrides: <Override>[
+    riverpod.ProviderScope(
+      overrides: <riverpod.Override>[
         securityCoreProvider.overrideWithValue(securityCore),
       ],
       child: EasyLocalization(
@@ -49,12 +49,12 @@ class ZionOSApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
+    return provider.MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        Provider<SecurityCore>.value(value: securityCore),
+        provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        provider.Provider<SecurityCore>.value(value: securityCore),
       ],
-      child: Consumer<ThemeProvider>(
+      child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
           return MaterialApp(
             title: 'Zion OS 2027',
