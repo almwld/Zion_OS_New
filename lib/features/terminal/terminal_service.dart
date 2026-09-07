@@ -12,32 +12,23 @@ final terminalServiceProvider = Provider<TerminalService>((ref) {
 });
 
 class TerminalResult {
-  const TerminalResult({
-    required this.command,
-    required this.stdout,
-    required this.stderr,
-    required this.exitCode,
-    required this.duration,
-    required this.shell,
-  });
-
+  const TerminalResult({required this.command, required this.stdout, required this.stderr, required this.exitCode, required this.duration, required this.shell});
   final String command;
   final String stdout;
   final String stderr;
   final int exitCode;
   final Duration duration;
   final String shell;
-
   bool get succeeded => exitCode == 0;
 
   String get formatted {
     final buffer = StringBuffer();
     if (stdout.isNotEmpty) buffer.write(stdout.trimRight());
     if (stderr.isNotEmpty) {
-      if (buffer.length > 0) buffer.writeln();
+      if (buffer.isNotEmpty) buffer.writeln();
       buffer.write(stderr.trimRight());
     }
-    if (buffer.length == 0) buffer.write('Exit code: $exitCode');
+    if (buffer.isEmpty) buffer.write('Exit code: $exitCode');
     return buffer.toString();
   }
 }
@@ -68,49 +59,36 @@ class TerminalService {
     await prefs.setStringList(_historyKey, _history.take(_maxHistory).toList());
   }
 
+  Future<String?> _findShell() async {
+    for (final candidate in <String>['/system/bin/sh', '/bin/sh', 'sh']) {
+      try {
+        final check = await Process.run(candidate, const <String>['-c', 'exit 0'], runInShell: false);
+        if (check.exitCode == 0) return candidate;
+      } catch (_) {}
+    }
+    return null;
+  }
+
   Future<TerminalResult> execute(String command) async {
     final value = command.trim();
-    if (value.isEmpty) {
-      return const TerminalResult(
-        command: '',
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-        duration: Duration.zero,
-        shell: 'none',
-      );
+    if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
+    if (value == 'help') {
+      return const TerminalResult(command: 'help', stdout: 'Built-in: help, history, clear, exit, shell-status\nAll other commands execute through the real POSIX shell when available.\nExamples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nRemote access: use installed ssh/telnet clients when the runtime provides them.', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
     }
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
-      return const TerminalResult(
-        command: 'clear',
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-        duration: Duration.zero,
-        shell: 'builtin',
-      );
+      return const TerminalResult(command: 'clear', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
     }
     if (value == 'history') {
-      return TerminalResult(
-        command: value,
-        stdout: List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'),
-        stderr: '',
-        exitCode: 0,
-        duration: Duration.zero,
-        shell: 'builtin',
-      );
+      return TerminalResult(command: value, stdout: List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'), stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
+    }
+    if (value == 'shell-status') {
+      final shell = await _findShell();
+      return TerminalResult(command: value, stdout: shell == null ? 'Shell: UNAVAILABLE' : 'Shell: AVAILABLE\nPath: $shell\nInteractive: $isInteractiveRunning', stderr: '', exitCode: shell == null ? 127 : 0, duration: Duration.zero, shell: shell ?? 'unavailable');
     }
     if (value == 'exit') {
       await stopInteractive();
-      return const TerminalResult(
-        command: 'exit',
-        stdout: 'Interactive shell stopped.',
-        stderr: '',
-        exitCode: 0,
-        duration: Duration.zero,
-        shell: 'builtin',
-      );
+      return const TerminalResult(command: 'exit', stdout: 'Interactive shell stopped.', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
     }
 
     _history.remove(value);
@@ -120,47 +98,15 @@ class TerminalService {
 
     final shell = await _findShell();
     if (shell == null) {
-      return const TerminalResult(
-        command: value,
-        stdout: '',
-        stderr: 'No POSIX shell is available on this Android runtime.',
-        exitCode: 127,
-        duration: Duration.zero,
-        shell: 'unavailable',
-      );
+      return const TerminalResult(command: '', stdout: '', stderr: 'No POSIX shell is available on this Android runtime.', exitCode: 127, duration: Duration.zero, shell: 'unavailable');
     }
-
     final started = DateTime.now();
     try {
       final result = await Process.run(shell, <String>['-c', value], runInShell: false);
-      return TerminalResult(
-        command: value,
-        stdout: result.stdout.toString(),
-        stderr: result.stderr.toString(),
-        exitCode: result.exitCode,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
+      return TerminalResult(command: value, stdout: result.stdout.toString(), stderr: result.stderr.toString(), exitCode: result.exitCode, duration: DateTime.now().difference(started), shell: shell);
     } on ProcessException catch (e) {
-      return TerminalResult(
-        command: value,
-        stdout: '',
-        stderr: e.message,
-        exitCode: 126,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
+      return TerminalResult(command: value, stdout: '', stderr: e.message, exitCode: 126, duration: DateTime.now().difference(started), shell: shell);
     }
-  }
-
-  Future<String?> _findShell() async {
-    for (final candidate in <String>['/system/bin/sh', '/bin/sh', 'sh']) {
-      try {
-        final check = await Process.run(candidate, const <String>['-c', 'exit 0'], runInShell: false);
-        if (check.exitCode == 0) return candidate;
-      } catch (_) {}
-    }
-    return null;
   }
 
   Future<void> startInteractive() async {
@@ -173,7 +119,7 @@ class TerminalService {
     try {
       _process = await Process.start(shell, const <String>['-i'], runInShell: false);
       _stdoutSub = _process!.stdout.transform(utf8.decoder).listen(_output.add);
-      _stderrSub = _process!.stderr.transform(utf8.decoder).listen((data) => _output.add(data));
+      _stderrSub = _process!.stderr.transform(utf8.decoder).listen(_output.add);
       _output.add('Connected to real shell: $shell\n');
     } catch (e) {
       _output.add('ERROR: Failed to start shell: $e');
@@ -185,7 +131,7 @@ class TerminalService {
     final process = _process;
     if (process == null) return;
     process.stdin.write(input);
-    process.stdin.flush();
+    unawaited(process.stdin.flush());
   }
 
   Future<void> stopInteractive() async {
