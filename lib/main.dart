@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' as riverpod;
 import 'package:provider/provider.dart' as provider;
 
 import 'features/terminal/terminal_service.dart';
@@ -27,17 +26,12 @@ Future<void> main() async {
   );
 
   runApp(
-    riverpod.ProviderScope(
-      overrides: <riverpod.Override>[
-        securityCoreProvider.overrideWithValue(securityCore),
-      ],
-      child: EasyLocalization(
-        supportedLocales: const [Locale('en'), Locale('ar')],
-        path: 'assets/translations',
-        fallbackLocale: const Locale('en'),
-        startLocale: const Locale('ar'),
-        child: ZionOSApp(securityCore: securityCore),
-      ),
+    EasyLocalization(
+      supportedLocales: const [Locale('en'), Locale('ar')],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en'),
+      startLocale: const Locale('ar'),
+      child: ZionOSApp(securityCore: securityCore),
     ),
   );
 }
@@ -53,11 +47,15 @@ class ZionOSApp extends StatelessWidget {
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
         provider.Provider<SecurityCore>.value(value: securityCore),
+        provider.Provider<TerminalService>(
+          create: (_) => TerminalService(securityCore),
+          dispose: (_, service) => service.dispose(),
+        ),
       ],
       child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
           return MaterialApp(
-            title: 'Zion OS 2027',
+            title: 'Zion OS',
             debugShowCheckedModeBanner: false,
             theme: themeProvider.getThemeData(),
             localizationsDelegates: [
