@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:provider/provider.dart' as provider;
 
+import 'core/services/unified_core_service.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
 import 'screens/lock_screen.dart';
@@ -47,10 +48,8 @@ class ZionOSApp extends StatelessWidget {
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
         provider.Provider<SecurityCore>.value(value: securityCore),
-        provider.Provider<TerminalService>(
-          create: (_) => TerminalService(securityCore),
-          dispose: (_, service) => service.dispose(),
-        ),
+        provider.Provider<TerminalService>(create: (_) => TerminalService(securityCore), dispose: (_, service) => service.dispose()),
+        provider.Provider<UnifiedCoreService>(create: (_) => UnifiedCoreService()),
       ],
       child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
