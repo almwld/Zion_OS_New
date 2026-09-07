@@ -55,14 +55,18 @@ def repair_unified(source: str) -> str:
 
 
 def repair_help(source: str) -> str:
+    # Repair only the two known corruption signatures. Never rebuild or simplify
+    # the help center, so FAQ/search/categories/tutorials/contact remain intact.
     source = source.replace(
         "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
         "return SingleChildScrollView(child: Column(",
         1,
     )
-    marker = "}\n','Phone', Icons.phone),child: Column("
-    if marker in source:
-        source = source.split(marker, 1)[0].rstrip() + "\n}\n"
+
+    duplicate_tail = "}\n','Phone', Icons.phone),child: Column("
+    if duplicate_tail in source:
+        source = source.split(duplicate_tail, 1)[0].rstrip() + "\n"
+
     return source
 
 
