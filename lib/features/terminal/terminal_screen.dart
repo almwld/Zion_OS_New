@@ -3,12 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../security/core/security_core.dart';
 import 'terminal_service.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
-
   @override
   State<TerminalScreen> createState() => _TerminalScreenState();
 }
