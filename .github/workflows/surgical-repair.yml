@@ -1,0 +1,79 @@
+name: Surgical Dart Repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tool/repair_dart_corruption.py'
+      - 'lib/**/*.dart'
+      - '.github/workflows/surgical-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: surgical-repair-main
+  cancel-in-progress: false
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Surgical repair only
+        run: python3 tool/repair_dart_corruption.py
+
+      - name: Format Dart sources
+        run: dart format lib test
+
+      - name: Verify no known corruption markers remain
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\}\n','Phone'|\);n" lib
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
+
+      - name: Flutter tests
+        run: flutter test --reporter expanded
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Commit surgical repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then
+            echo 'No repair changes to commit.'
+            exit 0
+          fi
+          git add lib tool
+          git commit -m 'fix: surgically repair corrupted Dart sources'
+          git push origin HEAD:main
