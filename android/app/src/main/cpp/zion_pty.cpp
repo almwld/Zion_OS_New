@@ -5,7 +5,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <cerrno>
-#include <cstring>
+
+namespace {
+pid_t g_child_pid = -1;
+}
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_zion_os_PtyNative_start(JNIEnv* env, jclass, jstring shell, jint rows, jint cols) {
@@ -17,7 +20,7 @@ Java_com_zion_os_PtyNative_start(JNIEnv* env, jclass, jstring shell, jint rows, 
     ws.ws_col = static_cast<unsigned short>(cols > 0 ? cols : 80);
 
     int master = -1;
-    pid_t pid = forkpty(&master, nullptr, nullptr, &ws);
+    const pid_t pid = forkpty(&master, nullptr, nullptr, &ws);
     if (pid < 0) {
         env->ReleaseStringUTFChars(shell, shell_chars);
         return -errno;
@@ -31,8 +34,13 @@ Java_com_zion_os_PtyNative_start(JNIEnv* env, jclass, jstring shell, jint rows, 
     }
 
     env->ReleaseStringUTFChars(shell, shell_chars);
-    // Pack pid and master fd into a single 64-bit value: high 32 bits pid, low 32 bits fd.
-    return static_cast<jint>(master);
+    g_child_pid = pid;
+    return master;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_zion_os_PtyNative_pid(JNIEnv*, jclass) {
+    return static_cast<jint>(g_child_pid);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -47,7 +55,10 @@ Java_com_zion_os_PtyNative_resize(JNIEnv*, jclass, jint master, jint rows, jint 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_zion_os_PtyNative_stop(JNIEnv*, jclass, jint pid, jint master) {
     int rc = 0;
-    if (pid > 0 && kill(static_cast<pid_t>(pid), SIGHUP) != 0 && errno != ESRCH) rc = -errno;
+    if (pid > 0 && kill(static_cast<pid_t>(pid), SIGHUP) != 0 && errno != ESRCH) {
+        rc = -errno;
+    }
     if (master >= 0) close(master);
+    if (g_child_pid == static_cast<pid_t>(pid)) g_child_pid = -1;
     return rc;
 }
