@@ -29,7 +29,7 @@ dependencies:
   local_auth: ^2.2.0
   pqcrypto: ^0.4.1
   cryptography: ^2.7.0
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   device_info_plus: ^9.1.0
   battery_plus: ^5.0.0
   camera: ^0.11.0+2
