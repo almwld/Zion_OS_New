@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
+import 'terminal_capabilities.dart';
 
 final terminalServiceProvider = Provider<TerminalService>((ref) {
   final service = TerminalService(ref.read(securityCoreProvider));
@@ -19,7 +20,15 @@ final securityCoreProvider = Provider<SecurityCore>((ref) {
 });
 
 class TerminalResult {
-  const TerminalResult({required this.command, required this.stdout, required this.stderr, required this.exitCode, required this.duration, required this.shell});
+  const TerminalResult({
+    required this.command,
+    required this.stdout,
+    required this.stderr,
+    required this.exitCode,
+    required this.duration,
+    required this.shell,
+  });
+
   final String command;
   final String stdout;
   final String stderr;
@@ -53,6 +62,7 @@ class TerminalService {
   StreamSubscription<String>? _stderrSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
+  String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
@@ -63,6 +73,9 @@ class TerminalService {
     _history
       ..clear()
       ..addAll(prefs.getStringList(_historyKey) ?? const <String>[]);
+    if (_history.length > _maxHistory) {
+      _history.removeRange(_maxHistory, _history.length);
+    }
   }
 
   Future<void> _saveHistory() async {
@@ -70,15 +83,23 @@ class TerminalService {
     await prefs.setStringList(_historyKey, _history.take(_maxHistory).toList());
   }
 
-  Future<String?> _findShell() async {
-    for (final candidate in <String>['/system/bin/sh', '/bin/sh', 'sh']) {
+  Future<String?> _findExecutable(List<String> candidates) async {
+    for (final candidate in candidates) {
       try {
-        final check = await Process.run(candidate, const <String>['-c', 'exit 0'], runInShell: false);
-        if (check.exitCode == 0) return candidate;
+        final result = await Process.run(
+          candidate,
+          const <String>['--version'],
+          runInShell: false,
+        );
+        if (result.exitCode == 0 || candidate.startsWith('/')) return candidate;
       } catch (_) {}
     }
     return null;
   }
+
+  Future<String?> _findShell() => _findExecutable(
+        const <String>['/system/bin/sh', '/bin/sh', 'sh'],
+      );
 
   bool _authorized(String command) {
     final scope = AuthorizationScope(
@@ -93,7 +114,14 @@ class TerminalService {
     );
   }
 
-  void _audit({required String command, required String outcome, required int exitCode, required String shell, required Duration duration}) {
+  void _audit({
+    required String command,
+    required String outcome,
+    required int exitCode,
+    required String shell,
+    required Duration duration,
+    bool? interactive,
+  }) {
     _securityCore.auditLogger.log(
       action: _terminalAction,
       actor: 'zion-terminal',
@@ -104,86 +132,264 @@ class TerminalService {
         'exitCode': exitCode,
         'shell': shell,
         'durationMs': duration.inMilliseconds,
-        'interactive': isInteractiveRunning,
+        'interactive': interactive ?? isInteractiveRunning,
         'source': 'REAL_PROCESS',
       },
     );
   }
 
+  void _remember(String command) {
+    _history.remove(command);
+    _history.insert(0, command);
+    if (_history.length > _maxHistory) _history.removeLast();
+    unawaited(_saveHistory());
+  }
+
+  TerminalResult _builtinResult(String command, String stdout) {
+    _audit(
+      command: command,
+      outcome: 'success',
+      exitCode: 0,
+      shell: 'builtin',
+      duration: Duration.zero,
+      interactive: false,
+    );
+    return TerminalResult(
+      command: command,
+      stdout: stdout,
+      stderr: '',
+      exitCode: 0,
+      duration: Duration.zero,
+      shell: 'builtin',
+    );
+  }
+
   Future<TerminalResult> execute(String command) async {
     final value = command.trim();
-    if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
-    if (value == 'help') {
-      return const TerminalResult(command: 'help', stdout: 'Built-in: help, history, clear, exit, shell-status\nAll other commands execute through the real POSIX shell when available.\nExamples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nRemote access: use installed ssh/telnet clients when the runtime provides them.', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
+    if (value.isEmpty) {
+      return const TerminalResult(
+        command: '',
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        duration: Duration.zero,
+        shell: 'none',
+      );
     }
+
+    if (value == 'help' || value == 'zion-help') {
+      return _builtinResult(
+        value,
+        'Built-in: help, capabilities, history, clear, exit, shell-status\n'
+        'Real shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\n'
+        'Network diagnostics: ping, ip, ss/netstat, traceroute, nslookup/dig when installed.\n'
+        'Remote administration: ssh/telnet only when the real client exists in the runtime.\n'
+        'No feature reports success unless the underlying runtime operation actually succeeds.',
+      );
+    }
+
+    if (value == 'capabilities') {
+      return _builtinResult(value, TerminalCapabilities.describe());
+    }
+
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
-      return const TerminalResult(command: 'clear', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
+      return _builtinResult(value, '');
     }
+
     if (value == 'history') {
-      return TerminalResult(command: value, stdout: List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'), stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
+      return _builtinResult(
+        value,
+        List.generate(
+          _history.length,
+          (i) => '${i + 1}  ${_history[i]}',
+        ).join('\n'),
+      );
     }
+
     if (value == 'shell-status') {
       final shell = await _findShell();
-      return TerminalResult(command: value, stdout: shell == null ? 'Shell: UNAVAILABLE' : 'Shell: AVAILABLE\nPath: $shell\nInteractive: $isInteractiveRunning', stderr: '', exitCode: shell == null ? 127 : 0, duration: Duration.zero, shell: shell ?? 'unavailable');
+      final result = TerminalResult(
+        command: value,
+        stdout: shell == null
+            ? 'Shell: UNAVAILABLE'
+            : 'Shell: AVAILABLE\nPath: $shell\nInteractive: $isInteractiveRunning',
+        stderr: '',
+        exitCode: shell == null ? 127 : 0,
+        duration: Duration.zero,
+        shell: shell ?? 'unavailable',
+      );
+      _audit(
+        command: value,
+        outcome: result.succeeded ? 'success' : 'unavailable',
+        exitCode: result.exitCode,
+        shell: result.shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
     }
+
     if (value == 'exit') {
       await stopInteractive();
-      return const TerminalResult(command: 'exit', stdout: 'Interactive shell stopped.', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
+      return _builtinResult(value, 'Interactive shell stopped.');
     }
 
     if (!_authorized(value)) {
-      const denied = TerminalResult(command: value, stdout: '', stderr: 'Command denied by Zion SecurityCore authorization policy.', exitCode: 126, duration: Duration.zero, shell: 'security-core');
-      _audit(command: value, outcome: 'denied', exitCode: denied.exitCode, shell: denied.shell, duration: denied.duration);
+      const denied = TerminalResult(
+        command: value,
+        stdout: '',
+        stderr: 'Command denied by Zion SecurityCore authorization policy.',
+        exitCode: 126,
+        duration: Duration.zero,
+        shell: 'security-core',
+      );
+      _audit(
+        command: value,
+        outcome: 'denied',
+        exitCode: denied.exitCode,
+        shell: denied.shell,
+        duration: denied.duration,
+        interactive: false,
+      );
       return denied;
     }
 
-    _history.remove(value);
-    _history.insert(0, value);
-    if (_history.length > _maxHistory) _history.removeLast();
-    unawaited(_saveHistory());
+    _remember(value);
 
     final shell = await _findShell();
     if (shell == null) {
-      const unavailable = TerminalResult(command: value, stdout: '', stderr: 'No POSIX shell is available on this Android runtime.', exitCode: 127, duration: Duration.zero, shell: 'unavailable');
-      _audit(command: value, outcome: 'unavailable', exitCode: unavailable.exitCode, shell: unavailable.shell, duration: unavailable.duration);
-      return unavailable;
+      const unavailable = TerminalResult(
+        command: '',
+        stdout: '',
+        stderr: 'No POSIX shell is available on this Android runtime.',
+        exitCode: 127,
+        duration: Duration.zero,
+        shell: 'unavailable',
+      );
+      final result = TerminalResult(
+        command: value,
+        stdout: unavailable.stdout,
+        stderr: unavailable.stderr,
+        exitCode: unavailable.exitCode,
+        duration: unavailable.duration,
+        shell: unavailable.shell,
+      );
+      _audit(
+        command: value,
+        outcome: 'unavailable',
+        exitCode: result.exitCode,
+        shell: result.shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
     }
+
     final started = DateTime.now();
     try {
-      final result = await Process.run(shell, <String>['-c', value], runInShell: false);
-      final terminalResult = TerminalResult(command: value, stdout: result.stdout.toString(), stderr: result.stderr.toString(), exitCode: result.exitCode, duration: DateTime.now().difference(started), shell: shell);
-      _audit(command: value, outcome: terminalResult.succeeded ? 'success' : 'failed', exitCode: terminalResult.exitCode, shell: terminalResult.shell, duration: terminalResult.duration);
-      return terminalResult;
+      final processResult = await Process.run(
+        shell,
+        <String>['-c', value],
+        runInShell: false,
+      );
+      final result = TerminalResult(
+        command: value,
+        stdout: processResult.stdout.toString(),
+        stderr: processResult.stderr.toString(),
+        exitCode: processResult.exitCode,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+      _audit(
+        command: value,
+        outcome: result.succeeded ? 'success' : 'failed',
+        exitCode: result.exitCode,
+        shell: result.shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
     } on ProcessException catch (e) {
-      final terminalResult = TerminalResult(command: value, stdout: '', stderr: e.message, exitCode: 126, duration: DateTime.now().difference(started), shell: shell);
-      _audit(command: value, outcome: 'process-error', exitCode: terminalResult.exitCode, shell: terminalResult.shell, duration: terminalResult.duration);
-      return terminalResult;
+      final result = TerminalResult(
+        command: value,
+        stdout: '',
+        stderr: e.message,
+        exitCode: 126,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+      _audit(
+        command: value,
+        outcome: 'process-error',
+        exitCode: result.exitCode,
+        shell: result.shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
     }
   }
 
   Future<void> startInteractive() async {
     if (_process != null) return;
+
     final shell = await _findShell();
     if (shell == null) {
       _output.add('ERROR: No POSIX shell is available on this runtime.');
-      _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'unavailable', duration: Duration.zero);
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'unavailable',
+        exitCode: 127,
+        shell: 'unavailable',
+        duration: Duration.zero,
+        interactive: true,
+      );
       return;
     }
+
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'denied',
+        exitCode: 126,
+        shell: 'security-core',
+        duration: Duration.zero,
+        interactive: true,
+      );
       return;
     }
+
     final started = DateTime.now();
     try {
-      _process = await Process.start(shell, const <String>['-i'], runInShell: false);
+      _process = await Process.start(
+        shell,
+        const <String>['-i'],
+        runInShell: false,
+      );
+      _interactiveInputBuffer = '';
       _stdoutSub = _process!.stdout.transform(utf8.decoder).listen(_output.add);
       _stderrSub = _process!.stderr.transform(utf8.decoder).listen(_output.add);
       _output.add('Connected to real shell: $shell\n');
-      _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: shell, duration: DateTime.now().difference(started));
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'success',
+        exitCode: 0,
+        shell: shell,
+        duration: DateTime.now().difference(started),
+        interactive: true,
+      );
     } catch (e) {
       _output.add('ERROR: Failed to start shell: $e');
-      _audit(command: '<interactive-start>', outcome: 'process-error', exitCode: 126, shell: shell, duration: DateTime.now().difference(started));
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'process-error',
+        exitCode: 126,
+        shell: shell,
+        duration: DateTime.now().difference(started),
+        interactive: true,
+      );
       _process = null;
     }
   }
@@ -191,6 +397,37 @@ class TerminalService {
   void write(String input) {
     final process = _process;
     if (process == null) return;
+
+    _interactiveInputBuffer += input;
+    final parts = _interactiveInputBuffer.split('\n');
+    _interactiveInputBuffer = parts.removeLast();
+
+    for (final rawCommand in parts) {
+      final command = rawCommand.trim();
+      if (command.isEmpty) continue;
+      if (!_authorized(command)) {
+        _output.add('\n[ZION] command denied by SecurityCore: $command\n');
+        _audit(
+          command: command,
+          outcome: 'denied',
+          exitCode: 126,
+          shell: 'security-core',
+          duration: Duration.zero,
+          interactive: true,
+        );
+        continue;
+      }
+      _remember(command);
+      _audit(
+        command: command,
+        outcome: 'submitted',
+        exitCode: -1,
+        shell: 'interactive',
+        duration: Duration.zero,
+        interactive: true,
+      );
+    }
+
     process.stdin.write(input);
     unawaited(process.stdin.flush());
   }
@@ -202,9 +439,17 @@ class TerminalService {
     await _stderrSub?.cancel();
     _stdoutSub = null;
     _stderrSub = null;
+    _interactiveInputBuffer = '';
     process.kill();
     _process = null;
-    _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'process', duration: Duration.zero);
+    _audit(
+      command: '<interactive-stop>',
+      outcome: 'success',
+      exitCode: 0,
+      shell: 'process',
+      duration: Duration.zero,
+      interactive: true,
+    );
   }
 
   Future<void> clearHistory() async {
