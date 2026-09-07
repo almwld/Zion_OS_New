@@ -101,10 +101,13 @@ class RemoteSessionManager {
     final sftp = await client.sftp();
     final remote = await sftp.open(
       remotePath,
-      mode: SftpFileOpenMode.create | SftpFileOpenMode.truncate | SftpFileOpenMode.write,
+      mode: SftpFileOpenMode.create |
+          SftpFileOpenMode.truncate |
+          SftpFileOpenMode.write,
     );
     try {
-      final writer = remote.write(File(localPath).openRead().cast<Uint8List>());
+      final local = File(localPath).openRead().map(Uint8List.fromList);
+      final writer = remote.write(local);
       await writer.done;
     } finally {
       await remote.close();
@@ -147,7 +150,7 @@ class RemoteSessionManager {
     _stderr = null;
     final session = _sshSession;
     _sshSession = null;
-    if (session != null) session.close();
+    session?.close();
   }
 
   Future<void> dispose() async {
