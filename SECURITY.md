@@ -19,3 +19,7 @@ Please report security issues privately to the repository owner rather than publ
 ## Release requirements
 
 A release requires successful static analysis, automated tests, native build verification and manual Android-device validation of the terminal/PTy and security-critical flows. A green APK build alone is not considered sufficient evidence of production readiness.
+
+## Current verification
+
+The hardened tree must be validated by the GitHub Actions release workflow before it is labeled production-ready.
