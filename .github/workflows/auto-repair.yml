@@ -53,8 +53,12 @@ jobs:
                   p.write_text(s2, encoding='utf-8')
                   print(f'repaired {path}')
 
-          edit('lib/features/exploitation/exploit_screen.dart',
-               lambda s: re.sub(r'\);n[ \t]+', ');\n        ', s))
+          def repair_stray_n(s):
+              # Repair the recurring source corruption where a literal 'n' was
+              # inserted after a Dart statement terminator.
+              return re.sub(r'\);n(?=[ \t]*(?:buffer|\w))', ');\n', s)
+
+          edit('lib/features/exploitation/exploit_screen.dart', repair_stray_n)
 
           edit('lib/core/arsenal/zion_web.dart',
                lambda s: s.replace(
@@ -88,8 +92,10 @@ jobs:
           edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
           def repair_unified(s):
+              # Remove the extra brace that prematurely closed the service.
               s = re.sub(r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}', r'\1', s, count=1, flags=re.S)
-              s = re.sub(r'\n  case \'proot_status\':\n    final prootPath = await KaliLoaderService\.findProot\(\);\n    if \(prootPath != null\) \{\n      return \'[^\n]*\';\n    \} else \{\n      return \'[^\n]*\';\n    \}', '', s, count=1)
+              # Remove an orphaned proot_status switch case left outside the class.
+              s = re.sub(r'\n  case \'proot_status\':.*?\n    \}\n', '\n', s, count=1, flags=re.S)
               marker = "      if (command == 'help') return _helpText();"
               if marker in s and "command == 'proot_status'" not in s:
                   insertion = "      if (command == 'proot_status') {\n        final prootPath = await KaliLoaderService.findProot();\n        return prootPath != null\n            ? 'proot موجود: $prootPath'\n            : 'proot غير موجود.';\n      }\n\n"
