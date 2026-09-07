@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <cerrno>
+#include <cstdlib>
 
 namespace {
 pid_t g_child_pid = -1;
