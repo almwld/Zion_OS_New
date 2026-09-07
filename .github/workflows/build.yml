@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: false
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -53,6 +55,18 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate Android launcher icons
+        run: dart run flutter_launcher_icons
+
+      - name: Verify required Flutter assets and launcher resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d assets/fonts
+          test -f assets/icons/app_icon.png
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png || test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.webp
 
       - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
