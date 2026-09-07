@@ -1,28 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 
-class SettingsScreen extends StatefulWidget {
+import '../providers/theme_provider.dart';
+
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _darkMode = true;
-  bool _notifications = true;
-  bool _soundEffects = true;
-  bool _vibration = true;
-  String _selectedLanguage = 'ar';
-  int _fontSize = 14;
-  double _iconSize = 58;
-  String _currentPin = '1234';
-  Color _selectedColor = const Color(0xFF00BCD4);
-
-  final List<Color> _themeColors = [
-    const Color(0xFF00BCD4), // Turquoise
+  static const _themeColors = <Color>[
+    Color(0xFF00BCD4),
     Colors.cyan,
     Colors.green,
     Colors.blue,
@@ -30,378 +16,324 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Colors.orange,
     Colors.pink,
     Colors.teal,
+    Colors.indigo,
   ];
-
-  final List<Map<String, String>> _languages = [
-    {'code': 'ar', 'name': 'العربية', 'flag': '🇸🇦'},
-    {'code': 'en', 'name': 'English', 'flag': '🇬🇧'},
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSettings();
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _darkMode = prefs.getBool('dark_mode') ?? true;
-      _notifications = prefs.getBool('notifications') ?? true;
-      _soundEffects = prefs.getBool('sound_effects') ?? true;
-      _vibration = prefs.getBool('vibration') ?? true;
-      _selectedLanguage = prefs.getString('language') ?? 'ar';
-      _fontSize = prefs.getInt('font_size') ?? 14;
-      _iconSize = prefs.getDouble('icon_size') ?? 58;
-      _currentPin = prefs.getString('user_pin') ?? '1234';
-      final colorHex = prefs.getString('theme_color');
-      if (colorHex != null) {
-        _selectedColor = Color(int.parse(colorHex));
-      }
-    });
-    _applyTheme();
-    _applyLanguage();
-    _applyFontSize();
-  }
-
-  void _applyTheme() {
-    final provider = Provider.of<ThemeProvider>(context, listen: false);
-    provider.setDarkMode(_darkMode);
-    provider.setPrimaryColor(_selectedColor);
-  }
-
-  void _applyLanguage() async {
-    await context.setLocale(Locale(_selectedLanguage));
-  }
-
-  void _applyFontSize() {
-    // تطبيق حجم الخط سيتم في الـ MaterialApp
-  }
-
-  Future<void> _saveSetting(String key, dynamic value) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (value is bool) await prefs.setBool(key, value);
-    if (value is String) await prefs.setString(key, value);
-    if (value is int) await prefs.setInt(key, value);
-    if (value is double) await prefs.setDouble(key, value);
-  }
-
-  void _changeLanguage(String code) async {
-    setState(() => _selectedLanguage = code);
-    await _saveSetting('language', code);
-    await context.setLocale(Locale(code));
-    setState(() {});
-  }
-
-  void _changeThemeColor(Color color) {
-    setState(() => _selectedColor = color);
-    _saveSetting('theme_color', color.value.toString());
-    Provider.of<ThemeProvider>(context, listen: false).setPrimaryColor(color);
-  }
-
-  void _changeFontSize(int size) {
-    setState(() => _fontSize = size);
-    _saveSetting('font_size', size);
-  }
-
-  void _changeIconSize(double size) {
-    setState(() => _iconSize = size);
-    _saveSetting('icon_size', size);
-    Provider.of<ThemeProvider>(context, listen: false).setIconSize(size);
-  }
-
-  void _showChangePinDialog() {
-    final oldPinCtrl = TextEditingController();
-    final newPinCtrl = TextEditingController();
-    final confirmPinCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('change_pin', style: const TextStyle(color: Color(0xFF00BCD4))),
-        backgroundColor: Colors.black,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: oldPinCtrl,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'current_pin',
-                labelStyle: const TextStyle(color: Color(0xFF00BCD4)),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: newPinCtrl,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'new_pin',
-                labelStyle: const TextStyle(color: Color(0xFF00BCD4)),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: confirmPinCtrl,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'confirm_pin',
-                labelStyle: const TextStyle(color: Color(0xFF00BCD4)),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('cancel', style: const TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (oldPinCtrl.text == _currentPin) {
-                if (newPinCtrl.text == confirmPinCtrl.text && newPinCtrl.text.length == 4) {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('user_pin', newPinCtrl.text);
-                  _currentPin = newPinCtrl.text;
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('PIN changed successfully'), backgroundColor: Color(0xFF00BCD4)),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('PIN mismatch'), backgroundColor: Colors.red),
-                  );
-                }
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Wrong PIN'), backgroundColor: Colors.red),
-                );
-              }
-            },
-            child: Text('save', style: const TextStyle(color: Color(0xFF00BCD4))),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Provider.of<ThemeProvider>(context);
-    final isDark = theme.isDarkMode;
+    return Consumer<ThemeProvider>(
+      builder: (context, theme, _) {
+        final dark = theme.isDarkMode;
+        final foreground = dark ? Colors.white : Colors.black87;
+        final secondary = dark ? Colors.white70 : Colors.black54;
+        final surface = dark ? const Color(0xFF15191C) : Colors.white;
 
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.grey[100],
-      appBar: AppBar(
-        title: Text('settings', style: TextStyle(color: theme.primaryColor)),
-        backgroundColor: isDark ? Colors.black : Colors.white,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: theme.primaryColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: ListView(
-        children: [
-          _buildSection('appearance', Icons.palette, theme),
-          _buildThemeColorRow(theme),
-          _buildLanguageRow(theme),
-          _buildSliderRow('Font Size', _fontSize.toDouble(), 10, 20, (v) => _changeFontSize(v.toInt()), theme),
-          _buildSliderRow('Icon Size', _iconSize, 48, 78, _changeIconSize, theme),
-          _buildSwitchTile('dark_mode', _darkMode, (v) {
-            setState(() { _darkMode = v; _saveSetting('dark_mode', v); _applyTheme(); });
-          }, theme),
-          _buildSwitchTile('notifications', _notifications, (v) {
-            setState(() { _notifications = v; _saveSetting('notifications', v); });
-          }, theme),
-          _buildSwitchTile('sound_effects', _soundEffects, (v) {
-            setState(() { _soundEffects = v; _saveSetting('sound_effects', v); });
-          }, theme),
-          _buildSwitchTile('vibration', _vibration, (v) {
-            setState(() { _vibration = v; _saveSetting('vibration', v); });
-          }, theme),
-          _buildSection('security', Icons.security, theme),
-          _buildInfoTile('change_pin', 'update_security_pin', Icons.lock, _showChangePinDialog, theme),
-          _buildInfoTile('biometric', 'enable_fingerprint', Icons.fingerprint, () {}, theme),
-          _buildInfoTile('encryption', 'aes256_active', Icons.security, () {}, theme),
-          _buildSection('about', Icons.info, theme),
-          _buildInfoTile('version', 'Zion OS 4.0.0', Icons.info, () {}, theme),
-          _buildInfoTile('developer', 'Zion Security Team', Icons.code, () {}, theme),
-        ],
-      ),
+        return Scaffold(
+          backgroundColor: dark ? const Color(0xFF090B0C) : const Color(0xFFF5F7F8),
+          appBar: AppBar(
+            backgroundColor: dark ? const Color(0xFF090B0C) : Colors.white,
+            foregroundColor: theme.primaryColor,
+            elevation: 0,
+            title: Text('settings'.tr()),
+          ),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 32),
+              children: [
+                _section(context, 'appearance'.tr(), Icons.palette_outlined, theme, foreground),
+                _card(
+                  surface,
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('dark_mode'.tr(), style: TextStyle(color: foreground)),
+                      subtitle: Text(
+                        dark ? 'Dark theme' : 'Light theme',
+                        style: TextStyle(color: secondary),
+                      ),
+                      value: dark,
+                      activeColor: theme.primaryColor,
+                      onChanged: (_) => theme.toggleTheme(),
+                    ),
+                    const Divider(height: 1),
+                    _colorSelector(theme, foreground, secondary),
+                    const Divider(height: 1),
+                    _slider(
+                      context,
+                      title: 'font_size'.tr(),
+                      value: theme.fontScale,
+                      min: 0.8,
+                      max: 1.5,
+                      divisions: 7,
+                      label: theme.fontScale.toStringAsFixed(1),
+                      onChanged: theme.setFontScale,
+                      theme: theme,
+                      foreground: foreground,
+                    ),
+                    _slider(
+                      context,
+                      title: 'icon_size'.tr(),
+                      value: theme.iconSize,
+                      min: 48,
+                      max: 78,
+                      divisions: 6,
+                      label: theme.iconSize.toStringAsFixed(0),
+                      onChanged: theme.setIconSize,
+                      theme: theme,
+                      foreground: foreground,
+                    ),
+                  ],
+                ),
+                _section(context, 'security'.tr(), Icons.security_outlined, theme, foreground),
+                _card(
+                  surface,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.lock_outline, color: theme.primaryColor),
+                      title: Text('change_pin'.tr(), style: TextStyle(color: foreground)),
+                      subtitle: Text('update_security_pin'.tr(), style: TextStyle(color: secondary)),
+                      trailing: Icon(Icons.chevron_right, color: secondary),
+                      onTap: () => _showChangePinDialog(context, theme, foreground),
+                    ),
+                  ],
+                ),
+                _section(context, 'language'.tr(), Icons.language_outlined, theme, foreground),
+                _card(
+                  surface,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.translate, color: theme.primaryColor),
+                      title: Text('language'.tr(), style: TextStyle(color: foreground)),
+                      subtitle: Text(
+                        context.locale.languageCode == 'ar' ? 'العربية' : 'English',
+                        style: TextStyle(color: secondary),
+                      ),
+                      trailing: Icon(Icons.chevron_right, color: secondary),
+                      onTap: () => _showLanguageDialog(context, theme, foreground),
+                    ),
+                  ],
+                ),
+                _section(context, 'about'.tr(), Icons.info_outline, theme, foreground),
+                _card(
+                  surface,
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.shield_outlined, color: theme.primaryColor),
+                      title: Text('Zion OS', style: TextStyle(color: foreground, fontWeight: FontWeight.w600)),
+                      subtitle: Text('4.0.0', style: TextStyle(color: secondary)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSection(String title, IconData icon, ThemeProvider theme) {
+  Widget _section(
+    BuildContext context,
+    String title,
+    IconData icon,
+    ThemeProvider theme,
+    Color foreground,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Row(
         children: [
           Icon(icon, color: theme.primaryColor, size: 20),
           const SizedBox(width: 10),
-          Text(title, style: TextStyle(color: theme.isDarkMode ? Colors.white : Colors.black87, fontSize: 16, fontWeight: FontWeight.bold)),
+          Text(title, style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _buildThemeColorRow(ThemeProvider theme) {
+  Widget _card(Color surface, {required List<Widget> children}) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: theme.isDarkMode ? Colors.white.withOpacity(0.05) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black.withOpacity(0.08)),
       ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _colorSelector(ThemeProvider theme, Color foreground, Color secondary) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('theme_color', style: TextStyle(color: theme.primaryColor)),
+          Text('theme_color'.tr(), style: TextStyle(color: foreground, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 12,
-            children: _themeColors.map((color) => GestureDetector(
-              onTap: () => _changeThemeColor(color),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: _selectedColor == color ? Border.all(color: Colors.white, width: 3) : null,
+            children: _themeColors.map((color) {
+              final selected = theme.primaryColor.value == color.value;
+              return Semantics(
+                button: true,
+                label: 'Theme color',
+                child: GestureDetector(
+                  onTap: () => theme.setPrimaryColor(color),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                      border: selected ? Border.all(color: foreground, width: 3) : null,
+                    ),
+                    child: selected ? const Icon(Icons.check, size: 20, color: Colors.white) : null,
+                  ),
                 ),
-              ),
-            )).toList(),
+              );
+            }).toList(),
           ),
+          const SizedBox(height: 4),
+          Text('Choose your accent color', style: TextStyle(color: secondary, fontSize: 12)),
         ],
       ),
     );
   }
 
-  Widget _buildLanguageRow(ThemeProvider theme) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.isDarkMode ? Colors.white.withOpacity(0.05) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('language', style: TextStyle(color: theme.isDarkMode ? Colors.white : Colors.black87)),
-          DropdownButton<String>(
-            value: _selectedLanguage,
-            dropdownColor: Colors.black,
-            underline: const SizedBox(),
-            style: const TextStyle(color: Color(0xFF00BCD4)),
-            items: _languages.map((lang) => DropdownMenuItem(
-              value: lang['code'],
-              child: Row(
-                children: [
-                  Text(lang['flag']!, style: const TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Text(lang['name']!),
-                ],
-              ),
-            )).toList(),
-            onChanged: (v) => _changeLanguage(v!),
+  Widget _slider(
+    BuildContext context, {
+    required String title,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required String label,
+    required ValueChanged<double> onChanged,
+    required ThemeProvider theme,
+    required Color foreground,
+  }) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(title, style: TextStyle(color: foreground))),
+            Text(label, style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          divisions: divisions,
+          activeColor: theme.primaryColor,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showChangePinDialog(
+    BuildContext context,
+    ThemeProvider theme,
+    Color foreground,
+  ) async {
+    final oldController = TextEditingController();
+    final newController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('change_pin'.tr()),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: oldController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(labelText: 'Current PIN'),
+                  validator: (value) => value != null && value.length == 4 ? null : 'Enter 4 digits',
+                ),
+                TextFormField(
+                  controller: newController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(labelText: 'New PIN'),
+                  validator: (value) => value != null && RegExp(r'^\d{4}$').hasMatch(value) ? null : 'Enter 4 digits',
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text('cancel'.tr())),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                final ok = await theme.changePin(oldController.text, newController.text);
+                if (!dialogContext.mounted) return;
+                if (ok) {
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('PIN changed successfully'), backgroundColor: theme.primaryColor),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid PIN'), backgroundColor: Colors.red),
+                  );
+                }
+              },
+              child: Text('save'.tr()),
+            ),
+          ],
+        );
+      },
+    );
+
+    oldController.dispose();
+    newController.dispose();
+  }
+
+  Future<void> _showLanguageDialog(
+    BuildContext context,
+    ThemeProvider theme,
+    Color foreground,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('language'.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('العربية'),
+              onTap: () async {
+                await context.setLocale(const Locale('ar'));
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+            ),
+            ListTile(
+              title: const Text('English'),
+              onTap: () async {
+                await context.setLocale(const Locale('en'));
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  Widget _buildSliderRow(String title, double value, double min, double max, Function(double) onChanged, ThemeProvider theme) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.isDarkMode ? Colors.white.withOpacity(0.05) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: TextStyle(color: theme.isDarkMode ? Colors.white : Colors.black87)),
-              Text('${value.toStringAsFixed(0)}', style: TextStyle(color: theme.primaryColor, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          Slider(
-            value: value,
-            min: min,
-            max: max,
-            activeColor: theme.primaryColor,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSwitchTile(String title, bool value, Function(bool) onChanged, ThemeProvider theme) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.isDarkMode ? Colors.white.withOpacity(0.05) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: TextStyle(color: theme.isDarkMode ? Colors.white : Colors.black87)),
-          Switch(value: value, onChanged: onChanged, activeColor: theme.primaryColor),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoTile(String title, String subtitle, IconData icon, VoidCallback onTap, ThemeProvider theme) {
-    return ListTile(
-      leading: Icon(icon, color: theme.primaryColor),
-      title: Text(title, style: TextStyle(color: theme.isDarkMode ? Colors.white : Colors.black87)),
-      subtitle: Text(subtitle, style: TextStyle(color: theme.isDarkMode ? Colors.white54 : Colors.black54)),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
-    );
-  }
-}
-
-class ThemeProvider extends ChangeNotifier {
-  bool _isDarkMode = true;
-  Color _primaryColor = const Color(0xFF00BCD4);
-  double _iconSize = 58;
-
-  bool get isDarkMode => _isDarkMode;
-  Color get primaryColor => _primaryColor;
-  double get iconSize => _iconSize;
-
-  void setDarkMode(bool value) {
-    _isDarkMode = value;
-    notifyListeners();
-  }
-
-  void setPrimaryColor(Color color) {
-    _primaryColor = color;
-    notifyListeners();
-  }
-
-  void setIconSize(double size) {
-    _iconSize = size;
-    notifyListeners();
-  }
-
-  void toggleTheme() {
-    _isDarkMode = !_isDarkMode;
-    notifyListeners();
   }
 }
