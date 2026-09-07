@@ -22,14 +22,11 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
+          flutter-version: '3.38.10'
           channel: 'stable'
 
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Generate launcher icons
-        run: flutter pub run flutter_launcher_icons:main
 
       - name: Create missing asset directories
         run: |
@@ -49,6 +46,10 @@ jobs:
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/terminal.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/wifi.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/calculator.svg
+
+      - name: Generate launcher icons
+        run: flutter pub run flutter_launcher_icons:main
+
       - name: Clean previous builds
         run: flutter clean
 
