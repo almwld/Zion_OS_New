@@ -43,14 +43,27 @@ jobs:
       - name: Surgical repair only
         run: python3 tool/repair_dart_corruption.py
 
-      - name: Format Dart sources
-        run: dart format lib test
+      - name: Format repaired Dart sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format \
+            lib/features/exploitation/exploit_screen.dart \
+            lib/core/arsenal/zion_web.dart \
+            lib/core/arsenal/zion_postexploit.dart \
+            lib/src/features/files/advanced_file_manager.dart \
+            lib/src/core/arsenal/zion_wifi_real.dart \
+            lib/core/services/unified_core_service.dart \
+            lib/screens/help/advanced_help_center.dart \
+            lib/screens/settings/settings_screen.dart \
+            lib/src/features/wifi/zion_wifi_panel_real.dart
 
       - name: Verify no known corruption markers remain
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\}\n','Phone'|\);n" lib
+          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\);n" lib
+          ! grep -R -n --include='*.dart' "}\','Phone', Icons.phone),child: Column(" lib/screens/help/advanced_help_center.dart
 
       - name: Flutter pub get
         run: flutter pub get
