@@ -89,7 +89,7 @@ class _SettingsAppState extends State<SettingsApp> {
     final newCtrl = TextEditingController();
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text('change_pin'.tr()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -99,12 +99,12 @@ class _SettingsAppState extends State<SettingsApp> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(_), child: Text('cancel'.tr())),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text('cancel'.tr())),
           TextButton(
             onPressed: () async {
               if (await tp.changePin(oldCtrl.text, newCtrl.text)) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN changed successfully'), backgroundColor: Color(0xFF00BCD4)));
-                Navigator.pop(_);
+                Navigator.pop(dialogContext);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid PIN'), backgroundColor: Colors.red));
               }
