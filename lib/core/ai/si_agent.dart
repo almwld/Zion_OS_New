@@ -34,12 +34,16 @@ class NeuralNetwork {
     final sum = exps.fold<double>(0, (a, b) => a + b);
     final probs = exps.map((x) => x / sum).toList();
     final delta2 = List.generate(probs.length, (i) => probs[i] - (i == target ? 1 : 0));
+    final oldWeights2 = _weights2.map((row) => List<double>.from(row)).toList();
     for (var i = 0; i < _weights2.length; i++) {
       for (var j = 0; j < _weights2[i].length; j++) _weights2[i][j] -= learningRate * delta2[i] * hidden[j];
       _bias2[i] -= learningRate * delta2[i];
     }
     for (var j = 0; j < hidden.length; j++) {
-      final d = hidden[j] == 0 ? 0 : _weights2.map((w, i) => w[j] * delta2[i]).fold<double>(0, (a, b) => a + b);
+      var d = 0.0;
+      if (hidden[j] != 0) {
+        for (var i = 0; i < delta2.length; i++) d += oldWeights2[i][j] * delta2[i];
+      }
       for (var k = 0; k < input.length; k++) _weights1[j][k] -= learningRate * d * input[k];
       _bias1[j] -= learningRate * d;
     }
@@ -82,8 +86,7 @@ class SiAgent {
   Map<String, dynamic> analyzeSecurity({required double openPorts, required double anomalies, required double authFailures, required double encryptedTraffic}) {
     final features = [openPorts.clamp(0, 1).toDouble(), anomalies.clamp(0, 1).toDouble(), authFailures.clamp(0, 1).toDouble(), encryptedTraffic.clamp(0, 1).toDouble()];
     final probabilities = neural.predict(features);
-    final risk = (probabilities[1] * 100).roundToDouble();
-    return {'riskScore': risk, 'benignProbability': probabilities[0], 'riskProbability': probabilities[1], 'model': 'local-mlp'};
+    return {'riskScore': (probabilities[1] * 100).roundToDouble(), 'benignProbability': probabilities[0], 'riskProbability': probabilities[1], 'model': 'local-mlp'};
   }
 
   Map<String, dynamic> oracleForecast(List<double> values) {
