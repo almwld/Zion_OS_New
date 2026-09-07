@@ -35,7 +35,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Repair known syntax corruption
+      - name: Repair known source corruption
         shell: bash
         run: |
           set -euo pipefail
@@ -43,36 +43,41 @@ jobs:
           from pathlib import Path
           import re
 
-          # 1) Repair accidental literal "n" tokens introduced between Dart statements.
-          p = Path('lib/features/exploitation/exploit_screen.dart')
-          if p.exists():
+          def edit(path, fn):
+              p = Path(path)
+              if not p.exists():
+                  return
               s = p.read_text(encoding='utf-8')
-              s2 = re.sub(r"\);n[ \t]+", ");\n        ", s)
+              s2 = fn(s)
               if s2 != s:
                   p.write_text(s2, encoding='utf-8')
+                  print(f'repaired {path}')
 
-          # 2) Fix an invalid trailing semicolon in an HttpClient request call.
-          p = Path('lib/core/arsenal/zion_web.dart')
-          if p.exists():
-              s = p.read_text(encoding='utf-8')
-              s2 = s.replace("body: '{\\\"query\\\": {\\\"match_all\\\": {}}}';", "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}',")
-              if s2 != s:
-                  p.write_text(s2, encoding='utf-8')
+          # Accidental literal n tokens between Dart statements.
+          edit('lib/features/exploitation/exploit_screen.dart',
+               lambda s: re.sub(r'\);n[ \t]+', ');\n        ', s))
 
-          # 3) Move ViewMode to library scope; Dart does not permit enum declarations
-          #    inside a class body.
-          p = Path('lib/src/features/files/advanced_file_manager.dart')
-          if p.exists():
-              s = p.read_text(encoding='utf-8')
-              s2 = s.replace("class AdvancedFileManager extends StatefulWidget {", "enum ViewMode { grid, list }\n\nclass AdvancedFileManager extends StatefulWidget {")
-              s2 = s2.replace("\n  enum ViewMode { grid, list }\n", "\n")
-              if s2 != s:
-                  p.write_text(s2, encoding='utf-8')
+          # Invalid semicolon inside named argument list.
+          edit('lib/core/arsenal/zion_web.dart',
+               lambda s: s.replace(
+                   "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}';",
+                   "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}',"))
 
-          # 4) Move late imports in zion_wifi_real.dart to the import section.
-          p = Path('lib/src/core/arsenal/zion_wifi_real.dart')
-          if p.exists():
-              s = p.read_text(encoding='utf-8')
+          # A literal '$' in C$ was parsed as interpolation syntax.
+          edit('lib/core/arsenal/zion_postexploit.dart',
+               lambda s: s.replace("'C$'", "'C\\$'"))
+
+          # Move ViewMode to library scope.
+          def repair_viewmode(s):
+              if 'class AdvancedFileManager extends StatefulWidget {' not in s:
+                  return s
+              s = s.replace('class AdvancedFileManager extends StatefulWidget {',
+                            'enum ViewMode { grid, list }\n\nclass AdvancedFileManager extends StatefulWidget {', 1)
+              return s.replace('\n  enum ViewMode { grid, list }\n', '\n', 1)
+          edit('lib/src/features/files/advanced_file_manager.dart', repair_viewmode)
+
+          # Move late imports to the import section.
+          def repair_wifi_imports(s):
               late = [
                   "import 'zion_router_exploits.dart';",
                   "import 'zion_ai_password_guesser.dart';",
@@ -80,25 +85,48 @@ jobs:
                   "import 'zion_upnp_hack.dart';",
               ]
               for item in late:
-                  s = s.replace("\n" + item, "")
+                  s = s.replace('\n' + item, '')
               anchor = "import 'package:wifi_p2p/wifi_p2p.dart';"
-              if anchor in s:
-                  s = s.replace(anchor, anchor + "\n" + "\n".join(late), 1)
-              p.write_text(s, encoding='utf-8')
+              if anchor in s and late[0] not in s.split(anchor, 1)[0]:
+                  s = s.replace(anchor, anchor + '\n' + '\n'.join(late), 1)
+              return s
+          edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
-          # 5) Remove the stray proot_status switch case that was placed outside
-          #    UnifiedCoreService and add it to execute() before help handling.
-          p = Path('lib/core/services/unified_core_service.dart')
-          if p.exists():
-              s = p.read_text(encoding='utf-8')
-              stray = """\n}\n\n  case 'proot_status':\n    final prootPath = await KaliLoaderService.findProot();\n    if (prootPath != null) {\n      return '✅ proot موجود: $prootPath';\n    } else {\n      return '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';\n    }"""
-              if stray in s:
-                  s = s.replace(stray, "\n}")
-                  marker = "      if (command == 'help') return _helpText();"
-                  insertion = "      if (command == 'proot_status') {\n        final prootPath = await KaliLoaderService.findProot();\n        return prootPath != null\n            ? '✅ proot موجود: $prootPath'\n            : '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';\n      }\n\n"
-                  if marker in s:
-                      s = s.replace(marker, insertion + marker, 1)
-              p.write_text(s, encoding='utf-8')
+          # Restore UnifiedCoreService class scope.
+          def repair_unified(s):
+              s = re.sub(r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}', r'\1', s, count=1, flags=re.S)
+              s = re.sub(r'\n  case \'proot_status\':\n    final prootPath = await KaliLoaderService\.findProot\(\);\n    if \(prootPath != null\) \{\n      return \'[^\n]*\';\n    \} else \{\n      return \'[^\n]*\';\n    \}', '', s, count=1)
+              marker = "      if (command == 'help') return _helpText();"
+              if marker in s and "command == 'proot_status'" not in s:
+                  insertion = "      if (command == 'proot_status') {\n        final prootPath = await KaliLoaderService.findProot();\n        return prootPath != null\n            ? 'proot موجود: $prootPath'\n            : 'proot غير موجود.';\n      }\n\n"
+                  s = s.replace(marker, insertion + marker, 1)
+              return s
+          edit('lib/core/services/unified_core_service.dart', repair_unified)
+
+          # Repair corrupted Help Center contact wrapper and remove duplicated
+          # orphaned content that was appended after the class declaration.
+          def repair_help(s):
+              s = s.replace(
+                  "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
+                  "return SingleChildScrollView(child: Column(", 1)
+              s = re.sub(r"\n\}','Phone', Icons\.phone\),child: Column\(.*\Z", '\n', s, count=1, flags=re.S)
+              return s
+          edit('lib/screens/help/advanced_help_center.dart', repair_help)
+
+          # Settings screen had an invalid orphaned block after the class.
+          def repair_settings(s):
+              s = re.sub(r'\n\}\n\n  void _resetAllSettings\(\) async \{.*\Z', '\n}\n', s, count=1, flags=re.S)
+              return s
+          edit('lib/screens/settings/settings_screen.dart', repair_settings)
+
+          # Wi-Fi real panel had an orphaned strategy method outside its state.
+          # Keep the reusable button widget, and close its class correctly.
+          def repair_wifi_panel(s):
+              s = re.sub(r'\n  // إضافة أزرار للاستراتيجيات الجديدة.*?\nclass _StrategyButton', '\n\nclass _StrategyButton', s, count=1, flags=re.S)
+              if s.rstrip().endswith('child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),\n  );\n  }'):
+                  s = s.rstrip() + '\n}\n'
+              return s
+          edit('lib/src/features/wifi/zion_wifi_panel_real.dart', repair_wifi_panel)
           PY
 
       - name: Format Dart sources
