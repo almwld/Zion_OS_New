@@ -54,16 +54,16 @@ jobs:
                   print(f'repaired {path}')
 
           def repair_stray_n(s):
-              # Repair the recurring source corruption where a literal 'n' was
-              # inserted after a Dart statement terminator.
               return re.sub(r'\);n(?=[ \t]*(?:buffer|\w))', ');\n', s)
-
           edit('lib/features/exploitation/exploit_screen.dart', repair_stray_n)
 
-          edit('lib/core/arsenal/zion_web.dart',
-               lambda s: s.replace(
-                   "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}';",
-                   "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}',"))
+          def repair_web(s):
+              # Named arguments are comma-separated. The Elasticsearch request
+              # had a statement terminator inside the argument list.
+              return re.sub(
+                  r"(Future<bool> elasticsearchInjection\(String url\) async \{.*?body:\s*'[^']*')\s*;",
+                  r'\1,', s, count=1, flags=re.S)
+          edit('lib/core/arsenal/zion_web.dart', repair_web)
 
           edit('lib/core/arsenal/zion_postexploit.dart',
                lambda s: s.replace("'C$'", "'C\\$'"))
@@ -71,8 +71,9 @@ jobs:
           def repair_viewmode(s):
               if 'class AdvancedFileManager extends StatefulWidget {' not in s:
                   return s
-              s = s.replace('class AdvancedFileManager extends StatefulWidget {',
-                            'enum ViewMode { grid, list }\n\nclass AdvancedFileManager extends StatefulWidget {', 1)
+              if 'enum ViewMode { grid, list }' not in s.split('class AdvancedFileManager extends StatefulWidget {', 1)[0]:
+                  s = s.replace('class AdvancedFileManager extends StatefulWidget {',
+                                'enum ViewMode { grid, list }\n\nclass AdvancedFileManager extends StatefulWidget {', 1)
               return s.replace('\n  enum ViewMode { grid, list }\n', '\n', 1)
           edit('lib/src/features/files/advanced_file_manager.dart', repair_viewmode)
 
@@ -86,39 +87,50 @@ jobs:
               for item in late:
                   s = s.replace('\n' + item, '')
               anchor = "import 'package:wifi_p2p/wifi_p2p.dart';"
-              if anchor in s and late[0] not in s.split(anchor, 1)[0]:
-                  s = s.replace(anchor, anchor + '\n' + '\n'.join(late), 1)
+              if anchor in s:
+                  prefix, suffix = s.split(anchor, 1)
+                  if late[0] not in prefix:
+                      s = prefix + anchor + '\n' + '\n'.join(late) + suffix
               return s
           edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
           def repair_unified(s):
-              # Remove the extra brace that prematurely closed the service.
-              s = re.sub(r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}', r'\1', s, count=1, flags=re.S)
-              # Remove an orphaned proot_status switch case left outside the class.
-              s = re.sub(r'\n  case \'proot_status\':.*?\n    \}\n', '\n', s, count=1, flags=re.S)
-              marker = "      if (command == 'help') return _helpText();"
-              if marker in s and "command == 'proot_status'" not in s:
-                  insertion = "      if (command == 'proot_status') {\n        final prootPath = await KaliLoaderService.findProot();\n        return prootPath != null\n            ? 'proot موجود: $prootPath'\n            : 'proot غير موجود.';\n      }\n\n"
-                  s = s.replace(marker, insertion + marker, 1)
+              # The old file contains an orphaned switch case after the class.
+              # Remove only that orphan and preserve the actual class closing brace.
+              s = re.sub(
+                  r"\n\s*case 'proot_status':.*?(?=\Z)",
+                  '\n', s, count=1, flags=re.S)
+              # If the class was prematurely closed before the command switch,
+              # remove the single extra brace immediately following _dnsLookup.
+              s = re.sub(
+                  r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}\n',
+                  r'\1\n', s, count=1, flags=re.S)
               return s
           edit('lib/core/services/unified_core_service.dart', repair_unified)
 
           def repair_help(s):
-              s = s.replace(
-                  "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
-                  "return SingleChildScrollView(child: Column(", 1)
-              s = re.sub(r"\n\}','Phone', Icons\.phone\),child: Column\(.*\Z", '\n', s, count=1, flags=re.S)
+              # The source contains a duplicated/truncated widget tail beginning
+              # with the malformed `},'Phone'` fragment. Keep the valid class body
+              # before it and restore one class terminator.
+              marker = "},'Phone', Icons.phone),child: Column("
+              if marker in s:
+                  s = s.split(marker, 1)[0].rstrip() + '\n}\n'
               return s
           edit('lib/screens/help/advanced_help_center.dart', repair_help)
 
           def repair_settings(s):
+              # Remove only the known orphaned block appended after the real class.
               return re.sub(r'\n\}\n\n  void _resetAllSettings\(\) async \{.*\Z', '\n}\n', s, count=1, flags=re.S)
           edit('lib/screens/settings/settings_screen.dart', repair_settings)
 
           def repair_wifi_panel(s):
-              s = re.sub(r'\n  // إضافة أزرار للاستراتيجيات الجديدة.*?\nclass _StrategyButton', '\n\nclass _StrategyButton', s, count=1, flags=re.S)
-              if s.rstrip().endswith('child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),\n  );\n  }'):
-                  s = s.rstrip() + '\n}\n'
+              # The trailing strategy widget was appended outside its State class
+              # and references attack-execution helpers that are not part of the
+              # valid panel. Preserve the real assessment UI and discard only the
+              # malformed orphan tail.
+              marker = '\n  // إضافة أزرار للاستراتيجيات الجديدة'
+              if marker in s:
+                  s = s.split(marker, 1)[0].rstrip() + '\n'
               return s
           edit('lib/src/features/wifi/zion_wifi_panel_real.dart', repair_wifi_panel)
           PY
@@ -157,5 +169,5 @@ jobs:
             exit 0
           fi
           git add lib test
-          git commit -m 'fix: repair Dart syntax and normalize sources'
+          git commit -m 'fix: repair remaining Dart syntax corruption'
           git push origin main
