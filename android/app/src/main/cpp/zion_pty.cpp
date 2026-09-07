@@ -53,12 +53,11 @@ Java_com_zion_os_PtyNative_resize(JNIEnv*, jclass, jint master, jint rows, jint 
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_zion_os_PtyNative_stop(JNIEnv*, jclass, jint pid, jint master) {
+Java_com_zion_os_PtyNative_stop(JNIEnv*, jclass, jint pid) {
     int rc = 0;
     if (pid > 0 && kill(static_cast<pid_t>(pid), SIGHUP) != 0 && errno != ESRCH) {
         rc = -errno;
     }
-    if (master >= 0) close(master);
     if (g_child_pid == static_cast<pid_t>(pid)) g_child_pid = -1;
     return rc;
 }
