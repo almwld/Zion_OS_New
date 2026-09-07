@@ -10,127 +10,172 @@ class ZionWiFiRealPanel extends StatefulWidget {
 
 class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   final ZionWiFiReal _wifi = ZionWiFiReal();
-  final TextEditingController _targetController = TextEditingController();
-  final TextEditingController _routerIpController = TextEditingController();
-  
-  bool _isAttacking = false;
-  String _attackLog = '';
-  FullAttackResult? _lastResult;
-  
-  Future<void> _startAttack() async {
-    final target = _targetController.text.trim();
-    if (target.isEmpty) {
+  final TextEditingController _hostController = TextEditingController();
+  bool _scanning = false;
+  String _log = '';
+  List<WiFiSecurityAssessment> _assessments = const [];
+  NetworkPortAssessment? _portAssessment;
+
+  @override
+  void dispose() {
+    _hostController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scanWiFi() async {
+    setState(() {
+      _scanning = true;
+      _log = 'Starting real Android Wi-Fi scan...\n';
+      _assessments = const [];
+    });
+
+    try {
+      final networks = await _wifi.scanNetworks();
+      final assessments = <WiFiSecurityAssessment>[];
+      for (final network in networks) {
+        assessments.add(await _wifi.assessNetwork(network));
+      }
+      assessments.sort((a, b) => b.riskScore.compareTo(a.riskScore));
+      if (!mounted) return;
+      setState(() {
+        _assessments = assessments;
+        _log += 'Observed ${networks.length} real networks.\n';
+        _log += 'Assessment source: REAL_WIFI_TELEMETRY\n';
+        _scanning = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _log += 'SCAN UNAVAILABLE: $error\n';
+        _scanning = false;
+      });
+    }
+  }
+
+  Future<void> _scanPorts() async {
+    final host = _hostController.text.trim();
+    if (host.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter BSSID (e.g., 00:11:22:33:44:55)')),
+        const SnackBar(content: Text('Enter an authorized host/IP address.')),
       );
       return;
     }
-    
+
     setState(() {
-      _isAttacking = true;
-      _attackLog = '🎯 Starting full attack on $target...\n';
-      _lastResult = null;
+      _scanning = true;
+      _log += 'Starting real TCP connectivity assessment for $host...\n';
     });
-    
-    final routerIp = _routerIpController.text.trim().isNotEmpty 
-        ? _routerIpController.text.trim() 
-        : null;
-    
-    final result = await _wifi.fullAttack(target, routerIp: routerIp);
-    
+
+    const commonPorts = <int>[
+      21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 465, 587, 993, 995,
+      1433, 1521, 2049, 2375, 3000, 3306, 3389, 5432, 5900, 6379, 8080,
+      8443, 9200,
+    ];
+    final result = await _wifi.scanTcpPorts(host, commonPorts);
+    if (!mounted) return;
     setState(() {
-      _lastResult = result;
-      _attackLog += '\n';
-      _attackLog += '═══════════════════════════════════════\n';
-      _attackLog += result.success 
-          ? '✅ ATTACK SUCCESSFUL!\n'
-          : '❌ ATTACK FAILED!\n';
-      _attackLog += '═══════════════════════════════════════\n';
-      _attackLog += '🔑 Password: ${result.password ?? "Not found"}\n';
-      _attackLog += '📡 Method: ${result.method}\n';
-      _attackLog += '⏱️ Duration: ${result.duration.inSeconds} seconds\n';
-      
-      if (result.steps.containsKey('wps')) {
-        final wps = result.steps['wps'] as WPSHackResult;
-        _attackLog += '\n📊 WPS Attack: ${wps.attempts} attempts\n';
-      }
-      if (result.steps.containsKey('router')) {
-        final router = result.steps['router'] as RouterHackResult;
-        _attackLog += '\n🏠 Router Attack: ${router.attempts} attempts\n';
-      }
-      
-      _isAttacking = false;
+      _portAssessment = result;
+      _log += 'Open TCP ports: ${result.openPorts.join(', ')}\n';
+      _scanning = false;
     });
   }
-  
+
+  String _securityLabel(WiFiSecurityMode mode) => switch (mode) {
+        WiFiSecurityMode.wpa3 => 'WPA3',
+        WiFiSecurityMode.wpa2 => 'WPA2',
+        WiFiSecurityMode.wpa => 'WPA legacy',
+        WiFiSecurityMode.legacyWep => 'WEP',
+        WiFiSecurityMode.open => 'OPEN',
+        WiFiSecurityMode.unknown => 'UNKNOWN',
+      };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text('ZionWiFi - Real Attack Platform'),
-        backgroundColor: Colors.deepPurple.shade900,
-      ),
+      appBar: AppBar(title: const Text('Zion Wi-Fi Security Assessment')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Target input
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _scanning ? null : _scanWiFi,
+                    icon: const Icon(Icons.wifi_find),
+                    label: Text(_scanning ? 'SCANNING...' : 'SCAN WI-FI'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             TextField(
-              controller: _targetController,
-              style: const TextStyle(color: Colors.white),
+              controller: _hostController,
               decoration: const InputDecoration(
-                labelText: 'Target BSSID (e.g., 00:11:22:33:44:55)',
-                labelStyle: TextStyle(color: Colors.deepPurple),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.deepPurple)),
-                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.deepPurple)),
+                labelText: 'Authorized host / IP for TCP assessment',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _scanning ? null : _scanPorts,
+                icon: const Icon(Icons.radar),
+                label: const Text('ASSESS COMMON TCP PORTS'),
               ),
             ),
             const SizedBox(height: 12),
-            
-            // Router IP (optional)
-            TextField(
-              controller: _routerIpController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Router IP (optional, e.g., 192.168.1.1)',
-                labelStyle: TextStyle(color: Colors.grey),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.deepPurple)),
-              ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Attack button
-            ElevatedButton(
-              onPressed: _isAttacking ? null : _startAttack,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-              ),
-              child: Text(
-                _isAttacking ? 'ATTACKING...' : 'START FULL ATTACK',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Attack log
             Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green),
-                ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    _attackLog,
-                    style: const TextStyle(color: Colors.green, fontFamily: 'monospace', fontSize: 12),
+              child: ListView(
+                children: [
+                  ..._assessments.map(
+                    (assessment) => Card(
+                      child: ExpansionTile(
+                        title: Text(
+                          assessment.network.ssid.isEmpty
+                              ? '<hidden SSID>'
+                              : assessment.network.ssid,
+                        ),
+                        subtitle: Text(
+                          '${_securityLabel(assessment.securityMode)} · '
+                          'Risk ${assessment.riskScore}/100 · '
+                          'RSSI ${assessment.network.level} dBm',
+                        ),
+                        children: assessment.findings
+                            .map(
+                              (finding) => ListTile(
+                                title: Text(finding.title),
+                                subtitle: Text(
+                                  '${finding.description}\n${finding.recommendation}',
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
                   ),
-                ),
+                  if (_portAssessment != null)
+                    Card(
+                      child: ListTile(
+                        title: Text('TCP: ${_portAssessment!.host}'),
+                        subtitle: Text(
+                          'Open: ${_portAssessment!.openPorts.join(', ')}',
+                        ),
+                      ),
+                    ),
+                  if (_log.isNotEmpty)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SelectableText(
+                          _log,
+                          style: const TextStyle(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -139,78 +184,3 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
     );
   }
 }
-
-  // إضافة أزرار للاستراتيجيات الجديدة
-  
-  Widget _buildStrategyButtons() {
-    return Column(
-      children: [
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _StrategyButton(
-              label: '🔑 WPS PIN',
-              color: Colors.blue,
-              onTap: () => _runSingleAttack('wps'),
-            ),
-            _StrategyButton(
-              label: '🏠 Router Default',
-              color: Colors.green,
-              onTap: () => _runSingleAttack('router'),
-            ),
-            _StrategyButton(
-              label: '🎭 Evil Twin',
-              color: Colors.purple,
-              onTap: () => _runSingleAttack('eviltwin'),
-            ),
-            _StrategyButton(
-              label: '💣 CVE Exploits',
-              color: Colors.red,
-              onTap: () => _runSingleAttack('exploits'),
-            ),
-            _StrategyButton(
-              label: '🧠 AI Guesser',
-              color: Colors.orange,
-              onTap: () => _runSingleAttack('ai'),
-            ),
-            _StrategyButton(
-              label: '👤 Guest Network',
-              color: Colors.teal,
-              onTap: () => _runSingleAttack('guest'),
-            ),
-            _StrategyButton(
-              label: '🔌 UPnP',
-              color: Colors.indigo,
-              onTap: () => _runSingleAttack('upnp'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _StrategyButton extends StatelessWidget {
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-  
-  const _StrategyButton({
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-  
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: onTap,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      ),
-      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-    );
-  }
