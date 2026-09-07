@@ -58,8 +58,6 @@ jobs:
           edit('lib/features/exploitation/exploit_screen.dart', repair_stray_n)
 
           def repair_web(s):
-              # Named arguments are comma-separated. The Elasticsearch request
-              # had a statement terminator inside the argument list.
               return re.sub(
                   r"(Future<bool> elasticsearchInjection\(String url\) async \{.*?body:\s*'[^']*')\s*;",
                   r'\1,', s, count=1, flags=re.S)
@@ -95,39 +93,37 @@ jobs:
           edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
           def repair_unified(s):
-              # The old file contains an orphaned switch case after the class.
-              # Remove only that orphan and preserve the actual class closing brace.
-              s = re.sub(
-                  r"\n\s*case 'proot_status':.*?(?=\Z)",
-                  '\n', s, count=1, flags=re.S)
-              # If the class was prematurely closed before the command switch,
-              # remove the single extra brace immediately following _dnsLookup.
-              s = re.sub(
-                  r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}\n',
-                  r'\1\n', s, count=1, flags=re.S)
+              # Remove the orphaned proot case appended after the class.
+              s = re.sub(r"\n\s*case 'proot_status':.*\Z", '\n', s, count=1, flags=re.S)
+              # The dns method was closed twice on one line, which prematurely
+              # terminated the class. Remove exactly the extra class brace there.
+              s = s.replace(
+                  "} catch (e) { return 'DNS failed: $e'; } }\n  }\n",
+                  "} catch (e) { return 'DNS failed: $e'; }\n  }\n",
+                  1,
+              )
               return s
           edit('lib/core/services/unified_core_service.dart', repair_unified)
 
           def repair_help(s):
-              # The source contains a duplicated/truncated widget tail beginning
-              # with the malformed `},'Phone'` fragment. Keep the valid class body
-              # before it and restore one class terminator.
-              marker = "},'Phone', Icons.phone),child: Column("
+              # Restore the intended scroll view at the start of the contact tab.
+              s = s.replace(
+                  "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
+                  "return SingleChildScrollView(child: Column(",
+                  1,
+              )
+              # Remove the duplicated/truncated widget tail after the valid class.
+              marker = "}','Phone', Icons.phone),child: Column("
               if marker in s:
-                  s = s.split(marker, 1)[0].rstrip() + '\n}\n'
+                  s = s.split(marker, 1)[0].rstrip() + '\n'
               return s
           edit('lib/screens/help/advanced_help_center.dart', repair_help)
 
           def repair_settings(s):
-              # Remove only the known orphaned block appended after the real class.
               return re.sub(r'\n\}\n\n  void _resetAllSettings\(\) async \{.*\Z', '\n}\n', s, count=1, flags=re.S)
           edit('lib/screens/settings/settings_screen.dart', repair_settings)
 
           def repair_wifi_panel(s):
-              # The trailing strategy widget was appended outside its State class
-              # and references attack-execution helpers that are not part of the
-              # valid panel. Preserve the real assessment UI and discard only the
-              # malformed orphan tail.
               marker = '\n  // إضافة أزرار للاستراتيجيات الجديدة'
               if marker in s:
                   s = s.split(marker, 1)[0].rstrip() + '\n'
