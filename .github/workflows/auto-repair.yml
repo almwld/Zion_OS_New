@@ -53,21 +53,17 @@ jobs:
                   p.write_text(s2, encoding='utf-8')
                   print(f'repaired {path}')
 
-          # Accidental literal n tokens between Dart statements.
           edit('lib/features/exploitation/exploit_screen.dart',
                lambda s: re.sub(r'\);n[ \t]+', ');\n        ', s))
 
-          # Invalid semicolon inside named argument list.
           edit('lib/core/arsenal/zion_web.dart',
                lambda s: s.replace(
                    "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}';",
                    "body: '{\\\"query\\\": {\\\"match_all\\\": {}}}',"))
 
-          # A literal '$' in C$ was parsed as interpolation syntax.
           edit('lib/core/arsenal/zion_postexploit.dart',
                lambda s: s.replace("'C$'", "'C\\$'"))
 
-          # Move ViewMode to library scope.
           def repair_viewmode(s):
               if 'class AdvancedFileManager extends StatefulWidget {' not in s:
                   return s
@@ -76,7 +72,6 @@ jobs:
               return s.replace('\n  enum ViewMode { grid, list }\n', '\n', 1)
           edit('lib/src/features/files/advanced_file_manager.dart', repair_viewmode)
 
-          # Move late imports to the import section.
           def repair_wifi_imports(s):
               late = [
                   "import 'zion_router_exploits.dart';",
@@ -92,7 +87,6 @@ jobs:
               return s
           edit('lib/src/core/arsenal/zion_wifi_real.dart', repair_wifi_imports)
 
-          # Restore UnifiedCoreService class scope.
           def repair_unified(s):
               s = re.sub(r'(Future<String> _dnsLookup\(String d\) async \{.*?\n  \})\n  \}', r'\1', s, count=1, flags=re.S)
               s = re.sub(r'\n  case \'proot_status\':\n    final prootPath = await KaliLoaderService\.findProot\(\);\n    if \(prootPath != null\) \{\n      return \'[^\n]*\';\n    \} else \{\n      return \'[^\n]*\';\n    \}', '', s, count=1)
@@ -103,8 +97,6 @@ jobs:
               return s
           edit('lib/core/services/unified_core_service.dart', repair_unified)
 
-          # Repair corrupted Help Center contact wrapper and remove duplicated
-          # orphaned content that was appended after the class declaration.
           def repair_help(s):
               s = s.replace(
                   "return SingleChildScrollWidget('Phone', Icons.phone),child: Column(",
@@ -113,14 +105,10 @@ jobs:
               return s
           edit('lib/screens/help/advanced_help_center.dart', repair_help)
 
-          # Settings screen had an invalid orphaned block after the class.
           def repair_settings(s):
-              s = re.sub(r'\n\}\n\n  void _resetAllSettings\(\) async \{.*\Z', '\n}\n', s, count=1, flags=re.S)
-              return s
+              return re.sub(r'\n\}\n\n  void _resetAllSettings\(\) async \{.*\Z', '\n}\n', s, count=1, flags=re.S)
           edit('lib/screens/settings/settings_screen.dart', repair_settings)
 
-          # Wi-Fi real panel had an orphaned strategy method outside its state.
-          # Keep the reusable button widget, and close its class correctly.
           def repair_wifi_panel(s):
               s = re.sub(r'\n  // إضافة أزرار للاستراتيجيات الجديدة.*?\nclass _StrategyButton', '\n\nclass _StrategyButton', s, count=1, flags=re.S)
               if s.rstrip().endswith('child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),\n  );\n  }'):
@@ -137,6 +125,20 @@ jobs:
 
       - name: Analyze
         run: flutter analyze
+
+      - name: Unit and widget tests
+        run: flutter test --reporter expanded
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-os-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Commit repaired sources
         shell: bash
