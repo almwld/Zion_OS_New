@@ -1,12 +1,36 @@
+# Flutter / Dart generated files
+.dart_tool/
+.dart_tools/
+build/
+.packages
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-plugins-dependencies.json
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local / generated output
 *.apk
 *.aab
-*.jks
-*.keystore
-build/
-.dart_tools/
-.packages
-*.lock
 *.log
-.DS_Store
 *.pyc
 __pycache__/
+.DS_Store
+.lesshst
+.bash_history
+
+# Signing / secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+.env
+.env.*
+
+# Keep application lockfile committed for reproducible builds.
+# pubspec.lock is intentionally NOT ignored.
