@@ -1,4 +1,5 @@
 import 'audit_logger.dart';
+import 'authorization_gateway.dart';
 import 'authorization_policy.dart';
 import 'event_bus.dart';
 import 'risk_engine.dart';
@@ -9,7 +10,8 @@ import 'security_result.dart';
 /// Single composition root for the security domain.
 ///
 /// Feature modules should depend on this facade instead of constructing their
-/// own event bus, risk engine, audit logger, or capability registry.
+/// own event bus, risk engine, audit logger, authorization policy, or
+/// capability registry.
 class SecurityCore {
   SecurityCore({
     SecurityEventBus? eventBus,
@@ -21,13 +23,19 @@ class SecurityCore {
         riskEngine = riskEngine ?? const RiskEngine(),
         auditLogger = auditLogger ?? AuditLogger(),
         authorizationPolicy = authorizationPolicy ?? const AuthorizationPolicy(),
-        capabilities = capabilities ?? SecurityCapabilityRegistry();
+        capabilities = capabilities ?? SecurityCapabilityRegistry(),
+        gateway = AuthorizationGateway(
+          policy: authorizationPolicy ?? const AuthorizationPolicy(),
+          capabilities: capabilities ?? SecurityCapabilityRegistry(),
+          auditLogger: auditLogger ?? AuditLogger(),
+        );
 
   final SecurityEventBus eventBus;
   final RiskEngine riskEngine;
   final AuditLogger auditLogger;
   final AuthorizationPolicy authorizationPolicy;
   final SecurityCapabilityRegistry capabilities;
+  final AuthorizationGateway gateway;
 
   RiskAssessment assess(Iterable<SecurityResult> results) {
     return riskEngine.assess(results);
@@ -40,23 +48,14 @@ class SecurityCore {
     required String action,
     required bool requiresSimulation,
   }) {
-    final allowed = authorizationPolicy.canExecute(
+    final decision = gateway.authorize(
       scope: scope,
       action: action,
+      capabilityId: action,
+      actor: 'security-core',
       requiresSimulation: requiresSimulation,
     );
-    auditLogger.log(
-      action: 'security.authorization.check',
-      actor: 'security-core',
-      outcome: allowed ? 'accepted' : 'denied',
-      target: scope.target,
-      metadata: <String, Object?>{
-        'requestedAction': action,
-        'requiresSimulation': requiresSimulation,
-        'mode': scope.mode.name,
-      },
-    );
-    return allowed;
+    return decision.allowed;
   }
 
   /// Publishes an already normalized event and records its trust source.
