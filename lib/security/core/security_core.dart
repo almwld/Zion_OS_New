@@ -8,10 +8,6 @@ import 'security_event.dart';
 import 'security_result.dart';
 
 /// Single composition root for the security domain.
-///
-/// Feature modules should depend on this facade instead of constructing their
-/// own event bus, risk engine, audit logger, authorization policy, or
-/// capability registry.
 class SecurityCore {
   SecurityCore({
     SecurityEventBus? eventBus,
@@ -23,7 +19,7 @@ class SecurityCore {
         riskEngine = riskEngine ?? const RiskEngine(),
         auditLogger = auditLogger ?? AuditLogger(),
         authorizationPolicy = authorizationPolicy ?? const AuthorizationPolicy(),
-        capabilities = capabilities ?? SecurityCapabilityRegistry();
+        capabilities = capabilities ?? _defaultCapabilities();
 
   final SecurityEventBus eventBus;
   final RiskEngine riskEngine;
@@ -37,17 +33,22 @@ class SecurityCore {
     auditLogger: auditLogger,
   );
 
-  RiskAssessment assess(Iterable<SecurityResult> results) {
-    return riskEngine.assess(results);
+  static SecurityCapabilityRegistry _defaultCapabilities() {
+    return SecurityCapabilityRegistry(
+      capabilities: <String, SecurityCapability>{
+        'terminal.execute': const SecurityCapability(id: 'terminal.execute', availability: CapabilityAvailability.available),
+        'network.diagnostics': const SecurityCapability(id: 'network.diagnostics', availability: CapabilityAvailability.available),
+        'network.discovery': const SecurityCapability(id: 'network.discovery', availability: CapabilityAvailability.available),
+        'security.audit': const SecurityCapability(id: 'security.audit', availability: CapabilityAvailability.available),
+      },
+    );
   }
+
+  RiskAssessment assess(Iterable<SecurityResult> results) => riskEngine.assess(results);
 
   SecurityCapability capability(String id) => capabilities.resolve(id);
 
-  bool canExecute({
-    required AuthorizationScope scope,
-    required String action,
-    required bool requiresSimulation,
-  }) {
+  bool canExecute({required AuthorizationScope scope, required String action, required bool requiresSimulation}) {
     final decision = gateway.authorize(
       scope: scope,
       action: action,
@@ -58,7 +59,6 @@ class SecurityCore {
     return decision.allowed;
   }
 
-  /// Publishes an already normalized event and records its trust source.
   void publish(SecurityEvent event) {
     eventBus.publish(event);
     auditLogger.log(
