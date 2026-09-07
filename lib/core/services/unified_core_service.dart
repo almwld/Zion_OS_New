@@ -1,143 +1,102 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
-import 'package:riverpod/riverpod.dart';
-import 'live_network_monitor.dart';
-import 'connection_info_service.dart';
-import 'kali_loader_service.dart';
 
-final unifiedCoreProvider = Provider<UnifiedCoreService>((ref) => UnifiedCoreService());
+import 'package:flutter/foundation.dart';
 
+/// Defensive, runtime-safe system diagnostics used by the UI.
+/// Offensive tool execution, credential attacks and exploitation are not
+/// exposed through this production service.
 class UnifiedCoreService {
-  final LiveNetworkMonitor _monitor = LiveNetworkMonitor();
-  final ConnectionInfoService _connectionInfo = ConnectionInfoService();
-
   Future<String> execute(String command, {String? target, Map<String, String>? options}) async {
     try {
-      // ============ أوامر تثبيت وتشغيل كالي ============
       switch (command) {
-        case 'kali_install':
-          return await KaliLoaderService.install();
-        case 'kali_status':
-          final status = await KaliLoaderService.getStatus();
-          return const JsonEncoder.withIndent('  ').convert(status);
-        case 'kali_tools':
-          final count = await KaliLoaderService.getToolCount();
-          return 'عدد الأدوات المتاحة: $count+ أداة';
+        case 'help':
+          return _helpText();
+        case 'system_info':
+          return _systemInfo();
+        case 'dns_lookup':
+          return _dnsLookup(target ?? 'localhost');
+        case 'ping':
+          return _ping(target ?? '127.0.0.1');
+        case 'ssl_check':
+          return _sslCheck(target ?? 'google.com');
+        case 'http_headers':
+          return _httpHeaders(target ?? 'https://google.com');
+        case 'network_info':
+          return 'Network diagnostics are available through the platform network services.';
+        case 'port_scan':
+          return 'Port scanning is intentionally disabled in the production command surface.';
+        default:
+          return 'Command unavailable in production: $command';
       }
-
-      // ============ أوامر أدوات كالي الحقيقية ============
-      if (command.startsWith('nmap')) {
-        return await KaliLoaderService.nmap(target ?? '127.0.0.1', args: command.substring(4).trim());
-      }
-      switch (command) {
-        case 'msfconsole': return await KaliLoaderService.msfconsole(options?['commands'] ?? 'version');
-        case 'sqlmap': return await KaliLoaderService.sqlmap(target ?? 'http://localhost');
-        case 'hydra': return await KaliLoaderService.hydra(target ?? '127.0.0.1', options?['service'] ?? 'ssh', options?['user'] ?? 'root', options?['wordlist'] ?? '/usr/share/wordlists/rockyou.txt');
-        case 'aircrack': return await KaliLoaderService.aircrack(options?['cap'] ?? '/tmp/capture.cap', options?['wordlist'] ?? '/usr/share/wordlists/rockyou.txt');
-        case 'john': return await KaliLoaderService.john(options?['hash'] ?? '');
-        case 'nikto': return await KaliLoaderService.nikto(target ?? 'http://localhost');
-        case 'dirb': return await KaliLoaderService.dirb(target ?? 'http://localhost');
-        case 'wpscan': return await KaliLoaderService.wpscan(target ?? 'http://localhost');
-        case 'kali_shell':
-          final result = await KaliLoaderService.execute(options?['cmd'] ?? 'uname -a');
-          return result['stdout'] ?? result['stderr'] ?? 'No output';
-      }
-
-      // ============ مراقبة الشبكة ============
-      switch (command) {
-        case 'net_start': await _monitor.start(); return 'Network monitoring started.';
-        case 'net_stop': _monitor.stop(); return 'Network monitoring stopped.';
-        case 'net_connections':
-          return _monitor.getActiveConnections().take(10).map((c) => '${c['protocol']} ${c['local_address']} -> ${c['foreign_address']} [${c['state']}]').join('\n');
-        case 'net_stats':
-          return _monitor.getConnectionStats().entries.map((e) => '${e.key}: ${e.value}').join('\n');
-        case 'net_top':
-          return _monitor.getTopConnections().take(5).map((t) => '${t['address']}: ${t['count']}').join('\n');
-      }
-
-      // ============ معلومات الاتصال ============
-      switch (command) {
-        case 'ip_local': return 'Local IP: ${await _connectionInfo.getLocalIP()}';
-        case 'ip_public': return 'Public IP: ${await _connectionInfo.getPublicIP()}';
-        case 'network_info': return (await _connectionInfo.getNetworkInfo()).toString();
-        case 'ping_test': final p = await _connectionInfo.pingTest(); return 'Ping ${p['host']}: ${p['avg_time_ms']}ms avg';
-      }
-
-      // ============ أوامر الشبكة الأساسية ============
-      switch (command) {
-        case 'ping': return await _ping(target ?? '127.0.0.1');
-        case 'port_scan': return await _portScan(target ?? '127.0.0.1');
-        case 'dns_lookup': return await _dnsLookup(target ?? 'google.com');
-        case 'http_headers': return await _httpHeaders(target ?? 'http://google.com');
-        case 'ssl_check': return await _sslCheck(target ?? 'google.com');
-        case 'system_info': return _systemInfo();
-      }
-
-      if (command == 'help') return _helpText();
-      return 'Unknown: $command. Type help.';
     } catch (e) {
-      return 'Error: $e';
+      return 'Diagnostic error: $e';
     }
   }
 
-  Future<String> _ping(String t) async {
-    try { return (await Process.run('ping', ['-c', '4', t], runInShell: true)).stdout.toString(); } catch (e) { return 'Ping failed: $e'; }
+  Future<String> _ping(String host) async {
+    if (!_isSafeHost(host)) return 'Invalid host.';
+    try {
+      final result = await Process.run('ping', ['-c', '1', '-W', '1', host], runInShell: false).timeout(const Duration(seconds: 3));
+      return result.stdout.toString().trim().isEmpty ? result.stderr.toString().trim() : result.stdout.toString().trim();
+    } catch (e) {
+      return 'Ping unavailable on this runtime: $e';
+    }
   }
-  Future<String> _portScan(String t) async {
-    final p = [21, 22, 23, 25, 53, 80, 443, 8080, 8443]; final o = <String>[];
-    for (final x in p) { try { final s = await Socket.connect(t, x, timeout: const Duration(milliseconds: 500)); o.add('$x'); s.destroy(); } catch (_) {} }
-    return 'Port scan $t: ${o.isNotEmpty ? o.join(', ') : "none"}';
+
+  Future<String> _dnsLookup(String host) async {
+    if (!_isSafeHost(host)) return 'Invalid host.';
+    try {
+      final addresses = await InternetAddress.lookup(host).timeout(const Duration(seconds: 5));
+      return 'DNS $host: ${addresses.map((a) => a.address).join(', ')}';
+    } catch (e) {
+      return 'DNS failed: $e';
+    }
   }
-  Future<String> _dnsLookup(String d) async {
-    try { final a = await InternetAddress.lookup(d); return 'DNS $d: ${a.map((x) => x.address).join(', ')}'; } catch (e) { return 'DNS failed: $e'; } }
-  }
+
   Future<String> _httpHeaders(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return 'Only HTTPS URLs are allowed.';
+    final client = HttpClient();
     try {
-      final c = HttpClient(); final r = await c.getUrl(Uri.parse(url)); final res = await r.close();
-      final buf = StringBuffer(); res.headers.forEach((k, v) => buf.writeln('$k: ${v.join(', ')}'));
-      return 'HTTP Headers for $url:\n$buf';
-    } catch (e) { return 'HTTP failed: $e'; }
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      final buffer = StringBuffer();
+      response.headers.forEach((name, values) => buffer.writeln('$name: ${values.join(', ')}'));
+      return 'HTTPS headers for $uri:\n$buffer';
+    } catch (e) {
+      return 'HTTPS request failed: $e';
+    } finally {
+      client.close(force: true);
+    }
   }
+
   Future<String> _sslCheck(String host) async {
+    if (!_isSafeHost(host)) return 'Invalid host.';
     try {
-      final s = await SecureSocket.connect(host, 443, timeout: const Duration(seconds: 5));
-      final cert = s.peerCertificate; s.destroy();
-      return cert != null ? 'SSL Valid: ${cert.subject}\nUntil: ${cert.endValidity}' : 'No certificate';
-    } catch (e) { return 'SSL failed: $e'; }
+      final socket = await SecureSocket.connect(host, 443, timeout: const Duration(seconds: 5));
+      final certificate = socket.peerCertificate;
+      socket.destroy();
+      return certificate == null ? 'No peer certificate returned.' : 'TLS certificate subject: ${certificate.subject}\nValid until: ${certificate.endValidity}';
+    } catch (e) {
+      return 'TLS check failed: $e';
+    }
   }
-  String _systemInfo() => 'OS: ${Platform.operatingSystem}\nCPU: ${Platform.numberOfProcessors} cores\nDart: ${Platform.version}';
+
+  bool _isSafeHost(String value) => value.isNotEmpty && !value.contains(RegExp(r'[\s;/\\]'));
+
+  String _systemInfo() => 'OS: ${Platform.operatingSystem}\nCPU: ${Platform.numberOfProcessors} cores\nDart: ${Platform.version}\nDebug: $kDebugMode';
 
   String _helpText() => '''
-=== PROJECT ZION - KALI LINUX INTEGRATION ===
-📦 Kali Setup:
-  kali_install      - تثبيت Kali Linux تلقائيًا
-  kali_status       - عرض حالة Kali
-  kali_tools        - عدد الأدوات المتاحة
+=== ZION OS — DEFENSIVE DIAGNOSTICS ===
+system_info    - معلومات النظام
+ping           - اختبار اتصال أساسي
+DNS lookup     - تحليل DNS
+https headers  - قراءة ترويسات HTTPS
+ssl_check      - فحص شهادة TLS
+network_info   - معلومات الشبكة
+port_scan      - معطل في نسخة الإنتاج
 
-🔧 Kali Tools (600+):
-  nmap <target>     - فحص الشبكات
-  msfconsole        - Metasploit Framework
-  sqlmap <url>      - فحص SQL Injection
-  hydra <target>    - كسر كلمات المرور
-  aircrack          - كسر شبكات WiFi
-  john              - كسر التجزئات
-  nikto <url>       - فحص خوادم الويب
-  dirb <url>        - اكتشاف المجلدات
-  wpscan <url>      - فحص WordPress
-  kali_shell <cmd>  - تنفيذ أمر مخصص
-
-📡 Network:
-  net_start/stop, net_connections, net_stats, net_top
-  ping, port_scan, dns_lookup, http_headers, ssl_check
-=================================================
+الهجمات، كسر كلمات المرور، الاستغلال، Metasploit، Hydra، SQLMap،
+Aircrack وعمليات الانتشار الذاتي ليست جزءاً من سطح الإنتاج.
 ''';
 }
-
-  case 'proot_status':
-    final prootPath = await KaliLoaderService.findProot();
-    if (prootPath != null) {
-      return '✅ proot موجود: $prootPath';
-    } else {
-      return '❌ proot غير موجود. سيتم استخراج المدمج تلقائيًا.';
-    }
