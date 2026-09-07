@@ -7,7 +7,7 @@ enum ResultSource { real, simulated, imported, derived, unavailable }
 enum SecuritySeverity { info, low, medium, high, critical }
 
 class SecurityResult {
-  const SecurityResult({
+  SecurityResult({
     required this.id,
     required this.timestamp,
     required this.source,
@@ -16,10 +16,12 @@ class SecurityResult {
     required this.description,
     this.target,
     this.confidence = 0,
-    this.evidence = const <String>[],
+    List<String> evidence = const <String>[],
     this.remediation,
-    this.metadata = const <String, Object?>{},
-  }) : assert(confidence >= 0 && confidence <= 1);
+    Map<String, Object?> metadata = const <String, Object?>{},
+  })  : assert(confidence >= 0 && confidence <= 1),
+        evidence = List.unmodifiable(evidence),
+        metadata = Map.unmodifiable(metadata);
 
   final String id;
   final DateTime timestamp;
@@ -35,6 +37,7 @@ class SecurityResult {
 
   bool get isSimulation => source == ResultSource.simulated;
   bool get isOperational => source == ResultSource.real;
+  bool get isTrustedTelemetry => source == ResultSource.real && confidence > 0;
 
   SecurityResult copyWith({
     ResultSource? source,
