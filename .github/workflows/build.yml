@@ -8,69 +8,68 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
-      
+
       - name: Install dependencies
         run: flutter pub get
-      
-      - name: 🔑 Generate launcher icons
+
+      - name: Generate launcher icons
         run: flutter pub run flutter_launcher_icons:main
-      
-      - name: Create assets directories
+
+      - name: Create missing asset directories
         run: |
           mkdir -p assets/translations
           mkdir -p assets/icons/svg_colors
           mkdir -p assets/images
           mkdir -p assets/fonts
           mkdir -p assets/wallpapers
-      
-      - name: Create placeholder translations
+      - name: Create placeholder translations (English)
         run: |
-          echo '{"app_name":"Zion OS","settings":"Settings","dark_mode":"Dark Mode","attack":"Attack","defense":"Defense","analysis":"Analysis","tools":"Tools"}' > assets/translations/en.json
-          echo '{"app_name":"زيون OS","settings":"الإعدادات","dark_mode":"الوضع الليلي","attack":"هجوم","defense":"دفاع","analysis":"تحليل","tools":"أدوات"}' > assets/translations/ar.json
-      
-      - name: Create placeholder SVG icons
+          echo '{"app_name":"Zion OS","settings":"Settings","dark_mode":"Dark Mode","attack":"Attack","defense":"Defense","analysis":"Analysis","tools":"Tools","lock_screen":{"incorrect_pin":"Incorrect PIN"},"common":{"loading":"Loading..."}}' > assets/translations/en.json
+      - name: Create placeholder translations (Arabic)
+        run: |
+          echo '{"app_name":"زيون OS","settings":"الإعدادات","dark_mode":"الوضع الليلي","attack":"هجوم","defense":"دفاع","analysis":"تحليل","tools":"أدوات","lock_screen":{"incorrect_pin":"الرقم السري غير صحيح"},"common":{"loading":"جاري التحميل..."}}' > assets/translations/ar.json
+      - name: Create placeholder SVG icons (minimal)
         run: |
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/terminal.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/wifi.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#00BCD4" stroke-width="1.5"><circle cx="12" cy="12" r="10"/></svg>' > assets/icons/svg_colors/calculator.svg
-      
-      - name: Create android/local.properties
-        run: |
-          echo "flutter.sdk=${{ runner.tool_cache }}/flutter" > android/local.properties
-      
-      - name: 🔨 Build APK
+      - name: Clean previous builds
+        run: flutter clean
+
+      - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
-      
-      - name: 📤 Upload arm64-v8a
+
+      - name: Upload arm64-v8a
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-arm64-v8a
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           retention-days: 30
-      
-      - name: 📤 Upload armeabi-v7a
+
+      - name: Upload armeabi-v7a
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-armeabi-v7a
           path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
           retention-days: 30
-      
-      - name: 📤 Upload x86_64
+
+      - name: Upload x86_64
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-x86_64
