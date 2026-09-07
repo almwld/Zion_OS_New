@@ -1,0 +1,212 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+final terminalServiceProvider = Provider<TerminalService>((ref) {
+  final service = TerminalService();
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+class TerminalResult {
+  const TerminalResult({
+    required this.command,
+    required this.stdout,
+    required this.stderr,
+    required this.exitCode,
+    required this.duration,
+    required this.shell,
+  });
+
+  final String command;
+  final String stdout;
+  final String stderr;
+  final int exitCode;
+  final Duration duration;
+  final String shell;
+
+  bool get succeeded => exitCode == 0;
+
+  String get formatted {
+    final buffer = StringBuffer();
+    if (stdout.isNotEmpty) buffer.write(stdout.trimRight());
+    if (stderr.isNotEmpty) {
+      if (buffer.length > 0) buffer.writeln();
+      buffer.write(stderr.trimRight());
+    }
+    if (buffer.length == 0) buffer.write('Exit code: $exitCode');
+    return buffer.toString();
+  }
+}
+
+class TerminalService {
+  static const _historyKey = 'zion_terminal_history_v1';
+  static const _maxHistory = 500;
+
+  Process? _process;
+  StreamSubscription<String>? _stdoutSub;
+  StreamSubscription<String>? _stderrSub;
+  final List<String> _history = <String>[];
+  final StreamController<String> _output = StreamController<String>.broadcast();
+
+  Stream<String> get output => _output.stream;
+  List<String> get history => List.unmodifiable(_history);
+  bool get isInteractiveRunning => _process != null;
+
+  Future<void> loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    _history
+      ..clear()
+      ..addAll(prefs.getStringList(_historyKey) ?? const <String>[]);
+  }
+
+  Future<void> _saveHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_historyKey, _history.take(_maxHistory).toList());
+  }
+
+  Future<TerminalResult> execute(String command) async {
+    final value = command.trim();
+    if (value.isEmpty) {
+      return const TerminalResult(
+        command: '',
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        duration: Duration.zero,
+        shell: 'none',
+      );
+    }
+    if (value == 'clear') {
+      _output.add('\x1b[2J\x1b[H');
+      return const TerminalResult(
+        command: 'clear',
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        duration: Duration.zero,
+        shell: 'builtin',
+      );
+    }
+    if (value == 'history') {
+      return TerminalResult(
+        command: value,
+        stdout: List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'),
+        stderr: '',
+        exitCode: 0,
+        duration: Duration.zero,
+        shell: 'builtin',
+      );
+    }
+    if (value == 'exit') {
+      await stopInteractive();
+      return const TerminalResult(
+        command: 'exit',
+        stdout: 'Interactive shell stopped.',
+        stderr: '',
+        exitCode: 0,
+        duration: Duration.zero,
+        shell: 'builtin',
+      );
+    }
+
+    _history.remove(value);
+    _history.insert(0, value);
+    if (_history.length > _maxHistory) _history.removeLast();
+    unawaited(_saveHistory());
+
+    final shell = await _findShell();
+    if (shell == null) {
+      return const TerminalResult(
+        command: value,
+        stdout: '',
+        stderr: 'No POSIX shell is available on this Android runtime.',
+        exitCode: 127,
+        duration: Duration.zero,
+        shell: 'unavailable',
+      );
+    }
+
+    final started = DateTime.now();
+    try {
+      final result = await Process.run(shell, <String>['-c', value], runInShell: false);
+      return TerminalResult(
+        command: value,
+        stdout: result.stdout.toString(),
+        stderr: result.stderr.toString(),
+        exitCode: result.exitCode,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+    } on ProcessException catch (e) {
+      return TerminalResult(
+        command: value,
+        stdout: '',
+        stderr: e.message,
+        exitCode: 126,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+    }
+  }
+
+  Future<String?> _findShell() async {
+    for (final candidate in <String>['/system/bin/sh', '/bin/sh', 'sh']) {
+      try {
+        final check = await Process.run(candidate, const <String>['-c', 'exit 0'], runInShell: false);
+        if (check.exitCode == 0) return candidate;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> startInteractive() async {
+    if (_process != null) return;
+    final shell = await _findShell();
+    if (shell == null) {
+      _output.add('ERROR: No POSIX shell is available on this runtime.');
+      return;
+    }
+    try {
+      _process = await Process.start(shell, const <String>['-i'], runInShell: false);
+      _stdoutSub = _process!.stdout.transform(utf8.decoder).listen(_output.add);
+      _stderrSub = _process!.stderr.transform(utf8.decoder).listen((data) => _output.add(data));
+      _output.add('Connected to real shell: $shell\n');
+    } catch (e) {
+      _output.add('ERROR: Failed to start shell: $e');
+      _process = null;
+    }
+  }
+
+  void write(String input) {
+    final process = _process;
+    if (process == null) return;
+    process.stdin.write(input);
+    process.stdin.flush();
+  }
+
+  Future<void> stopInteractive() async {
+    final process = _process;
+    if (process == null) return;
+    await _stdoutSub?.cancel();
+    await _stderrSub?.cancel();
+    _stdoutSub = null;
+    _stderrSub = null;
+    process.kill();
+    _process = null;
+  }
+
+  Future<void> clearHistory() async {
+    _history.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_historyKey);
+  }
+
+  Future<void> dispose() async {
+    await stopInteractive();
+    await _output.close();
+  }
+}
