@@ -2,23 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
-
-final terminalServiceProvider = Provider<TerminalService>((ref) {
-  final service = TerminalService(ref.read(securityCoreProvider));
-  ref.onDispose(service.dispose);
-  return service;
-});
-
-final securityCoreProvider = Provider<SecurityCore>((ref) {
-  throw StateError('SecurityCore provider must be overridden by ZionOSApp');
-});
 
 class TerminalResult {
   const TerminalResult({
@@ -108,14 +97,7 @@ class TerminalService {
     return _securityCore.canExecute(scope: scope, action: _terminalAction, requiresSimulation: false);
   }
 
-  void _audit({
-    required String command,
-    required String outcome,
-    required int exitCode,
-    required String shell,
-    required Duration duration,
-    bool? interactive,
-  }) {
+  void _audit({required String command, required String outcome, required int exitCode, required String shell, required Duration duration, bool? interactive}) {
     _securityCore.auditLogger.log(
       action: _terminalAction,
       actor: 'zion-terminal',
@@ -146,41 +128,20 @@ class TerminalService {
 
   Future<TerminalResult> execute(String command) async {
     final value = command.trim();
-    if (value.isEmpty) {
-      return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
-    }
-
+    if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     if (value == 'help' || value == 'zion-help') {
-      return _builtinResult(
-        value,
-        'Built-in: help, capabilities, history, clear, exit, shell-status\n'
-        'Real shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\n'
-        'Network diagnostics: ping, ip, ss/netstat, traceroute, nslookup/dig when installed.\n'
-        'Remote administration: ssh/telnet only when the real client exists in the runtime.\n'
-        'Interactive Android terminal uses a native PTY on API 23+; no PTY success is simulated.',
-      );
+      return _builtinResult(value, 'Built-in: help, capabilities, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a native PTY; no PTY success is simulated.');
     }
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
     }
-    if (value == 'history') {
-      return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
-    }
+    if (value == 'history') return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
     if (value == 'shell-status') {
       final shell = await _findShell();
       final ptyAvailable = await _pty.isAvailable();
-      final result = TerminalResult(
-        command: value,
-        stdout: shell == null
-            ? 'Shell: UNAVAILABLE\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}'
-            : 'Shell: AVAILABLE\nPath: $shell\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}\nInteractive: $isInteractiveRunning',
-        stderr: '',
-        exitCode: shell == null ? 127 : 0,
-        duration: Duration.zero,
-        shell: shell ?? 'unavailable',
-      );
+      final result = TerminalResult(command: value, stdout: shell == null ? 'Shell: UNAVAILABLE\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}' : 'Shell: AVAILABLE\nPath: $shell\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}\nInteractive: $isInteractiveRunning', stderr: '', exitCode: shell == null ? 127 : 0, duration: Duration.zero, shell: shell ?? 'unavailable');
       _audit(command: value, outcome: result.succeeded ? 'success' : 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
@@ -189,18 +150,10 @@ class TerminalService {
       return _builtinResult(value, 'Interactive shell stopped.');
     }
     if (!_authorized(value)) {
-      final denied = TerminalResult(
-        command: value,
-        stdout: '',
-        stderr: 'Command denied by Zion SecurityCore authorization policy.',
-        exitCode: 126,
-        duration: Duration.zero,
-        shell: 'security-core',
-      );
+      final denied = TerminalResult(command: value, stdout: '', stderr: 'Command denied by Zion SecurityCore authorization policy.', exitCode: 126, duration: Duration.zero, shell: 'security-core');
       _audit(command: value, outcome: 'denied', exitCode: denied.exitCode, shell: denied.shell, duration: denied.duration, interactive: false);
       return denied;
     }
-
     _remember(value);
     final shell = await _findShell();
     if (shell == null) {
@@ -208,18 +161,10 @@ class TerminalService {
       _audit(command: value, outcome: 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
-
     final started = DateTime.now();
     try {
       final processResult = await Process.run(shell, <String>['-c', value], runInShell: false);
-      final result = TerminalResult(
-        command: value,
-        stdout: processResult.stdout.toString(),
-        stderr: processResult.stderr.toString(),
-        exitCode: processResult.exitCode,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
+      final result = TerminalResult(command: value, stdout: processResult.stdout.toString(), stderr: processResult.stderr.toString(), exitCode: processResult.exitCode, duration: DateTime.now().difference(started), shell: shell);
       _audit(command: value, outcome: result.succeeded ? 'success' : 'failed', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     } on ProcessException catch (e) {
