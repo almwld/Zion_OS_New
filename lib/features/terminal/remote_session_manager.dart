@@ -6,8 +6,6 @@ import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 
 class RemoteSessionManager {
-  RemoteSessionManager();
-
   SSHClient? _sshClient;
   SSHSession? _sshSession;
   StreamSubscription<Uint8List>? _stdout;
@@ -82,32 +80,32 @@ class RemoteSessionManager {
   }
 
   void write(String input) {
-    final session = _sshSession;
-    if (session == null) return;
-    session.write(Uint8List.fromList(utf8.encode(input)));
+    _sshSession?.write(Uint8List.fromList(utf8.encode(input)));
   }
 
   void resize({required int rows, required int cols}) {
     _sshSession?.resizeTerminal(cols, rows);
   }
 
-  Future<int?> waitForExit({Duration? timeout}) async =>
-      _sshSession?.waitForExit(timeout: timeout);
+  Future<int?> waitForExit({Duration? timeout}) =>
+      _sshSession?.waitForExit(timeout: timeout) ?? Future<int?>.value(null);
 
   Future<void> uploadFile({
     required String localPath,
     required String remotePath,
   }) async {
     final client = _sshClient;
-    if (client == null || client.isClosed) throw StateError('SSH is not connected');
+    if (client == null || client.isClosed) {
+      throw StateError('SSH is not connected');
+    }
     final sftp = await client.sftp();
     final remote = await sftp.open(
       remotePath,
-      mode: SftpFileOpenMode.create | SftpFileOpenMode.write,
+      mode: SftpFileOpenMode.create | SftpFileOpenMode.truncate | SftpFileOpenMode.write,
     );
     try {
-      await remote.write(File(localPath).openRead().cast<List<int>>());
-      await remote.done;
+      final writer = remote.write(File(localPath).openRead().cast<Uint8List>());
+      await writer.done;
     } finally {
       await remote.close();
     }
@@ -118,19 +116,19 @@ class RemoteSessionManager {
     required String localPath,
   }) async {
     final client = _sshClient;
-    if (client == null || client.isClosed) throw StateError('SSH is not connected');
+    if (client == null || client.isClosed) {
+      throw StateError('SSH is not connected');
+    }
     final sftp = await client.sftp();
     final output = File(localPath).openWrite();
-    await sftp.download(
-      remotePath,
-      output,
-      closeDestination: true,
-    );
+    await sftp.download(remotePath, output, closeDestination: true);
   }
 
   Future<List<SftpName>> listRemoteDirectory(String path) async {
     final client = _sshClient;
-    if (client == null || client.isClosed) throw StateError('SSH is not connected');
+    if (client == null || client.isClosed) {
+      throw StateError('SSH is not connected');
+    }
     final sftp = await client.sftp();
     return sftp.listdir(path);
   }
@@ -149,11 +147,7 @@ class RemoteSessionManager {
     _stderr = null;
     final session = _sshSession;
     _sshSession = null;
-    if (session != null) {
-      try {
-        await session.waitForExit(timeout: const Duration(milliseconds: 250));
-      } catch (_) {}
-    }
+    if (session != null) session.close();
   }
 
   Future<void> dispose() async {
