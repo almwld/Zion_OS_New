@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:project_zion/security/core/security_capability.dart';
 import 'package:project_zion/security/core/security_observation.dart';
 import 'package:project_zion/security/core/security_result.dart';
 
