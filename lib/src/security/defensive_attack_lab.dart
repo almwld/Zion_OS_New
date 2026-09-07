@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
 /// Defensive analysis primitives for authorized lab captures and requests.
 ///
 /// These routines analyze evidence supplied by the caller. They do not emit
@@ -8,9 +10,7 @@ import 'dart:convert';
 class DefensiveAttackLab {
   const DefensiveAttackLab();
 
-  WiFiRogueApReport detectEvilTwinPatterns(
-    Iterable<WiFiObservation> observations,
-  ) {
+  WiFiRogueApReport detectEvilTwinPatterns(Iterable<WiFiObservation> observations) {
     final bySsid = <String, List<WiFiObservation>>{};
     for (final item in observations) {
       final key = item.ssid.trim();
@@ -46,9 +46,7 @@ class DefensiveAttackLab {
     final counts = <String, int>{};
     for (final frame in frames) {
       if (frame.type != WiFiManagementFrameType.deauth &&
-          frame.type != WiFiManagementFrameType.disassoc) {
-        continue;
-      }
+          frame.type != WiFiManagementFrameType.disassoc) continue;
       final key = '${frame.bssid.toLowerCase()}|${frame.windowStart.toUtc().millisecondsSinceEpoch}';
       counts[key] = (counts[key] ?? 0) + 1;
     }
@@ -70,7 +68,6 @@ class DefensiveAttackLab {
   /// It performs no request to the target and never extracts database data.
   SqlInjectionDetectionReport inspectRequest(String rawRequest) {
     final decoded = Uri.decodeComponent(rawRequest);
-    final normalized = decoded.toLowerCase();
     final indicators = <String>[];
     final patterns = <String, RegExp>{
       'tautology': RegExp(r"(?:'|%27)\s*(?:or|and)\s+\d+\s*=\s*\d+", caseSensitive: false),
@@ -79,20 +76,13 @@ class DefensiveAttackLab {
       'stacked-query': RegExp(r";\s*(?:select|insert|update|delete|drop|alter|create)\b", caseSensitive: false),
     };
     patterns.forEach((name, pattern) {
-      if (pattern.hasMatch(decoded) || pattern.hasMatch(normalized)) {
-        indicators.add(name);
-      }
+      if (pattern.hasMatch(decoded)) indicators.add(name);
     });
     return SqlInjectionDetectionReport(
       suspicious: indicators.isNotEmpty,
-      indicators: indicators,
-      evidenceSha256: _sha256Placeholder(rawRequest),
+      indicators: List.unmodifiable(indicators),
+      evidenceSha256: sha256.convert(utf8.encode(rawRequest)).toString(),
     );
-  }
-
-  String _sha256Placeholder(String value) {
-    // Stable evidence identifier without transmitting or executing the input.
-    return base64Url.encode(utf8.encode(value)).substring(0, 16);
   }
 }
 
