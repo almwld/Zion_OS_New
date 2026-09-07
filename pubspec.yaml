@@ -27,6 +27,7 @@ dependencies:
   connectivity_plus: ^5.0.2
   network_info_plus: ^4.0.0
   web_socket_channel: ^2.4.5
+  dartssh2: ^4.1.0
 
   # Security
   crypto: ^3.0.3
