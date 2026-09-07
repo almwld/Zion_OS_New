@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/services/unified_core_service.dart';
+
+import 'terminal_service.dart';
 
 class TerminalScreen extends ConsumerStatefulWidget {
   const TerminalScreen({super.key});
@@ -11,79 +14,201 @@ class TerminalScreen extends ConsumerStatefulWidget {
 
 class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final _commandController = TextEditingController();
-  final List<String> _history = ['Project Zion Terminal v2.0', 'اكتب "help" للمساعدة', ''];
   final _scrollController = ScrollController();
+  final List<String> _lines = <String>[];
+  StreamSubscription<String>? _outputSubscription;
+  int _historyIndex = -1;
+  bool _interactive = false;
+  bool _busy = false;
 
-  Future<void> _executeCommand() async {
+  @override
+  void initState() {
+    super.initState();
+    final service = ref.read(terminalServiceProvider);
+    unawaited(service.loadHistory());
+    _outputSubscription = service.output.listen((text) {
+      if (!mounted) return;
+      setState(() => _lines.add(text));
+      _scrollToBottom();
+    });
+    _lines.addAll(const <String>[
+      'ZION OS TERMINAL',
+      'Real POSIX shell interface — output is from the device runtime.',
+      'Type "help" for Zion commands or execute normal shell commands.',
+      '',
+    ]);
+  }
+
+  Future<void> _run() async {
     final command = _commandController.text.trim();
     if (command.isEmpty) return;
-
-    setState(() {
-      _history.add('> $command');
-      _commandController.clear();
-    });
-
-    if (command == 'clear') {
-      setState(() => _history.clear());
+    _commandController.clear();
+    if (_interactive) {
+      ref.read(terminalServiceProvider).write('$command\n');
       return;
     }
-
-    final service = ref.read(unifiedCoreProvider);
-    final result = await service.execute(command, target: '192.168.1.1');
-
     setState(() {
-      _history.add(result);
-      _history.add('');
+      _lines.add('zion$ $command');
+      _busy = true;
+      _historyIndex = -1;
     });
+    _scrollToBottom();
 
+    final result = await ref.read(terminalServiceProvider).execute(command);
+    if (!mounted) return;
+    setState(() {
+      if (result.formatted.isNotEmpty) _lines.add(result.formatted);
+      _lines.add('[exit ${result.exitCode} | ${result.duration.inMilliseconds} ms]');
+      _busy = false;
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _toggleInteractive() async {
+    final service = ref.read(terminalServiceProvider);
+    if (_interactive) {
+      await service.stopInteractive();
+      if (mounted) setState(() => _interactive = false);
+      return;
+    }
+    await service.startInteractive();
+    if (mounted) setState(() => _interactive = service.isInteractiveRunning);
+  }
+
+  void _historyUp() {
+    final history = ref.read(terminalServiceProvider).history;
+    if (history.isEmpty) return;
+    setState(() {
+      _historyIndex = (_historyIndex + 1).clamp(0, history.length - 1);
+      _commandController.text = history[_historyIndex];
+      _commandController.selection = TextSelection.collapsed(offset: _commandController.text.length);
+    });
+  }
+
+  void _historyDown() {
+    final history = ref.read(terminalServiceProvider).history;
+    if (_historyIndex <= 0) {
+      setState(() {
+        _historyIndex = -1;
+        _commandController.clear();
+      });
+      return;
+    }
+    setState(() {
+      _historyIndex--;
+      _commandController.text = history[_historyIndex];
+      _commandController.selection = TextSelection.collapsed(offset: _commandController.text.length);
+    });
+  }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      if (!_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+      );
     });
   }
 
   @override
+  void dispose() {
+    _outputSubscription?.cancel();
+    _commandController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final service = ref.watch(terminalServiceProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('الطرفية'), actions: [
-        IconButton(icon: const Icon(Icons.clear_all), onPressed: () => setState(() => _history.clear())),
-      ]),
+      appBar: AppBar(
+        title: const Text('Zion OS Terminal'),
+        actions: <Widget>[
+          IconButton(
+            tooltip: _interactive ? 'إيقاف shell' : 'تشغيل shell تفاعلي',
+            icon: Icon(_interactive ? Icons.stop_circle : Icons.terminal),
+            onPressed: _toggleInteractive,
+          ),
+          IconButton(
+            tooltip: 'مسح الشاشة',
+            icon: const Icon(Icons.clear_all),
+            onPressed: () => setState(_lines.clear),
+          ),
+          IconButton(
+            tooltip: 'مسح السجل المحفوظ',
+            icon: const Icon(Icons.history_toggle_off),
+            onPressed: () async {
+              await service.clearHistory();
+              if (mounted) setState(() => _historyIndex = -1);
+            },
+          ),
+        ],
+      ),
       body: Column(
-        children: [
+        children: <Widget>[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: <Widget>[
+                Icon(_interactive ? Icons.circle : Icons.circle_outlined, size: 10),
+                const SizedBox(width: 8),
+                Text(_interactive ? 'Interactive shell: CONNECTED' : 'Command mode: READY'),
+              ],
+            ),
+          ),
           Expanded(
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
-              color: const Color(0xFF0A0A0A),
-              child: ListView.builder(
-                controller: _scrollController,
-                itemCount: _history.length,
-                itemBuilder: (_, i) => Text(
-                  _history[i],
-                  style: TextStyle(
-                    color: _history[i].startsWith('>') ? const Color(0xFF00FF41) : const Color(0xFFAAAAAA),
-                    fontFamily: 'monospace',
-                    fontSize: 13,
+              color: const Color(0xFF090B0A),
+              child: SelectionArea(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: _lines.length,
+                  itemBuilder: (context, index) => SelectableText(
+                    _lines[index],
+                    style: TextStyle(
+                      color: _lines[index].startsWith('zion$') ? const Color(0xFF00FF41) : const Color(0xFFD0D7D2),
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            color: const Color(0xFF111811),
-            child: Row(
-              children: [
-                const Text('zion> ', style: TextStyle(color: Color(0xFF00FF41), fontFamily: 'monospace', fontSize: 14)),
-                Expanded(
-                  child: TextField(
-                    controller: _commandController,
-                    style: const TextStyle(color: Color(0xFF00FF41), fontFamily: 'monospace', fontSize: 14),
-                    decoration: const InputDecoration(border: InputBorder.none, hintText: 'أدخل الأمر...', hintStyle: TextStyle(color: Color(0xFF333333))),
-                    onSubmitted: (_) => _executeCommand(),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              color: const Color(0xFF111511),
+              child: Row(
+                children: <Widget>[
+                  IconButton(icon: const Icon(Icons.keyboard_arrow_up), onPressed: _historyUp),
+                  IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: _historyDown),
+                  const Text('zion$ ', style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF41))),
+                  Expanded(
+                    child: TextField(
+                      controller: _commandController,
+                      enabled: !_busy,
+                      autofocus: true,
+                      style: const TextStyle(color: Color(0xFF00FF41), fontFamily: 'monospace'),
+                      decoration: const InputDecoration(border: InputBorder.none, hintText: 'أدخل الأمر...'),
+                      onSubmitted: (_) => _run(),
+                    ),
                   ),
-                ),
-                IconButton(icon: const Icon(Icons.send, color: Color(0xFF00FF41)), onPressed: _executeCommand),
-              ],
+                  IconButton(
+                    tooltip: 'تنفيذ',
+                    icon: Icon(_busy ? Icons.hourglass_top : Icons.send),
+                    onPressed: _busy ? null : _run,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
