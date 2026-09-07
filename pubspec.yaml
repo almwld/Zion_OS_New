@@ -1,6 +1,6 @@
 name: project_zion
 description: Zion OS - منصة أمن سيبراني وتحليل دفاعي
-version: 4.0.0+1
+version: 4.5.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -35,6 +35,7 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   permission_handler: ^11.0.1
   local_auth: ^2.2.0
+  pqcrypto: ^0.4.1
 
   # Device
   device_info_plus: ^9.1.0
