@@ -5,7 +5,7 @@ import 'package:project_zion/security/runtime/runtime_integrity.dart';
 
 void main() {
   group('RuntimeIntegrity', () {
-    test('passes with a healthy Security Core', () {
+    test('passes with a healthy Security Core', () async {
       final core = SecurityCore();
       final report = const RuntimeIntegrity().verify(core);
 
@@ -13,10 +13,10 @@ void main() {
       expect(report.failedChecks, isEmpty);
       expect(core.auditLogger.records, isNotEmpty);
 
-      core.dispose();
+      await core.dispose();
     });
 
-    test('does not expose simulated data as part of the runtime probe', () {
+    test('does not expose simulated data as part of the runtime probe', () async {
       final core = SecurityCore();
       final report = const RuntimeIntegrity().verify(core);
 
@@ -29,7 +29,7 @@ void main() {
         isTrue,
       );
 
-      core.dispose();
+      await core.dispose();
     });
   });
 }
