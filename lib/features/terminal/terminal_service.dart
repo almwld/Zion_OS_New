@@ -90,20 +90,14 @@ class TerminalService {
   Future<String?> _findExecutable(List<String> candidates) async {
     for (final candidate in candidates) {
       try {
-        final result = await Process.run(
-          candidate,
-          const <String>['--version'],
-          runInShell: false,
-        );
+        final result = await Process.run(candidate, const <String>['--version'], runInShell: false);
         if (result.exitCode == 0 || candidate.startsWith('/')) return candidate;
       } catch (_) {}
     }
     return null;
   }
 
-  Future<String?> _findShell() => _findExecutable(
-        const <String>['/system/bin/sh', '/bin/sh', 'sh'],
-      );
+  Future<String?> _findShell() => _findExecutable(const <String>['/system/bin/sh', '/bin/sh', 'sh']);
 
   bool _authorized(String command) {
     final scope = AuthorizationScope(
@@ -111,11 +105,7 @@ class TerminalService {
       mode: SecurityMode.defensive,
       expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 30)),
     );
-    return _securityCore.canExecute(
-      scope: scope,
-      action: _terminalAction,
-      requiresSimulation: false,
-    );
+    return _securityCore.canExecute(scope: scope, action: _terminalAction, requiresSimulation: false);
   }
 
   void _audit({
@@ -150,35 +140,14 @@ class TerminalService {
   }
 
   TerminalResult _builtinResult(String command, String stdout) {
-    _audit(
-      command: command,
-      outcome: 'success',
-      exitCode: 0,
-      shell: 'builtin',
-      duration: Duration.zero,
-      interactive: false,
-    );
-    return TerminalResult(
-      command: command,
-      stdout: stdout,
-      stderr: '',
-      exitCode: 0,
-      duration: Duration.zero,
-      shell: 'builtin',
-    );
+    _audit(command: command, outcome: 'success', exitCode: 0, shell: 'builtin', duration: Duration.zero, interactive: false);
+    return TerminalResult(command: command, stdout: stdout, stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
   }
 
   Future<TerminalResult> execute(String command) async {
     final value = command.trim();
     if (value.isEmpty) {
-      return const TerminalResult(
-        command: '',
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-        duration: Duration.zero,
-        shell: 'none',
-      );
+      return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     }
 
     if (value == 'help' || value == 'zion-help') {
@@ -191,26 +160,14 @@ class TerminalService {
         'Interactive Android terminal uses a native PTY on API 23+; no PTY success is simulated.',
       );
     }
-
-    if (value == 'capabilities') {
-      return _builtinResult(value, TerminalCapabilities.describe());
-    }
-
+    if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
     }
-
     if (value == 'history') {
-      return _builtinResult(
-        value,
-        List.generate(
-          _history.length,
-          (i) => '${i + 1}  ${_history[i]}',
-        ).join('\n'),
-      );
+      return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
     }
-
     if (value == 'shell-status') {
       final shell = await _findShell();
       final ptyAvailable = await _pty.isAvailable();
@@ -224,24 +181,15 @@ class TerminalService {
         duration: Duration.zero,
         shell: shell ?? 'unavailable',
       );
-      _audit(
-        command: value,
-        outcome: result.succeeded ? 'success' : 'unavailable',
-        exitCode: result.exitCode,
-        shell: result.shell,
-        duration: result.duration,
-        interactive: false,
-      );
+      _audit(command: value, outcome: result.succeeded ? 'success' : 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
-
     if (value == 'exit') {
       await stopInteractive();
       return _builtinResult(value, 'Interactive shell stopped.');
     }
-
     if (!_authorized(value)) {
-      const denied = TerminalResult(
+      final denied = TerminalResult(
         command: value,
         stdout: '',
         stderr: 'Command denied by Zion SecurityCore authorization policy.',
@@ -249,47 +197,21 @@ class TerminalService {
         duration: Duration.zero,
         shell: 'security-core',
       );
-      _audit(
-        command: value,
-        outcome: 'denied',
-        exitCode: denied.exitCode,
-        shell: denied.shell,
-        duration: denied.duration,
-        interactive: false,
-      );
+      _audit(command: value, outcome: 'denied', exitCode: denied.exitCode, shell: denied.shell, duration: denied.duration, interactive: false);
       return denied;
     }
 
     _remember(value);
-
     final shell = await _findShell();
     if (shell == null) {
-      final result = TerminalResult(
-        command: value,
-        stdout: '',
-        stderr: 'No POSIX shell is available on this Android runtime.',
-        exitCode: 127,
-        duration: Duration.zero,
-        shell: 'unavailable',
-      );
-      _audit(
-        command: value,
-        outcome: 'unavailable',
-        exitCode: result.exitCode,
-        shell: result.shell,
-        duration: result.duration,
-        interactive: false,
-      );
+      final result = TerminalResult(command: value, stdout: '', stderr: 'No POSIX shell is available on this Android runtime.', exitCode: 127, duration: Duration.zero, shell: 'unavailable');
+      _audit(command: value, outcome: 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
 
     final started = DateTime.now();
     try {
-      final processResult = await Process.run(
-        shell,
-        <String>['-c', value],
-        runInShell: false,
-      );
+      final processResult = await Process.run(shell, <String>['-c', value], runInShell: false);
       final result = TerminalResult(
         command: value,
         stdout: processResult.stdout.toString(),
@@ -298,118 +220,55 @@ class TerminalService {
         duration: DateTime.now().difference(started),
         shell: shell,
       );
-      _audit(
-        command: value,
-        outcome: result.succeeded ? 'success' : 'failed',
-        exitCode: result.exitCode,
-        shell: result.shell,
-        duration: result.duration,
-        interactive: false,
-      );
+      _audit(command: value, outcome: result.succeeded ? 'success' : 'failed', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     } on ProcessException catch (e) {
-      final result = TerminalResult(
-        command: value,
-        stdout: '',
-        stderr: e.message,
-        exitCode: 126,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
-      _audit(
-        command: value,
-        outcome: 'process-error',
-        exitCode: result.exitCode,
-        shell: result.shell,
-        duration: result.duration,
-        interactive: false,
-      );
+      final result = TerminalResult(command: value, stdout: '', stderr: e.message, exitCode: 126, duration: DateTime.now().difference(started), shell: shell);
+      _audit(command: value, outcome: 'process-error', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
   }
 
   Future<void> startInteractive() async {
     if (isInteractiveRunning) return;
-
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'denied',
-        exitCode: 126,
-        shell: 'security-core',
-        duration: Duration.zero,
-        interactive: true,
-      );
+      _audit(command: '<interactive-start>', outcome: 'denied', exitCode: 126, shell: 'security-core', duration: Duration.zero, interactive: true);
       return;
     }
-
     final started = DateTime.now();
     final ptyStarted = await _pty.start(rows: 30, cols: 100);
     if (!ptyStarted) {
       _output.add('ERROR: Native Android PTY is unavailable on this runtime.');
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'unavailable',
-        exitCode: 127,
-        shell: 'native-pty',
-        duration: DateTime.now().difference(started),
-        interactive: true,
-      );
+      _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
       return;
     }
-
     _ptyOutputSub = _pty.output.listen(_output.add);
     _interactiveInputBuffer = '';
     _output.add('Connected to native Android PTY: /system/bin/sh\r\n');
-    _audit(
-      command: '<interactive-start>',
-      outcome: 'success',
-      exitCode: 0,
-      shell: 'native-pty',
-      duration: DateTime.now().difference(started),
-      interactive: true,
-    );
+    _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
   }
 
   void write(String input) {
     if (!_pty.isRunning) return;
-
     _interactiveInputBuffer += input;
     final parts = _interactiveInputBuffer.split('\n');
     _interactiveInputBuffer = parts.removeLast();
-
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       if (!_authorized(command)) {
         _output.add('\r\n[ZION] command denied by SecurityCore: $command\r\n');
-        _audit(
-          command: command,
-          outcome: 'denied',
-          exitCode: 126,
-          shell: 'security-core',
-          duration: Duration.zero,
-          interactive: true,
-        );
+        _audit(command: command, outcome: 'denied', exitCode: 126, shell: 'security-core', duration: Duration.zero, interactive: true);
         continue;
       }
       _remember(command);
-      _audit(
-        command: command,
-        outcome: 'submitted',
-        exitCode: -1,
-        shell: 'native-pty',
-        duration: Duration.zero,
-        interactive: true,
-      );
+      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'native-pty', duration: Duration.zero, interactive: true);
     }
-
     unawaited(_pty.write(input));
   }
 
-  Future<bool> resizeInteractive({required int rows, required int cols}) =>
-      _pty.resize(rows: rows, cols: cols);
+  Future<bool> resizeInteractive({required int rows, required int cols}) => _pty.resize(rows: rows, cols: cols);
 
   Future<void> stopInteractive() async {
     if (_pty.isRunning) {
@@ -417,16 +276,8 @@ class TerminalService {
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = null;
       _interactiveInputBuffer = '';
-      _audit(
-        command: '<interactive-stop>',
-        outcome: 'success',
-        exitCode: 0,
-        shell: 'native-pty',
-        duration: Duration.zero,
-        interactive: true,
-      );
+      _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: Duration.zero, interactive: true);
     }
-
     final process = _process;
     if (process != null) {
       await _stdoutSub?.cancel();
