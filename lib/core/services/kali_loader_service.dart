@@ -4,196 +4,132 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'kali_chroot_service.dart';
 
+/// Real Kali/PRoot lifecycle manager.
+///
+/// The runtime is only reported as available after the actual binary and
+/// filesystem are detected. High-risk offensive wrappers are deliberately not
+/// exposed here; defensive discovery can use the safe Nmap adapter below.
 class KaliLoaderService {
   static const String _installPath = '/data/local/kali';
   static const String _zionFolder = '/storage/emulated/0/Zion Universal';
-  
+
   static String? _prootPath;
   static bool _hasRootCache = false;
   static bool _rootChecked = false;
-  
+
   static final List<Map<String, String>> _sources = [
     {'name': 'bootstrap-aarch64.zip', 'path': '$_zionFolder/bootstrap-aarch64.zip', 'type': 'zip'},
     {'name': 'kali-bootstrap.tar.gz', 'path': '$_zionFolder/kali-bootstrap.tar.gz', 'type': 'tar'},
   ];
 
-  // ============ إدارة proot المدمج ============
-  
-  /// استخراج proot من assets إلى مجلد التطبيق
   static Future<bool> extractEmbeddedProot() async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final prootDir = Directory('${appDir.path}/bin');
-      if (!await prootDir.exists()) {
-        await prootDir.create(recursive: true);
-      }
-      
+      if (!await prootDir.exists()) await prootDir.create(recursive: true);
       final prootPath = '${prootDir.path}/proot';
       final prootFile = File(prootPath);
-      
-      // إذا كان الملف موجودًا بالفعل، تحقق من أنه يعمل
       if (await prootFile.exists()) {
-        final testResult = await _testProot(prootPath);
-        if (testResult) {
+        if (await _testProot(prootPath)) {
           _prootPath = prootPath;
-          print('✅ Existing proot found and working: $prootPath');
           return true;
         }
-        // إذا كان تالفًا، احذفه وأعد استخراجه
         await prootFile.delete();
       }
-      
-      // استخراج proot من assets
-      print('📦 Extracting proot from assets...');
       final byteData = await rootBundle.load('assets/bin/proot');
-      await prootFile.writeAsBytes(byteData.buffer.asUint8List());
-      
-      // منح صلاحية التنفيذ
-      await Process.run('chmod', ['755', prootPath]);
-      
-      // التحقق من أنه يعمل
-      final testResult = await _testProot(prootPath);
-      if (testResult) {
-        _prootPath = prootPath;
-        print('✅ Embedded proot extracted successfully: $prootPath');
-        return true;
-      } else {
-        print('❌ Extracted proot failed test');
-        return false;
-      }
-    } catch (e) {
-      print('❌ Failed to extract proot: $e');
+      await prootFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      final chmod = await Process.run('chmod', ['755', prootPath], runInShell: true);
+      if (chmod.exitCode != 0) return false;
+      if (!await _testProot(prootPath)) return false;
+      _prootPath = prootPath;
+      return true;
+    } catch (_) {
       return false;
     }
   }
-  
-  /// اختبار proot ليتأكد من أنه يعمل
+
   static Future<bool> _testProot(String prootPath) async {
     try {
       final result = await Process.run(prootPath, ['--version'], runInShell: true);
-      return result.exitCode == 0;
+      return result.exitCode == 0 && result.stdout.toString().trim().isNotEmpty;
     } catch (_) {
       return false;
     }
   }
-  
-  /// البحث عن proot في المسارات المتاحة
+
   static Future<String?> findProot() async {
-    // 1. استخدام المدمج أولاً
-    if (_prootPath != null && await File(_prootPath!).exists()) {
+    if (_prootPath != null && await File(_prootPath!).exists() && await _testProot(_prootPath!)) {
       return _prootPath;
     }
-    
-    // 2. محاولة استخراج المدمج
-    final extracted = await extractEmbeddedProot();
-    if (extracted) return _prootPath;
-    
-    // 3. البحث في Termux
-    final termuxPaths = [
+    if (await extractEmbeddedProot()) return _prootPath;
+    const candidates = [
       '/data/data/com.termux/files/usr/bin/proot',
-      '/data/data/com.termux/files/usr/bin/proot',
+      '/usr/bin/proot',
+      '/usr/local/bin/proot',
     ];
-    for (final path in termuxPaths) {
-      if (await File(path).exists()) {
-        final test = await _testProot(path);
-        if (test) return path;
-      }
+    for (final path in candidates) {
+      if (await File(path).exists() && await _testProot(path)) return path;
     }
-    
-    // 4. البحث في النظام
-    final systemPaths = ['/usr/bin/proot', '/usr/local/bin/proot'];
-    for (final path in systemPaths) {
-      if (await File(path).exists()) {
-        final test = await _testProot(path);
-        if (test) return path;
-      }
-    }
-    
     return null;
   }
 
-  // ============ فحص صلاحيات الجذر ============
-  
   static Future<bool> hasRootAccess() async {
     if (_rootChecked) return _hasRootCache;
     _rootChecked = true;
-    
     try {
       final whichSu = await Process.run('which', ['su'], runInShell: true);
-      if (whichSu.exitCode != 0) {
-        _hasRootCache = false;
-        return false;
-      }
-      
+      if (whichSu.exitCode != 0) return _hasRootCache = false;
       final result = await Process.run('su', ['-c', 'id -u'], runInShell: true);
-      final uid = result.stdout.toString().trim();
-      _hasRootCache = result.exitCode == 0 && uid == '0';
-      return _hasRootCache;
+      _hasRootCache = result.exitCode == 0 && result.stdout.toString().trim() == '0';
     } catch (_) {
       _hasRootCache = false;
-      return false;
     }
-  }
-  
-  static Future<bool> hasChroot() async {
-    return await hasRootAccess() && await Directory(_installPath).exists();
+    return _hasRootCache;
   }
 
-  // ============ التثبيت ============
-  
+  static Future<bool> hasChroot() async => await hasRootAccess() && await Directory(_installPath).exists();
+
   static Future<String> install() async {
-    if (await _isInstalled()) {
-      return '✅ Kali Linux مثبت مسبقًا وجاهز.';
-    }
-    
-    String? bestSource;
-    String? sourceType;
+    if (await _isInstalled()) return 'REAL: Kali filesystem is already installed.';
+    String? archive;
+    String? type;
     for (final source in _sources) {
       if (await File(source['path']!).exists()) {
-        bestSource = source['path'];
-        sourceType = source['type'];
+        archive = source['path'];
+        type = source['type'];
         break;
       }
     }
-
-    if (bestSource == null) {
-      return '❌ لم يتم العثور على أي توزيعة في $_zionFolder\n\nالرجاء وضع أحد الملفات التالية:\n- bootstrap-aarch64.zip\n- kali-bootstrap.tar.gz';
-    }
-
-    final success = await _extract(bestSource, sourceType!);
-    if (!success) return '❌ فشل فك الضغط. تأكد من وجود مساحة كافية.';
-
+    if (archive == null) return 'UNAVAILABLE: no local Kali bootstrap archive was found.';
+    if (!await _extract(archive, type!)) return 'FAILED: Kali archive extraction failed.';
     await _setupEnvironment();
-    return '✅ تم تثبيت Kali Linux بنجاح (600+ أداة جاهزة)';
+    return 'COMPLETED: Kali filesystem installed; runtime still requires a working PRoot adapter.';
   }
 
-  // ============ التنفيذ ============
-  
+  /// Generic command execution is intentionally restricted to harmless
+  /// diagnostics. High-risk tooling is exposed as BLOCKED instead.
   static Future<Map<String, dynamic>> execute(String command) async {
-    // التحقق من التثبيت
-    if (!await _isInstalled()) {
-      return {'success': false, 'error': 'Kali غير مثبت. استخدم أمر kali_install للتثبيت.'};
+    if (!await _isInstalled()) return {'success': false, 'status': 'UNAVAILABLE', 'error': 'Kali is not installed.'};
+    final normalized = command.trim().toLowerCase();
+    const blocked = <String>[
+      'msfconsole', 'hydra ', 'aircrack', 'john ', 'sqlmap', 'wpscan', 'ettercap',
+      'bettercap', 'responder', 'hashcat', 'mitmproxy', 'beef',
+    ];
+    if (blocked.any(normalized.startsWith)) {
+      return {'success': false, 'status': 'BLOCKED', 'error': 'High-risk offensive tool execution is disabled.'};
     }
-    
-    // محاولة استخدام chroot إذا كان متاحًا (أسرع)
-    if (await hasChroot()) {
-      print('🚀 Using CHROOT mode (root + faster)');
-      return await KaliChrootService.execute(command);
+    if (!_isSafeDiagnosticCommand(normalized)) {
+      return {'success': false, 'status': 'BLOCKED', 'error': 'Only defensive diagnostics are allowed through this adapter.'};
     }
-    
-    // البحث عن proot
     final prootPath = await findProot();
-    if (prootPath == null) {
-      return {
-        'success': false, 
-        'error': 'proot غير متوفر.\n\nلحل المشكلة:\n1. ثبّت Termux من F-Droid\n2. نفّذ: pkg install proot\n3. أو استخدم وضع chroot (يتطلب روت)'
-      };
-    }
-    
-    print('🐢 Using PROOT mode (no root required) - $prootPath');
-    return await _executeProot(command, prootPath);
+    if (prootPath == null) return {'success': false, 'status': 'UNAVAILABLE', 'error': 'PRoot runtime is unavailable.'};
+    return _executeProot(command, prootPath);
   }
-  
+
+  static bool _isSafeDiagnosticCommand(String command) {
+    return RegExp(r'^(id|uname|whoami|pwd|date|hostname|cat /etc/os-release|which nmap|nmap\s+-sn\s+[^;&|`]+)$').hasMatch(command);
+  }
+
   static Future<Map<String, dynamic>> _executeProot(String command, String prootPath) async {
     try {
       final result = await Process.run(prootPath, [
@@ -206,114 +142,65 @@ class KaliLoaderService {
         '-w', '/root',
         '/bin/bash', '-c', command,
       ], runInShell: true);
-      
       return {
         'success': result.exitCode == 0,
+        'status': result.exitCode == 0 ? 'COMPLETED' : 'FAILED',
         'stdout': result.stdout.toString().trim(),
         'stderr': result.stderr.toString().trim(),
         'exitCode': result.exitCode,
       };
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      return {'success': false, 'status': 'FAILED', 'error': e.toString()};
     }
   }
 
-  // ============ دوال مساعدة ============
-  
-  static Future<bool> _isInstalled() async {
-    return await Directory(_installPath).exists();
+  static Future<String> nmapDiscovery(String target) async {
+    if (!RegExp(r'^[A-Za-z0-9.:%/_-]+$').hasMatch(target)) return 'FAILED: invalid target.';
+    final result = await execute('nmap -sn $target');
+    return result['stdout']?.toString() ?? result['stderr']?.toString() ?? result['error']?.toString() ?? 'FAILED';
   }
-  
+
+  static Future<bool> _isInstalled() async => Directory(_installPath).exists();
+
   static Future<bool> _extract(String archivePath, String type) async {
     try {
-      await Process.run('mkdir', ['-p', _installPath], runInShell: true);
-      ProcessResult result;
-      if (type == 'zip') {
-        result = await Process.run('unzip', ['-o', archivePath, '-d', _installPath], runInShell: true);
-      } else {
-        result = await Process.run('tar', ['-xzf', archivePath, '-C', _installPath], runInShell: true);
-      }
+      await Directory(_installPath).create(recursive: true);
+      final result = type == 'zip'
+          ? await Process.run('unzip', ['-o', archivePath, '-d', _installPath], runInShell: true)
+          : await Process.run('tar', ['-xzf', archivePath, '-C', _installPath], runInShell: true);
       return result.exitCode == 0;
     } catch (_) {
       return false;
     }
   }
-  
+
   static Future<void> _setupEnvironment() async {
-    final dirs = ['$_installPath/dev', '$_installPath/proc', '$_installPath/sys', '$_installPath/tmp'];
-    for (final dir in dirs) {
-      await Process.run('mkdir', ['-p', dir], runInShell: true);
+    for (final dir in ['dev', 'proc', 'sys', 'tmp']) {
+      await Directory('$_installPath/$dir').create(recursive: true);
     }
   }
-  
+
   static Future<Map<String, dynamic>> getStatus() async {
     final installed = await _isInstalled();
-    final hasRoot = await hasRootAccess();
-    final useChroot = await hasChroot();
-    final prootPath = await findProot();
-    
+    final root = await hasRootAccess();
+    final chroot = await hasChroot();
+    final proot = await findProot();
     return {
       'installed': installed,
       'path': _installPath,
-      'has_root': hasRoot,
-      'use_chroot': useChroot,
-      'mode': useChroot ? 'CHROOT (fastest)' : (prootPath != null ? 'PROOT (no root)' : 'MISSING'),
-      'proot_available': prootPath != null,
-      'proot_path': prootPath ?? '',
+      'has_root': root,
+      'use_chroot': chroot,
+      'mode': chroot ? 'CHROOT' : (proot != null ? 'PROOT' : 'MISSING'),
+      'proot_available': proot != null,
+      'proot_path': proot ?? '',
     };
   }
-  
-  static Future<bool> isAvailable() async { return await _isInstalled(); }
-  static Future<int> getToolCount() async {
-    final result = await execute('ls /usr/bin /usr/sbin /usr/local/bin 2>/dev/null | wc -l');
-    return int.tryParse(result['stdout']?.trim() ?? '0') ?? 0;
-  }
 
-  // ============ أوامر جاهزة ============
-  
-  static Future<String> nmap(String target, {String args = '-sV -O'}) async {
-    final result = await execute('nmap $args $target');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> msfconsole(String commands) async {
-    final result = await execute('msfconsole -q -x "$commands"');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> sqlmap(String url) async {
-    final result = await execute('sqlmap -u "$url" --batch --dbs');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> hydra(String target, String service, String user, String wordlist) async {
-    final result = await execute('hydra -l $user -P $wordlist $service://$target');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> aircrack(String capFile, String wordlist) async {
-    final result = await execute('aircrack-ng $capFile -w $wordlist');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> john(String hashFile, {String wordlist = '/usr/share/wordlists/rockyou.txt'}) async {
-    final result = await execute('john $hashFile --wordlist=$wordlist');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> nikto(String url) async {
-    final result = await execute('nikto -h $url');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> dirb(String url) async {
-    final result = await execute('dirb $url');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
-  }
-  
-  static Future<String> wpscan(String url) async {
-    final result = await execute('wpscan --url $url --enumerate');
-    return result['stdout'] ?? result['stderr'] ?? 'Error';
+  static Future<bool> isAvailable() async => await _isInstalled();
+
+  static Future<int> getToolCount() async {
+    if (!await _isInstalled()) return 0;
+    final result = await execute('which nmap');
+    return result['success'] == true ? 1 : 0;
   }
 }
-
