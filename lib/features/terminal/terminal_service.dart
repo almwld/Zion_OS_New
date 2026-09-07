@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
+import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
 final terminalServiceProvider = Provider<TerminalService>((ref) {
@@ -57,16 +58,19 @@ class TerminalService {
   static const _terminalAction = 'terminal.execute';
 
   final SecurityCore _securityCore;
+  final NativePtyAdapter _pty = NativePtyAdapter();
   Process? _process;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
+  StreamSubscription<String>? _ptyOutputSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
   String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
-  bool get isInteractiveRunning => _process != null;
+  bool get isInteractiveRunning => _pty.isRunning || _process != null;
+  bool get isNativePtyRunning => _pty.isRunning;
 
   Future<void> loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
@@ -184,7 +188,7 @@ class TerminalService {
         'Real shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\n'
         'Network diagnostics: ping, ip, ss/netstat, traceroute, nslookup/dig when installed.\n'
         'Remote administration: ssh/telnet only when the real client exists in the runtime.\n'
-        'No feature reports success unless the underlying runtime operation actually succeeds.',
+        'Interactive Android terminal uses a native PTY on API 23+; no PTY success is simulated.',
       );
     }
 
@@ -209,11 +213,12 @@ class TerminalService {
 
     if (value == 'shell-status') {
       final shell = await _findShell();
+      final ptyAvailable = await _pty.isAvailable();
       final result = TerminalResult(
         command: value,
         stdout: shell == null
-            ? 'Shell: UNAVAILABLE'
-            : 'Shell: AVAILABLE\nPath: $shell\nInteractive: $isInteractiveRunning',
+            ? 'Shell: UNAVAILABLE\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}'
+            : 'Shell: AVAILABLE\nPath: $shell\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}\nInteractive: $isInteractiveRunning',
         stderr: '',
         exitCode: shell == null ? 127 : 0,
         duration: Duration.zero,
@@ -259,21 +264,13 @@ class TerminalService {
 
     final shell = await _findShell();
     if (shell == null) {
-      const unavailable = TerminalResult(
-        command: '',
+      final result = TerminalResult(
+        command: value,
         stdout: '',
         stderr: 'No POSIX shell is available on this Android runtime.',
         exitCode: 127,
         duration: Duration.zero,
         shell: 'unavailable',
-      );
-      final result = TerminalResult(
-        command: value,
-        stdout: unavailable.stdout,
-        stderr: unavailable.stderr,
-        exitCode: unavailable.exitCode,
-        duration: unavailable.duration,
-        shell: unavailable.shell,
       );
       _audit(
         command: value,
@@ -332,21 +329,7 @@ class TerminalService {
   }
 
   Future<void> startInteractive() async {
-    if (_process != null) return;
-
-    final shell = await _findShell();
-    if (shell == null) {
-      _output.add('ERROR: No POSIX shell is available on this runtime.');
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'unavailable',
-        exitCode: 127,
-        shell: 'unavailable',
-        duration: Duration.zero,
-        interactive: true,
-      );
-      return;
-    }
+    if (isInteractiveRunning) return;
 
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
@@ -362,41 +345,35 @@ class TerminalService {
     }
 
     final started = DateTime.now();
-    try {
-      _process = await Process.start(
-        shell,
-        const <String>['-i'],
-        runInShell: false,
-      );
-      _interactiveInputBuffer = '';
-      _stdoutSub = _process!.stdout.transform(utf8.decoder).listen(_output.add);
-      _stderrSub = _process!.stderr.transform(utf8.decoder).listen(_output.add);
-      _output.add('Connected to real shell: $shell\n');
+    final ptyStarted = await _pty.start(rows: 30, cols: 100);
+    if (!ptyStarted) {
+      _output.add('ERROR: Native Android PTY is unavailable on this runtime.');
       _audit(
         command: '<interactive-start>',
-        outcome: 'success',
-        exitCode: 0,
-        shell: shell,
+        outcome: 'unavailable',
+        exitCode: 127,
+        shell: 'native-pty',
         duration: DateTime.now().difference(started),
         interactive: true,
       );
-    } catch (e) {
-      _output.add('ERROR: Failed to start shell: $e');
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'process-error',
-        exitCode: 126,
-        shell: shell,
-        duration: DateTime.now().difference(started),
-        interactive: true,
-      );
-      _process = null;
+      return;
     }
+
+    _ptyOutputSub = _pty.output.listen(_output.add);
+    _interactiveInputBuffer = '';
+    _output.add('Connected to native Android PTY: /system/bin/sh\r\n');
+    _audit(
+      command: '<interactive-start>',
+      outcome: 'success',
+      exitCode: 0,
+      shell: 'native-pty',
+      duration: DateTime.now().difference(started),
+      interactive: true,
+    );
   }
 
   void write(String input) {
-    final process = _process;
-    if (process == null) return;
+    if (!_pty.isRunning) return;
 
     _interactiveInputBuffer += input;
     final parts = _interactiveInputBuffer.split('\n');
@@ -406,7 +383,7 @@ class TerminalService {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       if (!_authorized(command)) {
-        _output.add('\n[ZION] command denied by SecurityCore: $command\n');
+        _output.add('\r\n[ZION] command denied by SecurityCore: $command\r\n');
         _audit(
           command: command,
           outcome: 'denied',
@@ -422,34 +399,43 @@ class TerminalService {
         command: command,
         outcome: 'submitted',
         exitCode: -1,
-        shell: 'interactive',
+        shell: 'native-pty',
         duration: Duration.zero,
         interactive: true,
       );
     }
 
-    process.stdin.write(input);
-    unawaited(process.stdin.flush());
+    unawaited(_pty.write(input));
   }
 
+  Future<bool> resizeInteractive({required int rows, required int cols}) =>
+      _pty.resize(rows: rows, cols: cols);
+
   Future<void> stopInteractive() async {
+    if (_pty.isRunning) {
+      await _pty.stop();
+      await _ptyOutputSub?.cancel();
+      _ptyOutputSub = null;
+      _interactiveInputBuffer = '';
+      _audit(
+        command: '<interactive-stop>',
+        outcome: 'success',
+        exitCode: 0,
+        shell: 'native-pty',
+        duration: Duration.zero,
+        interactive: true,
+      );
+    }
+
     final process = _process;
-    if (process == null) return;
-    await _stdoutSub?.cancel();
-    await _stderrSub?.cancel();
-    _stdoutSub = null;
-    _stderrSub = null;
-    _interactiveInputBuffer = '';
-    process.kill();
-    _process = null;
-    _audit(
-      command: '<interactive-stop>',
-      outcome: 'success',
-      exitCode: 0,
-      shell: 'process',
-      duration: Duration.zero,
-      interactive: true,
-    );
+    if (process != null) {
+      await _stdoutSub?.cancel();
+      await _stderrSub?.cancel();
+      _stdoutSub = null;
+      _stderrSub = null;
+      process.kill();
+      _process = null;
+    }
   }
 
   Future<void> clearHistory() async {
@@ -460,6 +446,7 @@ class TerminalService {
 
   Future<void> dispose() async {
     await stopInteractive();
+    await _pty.dispose();
     await _output.close();
   }
 }
