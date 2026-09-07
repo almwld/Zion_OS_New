@@ -28,18 +28,20 @@ class NativePtyAdapter {
     if (_running) return true;
     if (!await isAvailable()) return false;
 
+    // Subscribe before creating the child so the first prompt/output is not lost.
+    _subscription = _events.receiveBroadcastStream().listen(
+      (dynamic value) {
+        if (value != null) _output.add(value.toString());
+      },
+      onError: (Object error, StackTrace stack) {
+        _output.add('[ZION] PTY event error: $error');
+      },
+    );
+
     try {
       await _channel.invokeMethod<Map<dynamic, dynamic>>(
         'start',
         <String, Object>{'rows': rows, 'cols': cols},
-      );
-      _subscription = _events.receiveBroadcastStream().listen(
-        (dynamic value) {
-          if (value != null) _output.add(value.toString());
-        },
-        onError: (Object error, StackTrace stack) {
-          _output.add('[ZION] PTY event error: $error');
-        },
       );
       _running = true;
       return true;
