@@ -23,19 +23,19 @@ class SecurityCore {
         riskEngine = riskEngine ?? const RiskEngine(),
         auditLogger = auditLogger ?? AuditLogger(),
         authorizationPolicy = authorizationPolicy ?? const AuthorizationPolicy(),
-        capabilities = capabilities ?? SecurityCapabilityRegistry(),
-        gateway = AuthorizationGateway(
-          policy: authorizationPolicy ?? const AuthorizationPolicy(),
-          capabilities: capabilities ?? SecurityCapabilityRegistry(),
-          auditLogger: auditLogger ?? AuditLogger(),
-        );
+        capabilities = capabilities ?? SecurityCapabilityRegistry();
 
   final SecurityEventBus eventBus;
   final RiskEngine riskEngine;
   final AuditLogger auditLogger;
   final AuthorizationPolicy authorizationPolicy;
   final SecurityCapabilityRegistry capabilities;
-  final AuthorizationGateway gateway;
+
+  late final AuthorizationGateway gateway = AuthorizationGateway(
+    policy: authorizationPolicy,
+    capabilities: capabilities,
+    auditLogger: auditLogger,
+  );
 
   RiskAssessment assess(Iterable<SecurityResult> results) {
     return riskEngine.assess(results);
