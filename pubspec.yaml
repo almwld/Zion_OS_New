@@ -33,8 +33,6 @@ dependencies:
   speech_to_text: ^7.4.0
   fl_chart: ^0.68.0
   webview_flutter: ^4.4.0
-  flutter_local_notifications: ^17.2.3
-  timezone: ^0.9.4
   intl: ^0.20.2
   easy_localization: ^3.0.8
   url_launcher: ^6.2.1
