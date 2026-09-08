@@ -30,285 +30,54 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter 3.38.10
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.38.10'
           channel: stable
           cache: true
 
       - name: Show Flutter version
         run: flutter --version
 
-      - name: Fix Android configuration
+      - name: Generate fresh Zion OS Android project
         run: |
-          echo "🔧 Fixing Android configuration..."
-          
-          # إنشاء مجلد android إذا لم يكن موجوداً
-          if [ ! -d "android" ]; then
-            echo "📁 Creating Android project..."
-            flutter create --platforms=android --project-name=zion_os --org=com.zionos .
-          fi
+          rm -rf android
+          flutter create \
+            --platforms=android \
+            --project-name=zion_os \
+            --org=com.zionos \
+            --android-language=kotlin \
+            .
 
-          # تحديث gradle-wrapper.properties إلى الإصدار 8.11.1
-          echo "📝 Updating gradle-wrapper.properties to 8.11.1..."
-          mkdir -p android/gradle/wrapper
-          cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-all.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
+      - name: Install Zion OS dependencies
+        run: flutter pub get
 
-          # تحديث build.gradle (project level) - استخدام AGP 8.0.0
-          echo "📝 Updating project build.gradle..."
-          cat > android/build.gradle << 'EOF'
-          buildscript {
-              ext.kotlin_version = '1.9.22'
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.0.0'
-                  classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-              }
-          }
-
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.buildDir = '../build'
-          subprojects {
-              project.buildDir = "${rootProject.buildDir}/${project.name}"
-          }
-          subprojects {
-              project.evaluationDependsOn(':app')
-          }
-
-          tasks.register('clean', Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-
-          # تحديث build.gradle (app level) مع desugaring
-          echo "📝 Updating app build.gradle..."
-          cat > android/app/build.gradle << 'EOF'
-          plugins {
-              id "com.android.application"
-              id "kotlin-android"
-              id "dev.flutter.flutter-gradle-plugin"
-          }
-
-          android {
-              compileSdkVersion 34
-              ndkVersion flutter.ndkVersion
-
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-                  coreLibraryDesugaringEnabled true
-              }
-
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
-
-              defaultConfig {
-                  applicationId "com.zionos"
-                  minSdkVersion 21
-                  targetSdkVersion 34
-                  versionCode 1
-                  versionName "1.0.0"
-                  multiDexEnabled true
-              }
-
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.debug
-                      minifyEnabled true
-                      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-                  }
-              }
-          }
-
-          flutter {
-              source '../..'
-          }
-
-          dependencies {
-              coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-              implementation 'androidx.multidex:multidex:2.0.1'
-          }
-          EOF
-
-          # تحديث AndroidManifest.xml
-          echo "📝 Updating AndroidManifest.xml..."
-          mkdir -p android/app/src/main
-          cat > android/app/src/main/AndroidManifest.xml << 'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.zionos">
-              
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.CAMERA"/>
-              <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
-              <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
-              
-              <application
-                  android:label="Zion OS"
-                  android:name="${applicationName}"
-                  android:icon="@mipmap/ic_launcher"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:allowBackup="true"
-                  android:theme="@style/LaunchTheme">
-                  
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:launchMode="singleTop"
-                      android:taskAffinity=""
-                      android:theme="@style/LaunchTheme"
-                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                      android:hardwareAccelerated="true"
-                      android:windowSoftInputMode="adjustResize">
-                      
-                      <meta-data
-                          android:name="io.flutter.embedding.android.NormalTheme"
-                          android:resource="@style/NormalTheme"/>
-                          
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-                  
-                  <meta-data
-                      android:name="flutterEmbedding"
-                      android:value="2"/>
-              </application>
-          </manifest>
-          EOF
-
-          # إنشاء ملفات styles
-          echo "📝 Creating styles.xml..."
-          mkdir -p android/app/src/main/res/values
-          cat > android/app/src/main/res/values/styles.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-                  <item name="android:windowBackground">@drawable/launch_background</item>
-              </style>
-              <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-                  <item name="android:windowBackground">?android:colorBackground</item>
-              </style>
-          </resources>
-          EOF
-
-          # إنشاء ملف launch_background
-          echo "📝 Creating launch_background.xml..."
-          mkdir -p android/app/src/main/res/drawable
-          cat > android/app/src/main/res/drawable/launch_background.xml << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-              <item android:drawable="@android:color/white" />
-          </layer-list>
-          EOF
-
-          echo "✅ Android configuration fixed successfully!"
-
-      - name: Generate app icons
-        run: |
-          echo "🎨 Generating app icons..."
-          
-          if grep -q "flutter_launcher_icons" pubspec.yaml; then
-            flutter pub get
-            flutter pub run flutter_launcher_icons:main || echo "⚠️ Icon generation skipped"
-          else
-            echo "⚠️ flutter_launcher_icons not configured, skipping..."
-          fi
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Cache Flutter
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            build/
-          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-flutter-
-
-      - name: Install dependencies
-        run: |
-          flutter clean
-          flutter pub get
-
-      - name: Verify assets
+      - name: Verify Zion OS repository assets
         shell: bash
         run: |
-          echo "🔍 Verifying assets..."
-          [ -f assets/icons/app_icon.png ] && echo "✅ app_icon.png found" || echo "⚠️ app_icon.png missing"
-          [ -d assets/images ] && echo "✅ images found" || echo "⚠️ images missing"
-          [ -d assets/fonts ] && echo "✅ fonts found" || echo "⚠️ fonts missing"
+          test -f assets/translations/en.json
+          test -f assets/translations/ar.json
+          test -f assets/icons/app_icon.png
+          test -d assets/icons/svg_colors
+          test -d assets/images
+          test -d assets/fonts
 
       - name: Build Zion OS release APKs
-        run: |
-          flutter build apk --release --split-per-abi --no-tree-shake-icons
+        run: flutter build apk --release --split-per-abi
 
-      - name: Verify APK outputs
+      - name: Verify Zion OS APK outputs
         shell: bash
         run: |
-          echo "📦 Checking APK outputs..."
-          ls -lh build/app/outputs/flutter-apk/ || echo "⚠️ No APKs found"
-          
-          if [ -f build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ]; then
-            echo "✅ ARM64 APK found"
-          else
-            echo "❌ ARM64 APK missing"
-            exit 1
-          fi
-          
-          if [ -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
-            echo "✅ ARMv7 APK found"
-          else
-            echo "❌ ARMv7 APK missing"
-            exit 1
-          fi
-          
-          if [ -f build/app/outputs/flutter-apk/app-x86_64-release.apk ]; then
-            echo "✅ x86_64 APK found"
-          else
-            echo "❌ x86_64 APK missing"
-            exit 1
-          fi
-          
-          echo "✅ All APKs verified successfully!"
+          test -f build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          test -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          test -f build/app/outputs/flutter-apk/app-x86_64-release.apk
+          ls -lh build/app/outputs/flutter-apk/
 
-      - name: Upload APKs
+      - name: Upload Zion OS Android APKs
         uses: actions/upload-artifact@v4
         with:
           name: zion-os-android-apks
-          path: |
-            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-x86_64-release.apk
+          path: build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
           retention-days: 30
