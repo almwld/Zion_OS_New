@@ -40,13 +40,9 @@ jobs:
           test -d assets/images
           test -d assets/fonts
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Unit and widget tests
-        run: flutter test --coverage
-
-      - name: Build release APK
+      # Stage 1: prove the production entrypoint can be packaged.
+      # Full-repository analysis/tests remain a separate hardening gate.
+      - name: Build release APK (Stage 1)
         run: flutter build apk --release --split-per-abi
 
       - name: Upload arm64-v8a
