@@ -1,34 +1,30 @@
-import 'dart:io';
-import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminService extends ChangeNotifier {
   static final AdminService _instance = AdminService._internal();
   factory AdminService() => _instance;
   AdminService._internal();
-  
-  List<Map<String, dynamic>> _users = [];
-  List<Map<String, dynamic>> _permissions = [];
-  List<Map<String, dynamic>> _systemLogs = [];
+
+  List<Map<String, dynamic>> _users = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _permissions = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _systemLogs = <Map<String, dynamic>>[];
   bool _maintenanceMode = false;
-  
+
   Future<void> init() async {
     await _loadUsers();
     await _loadPermissions();
     await _loadSystemLogs();
   }
-  
+
   Future<void> _loadUsers() async {
     final prefs = await SharedPreferences.getInstance();
-    final usersJson = prefs.getString('admin_users');
-    if (usersJson != null) {
-      try {
-        _users = List<Map<String, dynamic>>.from(jsonDecode(usersJson));
-      } catch (_) {}
-    }
-    
+    final value = prefs.getString('admin_users');
+    if (value != null) _users = _decodeList(value);
     if (_users.isEmpty) {
-      _users = [
+      _users = <Map<String, dynamic>>[
         {'id': '1', 'username': 'admin', 'role': 'Administrator', 'permissions': 'full', 'active': true},
         {'id': '2', 'username': 'operator', 'role': 'Operator', 'permissions': 'limited', 'active': true},
         {'id': '3', 'username': 'viewer', 'role': 'Viewer', 'permissions': 'readonly', 'active': false},
@@ -36,18 +32,13 @@ class AdminService extends ChangeNotifier {
       await _saveUsers();
     }
   }
-  
+
   Future<void> _loadPermissions() async {
     final prefs = await SharedPreferences.getInstance();
-    const permsJson = prefs.getString('admin_permissions');
-    if (permsJson != null) {
-      try {
-        _permissions = List<Map<String, dynamic>>.from(jsonDecode(permsJson));
-      } catch (_) {}
-    }
-    
+    final value = prefs.getString('admin_permissions');
+    if (value != null) _permissions = _decodeList(value);
     if (_permissions.isEmpty) {
-      _permissions = [
+      _permissions = <Map<String, dynamic>>[
         {'id': '1', 'name': 'Full Access', 'level': 100, 'description': 'Complete system access'},
         {'id': '2', 'name': 'Limited Access', 'level': 50, 'description': 'Limited functionality access'},
         {'id': '3', 'name': 'Read Only', 'level': 10, 'description': 'View only access'},
@@ -55,116 +46,100 @@ class AdminService extends ChangeNotifier {
       await _savePermissions();
     }
   }
-  
+
   Future<void> _loadSystemLogs() async {
     final prefs = await SharedPreferences.getInstance();
-    final logsJson = prefs.getString('system_logs');
-    if (logsJson != null) {
-      try {
-        _systemLogs = List<Map<String, dynamic>>.from(jsonDecode(logsJson));
-      } catch (_) {}
+    final value = prefs.getString('system_logs');
+    if (value != null) _systemLogs = _decodeList(value);
+  }
+
+  List<Map<String, dynamic>> _decodeList(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
     }
   }
-  
+
   Future<void> _saveUsers() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('admin_users', jsonEncode(_users));
   }
-  
+
   Future<void> _savePermissions() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('admin_permissions', jsonEncode(_permissions));
   }
-  
+
   Future<void> _saveSystemLogs() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('system_logs', jsonEncode(_systemLogs));
   }
-  
-  void addSystemLog(String action, String user, String details) {
-    final log = {
+
+  Future<void> addSystemLog(String action, String user, String details) async {
+    _systemLogs.insert(0, {
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'action': action,
       'user': user,
       'details': details,
       'timestamp': DateTime.now().toIso8601String(),
-    };
-    _systemLogs.insert(0, log);
+    });
     if (_systemLogs.length > 500) _systemLogs = _systemLogs.sublist(0, 500);
-    _saveSystemLogs();
+    await _saveSystemLogs();
     notifyListeners();
   }
-  
+
   Future<void> addUser(String username, String role, String permissions, bool active) async {
-    final newUser = {
+    _users.add({
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
       'username': username,
       'role': role,
       'permissions': permissions,
       'active': active,
-    };
-    _users.add(newUser);
+    });
     await _saveUsers();
-    addSystemLog('User Added', 'admin', 'Added user: $username');
-    notifyListeners();
+    await addSystemLog('User Added', 'admin', 'Added user: $username');
   }
-  
+
   Future<void> updateUser(String id, bool active) async {
     final index = _users.indexWhere((u) => u['id'] == id);
-    if (index != -1) {
-      _users[index]['active'] = active;
-      await _saveUsers();
-      addSystemLog('User Updated', 'admin', 'Updated user: ${_users[index]['username']}');
-      notifyListeners();
-    }
-  }
-  
-  Future<void> deleteUser(String id) async {
-    final user = _users.firstWhere((u) => u['id'] == id);
-    _users.removeWhere((u) => u['id'] == id);
+    if (index == -1) return;
+    _users[index]['active'] = active;
     await _saveUsers();
-    addSystemLog('User Deleted', 'admin', 'Deleted user: ${user['username']}');
-    notifyListeners();
+    await addSystemLog('User Updated', 'admin', 'Updated user: ${_users[index]['username']}');
   }
-  
-  void setMaintenanceMode(bool enabled) {
+
+  Future<void> deleteUser(String id) async {
+    final index = _users.indexWhere((u) => u['id'] == id);
+    if (index == -1) return;
+    final user = _users[index];
+    _users.removeAt(index);
+    await _saveUsers();
+    await addSystemLog('User Deleted', 'admin', 'Deleted user: ${user['username']}');
+  }
+
+  Future<void> setMaintenanceMode(bool enabled) async {
     _maintenanceMode = enabled;
-    addSystemLog('Maintenance Mode', 'admin', enabled ? 'Enabled' : 'Disabled');
-    notifyListeners();
+    await addSystemLog('Maintenance Mode', 'admin', enabled ? 'Enabled' : 'Disabled');
   }
-  
+
   Future<void> clearSystemLogs() async {
     _systemLogs.clear();
     await _saveSystemLogs();
     notifyListeners();
   }
-  
-  List<Map<String, dynamic>> getUsers() => List.from(_users);
-  List<Map<String, dynamic>> getPermissions() => List.from(_permissions);
-  List<Map<String, dynamic>> getSystemLogs({int? limit}) {
-    if (limit != null) {
-      return _systemLogs.take(limit).toList();
-    }
-    return List.from(_systemLogs);
-  }
-  
+
+  List<Map<String, dynamic>> getUsers() => List<Map<String, dynamic>>.from(_users);
+  List<Map<String, dynamic>> getPermissions() => List<Map<String, dynamic>>.from(_permissions);
+  List<Map<String, dynamic>> getSystemLogs({int? limit}) => limit == null ? List<Map<String, dynamic>>.from(_systemLogs) : _systemLogs.take(limit).toList();
   bool get maintenanceMode => _maintenanceMode;
-  
-  Map<String, dynamic> getSystemStats() {
-    return {
-      'total_users': _users.length,
-      'active_users': _users.where((u) => u['active']).length,
-      'total_logs': _systemLogs.length,
-      'maintenance_mode': _maintenanceMode,
-    };
-  }
-}
 
-// Helper functions
-String jsonEncode(List<Map<String, dynamic>> data) {
-  return data.toString();
-}
-
-List<Map<String, dynamic>> jsonDecode(String data) {
-  return [];
+  Map<String, dynamic> getSystemStats() => {
+    'total_users': _users.length,
+    'active_users': _users.where((u) => u['active'] == true).length,
+    'total_logs': _systemLogs.length,
+    'maintenance_mode': _maintenanceMode,
+  };
 }
