@@ -204,10 +204,11 @@ class MainActivity : FlutterActivity() {
 
     private fun stopPty() {
         val pid = ptyPid
+        val masterFd = ptyMasterFd
         ptyRunning = false
         if (pid > 0) {
             try {
-                PtyNative.stop(pid)
+                PtyNative.stop(pid, masterFd)
             } catch (_: Exception) {
             }
         }
