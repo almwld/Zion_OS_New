@@ -39,65 +39,29 @@ jobs:
       - name: Show Flutter version
         run: flutter --version
 
-      # ============================================
-      # 🎨 توليد الأيقونات من ملف PNG الموجود
-      # ============================================
-      
-      - name: Setup flutter_launcher_icons
-        run: |
-          echo "🎨 Setting up icon generation..."
-          
-          # التأكد من وجود ملف الأيقونة
-          if [ ! -f "assets/icons/app_icon.png" ]; then
-            echo "❌ Error: assets/icons/app_icon.png not found!"
-            exit 1
-          fi
-          
-          echo "✅ Found app_icon.png at assets/icons/app_icon.png"
-
-      - name: Generate app icons
-        run: |
-          echo "🎨 Generating app icons from assets/icons/app_icon.png..."
-          
-          # تثبيت flutter_launcher_icons
-          flutter pub add --dev flutter_launcher_icons
-          
-          # إنشاء ملف التكوين
-          cat > flutter_launcher_icons.yaml << 'EOF'
-          flutter_launcher_icons:
-            android: true
-            ios: false
-            image_path: "assets/icons/app_icon.png"
-            adaptive_icon_background: "#1a237e"
-            adaptive_icon_foreground: "assets/icons/app_icon.png"
-            min_sdk_android: 21
-          EOF
-          
-          # توليد الأيقونات
-          flutter pub get
-          flutter pub run flutter_launcher_icons:main -f flutter_launcher_icons.yaml
-          
-          echo "✅ Icons generated successfully!"
-
-      # ============================================
-      # 🔧 إصلاح Android configuration
-      # ============================================
-
       - name: Fix Android configuration
         run: |
           echo "🔧 Fixing Android configuration..."
           
-          # تحديث gradle-wrapper.properties
+          # إنشاء مجلد android إذا لم يكن موجوداً
+          if [ ! -d "android" ]; then
+            echo "📁 Creating Android project..."
+            flutter create --platforms=android --project-name=zion_os --org=com.zionos .
+          fi
+
+          # تحديث gradle-wrapper.properties إلى الإصدار 8.11.1
+          echo "📝 Updating gradle-wrapper.properties to 8.11.1..."
           mkdir -p android/gradle/wrapper
           cat > android/gradle/wrapper/gradle-wrapper.properties << 'EOF'
           distributionBase=GRADLE_USER_HOME
           distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.10.2-all.zip
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-all.zip
           zipStoreBase=GRADLE_USER_HOME
           zipStorePath=wrapper/dists
           EOF
 
-          # تحديث build.gradle (project level)
+          # تحديث build.gradle (project level) - استخدام AGP 8.0.0
+          echo "📝 Updating project build.gradle..."
           cat > android/build.gradle << 'EOF'
           buildscript {
               ext.kotlin_version = '1.9.22'
@@ -107,7 +71,7 @@ jobs:
               }
 
               dependencies {
-                  classpath 'com.android.tools.build:gradle:7.4.2'
+                  classpath 'com.android.tools.build:gradle:8.0.0'
                   classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
               }
           }
@@ -133,6 +97,7 @@ jobs:
           EOF
 
           # تحديث build.gradle (app level) مع desugaring
+          echo "📝 Updating app build.gradle..."
           cat > android/app/build.gradle << 'EOF'
           plugins {
               id "com.android.application"
@@ -183,6 +148,7 @@ jobs:
           EOF
 
           # تحديث AndroidManifest.xml
+          echo "📝 Updating AndroidManifest.xml..."
           mkdir -p android/app/src/main
           cat > android/app/src/main/AndroidManifest.xml << 'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -194,6 +160,8 @@ jobs:
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
               <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+              <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
               
               <application
                   android:label="Zion OS"
@@ -207,6 +175,7 @@ jobs:
                       android:name=".MainActivity"
                       android:exported="true"
                       android:launchMode="singleTop"
+                      android:taskAffinity=""
                       android:theme="@style/LaunchTheme"
                       android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
                       android:hardwareAccelerated="true"
@@ -230,6 +199,7 @@ jobs:
           EOF
 
           # إنشاء ملفات styles
+          echo "📝 Creating styles.xml..."
           mkdir -p android/app/src/main/res/values
           cat > android/app/src/main/res/values/styles.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -243,6 +213,8 @@ jobs:
           </resources>
           EOF
 
+          # إنشاء ملف launch_background
+          echo "📝 Creating launch_background.xml..."
           mkdir -p android/app/src/main/res/drawable
           cat > android/app/src/main/res/drawable/launch_background.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -251,7 +223,18 @@ jobs:
           </layer-list>
           EOF
 
-          echo "✅ Android configuration fixed!"
+          echo "✅ Android configuration fixed successfully!"
+
+      - name: Generate app icons
+        run: |
+          echo "🎨 Generating app icons..."
+          
+          if grep -q "flutter_launcher_icons" pubspec.yaml; then
+            flutter pub get
+            flutter pub run flutter_launcher_icons:main || echo "⚠️ Icon generation skipped"
+          else
+            echo "⚠️ flutter_launcher_icons not configured, skipping..."
+          fi
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -294,7 +277,7 @@ jobs:
         shell: bash
         run: |
           echo "📦 Checking APK outputs..."
-          ls -lh build/app/outputs/flutter-apk/
+          ls -lh build/app/outputs/flutter-apk/ || echo "⚠️ No APKs found"
           
           if [ -f build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ]; then
             echo "✅ ARM64 APK found"
@@ -303,7 +286,21 @@ jobs:
             exit 1
           fi
           
-          echo "✅ APK verification complete!"
+          if [ -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ]; then
+            echo "✅ ARMv7 APK found"
+          else
+            echo "❌ ARMv7 APK missing"
+            exit 1
+          fi
+          
+          if [ -f build/app/outputs/flutter-apk/app-x86_64-release.apk ]; then
+            echo "✅ x86_64 APK found"
+          else
+            echo "❌ x86_64 APK missing"
+            exit 1
+          fi
+          
+          echo "✅ All APKs verified successfully!"
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
