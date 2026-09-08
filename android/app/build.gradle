@@ -26,8 +26,6 @@ android {
         versionName = "1.0.0"
     }
 
-    // Release builds must never use the debug keystore.
-    // Add proper release signing through CI secrets before publishing.
     buildTypes {
         release {
             minifyEnabled false
