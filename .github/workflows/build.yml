@@ -1,4 +1,4 @@
-name: Build Zion OS Android
+name: Build Zion OS APK
 
 on:
   push:
@@ -11,73 +11,100 @@ permissions:
   contents: read
 
 concurrency:
-  group: zion-os-android-${{ github.ref }}
+  group: zion-os-build-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.22.0'
+  JAVA_VERSION: '17'
 
 jobs:
   build:
-    name: Build Zion OS Android APKs
+    name: Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout Zion OS source
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: false
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v5
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
 
-      - name: Setup Flutter 3.38.10
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.10'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - name: Show Flutter version
-        run: flutter --version
+      - name: Surgical Dart repair
+        run: python3 tool/repair_dart_corruption.py
 
-      - name: Generate fresh Zion OS Android project
+      - name: Verify repaired sources have no known corruption markers
+        shell: bash
         run: |
-          rm -rf android
-          flutter create \
-            --platforms=android \
-            --project-name=zion_os \
-            --org=com.zionos \
-            --android-language=kotlin \
-            .
+          set -euo pipefail
+          ! grep -R -n --include='*.dart' -E "SingleChildScrollWidget\('Phone'|\);n" lib
+          ! grep -n "}','Phone', Icons.phone),child: Column(" lib/screens/help/advanced_help_center.dart
 
-      - name: Install Zion OS dependencies
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify Zion OS repository assets
+      - name: Generate app icons
+        run: |
+          flutter pub get
+          flutter pub run flutter_launcher_icons
+
+      - name: Verify required Flutter assets and launcher resources
         shell: bash
         run: |
-          test -f assets/translations/en.json
-          test -f assets/translations/ar.json
-          test -f assets/icons/app_icon.png
-          test -d assets/icons/svg_colors
-          test -d assets/images
+          set -euo pipefail
           test -d assets/fonts
+          test -f assets/icons/app_icon.png
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png || test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.webp
 
-      - name: Build Zion OS release APKs
+      - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
 
-      - name: Verify Zion OS APK outputs
+      - name: Verify APK outputs
         shell: bash
         run: |
-          test -f build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          test -f build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-          test -f build/app/outputs/flutter-apk/app-x86_64-release.apk
-          ls -lh build/app/outputs/flutter-apk/
+          set -euo pipefail
+          for apk in \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            build/app/outputs/flutter-apk/app-x86_64-release.apk; do
+            test -s "$apk"
+            echo "Verified: $apk ($(stat -c%s "$apk") bytes)"
+          done
 
-      - name: Upload Zion OS Android APKs
+      - name: Upload arm64-v8a
         uses: actions/upload-artifact@v4
         with:
-          name: zion-os-android-apks
-          path: build/app/outputs/flutter-apk/app-*-release.apk
+          name: zion-os-arm64-v8a
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload armeabi-v7a
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-os-armeabi-v7a
+          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload x86_64
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-os-x86_64
+          path: build/app/outputs/flutter-apk/app-x86_64-release.apk
           if-no-files-found: error
           retention-days: 30
