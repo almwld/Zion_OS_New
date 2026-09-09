@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class ZionBrowser extends StatefulWidget {
   const ZionBrowser({super.key});
@@ -9,26 +9,67 @@ class ZionBrowser extends StatefulWidget {
 }
 
 class _ZionBrowserState extends State<ZionBrowser> {
-  final TextEditingController _urlCtrl = TextEditingController(text: 'https://google.com');
-  String _currentUrl = 'https://google.com';
+  late final WebViewController _controller;
+  final TextEditingController _urlCtrl = TextEditingController();
+  String _currentUrl = 'https://www.google.com';
   bool _isSecure = true;
+  bool _loading = false;
 
-  void _navigate() {
-    String url = _urlCtrl.text.trim();
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (url) => setState(() {
+            _loading = true;
+            _currentUrl = url;
+            _isSecure = url.startsWith('https://');
+            _urlCtrl.text = url;
+          }),
+          onPageFinished: (url) => setState(() {
+            _loading = false;
+            _currentUrl = url;
+            _isSecure = url.startsWith('https://');
+            _urlCtrl.text = url;
+          }),
+          onWebResourceError: (_) => setState(() => _loading = false),
+        ),
+      )
+      ..loadRequest(Uri.parse(_currentUrl));
+    _urlCtrl.text = _currentUrl;
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _navigate() async {
+    var url = _urlCtrl.text.trim();
+    if (url.isEmpty) return;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://$url';
     }
-    setState(() {
-      _currentUrl = url;
-      _isSecure = url.startsWith('https://');
-    });
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) return;
+    await _controller.loadRequest(uri);
+  }
+
+  Future<void> _goBack() async {
+    if (await _controller.canGoBack()) await _controller.goBack();
+  }
+
+  Future<void> _goForward() async {
+    if (await _controller.canGoForward()) await _controller.goForward();
   }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // شريط العنوان
         Container(
           padding: const EdgeInsets.all(4),
           decoration: const BoxDecoration(
@@ -37,33 +78,30 @@ class _ZionBrowserState extends State<ZionBrowser> {
           ),
           child: Row(
             children: [
-              // أزرار التنقل
               IconButton(
                 icon: const Icon(Icons.arrow_back, color: Color(0xFF00FF41), size: 18),
-                onPressed: () {},
+                onPressed: _goBack,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
               ),
               IconButton(
                 icon: const Icon(Icons.arrow_forward, color: Color(0xFF00FF41), size: 18),
-                onPressed: () {},
+                onPressed: _goForward,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
               ),
               IconButton(
                 icon: const Icon(Icons.refresh, color: Color(0xFF00FF41), size: 18),
-                onPressed: _navigate,
+                onPressed: () => _controller.reload(),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
               ),
-              // أيقونة القفل
               Icon(
                 _isSecure ? Icons.lock : Icons.lock_open,
                 color: _isSecure ? Colors.green : Colors.red,
                 size: 14,
               ),
               const SizedBox(width: 4),
-              // حقل URL
               Expanded(
                 child: TextField(
                   controller: _urlCtrl,
@@ -76,7 +114,6 @@ class _ZionBrowserState extends State<ZionBrowser> {
                   onSubmitted: (_) => _navigate(),
                 ),
               ),
-              // زر البحث
               IconButton(
                 icon: const Icon(Icons.search, color: Color(0xFF00FF41), size: 18),
                 onPressed: _navigate,
@@ -86,37 +123,8 @@ class _ZionBrowserState extends State<ZionBrowser> {
             ],
           ),
         ),
-        // منطقة العرض (محاكاة بسيطة)
-        Expanded(
-          child: Container(
-            color: Colors.white,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.language, size: 48, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Zion Browser',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _currentUrl,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'المتصفح الكامل قيد التطوير...',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[400]),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // شريط الحالة
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        Expanded(child: WebViewWidget(controller: _controller)),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: const BoxDecoration(
@@ -126,8 +134,14 @@ class _ZionBrowserState extends State<ZionBrowser> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_currentUrl, style: const TextStyle(color: Color(0xFF00FF41), fontSize: 10, fontFamily: 'monospace')),
-              const Text('Done', style: TextStyle(color: Color(0xFF00FF41), fontSize: 10, fontFamily: 'monospace')),
+              Expanded(
+                child: Text(
+                  _currentUrl,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Color(0xFF00FF41), fontSize: 10, fontFamily: 'monospace'),
+                ),
+              ),
+              const Text('Zion Browser', style: TextStyle(color: Color(0xFF00FF41), fontSize: 10)),
             ],
           ),
         ),
