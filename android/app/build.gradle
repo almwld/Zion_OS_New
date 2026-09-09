@@ -30,10 +30,19 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
-            // Keep the CI APK installable without committing a private production
-            // keystore. Production distribution should replace this with a
-            // protected release keystore/signing configuration.
+            // CI/test release is signed with the Android debug keystore so the
+            // generated APK is installable. Production builds must use a
+            // protected release keystore outside the repository.
             signingConfig = signingConfigs.debug
+        }
+    }
+
+    // Keep APK signatures compatible with both legacy Android installers
+    // (APK Signature Scheme v1/JAR) and modern Android (v2).
+    signingConfigs {
+        debug {
+            enableV1Signing true
+            enableV2Signing true
         }
     }
 }
