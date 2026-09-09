@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class OTAUpdate {
   final String version;
@@ -8,7 +7,7 @@ class OTAUpdate {
   final int size;
   final bool isCritical;
 
-  OTAUpdate({
+  const OTAUpdate({
     required this.version,
     required this.buildNumber,
     required this.description,
@@ -17,6 +16,12 @@ class OTAUpdate {
   });
 }
 
+/// OTA coordinator with an honest state model.
+///
+/// The APK cannot invent an update or pretend to install one. A real OTA
+/// backend/update manifest must be configured before check/download/install can
+/// report success. This keeps the UI truthful until the AOSP OTA pipeline is
+/// connected.
 class ZionOTASystem extends ChangeNotifier {
   OTAUpdate? _availableUpdate;
   bool _isChecking = false;
@@ -24,6 +29,7 @@ class ZionOTASystem extends ChangeNotifier {
   bool _isInstalling = false;
   int _downloadProgress = 0;
   int _installProgress = 0;
+  String? _error;
 
   OTAUpdate? get availableUpdate => _availableUpdate;
   bool get isChecking => _isChecking;
@@ -31,57 +37,40 @@ class ZionOTASystem extends ChangeNotifier {
   bool get isInstalling => _isInstalling;
   int get downloadProgress => _downloadProgress;
   int get installProgress => _installProgress;
+  String? get error => _error;
+  bool get isConfigured => false;
 
   Future<OTAUpdate?> checkForUpdates() async {
     _isChecking = true;
+    _error = null;
     notifyListeners();
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    // محاكاة وجود تحديث جديد
-    _availableUpdate = OTAUpdate(
-      version: '1.5.0',
-      buildNumber: 150,
-      description: '- إضافة دعم كامل لـ 600+ أداة Kali\n- تحسين أداء النظام\n- إصلاحات أمنية هامة\n- دعم الوضع الليلي المحسن',
-      size: 25000000,
-      isCritical: false,
-    );
-
-    _isChecking = false;
-    notifyListeners();
-    return _availableUpdate;
+    try {
+      _availableUpdate = null;
+      _error = 'خدمة تحديث Zion OS غير مهيأة: يلزم مصدر OTA موثوق ومانيفست موقّع.';
+      return null;
+    } finally {
+      _isChecking = false;
+      notifyListeners();
+    }
   }
 
   Future<void> downloadUpdate() async {
-    if (_availableUpdate == null) return;
-
-    _isDownloading = true;
-    _downloadProgress = 0;
-    notifyListeners();
-
-    for (int i = 0; i <= 100; i += 2) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      _downloadProgress = i;
+    if (_availableUpdate == null) {
+      _error = 'لا يوجد تحديث موثوق متاح للتنزيل.';
       notifyListeners();
+      return;
     }
-
-    _isDownloading = false;
+    _error = 'تنزيل OTA غير متاح قبل ربط خدمة التحديث الموثوقة.';
     notifyListeners();
   }
 
   Future<void> installUpdate() async {
-    _isInstalling = true;
-    _installProgress = 0;
+    _error = 'تثبيت OTA غير متاح من داخل APK عادي. يلزم مسار AOSP/Recovery أو آلية تحديث نظام موثوقة.';
     notifyListeners();
+  }
 
-    for (int i = 0; i <= 100; i += 5) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      _installProgress = i;
-      notifyListeners();
-    }
-
-    _availableUpdate = null;
-    _isInstalling = false;
+  void clearError() {
+    _error = null;
     notifyListeners();
   }
 }
