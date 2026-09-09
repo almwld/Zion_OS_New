@@ -1,6 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotesBackupApp extends StatefulWidget {
   const NotesBackupApp({super.key});
@@ -10,6 +13,7 @@ class NotesBackupApp extends StatefulWidget {
 }
 
 class _NotesBackupAppState extends State<NotesBackupApp> {
+  static const _notesKey = 'zion_notes';
   List<Map<String, dynamic>> _backups = [];
   List<Map<String, dynamic>> _notes = [];
   bool _isLoading = true;
@@ -19,121 +23,161 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
   @override
   void initState() {
     super.initState();
-    _initBackupPath();
-    _loadNotes();
-    _loadBackups();
+    _initialize();
   }
 
-  Future<void> _initBackupPath() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    _backupPath = '${appDir.path}/notes_backups';
-    await Directory(_backupPath).create(recursive: true);
+  Future<void> _initialize() async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      _backupPath = '${appDir.path}/notes_backups';
+      await Directory(_backupPath).create(recursive: true);
+      await _loadNotes();
+      await _loadBackups();
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _loadNotes() {
-    _notes = [
-      {'id': '1', 'title': 'Welcome Note', 'content': 'Welcome to Zion OS!', 'date': '2024-12-01', 'color': 0xFF00BCD4},
-      {'id': '2', 'title': 'Security Tips', 'content': 'Always use strong passwords', 'date': '2024-12-02', 'color': 0xFF4CAF50},
-      {'id': '3', 'title': 'Important Links', 'content': 'github.com/almwld/project-zion', 'date': '2024-12-03', 'color': 0xFFFF9800},
-      {'id': '4', 'title': 'TODO List', 'content': '1. Update system\n2. Backup notes\n3. Check security', 'date': '2024-12-04', 'color': 0xFF9C27B0},
-    ];
+  Future<void> _loadNotes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_notesKey);
+    if (raw == null || raw.trim().isEmpty) {
+      _notes = [];
+      return;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        _notes = decoded
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      } else {
+        _notes = [];
+      }
+    } catch (_) {
+      _notes = [];
+    }
   }
 
   Future<void> _loadBackups() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final dir = Directory(_backupPath);
-      if (await dir.exists()) {
-        final files = await dir.list().toList();
-        _backups.clear();
-        for (final file in files) {
-          if (file is File && file.path.endsWith('.notesbackup')) {
-            final stat = await file.stat();
-            _backups.add({
-              'name': file.path.split('/').last,
-              'path': file.path,
-              'size': stat.size,
-              'date': stat.modified,
-            });
-          }
+      if (!await dir.exists()) return;
+      final files = await dir.list().toList();
+      final loaded = <Map<String, dynamic>>[];
+      for (final file in files) {
+        if (file is File && file.path.endsWith('.notesbackup')) {
+          final stat = await file.stat();
+          loaded.add({
+            'name': file.uri.pathSegments.last,
+            'path': file.path,
+            'size': stat.size,
+            'date': stat.modified,
+          });
         }
-        _backups.sort((a, b) => b['date'].compareTo(a['date']));
       }
-    } catch (_) {}
-    setState(() => _isLoading = false);
+      loaded.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
+      _backups = loaded;
+    } catch (_) {
+      _backups = [];
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _createBackup() async {
+    if (_isBackingUp) return;
     setState(() => _isBackingUp = true);
-    
-    await Future.delayed(const Duration(seconds: 2));
-    
-    final backupData = {
-      'notes': _notes,
-      'backup_time': DateTime.now().toIso8601String(),
-      'total_notes': _notes.length,
-      'app_version': '4.0.0',
-    };
-    
-    final backupFile = File('$_backupPath/notes_backup_${DateTime.now().millisecondsSinceEpoch}.notesbackup');
-    await backupFile.writeAsString(backupData.toString());
-    await _loadBackups();
-    
-    setState(() => _isBackingUp = false);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Notes backup created successfully'), backgroundColor: Color(0xFF00BCD4)),
-    );
+    try {
+      await _loadNotes();
+      final backupData = <String, dynamic>{
+        'format': 1,
+        'backup_time': DateTime.now().toIso8601String(),
+        'notes': _notes,
+      };
+      final backupFile = File('$_backupPath/notes_backup_${DateTime.now().millisecondsSinceEpoch}.notesbackup');
+      await backupFile.writeAsString(jsonEncode(backupData), flush: true);
+      await _loadBackups();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notes backup created successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isBackingUp = false);
+    }
   }
 
   Future<void> _restoreBackup(Map<String, dynamic> backup) async {
-    final confirmed = await showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Restore Backup', style: TextStyle(color: Color(0xFF00BCD4))),
-        content: const Text('This will replace all current notes. Are you sure?', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
+        title: const Text('Restore Backup'),
+        content: const Text('This will replace all current notes. Are you sure?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restore', style: TextStyle(color: Color(0xFF00BCD4)))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restore')),
         ],
       ),
     );
-    
-    if (confirmed == true) {
+    if (confirmed != true) return;
+
+    try {
+      final file = File(backup['path'] as String);
+      if (!await file.exists()) throw const FileSystemException('Backup file not found');
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map || decoded['notes'] is! List) {
+        throw const FormatException('Invalid notes backup format');
+      }
+      final restored = (decoded['notes'] as List)
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_notesKey, jsonEncode(restored));
+      await _loadNotes();
+      if (!mounted) return;
+      setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Restoring backup...'), backgroundColor: Color(0xFF00BCD4)),
+        SnackBar(content: Text('Restored ${restored.length} notes successfully')),
       );
-      await Future.delayed(const Duration(seconds: 1));
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notes restored successfully'), backgroundColor: Color(0xFF00BCD4)),
+        SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
   Future<void> _deleteBackup(Map<String, dynamic> backup) async {
-    final confirmed = await showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Backup', style: TextStyle(color: Color(0xFF00BCD4))),
-        content: const Text('Are you sure you want to delete this backup?', style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
+        title: const Text('Delete Backup'),
+        content: const Text('Are you sure you want to delete this backup?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
         ],
       ),
     );
-    
-    if (confirmed == true) {
-      try {
-        final file = File(backup['path']);
-        if (await file.exists()) await file.delete();
-        await _loadBackups();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup deleted'), backgroundColor: Color(0xFF00BCD4)),
-        );
-      } catch (_) {}
+    if (confirmed != true) return;
+    try {
+      final file = File(backup['path'] as String);
+      if (await file.exists()) await file.delete();
+      await _loadBackups();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -143,266 +187,80 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-  }
+  String _formatDate(DateTime date) => '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final totalNotes = _notes.length;
-    final totalBackups = _backups.length;
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Notes Backup', style: TextStyle(color: Color(0xFF00BCD4))),
+        title: const Text('Notes Backup'),
         backgroundColor: Colors.black,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF00BCD4)),
-            onPressed: _loadBackups,
-          ),
-        ],
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _loadBackups)],
       ),
       body: DefaultTabController(
         length: 2,
         child: Column(
           children: [
-            // Stats Card
             Container(
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]),
-                borderRadius: BorderRadius.circular(16),
-              ),
+              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16)),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStatItem('Current Notes', totalNotes.toString(), Icons.note),
-                  _buildStatItem('Backups', totalBackups.toString(), Icons.backup),
-                  _buildStatItem('Last Backup', _backups.isNotEmpty ? _formatDate(_backups.first['date']) : 'Never', Icons.history),
+                  _buildStatItem('Current Notes', _notes.length.toString(), Icons.note),
+                  _buildStatItem('Backups', _backups.length.toString(), Icons.backup),
+                  _buildStatItem('Last Backup', _backups.isNotEmpty ? _formatDate(_backups.first['date'] as DateTime) : 'Never', Icons.history),
                 ],
               ),
             ),
-            
-            // Current Notes Preview
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.note, color: Color(0xFF00BCD4)),
-                      SizedBox(width: 8),
-                      Text('Current Notes', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ..._notes.take(3).map((note) => Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Color(note['color']).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Color(note['color']).withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(color: Color(note['color']), shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            note['title'],
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                        Text(note['date'], style: const TextStyle(color: Colors.white38, fontSize: 10)),
-                      ],
-                    ),
-                  )),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Tabs
-            const TabBar(
-              labelColor: Color(0xFF00BCD4),
-              unselectedLabelColor: Colors.white54,
-              indicatorColor: Color(0xFF00BCD4),
-              tabs: [
-                Tab(icon: Icon(Icons.backup), text: 'Backups'),
-                Tab(icon: Icon(Icons.settings), text: 'Settings'),
-              ],
-            ),
-            
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildBackupsTab(),
-                  _buildSettingsTab(),
-                ],
-              ),
-            ),
+            const TabBar(tabs: [Tab(icon: Icon(Icons.backup), text: 'Backups'), Tab(icon: Icon(Icons.settings), text: 'Settings')]),
+            Expanded(child: TabBarView(children: [_buildBackupsTab(), _buildSettingsTab()])),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _isBackingUp ? null : _createBackup,
-        backgroundColor: const Color(0xFF00BCD4),
-        child: _isBackingUp
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-            : const Icon(Icons.backup, color: Colors.black),
+        child: _isBackingUp ? const CircularProgressIndicator() : const Icon(Icons.backup),
       ),
     );
   }
 
   Widget _buildBackupsTab() {
-    return _backups.isEmpty
-        ? const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.backup, size: 64, color: Colors.white24),
-                SizedBox(height: 16),
-                Text('No backups found', style: TextStyle(color: Colors.white38)),
-                SizedBox(height: 8),
-                Text('Tap + to create your first backup', style: TextStyle(color: Colors.white24, fontSize: 12)),
-              ],
-            ),
-          )
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _backups.length,
-            itemBuilder: (context, index) {
-              final backup = _backups[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00BCD4).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.archive, color: Color(0xFF00BCD4), size: 28),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            backup['name'],
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            _formatSize(backup['size']),
-                            style: const TextStyle(color: Colors.white54, fontSize: 11),
-                          ),
-                          Text(
-                            _formatDate(backup['date']),
-                            style: const TextStyle(color: Colors.white38, fontSize: 10),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.restore, color: Color(0xFF00BCD4)),
-                      onPressed: () => _restoreBackup(backup),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteBackup(backup),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_backups.isEmpty) return const Center(child: Text('No backups found', style: TextStyle(color: Colors.white54)));
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _backups.length,
+      itemBuilder: (context, index) {
+        final backup = _backups[index];
+        return Card(
+          child: ListTile(
+            leading: const Icon(Icons.archive),
+            title: Text(backup['name'] as String),
+            subtitle: Text('${_formatSize(backup['size'] as int)} • ${_formatDate(backup['date'] as DateTime)}'),
+            trailing: Wrap(children: [
+              IconButton(icon: const Icon(Icons.restore), onPressed: () => _restoreBackup(backup)),
+              IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteBackup(backup)),
+            ]),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildSettingsTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.settings, color: Color(0xFF00BCD4)),
-                  SizedBox(width: 8),
-                  Text('Backup Settings', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Auto Backup', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Automatically backup notes daily', style: TextStyle(color: Colors.white54)),
-                value: false,
-                onChanged: (_) {},
-                activeColor: const Color(0xFF00BCD4),
-              ),
-              SwitchListTile(
-                title: const Text('Backup on WiFi only', style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Only backup when connected to WiFi', style: TextStyle(color: Colors.white54)),
-                value: true,
-                onChanged: (_) {},
-                activeColor: const Color(0xFF00BCD4),
-              ),
-              ListTile(
-                title: const Text('Backup Location', style: TextStyle(color: Colors.white)),
-                subtitle: Text(_backupPath, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                trailing: const Icon(Icons.folder, color: Color(0xFF00BCD4)),
-              ),
-            ],
-          ),
-        ),
+        ListTile(title: const Text('Backup Location'), subtitle: Text(_backupPath.isEmpty ? 'Initializing…' : _backupPath)),
+        const ListTile(title: Text('Backup scope'), subtitle: Text('Notes stored by Zion OS in application preferences.')),
+        const ListTile(title: Text('Device backup'), subtitle: Text('Not available to a normal application.')),
       ],
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 24),
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-      ],
-    );
-  }
+  Widget _buildStatItem(String label, String value, IconData icon) => Column(children: [Icon(icon), const SizedBox(height: 4), Text(value), Text(label, style: const TextStyle(fontSize: 10))]);
 }
