@@ -1,55 +1,115 @@
-import 'package:flutter/material.dart';
-import 'dart:async';
+import 'package:flutter/foundation.dart';
+
+import 'core/services/zion_platform_service.dart';
 
 class NetworkInterface {
   final String name;
-  final String type; // wifi, ethernet, vpn, tor
-  final String status; // connected, disconnected, connecting
+  final String type;
+  final String status;
   final String ipAddress;
   final String macAddress;
   final int signalStrength;
   final double txSpeed;
   final double rxSpeed;
 
-  NetworkInterface({
+  const NetworkInterface({
     required this.name,
     required this.type,
     required this.status,
     required this.ipAddress,
     required this.macAddress,
-    this.signalStrength = 100,
+    this.signalStrength = 0,
     this.txSpeed = 0,
     this.rxSpeed = 0,
   });
 }
 
+/// Network state reported by Android. No interface, address, VPN, Tor, or
+/// firewall state is fabricated when Android cannot expose it to an app.
 class ZionNetworkManager extends ChangeNotifier {
-  final List<NetworkInterface> _interfaces = [
-    NetworkInterface(name: 'wlan0', type: 'wifi', status: 'connected', ipAddress: '192.168.1.100', macAddress: 'AA:BB:CC:DD:EE:01', signalStrength: 85, txSpeed: 1.2, rxSpeed: 5.4),
-    NetworkInterface(name: 'eth0', type: 'ethernet', status: 'disconnected', ipAddress: '-', macAddress: 'AA:BB:CC:DD:EE:02'),
-    NetworkInterface(name: 'tun0', type: 'vpn', status: 'connected', ipAddress: '10.8.0.10', macAddress: '-', signalStrength: 100, txSpeed: 0.3, rxSpeed: 1.1),
-    NetworkInterface(name: 'tor0', type: 'tor', status: 'connected', ipAddress: '127.0.0.1:9050', macAddress: '-', signalStrength: 100, txSpeed: 0.1, rxSpeed: 0.2),
-  ];
+  ZionNetworkManager({ZionPlatformService? platform})
+      : _platform = platform ?? ZionPlatformService.instance {
+    refresh();
+  }
 
-  bool _vpnEnabled = true;
-  bool _torEnabled = true;
-  bool _firewallEnabled = true;
-  bool _dnsOverHttps = true;
+  final ZionPlatformService _platform;
+  List<NetworkInterface> _interfaces = const <NetworkInterface>[];
+  bool _available = false;
+  bool _vpnEnabled = false;
+  bool _torEnabled = false;
+  bool _firewallEnabled = false;
+  bool _dnsOverHttps = false;
+  bool _isRefreshing = false;
 
   List<NetworkInterface> get interfaces => _interfaces;
+  bool get available => _available;
   bool get vpnEnabled => _vpnEnabled;
   bool get torEnabled => _torEnabled;
   bool get firewallEnabled => _firewallEnabled;
   bool get dnsOverHttps => _dnsOverHttps;
+  bool get isRefreshing => _isRefreshing;
 
-  void toggleVPN() { _vpnEnabled = !_vpnEnabled; notifyListeners(); }
-  void toggleTor() { _torEnabled = !_torEnabled; notifyListeners(); }
-  void toggleFirewall() { _firewallEnabled = !_firewallEnabled; notifyListeners(); }
-  void toggleDNS() { _dnsOverHttps = !_dnsOverHttps; notifyListeners(); }
+  Future<void> refresh() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    notifyListeners();
+    try {
+      final info = await _platform.getNetworkInfo();
+      _available = info['available'] == true;
+      final transport = info['transport']?.toString() ?? 'none';
+      final connected = info['connected'] == true;
+      final validated = info['validated'] == true;
+      final ip = info['ipAddress']?.toString() ?? 'غير متاح';
 
-  void connectToWiFi(String ssid, String password) {
-    final wifi = _interfaces.firstWhere((i) => i.name == 'wlan0');
-    // محاكاة الاتصال
+      if (!_available) {
+        _interfaces = const <NetworkInterface>[];
+      } else {
+        _interfaces = <NetworkInterface>[
+          NetworkInterface(
+            name: transport == 'none' ? 'network' : transport,
+            type: transport,
+            status: connected ? (validated ? 'connected' : 'limited') : 'disconnected',
+            ipAddress: ip,
+            macAddress: 'غير متاح',
+          ),
+        ];
+      }
+      _vpnEnabled = info['vpn'] == true;
+    } catch (_) {
+      _available = false;
+      _interfaces = const <NetworkInterface>[];
+    } finally {
+      _isRefreshing = false;
+      notifyListeners();
+    }
+  }
+
+  /// A regular Android application cannot silently join a protected Wi-Fi
+  /// network. Wi-Fi configuration must use Android's user-approved APIs.
+  Future<bool> connectToWiFi(String ssid, String password) async {
+    if (ssid.trim().isEmpty || password.isEmpty) return false;
+    return false;
+  }
+
+  /// These flags are local UI policy only; they do not claim to enable a
+  /// system VPN, Tor daemon, firewall, or DNS-over-HTTPS provider.
+  void setVpnPolicy(bool enabled) {
+    _vpnEnabled = enabled;
+    notifyListeners();
+  }
+
+  void setTorPolicy(bool enabled) {
+    _torEnabled = enabled;
+    notifyListeners();
+  }
+
+  void setFirewallPolicy(bool enabled) {
+    _firewallEnabled = enabled;
+    notifyListeners();
+  }
+
+  void setDnsOverHttpsPolicy(bool enabled) {
+    _dnsOverHttps = enabled;
     notifyListeners();
   }
 }
