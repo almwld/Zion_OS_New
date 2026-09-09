@@ -12,7 +12,11 @@ import 'security/runtime/runtime_integrity.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await EasyLocalization.ensureInitialized();
+  ErrorWidget.builder = (FlutterErrorDetails details) => const _StartupErrorView();
+
+  try {
+    await EasyLocalization.ensureInitialized();
+  } catch (_) {}
 
   final securityCore = SecurityCore();
   final runtimeReport = const RuntimeIntegrity().verify(securityCore);
@@ -48,7 +52,10 @@ class ZionOSApp extends StatelessWidget {
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
         provider.Provider<SecurityCore>.value(value: securityCore),
-        provider.Provider<TerminalService>(create: (_) => TerminalService(securityCore), dispose: (_, service) => service.dispose()),
+        provider.Provider<TerminalService>(
+          create: (_) => TerminalService(securityCore),
+          dispose: (_, service) => service.dispose(),
+        ),
         provider.Provider<UnifiedCoreService>(create: (_) => UnifiedCoreService()),
       ],
       child: provider.Consumer<ThemeProvider>(
@@ -67,6 +74,34 @@ class ZionOSApp extends StatelessWidget {
             home: const LockScreen(),
           );
         },
+      ),
+    );
+  }
+}
+
+class _StartupErrorView extends StatelessWidget {
+  const _StartupErrorView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Material(
+      color: Color(0xFF071116),
+      child: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.shield_outlined, color: Color(0xFF00BCD4), size: 64),
+                SizedBox(height: 20),
+                Text('Zion OS', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                SizedBox(height: 10),
+                Text('تعذر عرض الواجهة. أعد تشغيل التطبيق.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 16)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
