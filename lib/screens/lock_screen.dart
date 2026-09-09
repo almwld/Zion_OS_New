@@ -67,8 +67,8 @@ class _LockScreenState extends State<LockScreen> {
   }
 
   Future<void> _unlock() async {
-    final provider = context.read<ThemeProvider>();
-    if (!provider.isReady) return;
+    final theme = context.read<ThemeProvider>();
+    if (!theme.isReady) return;
 
     final now = DateTime.now();
     if (_lockedUntil != null && now.isBefore(_lockedUntil!)) {
@@ -80,15 +80,15 @@ class _LockScreenState extends State<LockScreen> {
     final pin = _pinController.text;
     if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
 
-    if (!provider.hasPin) {
-      if (await provider.setInitialPin(pin) && mounted) {
+    if (!theme.hasPin) {
+      if (await theme.setInitialPin(pin) && mounted) {
         _publishLockEvent('lock.initialized', 'success');
         _openDesktop();
       }
       return;
     }
 
-    if (provider.validatePin(pin)) {
+    if (theme.validatePin(pin)) {
       _failedAttempts = 0;
       _lockedUntil = null;
       _publishLockEvent('lock.unlock', 'success');
@@ -125,8 +125,11 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<ThemeProvider>();
-    final isDark = provider.isDarkMode;
+    final theme = context.watch<ThemeProvider>();
+    final isDark = theme.isDarkMode;
+    final foreground = isDark ? Colors.white : const Color(0xFF263238);
+    final muted = isDark ? Colors.white70 : Colors.black54;
+    final surface = isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05);
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -139,88 +142,94 @@ class _LockScreenState extends State<LockScreen> {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF00BCD4), Color(0xFF006064)],
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF00BCD4), Color(0xFF006064)],
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Center(
+                      child: Text('Z', style: TextStyle(fontSize: 55, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ),
                   ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Text('Z', style: TextStyle(fontSize: 55, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(_currentTime, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF00BCD4))),
-              const SizedBox(height: 8),
-              Text(_currentDate, style: const TextStyle(fontSize: 16, color: Colors.white70)),
-              const SizedBox(height: 35),
-              Text(
-                provider.isReady
-                    ? (provider.hasPin ? 'أدخل رمز PIN' : 'أنشئ رمز PIN من 4 أرقام')
-                    : 'جاري تجهيز الحماية…',
-                style: const TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 15),
-              Container(
-                width: 280,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.5)),
-                ),
-                child: TextField(
-                  controller: _pinController,
-                  enabled: provider.isReady,
-                  obscureText: true,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 24, letterSpacing: 10),
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  decoration: const InputDecoration(
-                    hintText: '••••',
-                    hintStyle: TextStyle(color: Colors.white30),
-                    border: InputBorder.none,
-                    counterText: '',
+                  const SizedBox(height: 20),
+                  Text(_currentTime, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF00BCD4))),
+                  const SizedBox(height: 8),
+                  Text(_currentDate, style: TextStyle(fontSize: 16, color: muted)),
+                  const SizedBox(height: 35),
+                  Text(
+                    theme.isReady
+                        ? (theme.hasPin ? 'أدخل رمز PIN' : 'أنشئ رمز PIN من 4 أرقام')
+                        : 'جاري تجهيز الحماية…',
+                    style: TextStyle(color: muted),
                   ),
-                  onSubmitted: (_) => _unlock(),
-                ),
+                  const SizedBox(height: 15),
+                  Container(
+                    width: 280,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: surface,
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.5)),
+                    ),
+                    child: TextField(
+                      controller: _pinController,
+                      enabled: theme.isReady,
+                      obscureText: true,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 24, letterSpacing: 10),
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      decoration: InputDecoration(
+                        hintText: '••••',
+                        hintStyle: TextStyle(color: muted.withOpacity(0.5)),
+                        border: InputBorder.none,
+                        counterText: '',
+                      ),
+                      onSubmitted: (_) => _unlock(),
+                    ),
+                  ),
+                  if (_errorMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 15),
+                      child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
+                    ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: 300,
+                    child: GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 15,
+                      crossAxisSpacing: 15,
+                      children: [
+                        _buildButton('1', foreground, surface), _buildButton('2', foreground, surface), _buildButton('3', foreground, surface),
+                        _buildButton('4', foreground, surface), _buildButton('5', foreground, surface), _buildButton('6', foreground, surface),
+                        _buildButton('7', foreground, surface), _buildButton('8', foreground, surface), _buildButton('9', foreground, surface),
+                        _buildButton('', foreground, surface), _buildButton('0', foreground, surface), _buildButton('⌫', foreground, surface),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (_errorMessage.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 15),
-                  child: Text(_errorMessage, style: const TextStyle(color: Colors.redAccent)),
-                ),
-              const SizedBox(height: 30),
-              SizedBox(
-                width: 300,
-                child: GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 15,
-                  crossAxisSpacing: 15,
-                  children: [
-                    _buildButton('1'), _buildButton('2'), _buildButton('3'),
-                    _buildButton('4'), _buildButton('5'), _buildButton('6'),
-                    _buildButton('7'), _buildButton('8'), _buildButton('9'),
-                    _buildButton(''), _buildButton('0'), _buildButton('⌫'),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildButton(String num) {
+  Widget _buildButton(String num, Color foreground, Color surface) {
     return GestureDetector(
       onTap: () {
         if (num == '⌫') {
@@ -234,7 +243,7 @@ class _LockScreenState extends State<LockScreen> {
       },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
+          color: surface,
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
         ),
