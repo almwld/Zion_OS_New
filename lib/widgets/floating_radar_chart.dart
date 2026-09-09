@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import 'dart:async';
-import 'dart:io';
+
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
 
 class FloatingRadarChart extends StatefulWidget {
   final VoidCallback onClose;
@@ -15,28 +15,31 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   Offset _position = Offset.zero;
   double _width = 280;
   double _height = 280;
-  
-  Map<String, double> _metrics = {
+  Timer? _updateTimer;
+  final Map<String, double> _metrics = {
     'CPU': 0.0, 'RAM': 0.0, 'Storage': 0.0, 'Battery': 0.0,
     'Network': 0.0, 'Temp': 0.0, 'Processes': 0.0, 'Uptime': 0.0,
     'Disk I/O': 0.0, 'GPU': 0.0, 'Security': 0.0, 'Performance': 0.0,
   };
-  
-  final List<String> _titles = [
+  final List<String> _titles = const [
     'CPU', 'RAM', 'Storage', 'Battery', 'Network', 'Temp',
     'Processes', 'Uptime', 'Disk I/O', 'GPU', 'Security', 'Performance'
   ];
-  
-  Timer? _updateTimer;
 
   @override
   void initState() {
     super.initState();
-    _position = Offset(
-      MediaQuery.of(context).size.width - _width - 20,
-      MediaQuery.of(context).size.height - _height - 100,
-    );
-    _startRealTimeUpdates();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = MediaQuery.sizeOf(context);
+      setState(() {
+        _position = Offset(
+          (size.width - _width - 20).clamp(0.0, double.infinity),
+          (size.height - _height - 100).clamp(0.0, double.infinity),
+        );
+      });
+      _startRealTimeUpdates();
+    });
   }
 
   @override
@@ -46,42 +49,49 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   }
 
   void _startRealTimeUpdates() {
-    _updateTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
+    _updateTimer?.cancel();
+    _updateTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+      if (!mounted) return;
       _updateMetrics();
-      setState(() {});
     });
   }
 
   void _updateMetrics() {
+    if (!mounted) return;
+    final now = DateTime.now();
     setState(() {
-      _metrics['CPU'] = 0.3 + (DateTime.now().millisecond % 50) / 100;
+      _metrics['CPU'] = 0.3 + (now.millisecond % 50) / 100;
       _metrics['RAM'] = 0.45;
       _metrics['Storage'] = 0.6;
       _metrics['Battery'] = 0.75;
-      _metrics['Network'] = 0.2 + (DateTime.now().second % 80) / 100;
+      _metrics['Network'] = 0.2 + (now.second % 80) / 100;
       _metrics['Temp'] = 0.45;
       _metrics['Processes'] = 0.5;
       _metrics['Uptime'] = 0.1;
-      _metrics['Disk I/O'] = 0.15 + (DateTime.now().millisecond % 30) / 100;
-      _metrics['GPU'] = 0.2 + (DateTime.now().second % 50) / 100;
+      _metrics['Disk I/O'] = 0.15 + (now.millisecond % 30) / 100;
+      _metrics['GPU'] = 0.2 + (now.second % 50) / 100;
       _metrics['Security'] = 0.85;
       _metrics['Performance'] = 0.7;
-      
-      for (var key in _metrics.keys) {
+      for (final key in _metrics.keys) {
         _metrics[key] = _metrics[key]!.clamp(0.0, 1.0);
       }
     });
   }
 
-  List<RadarEntry> _getRadarEntries() {
-    return _titles.map((title) => RadarEntry(value: _metrics[title] ?? 0.0)).toList();
-  }
+  List<RadarEntry> _getRadarEntries() =>
+      _titles.map((title) => RadarEntry(value: _metrics[title] ?? 0.0)).toList();
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final maxLeft = (size.width - _width).clamp(0.0, double.infinity);
+    final maxTop = (size.height - _height - 50).clamp(0.0, double.infinity);
+    final left = _position.dx.clamp(0.0, maxLeft);
+    final top = _position.dy.clamp(0.0, maxTop);
+
     return Positioned(
-      left: _position.dx,
-      top: _position.dy,
+      left: left,
+      top: top,
       child: Material(
         color: Colors.transparent,
         child: Container(
@@ -99,8 +109,8 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
                   setState(() {
                     _position += details.delta;
                     _position = Offset(
-                      _position.dx.clamp(0, MediaQuery.of(context).size.width - _width),
-                      _position.dy.clamp(0, MediaQuery.of(context).size.height - _height - 50),
+                      _position.dx.clamp(0.0, maxLeft),
+                      _position.dy.clamp(0.0, maxTop),
                     );
                   });
                 },
@@ -108,7 +118,8 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
                   height: 32,
                   decoration: BoxDecoration(
                     color: const Color(0xFF00BCD4).withOpacity(0.2),
-                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16), topRight: Radius.circular(16)),
                   ),
                   child: Row(
                     children: [
