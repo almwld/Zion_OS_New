@@ -9,6 +9,7 @@ import 'providers/theme_provider.dart';
 import 'screens/lock_screen.dart';
 import 'security/core/security_core.dart';
 import 'security/runtime/runtime_integrity.dart';
+import 'services/preferences_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,12 @@ Future<void> main() async {
   try {
     await EasyLocalization.ensureInitialized();
   } catch (_) {}
+
+  // PreferencesService is consumed by the lock screen and the desktop shell.
+  // Initialize it before the first frame and expose the same singleton through
+  // Provider so those screens never fail with ProviderNotFoundException.
+  final preferencesService = PreferencesService();
+  await preferencesService.init();
 
   final securityCore = SecurityCore();
   final runtimeReport = const RuntimeIntegrity().verify(securityCore);
@@ -36,27 +43,40 @@ Future<void> main() async {
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
       startLocale: const Locale('ar'),
-      child: ZionOSApp(securityCore: securityCore),
+      child: ZionOSApp(
+        securityCore: securityCore,
+        preferencesService: preferencesService,
+      ),
     ),
   );
 }
 
 class ZionOSApp extends StatelessWidget {
-  const ZionOSApp({required this.securityCore, super.key});
+  const ZionOSApp({
+    required this.securityCore,
+    required this.preferencesService,
+    super.key,
+  });
 
   final SecurityCore securityCore;
+  final PreferencesService preferencesService;
 
   @override
   Widget build(BuildContext context) {
     return provider.MultiProvider(
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        provider.ChangeNotifierProvider<PreferencesService>.value(
+          value: preferencesService,
+        ),
         provider.Provider<SecurityCore>.value(value: securityCore),
         provider.Provider<TerminalService>(
           create: (_) => TerminalService(securityCore),
           dispose: (_, service) => service.dispose(),
         ),
-        provider.Provider<UnifiedCoreService>(create: (_) => UnifiedCoreService()),
+        provider.Provider<UnifiedCoreService>(
+          create: (_) => UnifiedCoreService(),
+        ),
       ],
       child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
