@@ -1,87 +1,78 @@
-import 'dart:io';
-import 'dart:async';
-import 'package:network_info_plus/network_info_plus.dart';
+import '../services/zion_platform_service.dart';
 
+/// Wi-Fi state exposed by Android without privileged or shell access.
+///
+/// Scanning and joining protected networks are intentionally not simulated.
+/// A production implementation should use Android's user-approved Wi-Fi APIs
+/// when that capability is explicitly required.
 class WirelessService {
   static final WirelessService _instance = WirelessService._internal();
   factory WirelessService() => _instance;
   WirelessService._internal();
-  
-  final NetworkInfo _networkInfo = NetworkInfo();
-  
-  List<Map<String, String>> _wifiNetworks = [];
-  List<Map<String, String>> _savedNetworks = [];
+
+  final ZionPlatformService _platform = ZionPlatformService.instance;
+  List<Map<String, String>> _wifiNetworks = const <Map<String, String>>[];
+  List<Map<String, String>> _savedNetworks = const <Map<String, String>>[];
   bool _isScanning = false;
-  
-  Future<void> init() async {
-    await _loadSavedNetworks();
-  }
-  
-  Future<void> _loadSavedNetworks() async {
-    // Load saved networks from preferences
-    _savedNetworks = [
-      {'ssid': 'Zion_Secure', 'security': 'WPA2', 'saved': 'true'},
-      {'ssid': 'Home_Network', 'security': 'WPA3', 'saved': 'true'},
-      {'ssid': 'Office_WiFi', 'security': 'WPA2', 'saved': 'false'},
-    ];
-  }
-  
+
+  Future<void> init() async {}
+
   Future<void> scanWiFiNetworks() async {
     _isScanning = true;
-    _wifiNetworks.clear();
-    
     try {
-      final result = await Process.run('dumpsys', ['wifi'], runInShell: true);
-      final output = result.stdout.toString();
-      
-      final regex = RegExp(r'SSID: "([^"]+)".*?BSSID: ([0-9a-f:]+).*?RSSI: (-?\d+)', caseSensitive: false);
-      final matches = regex.allMatches(output);
-      
-      for (final match in matches) {
-        _wifiNetworks.add({
-          'ssid': match.group(1) ?? 'Unknown',
-          'bssid': match.group(2) ?? 'Unknown',
-          'signal': match.group(3) ?? '0',
-          'security': 'WPA2',
-          'channel': '6',
-        });
+      final info = await _platform.getNetworkInfo();
+      final transport = info['transport']?.toString();
+      final connected = info['connected'] == true;
+      if (transport == 'wifi' && connected) {
+        _wifiNetworks = <Map<String, String>>[
+          {
+            'ssid': 'الشبكة الحالية',
+            'signal': 'غير متاح',
+            'security': 'غير متاح',
+            'bssid': 'غير متاح',
+            'channel': 'غير متاح',
+          },
+        ];
+      } else {
+        _wifiNetworks = const <Map<String, String>>[];
       }
-    } catch (_) {}
-    
-    _isScanning = false;
+    } catch (_) {
+      _wifiNetworks = const <Map<String, String>>[];
+    } finally {
+      _isScanning = false;
+    }
   }
-  
+
+  /// Returns false instead of pretending a network was joined. Android Wi-Fi
+  /// configuration must be performed through an approved system flow.
   Future<bool> connectToWiFi(String ssid, String password) async {
-    try {
-      // Simulate connection
-      await Future.delayed(const Duration(seconds: 1));
-      return true;
-    } catch (_) {
-      return false;
-    }
+    return false;
   }
-  
+
   Future<void> forgetNetwork(String ssid) async {
-    _savedNetworks.removeWhere((n) => n['ssid'] == ssid);
+    _savedNetworks = List<Map<String, String>>.from(_savedNetworks)
+      ..removeWhere((network) => network['ssid'] == ssid);
   }
-  
-  String getCurrentWiFiName() {
+
+  Future<String?> getCurrentWiFiName() async {
     try {
-      return _networkInfo.getWifiName() ?? 'Unknown';
+      final info = await _platform.getNetworkInfo();
+      return info['transport']?.toString() == 'wifi' ? 'الشبكة الحالية' : null;
     } catch (_) {
-      return 'Unknown';
+      return null;
     }
   }
-  
-  String getCurrentIP() {
+
+  Future<String?> getCurrentIP() async {
     try {
-      return _networkInfo.getWifiIP() ?? '0.0.0.0';
+      final info = await _platform.getNetworkInfo();
+      return info['ipAddress']?.toString();
     } catch (_) {
-      return '0.0.0.0';
+      return null;
     }
   }
-  
-  List<Map<String, String>> get wifiNetworks => _wifiNetworks;
-  List<Map<String, String>> get savedNetworks => _savedNetworks;
+
+  List<Map<String, String>> get wifiNetworks => List.unmodifiable(_wifiNetworks);
+  List<Map<String, String>> get savedNetworks => List.unmodifiable(_savedNetworks);
   bool get isScanning => _isScanning;
 }
