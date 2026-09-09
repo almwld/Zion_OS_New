@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.StatFs
@@ -59,10 +60,13 @@ class MainActivity : FlutterActivity() {
             "available" to true,
             "connected" to false,
             "validated" to false,
+            "vpn" to false,
             "transport" to "none",
+            "ipAddress" to null,
         )
         val capabilities = connectivity.getNetworkCapabilities(network)
-            ?: return mapOf("available" to true, "connected" to false, "validated" to false, "transport" to "none")
+            ?: return mapOf("available" to true, "connected" to false, "validated" to false, "vpn" to false, "transport" to "none", "ipAddress" to null)
+        val linkProperties: LinkProperties? = connectivity.getLinkProperties(network)
 
         val transport = when {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
@@ -71,12 +75,18 @@ class MainActivity : FlutterActivity() {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "vpn"
             else -> "other"
         }
+        val address = linkProperties?.linkAddresses
+            ?.firstOrNull { !it.address.isLoopbackAddress }
+            ?.address
+            ?.hostAddress
 
         return mapOf(
             "available" to true,
             "connected" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
             "validated" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            "vpn" to capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
             "transport" to transport,
+            "ipAddress" to address,
         )
     }
 
