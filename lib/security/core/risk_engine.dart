@@ -11,8 +11,19 @@ class RiskAssessment {
 class RiskEngine {
   const RiskEngine();
 
-  RiskAssessment assess(Iterable<SecurityResult> results) {
-    final findings = results.toList(growable: false);
+  /// Assesses real security results by default.
+  ///
+  /// Simulated/demo findings are excluded rather than assigned an arbitrary
+  /// weight. They can only be included when a caller explicitly opts in for a
+  /// demonstration UI.
+  RiskAssessment assess(
+    Iterable<SecurityResult> results, {
+    bool includeSimulated = false,
+  }) {
+    final findings = results
+        .where((finding) => includeSimulated || finding.source != ResultSource.simulated)
+        .toList(growable: false);
+
     if (findings.isEmpty) {
       return const RiskAssessment(
         score: 0,
@@ -31,9 +42,8 @@ class RiskEngine {
         SecuritySeverity.high => 45,
         SecuritySeverity.critical => 70,
       };
-      final sourceMultiplier = finding.source == ResultSource.simulated ? 0.25 : 1.0;
       final confidenceMultiplier = finding.confidence.clamp(0.1, 1.0);
-      score += weight * sourceMultiplier * confidenceMultiplier;
+      score += weight * confidenceMultiplier;
       if (weight > 0) {
         reasons.add('${finding.title} (${finding.source.name})');
       }
