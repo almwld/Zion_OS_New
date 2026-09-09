@@ -30,6 +30,10 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+            // Keep the CI APK installable without committing a private production
+            // keystore. Production distribution should replace this with a
+            // protected release keystore/signing configuration.
+            signingConfig = signingConfigs.debug
         }
     }
 }
