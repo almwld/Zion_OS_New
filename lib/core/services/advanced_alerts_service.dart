@@ -1,197 +1,149 @@
-import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Persistent application alerts. Alerts are created only by real callers;
+/// this service does not manufacture periodic "system checks".
 class AdvancedAlertsService extends ChangeNotifier {
   static final AdvancedAlertsService _instance = AdvancedAlertsService._internal();
   factory AdvancedAlertsService() => _instance;
   AdvancedAlertsService._internal();
-  
-  List<Map<String, dynamic>> _alerts = [];
-  List<Map<String, dynamic>> _notifications = [];
-  Timer? _monitorTimer;
-  
+
+  List<Map<String, dynamic>> _alerts = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _notifications = <Map<String, dynamic>>[];
+
   Future<void> init() async {
     await _loadAlerts();
     await _loadNotifications();
-    _startMonitoring();
   }
-  
+
   Future<void> _loadAlerts() async {
     final prefs = await SharedPreferences.getInstance();
-    final alertsJson = prefs.getString('advanced_alerts');
-    if (alertsJson != null) {
-      try {
-        _alerts = List<Map<String, dynamic>>.from(jsonDecode(alertsJson));
-      } catch (_) {}
+    final value = prefs.getString('advanced_alerts');
+    if (value == null) return;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        _alerts = decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+      }
+    } catch (_) {
+      _alerts = <Map<String, dynamic>>[];
     }
   }
-  
+
   Future<void> _loadNotifications() async {
     final prefs = await SharedPreferences.getInstance();
-    final notificationsJson = prefs.getString('notifications');
-    if (notificationsJson != null) {
-      try {
-        _notifications = List<Map<String, dynamic>>.from(jsonDecode(notificationsJson));
-      } catch (_) {}
+    final value = prefs.getString('notifications');
+    if (value == null) return;
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        _notifications = decoded.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+      }
+    } catch (_) {
+      _notifications = <Map<String, dynamic>>[];
     }
   }
-  
+
   Future<void> _saveAlerts() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('advanced_alerts', jsonEncode(_alerts));
   }
-  
+
   Future<void> _saveNotifications() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('notifications', jsonEncode(_notifications));
   }
-  
-  void _startMonitoring() {
-    _monitorTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _checkForAlerts();
-    });
-  }
-  
-  void _checkForAlerts() {
-    // Simulate alerts
-    if (DateTime.now().second % 30 == 0) {
-      _addAlert(
-        'System Check',
-        'Automatic system scan completed',
-        'info',
-        duration: 5,
-      );
-    }
-  }
-  
-  void _addAlert(String title, String message, String severity, {int duration = 0}) {
-    final alert = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': title,
-      'message': message,
-      'severity': severity,
-      'timestamp': DateTime.now().toIso8601String(),
-      'read': false,
-    };
-    _alerts.insert(0, alert);
+
+  Future<void> addCustomAlert(String title, String message, String severity) async {
+    _alerts.insert(0, _newItem(title, message, severity));
     if (_alerts.length > 100) _alerts = _alerts.sublist(0, 100);
-    _saveAlerts();
+    await _saveAlerts();
     notifyListeners();
-    
-    if (duration > 0) {
-      Future.delayed(Duration(seconds: duration), () {
-        _alerts.removeWhere((a) => a['id'] == alert['id']);
-        notifyListeners();
-      });
-    }
   }
-  
-  void addCustomAlert(String title, String message, String severity) {
-    _addAlert(title, message, severity);
-  }
-  
-  void addNotification(String title, String message, String type) {
-    final notification = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'title': title,
-      'message': message,
-      'type': type,
-      'timestamp': DateTime.now().toIso8601String(),
-      'read': false,
-    };
-    _notifications.insert(0, notification);
+
+  Future<void> addNotification(String title, String message, String type) async {
+    _notifications.insert(0, _newItem(title, message, type));
     if (_notifications.length > 200) _notifications = _notifications.sublist(0, 200);
-    _saveNotifications();
+    await _saveNotifications();
     notifyListeners();
   }
-  
-  void markAlertAsRead(String id) {
-    final index = _alerts.indexWhere((a) => a['id'] == id);
-    if (index != -1) {
-      _alerts[index]['read'] = true;
-      _saveAlerts();
-      notifyListeners();
-    }
+
+  Map<String, dynamic> _newItem(String title, String message, String type) => <String, dynamic>{
+        'id': DateTime.now().microsecondsSinceEpoch.toString(),
+        'title': title,
+        'message': message,
+        'severity': type,
+        'type': type,
+        'timestamp': DateTime.now().toIso8601String(),
+        'read': false,
+      };
+
+  Future<void> markAlertAsRead(String id) async {
+    final index = _alerts.indexWhere((item) => item['id'] == id);
+    if (index < 0) return;
+    _alerts[index]['read'] = true;
+    await _saveAlerts();
+    notifyListeners();
   }
-  
-  void markAllAlertsRead() {
-    for (var alert in _alerts) {
+
+  Future<void> markAllAlertsRead() async {
+    for (final alert in _alerts) {
       alert['read'] = true;
     }
-    _saveAlerts();
+    await _saveAlerts();
     notifyListeners();
   }
-  
-  void clearAlerts() {
+
+  Future<void> clearAlerts() async {
     _alerts.clear();
-    _saveAlerts();
+    await _saveAlerts();
     notifyListeners();
   }
-  
-  void deleteAlert(String id) {
-    _alerts.removeWhere((a) => a['id'] == id);
-    _saveAlerts();
+
+  Future<void> deleteAlert(String id) async {
+    _alerts.removeWhere((item) => item['id'] == id);
+    await _saveAlerts();
     notifyListeners();
   }
-  
-  void markNotificationAsRead(String id) {
-    final index = _notifications.indexWhere((n) => n['id'] == id);
-    if (index != -1) {
-      _notifications[index]['read'] = true;
-      _saveNotifications();
-      notifyListeners();
-    }
+
+  Future<void> markNotificationAsRead(String id) async {
+    final index = _notifications.indexWhere((item) => item['id'] == id);
+    if (index < 0) return;
+    _notifications[index]['read'] = true;
+    await _saveNotifications();
+    notifyListeners();
   }
-  
-  void markAllNotificationsRead() {
-    for (var notification in _notifications) {
+
+  Future<void> markAllNotificationsRead() async {
+    for (final notification in _notifications) {
       notification['read'] = true;
     }
-    _saveNotifications();
+    await _saveNotifications();
     notifyListeners();
   }
-  
-  void clearNotifications() {
+
+  Future<void> clearNotifications() async {
     _notifications.clear();
-    _saveNotifications();
+    await _saveNotifications();
     notifyListeners();
   }
-  
-  void deleteNotification(String id) {
-    _notifications.removeWhere((n) => n['id'] == id);
-    _saveNotifications();
+
+  Future<void> deleteNotification(String id) async {
+    _notifications.removeWhere((item) => item['id'] == id);
+    await _saveNotifications();
     notifyListeners();
   }
-  
-  List<Map<String, dynamic>> getAlerts({bool unreadOnly = false}) {
-    if (unreadOnly) {
-      return _alerts.where((a) => !a['read']).toList();
-    }
-    return List.from(_alerts);
-  }
-  
-  List<Map<String, dynamic>> getNotifications({bool unreadOnly = false}) {
-    if (unreadOnly) {
-      return _notifications.where((n) => !n['read']).toList();
-    }
-    return List.from(_notifications);
-  }
-  
-  int getUnreadAlertsCount() => _alerts.where((a) => !a['read']).length;
-  int getUnreadNotificationsCount() => _notifications.where((n) => !n['read']).length;
-  
-  @override
-  void dispose() {
-    _monitorTimer?.cancel();
-    super.dispose();
-  }
-}
 
-// Helper functions
-String jsonEncode(List<Map<String, dynamic>> data) {
-  return data.toString();
-}
+  List<Map<String, dynamic>> getAlerts({bool unreadOnly = false}) => unreadOnly
+      ? _alerts.where((item) => item['read'] != true).map(Map<String, dynamic>.from).toList()
+      : _alerts.map(Map<String, dynamic>.from).toList();
 
-List<Map<String, dynamic>> jsonDecode(String data) {
-  return [];
+  List<Map<String, dynamic>> getNotifications({bool unreadOnly = false}) => unreadOnly
+      ? _notifications.where((item) => item['read'] != true).map(Map<String, dynamic>.from).toList()
+      : _notifications.map(Map<String, dynamic>.from).toList();
+
+  int getUnreadAlertsCount() => _alerts.where((item) => item['read'] != true).length;
+  int getUnreadNotificationsCount() => _notifications.where((item) => item['read'] != true).length;
 }
