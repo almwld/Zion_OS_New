@@ -10,7 +10,11 @@ import '../security/core/security_result.dart';
 import 'desktop_home.dart';
 
 class LockScreen extends StatefulWidget {
-  const LockScreen({super.key});
+  const LockScreen({super.key, this.onAuthenticated});
+
+  /// Called after a successful PIN verification when the parent owns routing.
+  /// If omitted, the lock screen keeps its standalone navigation behavior.
+  final VoidCallback? onAuthenticated;
 
   @override
   State<LockScreen> createState() => _LockScreenState();
@@ -24,6 +28,7 @@ class _LockScreenState extends State<LockScreen> {
   String _currentDate = '';
   int _failedAttempts = 0;
   DateTime? _lockedUntil;
+  bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -67,6 +72,7 @@ class _LockScreenState extends State<LockScreen> {
   }
 
   Future<void> _unlock() async {
+    if (_isAuthenticating) return;
     final theme = context.read<ThemeProvider>();
     if (!theme.isReady) return;
 
@@ -80,39 +86,79 @@ class _LockScreenState extends State<LockScreen> {
     final pin = _pinController.text;
     if (!RegExp(r'^\d{4}$').hasMatch(pin)) return;
 
-    if (!theme.hasPin) {
-      if (await theme.setInitialPin(pin) && mounted) {
-        _publishLockEvent('lock.initialized', 'success');
-        _openDesktop();
+    setState(() {
+      _isAuthenticating = true;
+      _errorMessage = '';
+    });
+
+    try {
+      if (!theme.hasPin) {
+        final initialized = await theme.setInitialPin(pin);
+        if (!mounted) return;
+        if (initialized) {
+          _publishLockEvent('lock.initialized', 'success');
+          _completeAuthentication();
+        } else {
+          setState(() {
+            _isAuthenticating = false;
+            _errorMessage = 'تعذر تهيئة رمز PIN';
+            _pinController.clear();
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    if (theme.validatePin(pin)) {
-      _failedAttempts = 0;
-      _lockedUntil = null;
-      _publishLockEvent('lock.unlock', 'success');
-      _openDesktop();
-      return;
-    }
+      if (theme.validatePin(pin)) {
+        _failedAttempts = 0;
+        _lockedUntil = null;
+        _publishLockEvent('lock.unlock', 'success');
+        _completeAuthentication();
+        return;
+      }
 
-    _failedAttempts++;
+      _failedAttempts++;
+      _pinController.clear();
+      _publishLockEvent('lock.unlock', 'failure');
+      if (!mounted) return;
+      if (_failedAttempts >= 5) {
+        _lockedUntil = DateTime.now().add(const Duration(seconds: 30));
+        _failedAttempts = 0;
+        setState(() {
+          _isAuthenticating = false;
+          _errorMessage = 'تم إيقاف المحاولات لمدة 30 ثانية';
+        });
+      } else {
+        setState(() {
+          _isAuthenticating = false;
+          _errorMessage = 'PIN غير صحيح';
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isAuthenticating = false;
+        _pinController.clear();
+        _errorMessage = 'تعذر التحقق من رمز القفل';
+      });
+      _publishLockEvent('lock.unlock', 'error');
+    }
+  }
+
+  void _completeAuthentication() {
+    if (!mounted) return;
     _pinController.clear();
-    _publishLockEvent('lock.unlock', 'failure');
-    if (_failedAttempts >= 5) {
-      _lockedUntil = DateTime.now().add(const Duration(seconds: 30));
-      _failedAttempts = 0;
-      setState(() => _errorMessage = 'تم إيقاف المحاولات لمدة 30 ثانية');
-    } else {
-      setState(() => _errorMessage = 'PIN غير صحيح');
+    if (widget.onAuthenticated != null) {
+      widget.onAuthenticated!();
+      return;
     }
+    _openDesktop();
   }
 
   void _openDesktop() {
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const ZionDesktop()),
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const ZionDesktop()),
+      (route) => false,
     );
   }
 
@@ -152,9 +198,7 @@ class _LockScreenState extends State<LockScreen> {
                     width: 100,
                     height: 100,
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF00BCD4), Color(0xFF006064)],
-                      ),
+                      gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]),
                       shape: BoxShape.circle,
                     ),
                     child: const Center(
@@ -183,7 +227,7 @@ class _LockScreenState extends State<LockScreen> {
                     ),
                     child: TextField(
                       controller: _pinController,
-                      enabled: theme.isReady,
+                      enabled: theme.isReady && !_isAuthenticating,
                       obscureText: true,
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 24, letterSpacing: 10),
@@ -220,6 +264,10 @@ class _LockScreenState extends State<LockScreen> {
                       ],
                     ),
                   ),
+                  if (_isAuthenticating) ...[
+                    const SizedBox(height: 20),
+                    const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                  ],
                 ],
               ),
             ),
@@ -232,6 +280,7 @@ class _LockScreenState extends State<LockScreen> {
   Widget _buildButton(String num, Color foreground, Color surface) {
     return GestureDetector(
       onTap: () {
+        if (_isAuthenticating) return;
         if (num == '⌫') {
           if (_pinController.text.isNotEmpty) {
             _pinController.text = _pinController.text.substring(0, _pinController.text.length - 1);
