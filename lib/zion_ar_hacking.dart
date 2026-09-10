@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 
 class ARTarget {
   final String id;
   final String name;
-  final String type; // wifi, bluetooth, iot, device
+  final String type;
   final double distance;
   final int signalStrength;
   final List<String> vulnerabilities;
@@ -25,44 +24,27 @@ class ZionARHacking extends ChangeNotifier {
   bool _arMode = false;
   String _cameraView = 'back';
 
-  List<ARTarget> get targets => _targets;
+  List<ARTarget> get targets => List.unmodifiable(_targets);
   bool get isScanning => _isScanning;
   bool get arMode => _arMode;
 
-  void toggleARMode() { _arMode = !_arMode; notifyListeners(); }
+  void toggleARMode() {
+    _arMode = !_arMode;
+    notifyListeners();
+  }
 
+  /// Device discovery must come from a real supported sensor/radio integration.
+  /// This legacy AR hacking service has no such integration and therefore
+  /// intentionally returns no invented devices or vulnerabilities.
   Future<void> startARScan() async {
     _isScanning = true;
     _targets.clear();
     notifyListeners();
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    final random = Random();
-    final deviceTypes = ['wifi', 'bluetooth', 'iot', 'device'];
-    final vulnLists = [
-      ['WPA2 Weak Password'],
-      ['BlueBorne', 'Bluetooth PIN Cracking'],
-      ['Default Credentials', 'Telnet Open'],
-      ['Open ADB', 'USB Debugging Enabled'],
-    ];
-
-    for (int i = 0; i < 8; i++) {
-      _targets.add(ARTarget(
-        id: 'target_$i',
-        name: 'جهاز ${i + 1}',
-        type: deviceTypes[random.nextInt(4)],
-        distance: random.nextDouble() * 50,
-        signalStrength: random.nextInt(100),
-        vulnerabilities: vulnLists[random.nextInt(4)],
-      ));
-    }
-
     _isScanning = false;
     notifyListeners();
   }
 
   void attackTarget(ARTarget target) {
-    // محاكاة هجوم عبر AR
+    // Intentionally unavailable: no offensive actions are performed.
   }
 }
