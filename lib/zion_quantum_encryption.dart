@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'dart:math';
 
 class QuantumKey {
@@ -22,57 +21,49 @@ class ZionQuantumEncryption extends ChangeNotifier {
   final List<QuantumKey> _generatedKeys = [];
   bool _isGenerating = false;
   bool _quantumChannelActive = false;
-  double _qber = 0.0; // Quantum Bit Error Rate
+  double _qber = 0.0;
 
-  List<QuantumKey> get generatedKeys => _generatedKeys;
+  List<QuantumKey> get generatedKeys => List.unmodifiable(_generatedKeys);
   bool get isGenerating => _isGenerating;
   bool get quantumChannelActive => _quantumChannelActive;
   double get qber => _qber;
 
+  /// Generates cryptographically secure classical random material.
+  /// This is NOT quantum key distribution and is labelled accordingly.
   Future<QuantumKey> generateQuantumKey({int length = 256}) async {
+    if (length <= 0) throw ArgumentError.value(length, 'length');
     _isGenerating = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(seconds: 1));
-
     final random = Random.secure();
-    double entropy = 0;
-    for (int i = 0; i < 10; i++) {
-      entropy += random.nextDouble();
+    var entropy = 0.0;
+    for (var i = 0; i < 32; i++) {
+      entropy += random.nextInt(256);
     }
-    entropy = entropy / 10;
+    entropy /= (32 * 255);
 
     final key = QuantumKey(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
       length: length,
       entropy: entropy,
       createdAt: DateTime.now(),
     );
-
     _generatedKeys.add(key);
     _isGenerating = false;
     notifyListeners();
-
     return key;
   }
 
   void toggleQuantumChannel() {
-    _quantumChannelActive = !_quantumChannelActive;
-    if (_quantumChannelActive) {
-      _qber = Random().nextDouble() * 0.05; // محاكاة خطأ القناة
-    } else {
-      _qber = 0;
-    }
+    // No QKD hardware/protocol endpoint is configured.
+    _quantumChannelActive = false;
+    _qber = 0.0;
     notifyListeners();
   }
 
   String encryptQuantum(String plaintext, QuantumKey key) {
-    // محاكاة تشفير كمي
-    final random = Random();
-    final encrypted = StringBuffer();
-    for (int i = 0; i < plaintext.length; i++) {
-      encrypted.writeCharCode(plaintext.codeUnitAt(i) ^ random.nextInt(256));
-    }
-    return encrypted.toString();
+    throw UnsupportedError(
+      'التشفير الكمي غير متاح: لا يوجد تكامل QKD فعلي. استخدم CryptoSuite للتشفير التقليدي الآمن.',
+    );
   }
 }
