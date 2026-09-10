@@ -18,7 +18,6 @@ class _TranslatorAppState extends State<TranslatorApp> {
   bool _isLoading = false;
   String? _error;
 
-  // Configure a real LibreTranslate-compatible endpoint for production.
   static const _endpoint = String.fromEnvironment('TRANSLATION_API_URL');
 
   final Map<String, String> _languages = const {
@@ -34,17 +33,28 @@ class _TranslatorAppState extends State<TranslatorApp> {
   Future<void> _translate() async {
     final text = _sourceController.text.trim();
     if (text.isEmpty) {
-      if (mounted) setState(() { _translatedText = ''; _error = null; });
+      if (mounted) {
+        setState(() {
+          _translatedText = '';
+          _error = null;
+        });
+      }
       return;
     }
     if (_endpoint.isEmpty) {
-      if (mounted) setState(() {
-        _translatedText = '';
-        _error = 'الترجمة غير مُهيأة: أضف TRANSLATION_API_URL لخدمة ترجمة حقيقية.';
-      });
+      if (mounted) {
+        setState(() {
+          _translatedText = '';
+          _error = 'الترجمة غير مُهيأة: أضف TRANSLATION_API_URL لخدمة ترجمة حقيقية.';
+        });
+      }
       return;
     }
-    setState(() { _isLoading = true; _error = null; _translatedText = ''; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _translatedText = '';
+    });
     try {
       final response = await http.post(
         Uri.parse(_endpoint),
@@ -64,76 +74,225 @@ class _TranslatorAppState extends State<TranslatorApp> {
       if (translated is! String || translated.trim().isEmpty) {
         throw Exception('Invalid translation response');
       }
-      if (mounted) setState(() { _translatedText = translated; _isLoading = false; });
+      if (mounted) {
+        setState(() {
+          _translatedText = translated;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _isLoading = false;
-        _error = 'تعذر الحصول على ترجمة حقيقية من الخدمة: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'تعذر الحصول على ترجمة حقيقية من الخدمة: $e';
+        });
+      }
     }
   }
 
   void _swapLanguages() {
-    setState(() { final t = _fromLanguage; _fromLanguage = _toLanguage; _toLanguage = t; });
+    setState(() {
+      final t = _fromLanguage;
+      _fromLanguage = _toLanguage;
+      _toLanguage = t;
+    });
     _translate();
   }
 
   void _copyTranslation() {
     if (_translatedText.isEmpty) return;
     Clipboard.setData(ClipboardData(text: _translatedText));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ الترجمة')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم نسخ الترجمة')),
+    );
   }
 
   @override
-  void dispose() { _sourceController.dispose(); super.dispose(); }
+  void dispose() {
+    _sourceController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Translator', style: TextStyle(color: Color(0xFF00BCD4))),
+        title: const Text(
+          'Translator',
+          style: TextStyle(color: Color(0xFF00BCD4)),
+        ),
         backgroundColor: Colors.black,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)), onPressed: () => Navigator.pop(context)),
-        actions: [IconButton(icon: const Icon(Icons.clear_all, color: Color(0xFF00BCD4)), onPressed: () { _sourceController.clear(); setState(() { _translatedText = ''; _error = null; }); })],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.clear_all, color: Color(0xFF00BCD4)),
+            onPressed: () {
+              _sourceController.clear();
+              setState(() {
+                _translatedText = '';
+                _error = null;
+              });
+            },
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(children: [
-            Expanded(child: _selector('From', _fromLanguage, (v) { if (v == null) return; setState(() => _fromLanguage = v); _translate(); })),
-            IconButton(onPressed: _swapLanguages, icon: const Icon(Icons.swap_horiz, color: Color(0xFF00BCD4))),
-            Expanded(child: _selector('To', _toLanguage, (v) { if (v == null) return; setState(() => _toLanguage = v); _translate(); })),
-          ]),
+          Row(
+            children: [
+              Expanded(
+                child: _selector(
+                  'From',
+                  _fromLanguage,
+                  (v) {
+                    if (v == null) return;
+                    setState(() => _fromLanguage = v);
+                    _translate();
+                  },
+                ),
+              ),
+              IconButton(
+                onPressed: _swapLanguages,
+                icon: const Icon(Icons.swap_horiz, color: Color(0xFF00BCD4)),
+              ),
+              Expanded(
+                child: _selector(
+                  'To',
+                  _toLanguage,
+                  (v) {
+                    if (v == null) return;
+                    setState(() => _toLanguage = v);
+                    _translate();
+                  },
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
-          _panel(child: TextField(
-            controller: _sourceController,
-            maxLines: 6,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(hintText: 'أدخل النص...', hintStyle: TextStyle(color: Colors.white38), border: InputBorder.none),
-          )),
+          _panel(
+            child: TextField(
+              controller: _sourceController,
+              maxLines: 6,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'أدخل النص...',
+                hintStyle: TextStyle(color: Colors.white38),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
-          SizedBox(height: 48, child: ElevatedButton.icon(onPressed: _isLoading ? null : _translate, icon: const Icon(Icons.translate), label: const Text('ترجمة حقيقية'))),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _translate,
+              icon: const Icon(Icons.translate),
+              label: const Text('ترجمة حقيقية'),
+            ),
+          ),
           const SizedBox(height: 12),
-          _panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Expanded(child: Text(_languages[_toLanguage]!, style: const TextStyle(color: Color(0xFF00BCD4))), IconButton(onPressed: _copyTranslation, icon: const Icon(Icons.copy, color: Colors.white54))]),
-            if (_isLoading) const Center(child: CircularProgressIndicator())
-            else if (_error != null) Text(_error!, style: const TextStyle(color: Colors.orangeAccent))
-            else SelectableText(_translatedText.isEmpty ? 'لا توجد نتيجة بعد.' : _translatedText, style: const TextStyle(color: Colors.white, fontSize: 16)),
-          ])),
+          _panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _languages[_toLanguage]!,
+                        style: const TextStyle(color: Color(0xFF00BCD4)),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _copyTranslation,
+                      icon: const Icon(Icons.copy, color: Colors.white54),
+                    ),
+                  ],
+                ),
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_error != null)
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.orangeAccent),
+                  )
+                else
+                  SelectableText(
+                    _translatedText.isEmpty
+                        ? 'لا توجد نتيجة بعد.'
+                        : _translatedText,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
-          const Text('حالة الخدمة', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
+          const Text(
+            'حالة الخدمة',
+            style: TextStyle(
+              color: Color(0xFF00BCD4),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(_endpoint.isEmpty ? 'NOT_CONFIGURED — لم يتم ضبط مزود ترجمة.' : 'READY — سيتم استخدام نقطة الترجمة المهيأة.', style: const TextStyle(color: Colors.white60)),
+          Text(
+            _endpoint.isEmpty
+                ? 'NOT_CONFIGURED — لم يتم ضبط مزود ترجمة.'
+                : 'READY — سيتم استخدام نقطة الترجمة المهيأة.',
+            style: const TextStyle(color: Colors.white60),
+          ),
         ],
       ),
     );
   }
 
-  Widget _selector(String label, String value, ValueChanged<String?> onChanged) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(label, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
-    DropdownButton<String>(value: value, isExpanded: true, dropdownColor: Colors.black, style: const TextStyle(color: Colors.white), items: _languageCodes.map((c) => DropdownMenuItem(value: c, child: Text(_languages[c]!))).toList(), onChanged: onChanged),
-  ]);
+  Widget _selector(
+    String label,
+    String value,
+    ValueChanged<String?> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12),
+        ),
+        DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          dropdownColor: Colors.black,
+          style: const TextStyle(color: Colors.white),
+          items: _languageCodes
+              .map(
+                (c) => DropdownMenuItem(
+                  value: c,
+                  child: Text(_languages[c]!),
+                ),
+              )
+              .toList(),
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
 
-  Widget _panel({required Widget child}) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF00BCD4).withOpacity(.25))), child: child);
+  Widget _panel({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF00BCD4).withOpacity(.25),
+        ),
+      ),
+      child: child,
+    );
+  }
 }
