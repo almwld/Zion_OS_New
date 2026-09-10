@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:provider/provider.dart' as provider;
 
+import 'adaptive/adaptive_interface.dart';
 import 'core/services/unified_core_service.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
@@ -19,9 +20,6 @@ Future<void> main() async {
     await EasyLocalization.ensureInitialized();
   } catch (_) {}
 
-  // PreferencesService is consumed by the lock screen and the desktop shell.
-  // Initialize it before the first frame and expose the same singleton through
-  // Provider so those screens never fail with ProviderNotFoundException.
   final preferencesService = PreferencesService();
   await preferencesService.init();
 
@@ -66,6 +64,7 @@ class ZionOSApp extends StatelessWidget {
     return provider.MultiProvider(
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        provider.ChangeNotifierProvider(create: (_) => ModeProvider()),
         provider.ChangeNotifierProvider<PreferencesService>.value(
           value: preferencesService,
         ),
@@ -91,7 +90,7 @@ class ZionOSApp extends StatelessWidget {
             ],
             supportedLocales: context.supportedLocales,
             locale: context.locale,
-            home: const LockScreen(),
+            home: const AdaptiveInterface(child: LockScreen()),
           );
         },
       ),
