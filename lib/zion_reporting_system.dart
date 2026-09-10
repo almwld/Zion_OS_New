@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 enum ReportFormat { pdf, html, json, txt }
@@ -28,7 +30,7 @@ class ZionReportingSystem extends ChangeNotifier {
   bool _isGenerating = false;
   int _progress = 0;
 
-  List<ZionReport> get reports => _reports.reversed.toList();
+  List<ZionReport> get reports => List.unmodifiable(_reports.reversed.toList());
   bool get isGenerating => _isGenerating;
   int get progress => _progress;
 
@@ -38,30 +40,37 @@ class ZionReportingSystem extends ChangeNotifier {
     required ReportFormat format,
     required Map<String, dynamic> data,
   }) async {
+    if (_isGenerating) throw StateError('يوجد تقرير قيد الإنشاء');
     _isGenerating = true;
     _progress = 0;
     notifyListeners();
 
-    for (int i = 0; i <= 100; i += 5) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      _progress = i;
-      notifyListeners();
-    }
+    final now = DateTime.now();
+    final payload = <String, dynamic>{
+      'title': title,
+      'type': type.name,
+      'format': format.name,
+      'createdAt': now.toIso8601String(),
+      'data': data,
+    };
+    final encoded = jsonEncode(payload);
+    final summary = 'تقرير $title - ${type.name} - ${format.name}';
 
+    // Generation is synchronous and based on the supplied data. Progress is
+    // reported only for completed work; there is no artificial delay.
+    _progress = 100;
     final report = ZionReport(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: now.microsecondsSinceEpoch.toString(),
       title: title,
       type: type,
-      createdAt: DateTime.now(),
+      createdAt: now,
       format: format,
-      size: 250000 + DateTime.now().millisecond * 100,
-      summary: 'تقرير $title - ${type.name} - ${format.name}',
+      size: utf8.encode(encoded).length,
+      summary: summary,
     );
-
     _reports.add(report);
     _isGenerating = false;
     notifyListeners();
-
     return report;
   }
 
@@ -71,6 +80,7 @@ class ZionReportingSystem extends ChangeNotifier {
   }
 
   void exportReport(ZionReport report) {
-    // محاكاة تصدير التقرير
+    // Export requires a platform file/share implementation. Do not claim
+    // success from a no-op method.
   }
 }
