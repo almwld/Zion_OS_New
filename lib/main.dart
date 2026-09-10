@@ -15,7 +15,6 @@ import 'services/preferences_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  ErrorWidget.builder = (FlutterErrorDetails details) => const _StartupErrorView();
 
   try {
     await EasyLocalization.ensureInitialized();
@@ -117,33 +116,5 @@ class _AuthenticationGateState extends State<AuthenticationGate> {
   Widget build(BuildContext context) {
     if (_authenticated) return const ZionDesktop();
     return LockScreen(onAuthenticated: _onAuthenticated);
-  }
-}
-
-class _StartupErrorView extends StatelessWidget {
-  const _StartupErrorView();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Material(
-      color: Color(0xFF071116),
-      child: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.shield_outlined, color: Color(0xFF00BCD4), size: 64),
-                SizedBox(height: 20),
-                Text('Zion OS', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-                SizedBox(height: 10),
-                Text('تعذر عرض الواجهة. أعد تشغيل التطبيق.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 16)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
