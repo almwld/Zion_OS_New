@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../ai/command_predictor.dart';
 import '../../ai/neural_analyzer.dart';
 
-/// Coordinates the advanced local runtime features without executing predictions
-/// automatically or claiming capabilities that are not available.
+/// Coordinates local command intelligence without executing predictions.
 class ProfessionalRuntimeController extends ChangeNotifier {
   ProfessionalRuntimeController({CommandPredictor? predictor})
       : predictor = predictor ?? CommandPredictor();
@@ -27,7 +26,7 @@ class ProfessionalRuntimeController extends ChangeNotifier {
 
   Future<NeuralAnalysisResult> inspectCommand(String command) async {
     await init();
-    final result = NeuralAnalyzer.analyze(command);
+    final result = await NeuralAnalyzer().analyzeCommand(command);
     _lastAnalysis = result;
     _predictions = predictor.predictNext(command);
     notifyListeners();
