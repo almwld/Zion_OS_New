@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../providers/theme_provider.dart';
 import '../system_capabilities_screen.dart';
+import 'runtime_intelligence.dart';
 
 class SettingsApp extends StatefulWidget {
   const SettingsApp({super.key});
@@ -10,8 +11,6 @@ class SettingsApp extends StatefulWidget {
 }
 
 class _SettingsAppState extends State<SettingsApp> {
-  final List<String> _languages = ['English', 'العربية'];
-
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -27,6 +26,7 @@ class _SettingsAppState extends State<SettingsApp> {
         _buildSliderTile('icon_size'.tr(), themeProvider.iconSize, 48, 78, themeProvider.setIconSize),
         _buildSectionHeader('system'.tr()),
         ListTile(leading: const Icon(Icons.dashboard_customize, color: Color(0xFF00BCD4)), title: const Text('System Capabilities'), subtitle: const Text('AVAILABLE / PERMISSION_REQUIRED / NOT_CONFIGURED / UNAVAILABLE'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SystemCapabilitiesScreen()))),
+        ListTile(leading: const Icon(Icons.auto_awesome, color: Color(0xFF00BCD4)), title: const Text('Runtime Intelligence'), subtitle: const Text('Neural Analyzer + local Command Predictor'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RuntimeIntelligenceApp()))),
         _buildSectionHeader('security'.tr()),
         _buildInfoTile('change_pin'.tr(), () => _showChangePinDialog(themeProvider)),
         const Divider(),
