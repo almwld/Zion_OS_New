@@ -1,9 +1,12 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
 class ZionUser {
   final String username;
   final String passwordHash;
-  final String role; // admin, user, guest
+  final String role;
   final DateTime createdAt;
   final Map<String, dynamic> settings;
 
@@ -14,31 +17,37 @@ class ZionUser {
     DateTime? createdAt,
     Map<String, dynamic>? settings,
   })  : createdAt = createdAt ?? DateTime.now(),
-        settings = settings ?? {'theme': 'matrix', 'language': 'ar', 'autolock': true};
+        settings = settings ?? {
+          'theme': 'matrix',
+          'language': 'ar',
+          'autolock': true,
+        };
 
   bool verifyPassword(String password) {
-    // محاكاة التحقق من كلمة المرور
-    return password == 'zion' || password == 'root' || password == 'admin' || password == username;
+    if (password.isEmpty || passwordHash.isEmpty) return false;
+    final digest = sha256.convert(utf8.encode(password)).toString();
+    return digest == passwordHash;
+  }
+
+  static String hashPassword(String password) {
+    if (password.isEmpty) throw ArgumentError.value(password, 'password');
+    return sha256.convert(utf8.encode(password)).toString();
   }
 }
 
 class ZionUserManager extends ChangeNotifier {
-  final List<ZionUser> _users = [
-    ZionUser(username: 'root', passwordHash: 'hash_root', role: 'admin'),
-    ZionUser(username: 'zion', passwordHash: 'hash_zion', role: 'admin'),
-    ZionUser(username: 'guest', passwordHash: 'hash_guest', role: 'guest'),
-  ];
+  final List<ZionUser> _users = [];
 
   ZionUser? _currentUser;
   bool _isLoggedIn = false;
 
-  List<ZionUser> get users => _users;
+  List<ZionUser> get users => List.unmodifiable(_users);
   ZionUser? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
 
   bool login(String username, String password) {
-    final user = _users.firstWhere((u) => u.username == username, orElse: () => ZionUser(username: '', passwordHash: ''));
-    if (user.username.isNotEmpty && user.verifyPassword(password)) {
+    final user = _findUser(username);
+    if (user != null && user.verifyPassword(password)) {
       _currentUser = user;
       _isLoggedIn = true;
       notifyListeners();
@@ -53,14 +62,23 @@ class ZionUserManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addUser(String username, String password, {String role = 'user'}) {
-    if (_users.any((u) => u.username == username)) return;
-    _users.add(ZionUser(username: username, passwordHash: 'hash_$username', role: role));
+  bool addUser(String username, String password, {String role = 'user'}) {
+    final normalized = username.trim();
+    if (normalized.isEmpty || password.isEmpty || _findUser(normalized) != null) {
+      return false;
+    }
+    _users.add(ZionUser(
+      username: normalized,
+      passwordHash: ZionUser.hashPassword(password),
+      role: role,
+    ));
     notifyListeners();
+    return true;
   }
 
   void removeUser(String username) {
     _users.removeWhere((u) => u.username == username);
+    if (_currentUser?.username == username) logout();
     notifyListeners();
   }
 
@@ -69,5 +87,12 @@ class ZionUserManager extends ChangeNotifier {
       _currentUser!.settings[key] = value;
       notifyListeners();
     }
+  }
+
+  ZionUser? _findUser(String username) {
+    for (final user in _users) {
+      if (user.username == username) return user;
+    }
+    return null;
   }
 }
