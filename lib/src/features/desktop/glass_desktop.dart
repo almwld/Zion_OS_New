@@ -15,8 +15,6 @@ import '../logs/log_viewer.dart';
 import '../scheduler/task_scheduler.dart';
 import '../storage/disk_usage_analyzer.dart';
 import '../backup/backup_manager.dart';
-import '../exploits/exploit_database.dart';
-import '../payloads/payload_generator.dart';
 import '../qr/qr_scanner.dart';
 import '../../../cosmic_terminal.dart';
 
@@ -197,8 +195,6 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.schedule, 'label': 'Scheduler', 'widget': const TaskScheduler(), 'color': Colors.teal},
       {'icon': Icons.storage, 'label': 'Disk Usage', 'widget': const DiskUsageAnalyzer(), 'color': Colors.deepOrange},
       {'icon': Icons.backup, 'label': 'Backup', 'widget': const BackupManager(), 'color': Colors.purple},
-      {'icon': Icons.security, 'label': 'Exploits', 'widget': const ExploitDatabase(), 'color': Colors.red},
-      {'icon': Icons.code, 'label': 'Payloads', 'widget': const PayloadGenerator(), 'color': Colors.green},
       {'icon': Icons.qr_code, 'label': 'QR Scanner', 'widget': const QRScanner(), 'color': Colors.cyan},
     ];
 
@@ -336,8 +332,6 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.schedule, 'title': 'Task Scheduler', 'widget': const TaskScheduler()},
       {'icon': Icons.storage, 'title': 'Disk Usage', 'widget': const DiskUsageAnalyzer()},
       {'icon': Icons.backup, 'title': 'Backup Manager', 'widget': const BackupManager()},
-      {'icon': Icons.security, 'title': 'Exploit DB', 'widget': const ExploitDatabase()},
-      {'icon': Icons.code, 'title': 'Payload Gen', 'widget': const PayloadGenerator()},
       {'icon': Icons.qr_code, 'title': 'QR Scanner', 'widget': const QRScanner()},
       const Divider(color: Colors.white24),
       {'icon': Icons.exit_to_app, 'title': 'Exit', 'widget': null, 'color': Colors.red},
