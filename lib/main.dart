@@ -7,8 +7,7 @@ import 'adaptive/adaptive_interface.dart';
 import 'core/services/unified_core_service.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
-import 'screens/desktop_home.dart';
-import 'screens/lock_screen.dart';
+import 'app_router.dart';
 import 'security/core/security_core.dart';
 import 'security/runtime/runtime_integrity.dart';
 import 'services/preferences_service.dart';
@@ -86,35 +85,10 @@ class ZionOSApp extends StatelessWidget {
             ],
             supportedLocales: context.supportedLocales,
             locale: context.locale,
-            home: const AdaptiveInterface(child: AuthenticationGate()),
+            home: const AdaptiveInterface(child: AppRouter()),
           );
         },
       ),
     );
-  }
-}
-
-/// Owns the authentication-to-desktop lifecycle so there is exactly one
-/// transition point and the desktop dashboard cannot accidentally be stacked
-/// on top of the lock screen.
-class AuthenticationGate extends StatefulWidget {
-  const AuthenticationGate({super.key});
-
-  @override
-  State<AuthenticationGate> createState() => _AuthenticationGateState();
-}
-
-class _AuthenticationGateState extends State<AuthenticationGate> {
-  bool _authenticated = false;
-
-  void _onAuthenticated() {
-    if (!mounted || _authenticated) return;
-    setState(() => _authenticated = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_authenticated) return const ZionDesktop();
-    return LockScreen(onAuthenticated: _onAuthenticated);
   }
 }
