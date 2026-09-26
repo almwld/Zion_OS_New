@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/desktop_home.dart';
+import 'src/features/desktop/glass_desktop.dart';
 import 'screens/lock_screen.dart';
 
 /// Single root-level owner of the lock -> desktop UI lifecycle.
@@ -26,7 +26,7 @@ class _AppRouterState extends State<AppRouter> {
   @override
   Widget build(BuildContext context) {
     return _authenticated
-        ? const ZionDesktop()
+        ? const GlassDesktop()
         : LockScreen(onAuthenticated: _onAuthenticated);
   }
 }
