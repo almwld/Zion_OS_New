@@ -320,20 +320,20 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.public, 'title': 'Browser', 'widget': const ZionBrowser()},
       {'icon': Icons.edit, 'title': 'Editor', 'widget': const ZionTextEditor()},
       {'icon': Icons.settings, 'title': 'Settings', 'widget': const MainSettings()},
-      const <String, dynamic>{'divider': true},
+      {'divider': true},
       {'icon': Icons.network_check, 'title': 'Network Analyzer', 'widget': const NetworkAnalyzer()},
       {'icon': Icons.memory, 'title': 'Process Manager', 'widget': const ProcessManager()},
       {'icon': Icons.speed, 'title': 'System Monitor', 'widget': const SystemMonitor()},
       {'icon': Icons.bug_report, 'title': 'Vuln Scanner', 'widget': const VulnerabilityScanner()},
       {'icon': Icons.description, 'title': 'Report Generator', 'widget': const ReportGenerator()},
-      const Divider(color: Colors.white24),
-      {'icon': Icons.package, 'title': 'Package Manager', 'widget': const PackageManager()},
+      {'divider': true},
+      {'icon': Icons.inventory_2, 'title': 'Package Manager', 'widget': const PackageManager()},
       {'icon': Icons.history, 'title': 'Log Viewer', 'widget': const LogViewer()},
       {'icon': Icons.schedule, 'title': 'Task Scheduler', 'widget': const TaskScheduler()},
       {'icon': Icons.storage, 'title': 'Disk Usage', 'widget': const DiskUsageAnalyzer()},
       {'icon': Icons.backup, 'title': 'Backup Manager', 'widget': const BackupManager()},
       {'icon': Icons.qr_code, 'title': 'QR Scanner', 'widget': const QRScanner()},
-      const Divider(color: Colors.white24),
+      {'divider': true},
       {'icon': Icons.exit_to_app, 'title': 'Exit', 'widget': null, 'color': Colors.red},
     ];
 
@@ -354,34 +354,58 @@ class _GlassDesktopState extends State<GlassDesktop> {
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
                 color: Color(0xFF00FF41),
-                borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                ),
               ),
               child: const Row(
                 children: [
-                  CircleAvatar(radius: 24, backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.black)),
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.person, color: Colors.black),
+                  ),
                   SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Zion User', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      Text(
+                        'Zion User',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
                       Text('zion@os', style: TextStyle(color: Colors.white70)),
                     ],
                   ),
                 ],
               ),
             ),
-            ...menuItems.map((item) => item['divider'] == true\n                ? const Divider(color: Colors.white24)\n                : ListTile(
-              leading: Icon(item['icon'] as IconData, color: item['color'] as Color? ?? const Color(0xFF00FF41)),
-              title: Text(item['title'] as String, style: const TextStyle(color: Colors.white)),
-              onTap: () {
-                _toggleMenu();
-                if (item['title'] == 'Exit') {
-                  Navigator.pop(context);
-                } else {
-                  _openWindow(item['title'] as String, item['widget'] as Widget);
-                }
-              },
-            )),
+            ...menuItems.map((item) {
+              if (item['divider'] == true) {
+                return const Divider(color: Colors.white24, height: 1);
+              }
+
+              final title = item['title'] as String;
+              final icon = item['icon'] as IconData;
+              final color = item['color'] as Color? ?? const Color(0xFF00FF41);
+              final widget = item['widget'] as Widget?;
+
+              return ListTile(
+                leading: Icon(icon, color: color),
+                title: Text(
+                  title,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  _toggleMenu();
+                  if (title == 'Exit') {
+                    Navigator.pop(context);
+                  } else if (widget != null) {
+                    _openWindow(title, widget);
+                  }
+                },
+              );
+            }),
           ],
         ),
       ),
