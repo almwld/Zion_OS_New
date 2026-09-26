@@ -18,6 +18,8 @@ class _AdvancedFileManagerState extends State<AdvancedFileManager> {
   Directory _currentDirectory = Directory('/storage/emulated/0');
   List<FileSystemEntity> _items = [];
   List<FileSystemEntity> _selectedItems = [];
+  List<FileSystemEntity> _clipboardItems = [];
+  bool _clipboardIsMove = false;
   String _currentPath = '';
   bool _isLoading = true;
   bool _isSelecting = false;
@@ -191,18 +193,77 @@ class _AdvancedFileManagerState extends State<AdvancedFileManager> {
     });
   }
 
-  Future<void> _copySelected() async {
-    // تنفيذ النسخ
+  void _copySelected() {
+    setState(() {
+      _clipboardItems = List<FileSystemEntity>.from(_selectedItems);
+      _clipboardIsMove = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copy feature coming soon')),
+      SnackBar(content: Text('${_clipboardItems.length} item(s) copied')),
     );
   }
 
-  Future<void> _moveSelected() async {
-    // تنفيذ القص
+  void _moveSelected() {
+    setState(() {
+      _clipboardItems = List<FileSystemEntity>.from(_selectedItems);
+      _clipboardIsMove = true;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Move feature coming soon')),
+      SnackBar(content: Text('${_clipboardItems.length} item(s) ready to move')),
     );
+  }
+
+  Future<void> _pasteClipboard() async {
+    if (_clipboardItems.isEmpty) return;
+    try {
+      for (final source in List<FileSystemEntity>.from(_clipboardItems)) {
+        final name = source.path.split(Platform.pathSeparator).last;
+        final targetPath = await _uniqueTargetPath(_currentDirectory, name);
+        if (source is File) {
+          await source.copy(targetPath);
+        } else if (source is Directory) {
+          await _copyDirectory(source, Directory(targetPath));
+        }
+        if (_clipboardIsMove) {
+          await source.delete(recursive: source is Directory);
+        }
+      }
+      setState(() => _clipboardItems.clear());
+      await _loadDirectory();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Paste completed')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Paste failed: $e')));
+      }
+    }
+  }
+
+  Future<String> _uniqueTargetPath(Directory directory, String name) async {
+    var candidate = '${directory.path}/$name';
+    if (FileSystemEntity.typeSync(candidate) == FileSystemEntityType.notFound) return candidate;
+    final dot = name.lastIndexOf('.');
+    final base = dot > 0 ? name.substring(0, dot) : name;
+    final ext = dot > 0 ? name.substring(dot) : '';
+    for (var i = 1; i < 10000; i++) {
+      candidate = '${directory.path}/$base copy$i$ext';
+      if (FileSystemEntity.typeSync(candidate) == FileSystemEntityType.notFound) return candidate;
+    }
+    throw StateError('Unable to create a unique destination');
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final name = entity.path.split(Platform.pathSeparator).last;
+      final destination = '${target.path}/$name';
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(destination));
+      } else if (entity is File) {
+        await entity.copy(destination);
+      }
+    }
   }
 
   List<FileSystemEntity> get _filteredItems {
@@ -304,6 +365,12 @@ class _AdvancedFileManagerState extends State<AdvancedFileManager> {
               const PopupMenuItem(value: 'move', child: Text('Move')),
               const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
             ],
+          ),
+        if (_clipboardItems.isNotEmpty)
+          IconButton(
+            icon: Icon(_clipboardIsMove ? Icons.drive_file_move : Icons.content_paste),
+            tooltip: 'Paste',
+            onPressed: _pasteClipboard,
           ),
       ],
     );
