@@ -190,7 +190,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.description, 'label': 'Reports', 'widget': const ReportGenerator(), 'color': Colors.blue},
       
       // أدوات إضافية
-      {'icon': Icons.package, 'label': 'Packages', 'widget': const PackageManager(), 'color': Colors.indigo},
+      {'icon': Icons.inventory_2, 'label': 'Packages', 'widget': const PackageManager(), 'color': Colors.indigo},
       {'icon': Icons.history, 'label': 'Logs', 'widget': const LogViewer(), 'color': Colors.amber},
       {'icon': Icons.schedule, 'label': 'Scheduler', 'widget': const TaskScheduler(), 'color': Colors.teal},
       {'icon': Icons.storage, 'label': 'Disk Usage', 'widget': const DiskUsageAnalyzer(), 'color': Colors.deepOrange},
@@ -312,7 +312,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
   }
 
   Widget _buildStartMenu() {
-    final menuItems = [
+    final List<Map<String, dynamic>> menuItems = [
       {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const CosmicTerminal()},
       {'icon': Icons.wifi, 'title': 'WiFi', 'widget': const ZionWifiPanel()},
       {'icon': Icons.psychology, 'title': 'SI Agent', 'widget': const SIControlPanel()},
@@ -320,7 +320,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
       {'icon': Icons.public, 'title': 'Browser', 'widget': const ZionBrowser()},
       {'icon': Icons.edit, 'title': 'Editor', 'widget': const ZionTextEditor()},
       {'icon': Icons.settings, 'title': 'Settings', 'widget': const MainSettings()},
-      const Divider(color: Colors.white24),
+      const <String, dynamic>{'divider': true},
       {'icon': Icons.network_check, 'title': 'Network Analyzer', 'widget': const NetworkAnalyzer()},
       {'icon': Icons.memory, 'title': 'Process Manager', 'widget': const ProcessManager()},
       {'icon': Icons.speed, 'title': 'System Monitor', 'widget': const SystemMonitor()},
@@ -370,7 +370,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
                 ],
               ),
             ),
-            ...menuItems.map((item) => ListTile(
+            ...menuItems.map((item) => item['divider'] == true\n                ? const Divider(color: Colors.white24)\n                : ListTile(
               leading: Icon(item['icon'] as IconData, color: item['color'] as Color? ?? const Color(0xFF00FF41)),
               title: Text(item['title'] as String, style: const TextStyle(color: Colors.white)),
               onTap: () {
