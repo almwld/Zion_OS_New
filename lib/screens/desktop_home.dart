@@ -1,48 +1,5 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:easy_localization/easy_localization.dart';
-import '../providers/theme_provider.dart';
-import '../utils/icon_mapper.dart';
-import '../widgets/floating_radar_chart.dart';
-import '../widgets/floating_window_manager.dart';
-import 'apps/terminal_app.dart';
-import 'apps/network_scanner.dart';
-import 'apps/wifi_scanner.dart';
-import 'apps/exploit_db.dart';
-import 'apps/crypto_tool.dart';
-import 'apps/stealth_mode.dart';
-import 'apps/password_cracker.dart';
-import 'apps/ddos_attack.dart';
-import 'apps/forensics.dart';
-import 'apps/database_hacking.dart';
-import 'apps/cloud_attacks.dart';
-import 'apps/settings_app.dart';
-import 'apps/file_manager.dart';
-import 'apps/web_browser.dart';
-import 'apps/text_analyzer.dart';
-import 'apps/calculator.dart';
-import 'apps/notes_app.dart';
-import 'apps/weather_app.dart';
-import 'apps/currency_converter.dart';
-import 'apps/translator_app.dart';
-import 'apps/maps_app.dart';
-import 'apps/radio_app.dart';
-import 'apps/file_sharing.dart';
-import 'apps/email_client.dart';
-import 'apps/date_calculator.dart';
-import 'apps/unit_converter.dart';
-import 'apps/percentage_calculator.dart';
-import 'apps/battery_saver.dart';
-import 'apps/backup_manager.dart';
-import 'apps/cleaner.dart';
-import 'apps/app_lock.dart';
-import 'apps/notification_manager.dart';
-import 'apps/gallery_app.dart';
-import 'apps/video_player_app.dart';
-import 'apps/alarms_clock.dart';
-import 'apps/calendar_simple.dart';
-import 'apps/qr_scanner_simple.dart';
-import 'apps/documents_simple.dart';
 
 class ZionDesktop extends StatefulWidget {
   const ZionDesktop({super.key});
@@ -52,283 +9,287 @@ class ZionDesktop extends StatefulWidget {
 }
 
 class _ZionDesktopState extends State<ZionDesktop> {
-  final GlobalKey<FloatingWindowManagerState> _windowManagerKey = GlobalKey();
-  String _currentTime = "";
-  int _selectedIndex = 0;
-  bool _showRadarChart = true;
+  Timer? _clockTimer;
+  DateTime _now = DateTime.now();
+  int _selectedCategory = 0;
 
-  final List<Map<String, dynamic>> _categories = [
-    {"name": "attack".tr(), "icon": Icons.flash_on},
-    {"name": "defense".tr(), "icon": Icons.shield},
-    {"name": "analysis".tr(), "icon": Icons.analytics},
-    {"name": "tools".tr(), "icon": Icons.build},
-  ];
+  static const _cyan = Color(0xFF00BCD4);
+  static const _teal = Color(0xFF006064);
+  static const _background = Color(0xFF05080A);
 
-  final List<Map<String, dynamic>> _apps = [
-    {"name": "TERMINAL", "icon": Icons.terminal, "category": "tools".tr(), "screen": const TerminalApp()},
-    {"name": "FILE MANAGER", "icon": Icons.folder, "category": "tools".tr(), "screen": const FileManagerApp()},
-    {"name": "BROWSER", "icon": Icons.public, "category": "tools".tr(), "screen": const WebBrowserApp()},
-    {"name": "SETTINGS", "icon": Icons.settings, "category": "tools".tr(), "screen": const SettingsApp()},
-    {"name": "NOTES", "icon": Icons.note, "category": "tools".tr(), "screen": const NotesApp()},
-    {"name": "WEATHER", "icon": Icons.wb_sunny, "category": "tools".tr(), "screen": const WeatherApp()},
-    {"name": "MAPS", "icon": Icons.map, "category": "tools".tr(), "screen": const MapsApp()},
-    {"name": "RADIO", "icon": Icons.radio, "category": "tools".tr(), "screen": const RadioApp()},
-    {"name": "EMAIL", "icon": Icons.email, "category": "tools".tr(), "screen": const EmailClient()},
-    {"name": "GALLERY", "icon": Icons.photo_library, "category": "tools".tr(), "screen": const GalleryApp()},
-    {"name": "VIDEO", "icon": Icons.play_circle_filled, "category": "tools".tr(), "screen": const VideoPlayerApp()},
-    {"name": "CLOCK", "icon": Icons.access_time, "category": "tools".tr(), "screen": const AlarmsClockApp()},
-    {"name": "CALENDAR", "icon": Icons.calendar_today, "category": "tools".tr(), "screen": const CalendarApp()},
-    {"name": "QR CODE", "icon": Icons.qr_code_scanner, "category": "tools".tr(), "screen": const QRScannerApp()},
-    {"name": "DOCUMENTS", "icon": Icons.description, "category": "tools".tr(), "screen": const DocumentsApp()},
-    {"name": "BACKUP", "icon": Icons.backup, "category": "tools".tr(), "screen": const BackupManagerApp()},
-    {"name": "CLEANER", "icon": Icons.cleaning_services, "category": "tools".tr(), "screen": const CleanerApp()},
-    {"name": "APP LOCK", "icon": Icons.lock, "category": "tools".tr(), "screen": const AppLockApp()},
-    {"name": "NOTIFY", "icon": Icons.notifications, "category": "tools".tr(), "screen": const NotificationManagerApp()},
-    {"name": "CALCULATOR", "icon": Icons.calculate, "category": "tools".tr(), "screen": const CalculatorApp()},
-    {"name": "UNIT CONV", "icon": Icons.science, "category": "tools".tr(), "screen": const UnitConverterApp()},
-    {"name": "PERCENT", "icon": Icons.percent, "category": "tools".tr(), "screen": const PercentageCalculatorApp()},
-    {"name": "DATE CALC", "icon": Icons.calculate, "category": "tools".tr(), "screen": const DateCalculatorApp()},
-    {"name": "CURRENCY", "icon": Icons.attach_money, "category": "tools".tr(), "screen": const CurrencyConverterApp()},
-    {"name": "TRANSLATOR", "icon": Icons.translate, "category": "tools".tr(), "screen": const TranslatorApp()},
-    {"name": "BATTERY", "icon": Icons.battery_charging_full, "category": "tools".tr(), "screen": const BatterySaverApp()},
-    {"name": "WIFI", "icon": Icons.wifi, "category": "attack".tr(), "screen": const WiFiScannerApp()},
-    {"name": "EXPLOIT", "icon": Icons.bug_report, "category": "attack".tr(), "screen": const ExploitDBApp()},
-    {"name": "CRACKER", "icon": Icons.vpn_key, "category": "attack".tr(), "screen": const PasswordCrackerApp()},
-    {"name": "DDOS", "icon": Icons.speed, "category": "attack".tr(), "screen": const DDoSAttackApp()},
-    {"name": "DATABASE", "icon": Icons.storage, "category": "attack".tr(), "screen": const DatabaseHackingApp()},
-    {"name": "CLOUD", "icon": Icons.cloud, "category": "attack".tr(), "screen": const CloudAttacksApp()},
-    {"name": "STEALTH", "icon": Icons.visibility_off, "category": "defense".tr(), "screen": const StealthModeApp()},
-    {"name": "CRYPTO", "icon": Icons.lock, "category": "defense".tr(), "screen": const CryptoToolApp()},
-    {"name": "NETWORK", "icon": Icons.network_wifi, "category": "analysis".tr(), "screen": const NetworkScannerApp()},
-    {"name": "FORENSICS", "icon": Icons.search, "category": "analysis".tr(), "screen": const ForensicsApp()},
-    {"name": "TEXT ANALYZER", "icon": Icons.analytics, "category": "analysis".tr(), "screen": const TextAnalyzerApp()},
+  static const _categories = ['الأدوات', 'الشبكة', 'الأمان', 'التحليل'];
+
+  static const _apps = <_DesktopApp>[
+    _DesktopApp('الطرفية', Icons.terminal),
+    _DesktopApp('مدير الملفات', Icons.folder_outlined),
+    _DesktopApp('المتصفح', Icons.language),
+    _DesktopApp('الإعدادات', Icons.settings_outlined),
+    _DesktopApp('الآلة الحاسبة', Icons.calculate_outlined),
+    _DesktopApp('الملاحظات', Icons.note_alt_outlined),
+    _DesktopApp('المعرض', Icons.photo_library_outlined),
+    _DesktopApp('الطقس', Icons.wb_sunny_outlined),
   ];
 
   @override
   void initState() {
     super.initState();
-    _updateTime();
-  }
-
-  void _updateTime() {
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        final now = DateTime.now();
-        setState(() {
-          _currentTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-        });
-        _updateTime();
-      }
-    });
-  }
-
-  void _openApp(Map<String, dynamic> app) {
-    if (app['screen'] != null) {
-      _windowManagerKey.currentState?.openWindow(app['name'], app['screen']);
-    }
-  }
-
-  void _toggleRadar() {
-    setState(() {
-      _showRadarChart = !_showRadarChart;
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _now = DateTime.now());
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    final iconSize = Provider.of<ThemeProvider>(context).iconSize;
-    final filteredApps = _apps.where((a) => a['category'] == _categories[_selectedIndex]['name'].tr()).toList();
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
 
-    return FloatingWindowManager(
-      key: _windowManagerKey,
-      child: Scaffold(
-        backgroundColor: isDark ? Colors.black : Colors.grey[50],
-        body: Stack(
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _background,
+      body: SafeArea(
+        child: Stack(
           children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.5,
-                  colors: isDark ? [const Color(0xFF0A2E38).withOpacity(0.3), Colors.black, Colors.black] : [const Color(0xFFE0F7FA), Colors.white, Colors.white],
-                ),
-              ),
-              child: CustomPaint(painter: GridPatternPainter(isDark: isDark)),
-            ),
+            const _GridBackground(),
             Column(
               children: [
-                // Status Bar
-                Container(
-                  height: 60,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 32, height: 32,
-                              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]), shape: BoxShape.circle),
-                              child: const Center(child: Text("Z", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                            ),
-                            const SizedBox(width: 8),
-                            Text("ZION OS", style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: 2)),
-                          ],
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: _toggleRadar,
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-                              ),
-                              child: Icon(Icons.radar, color: _showRadarChart ? const Color(0xFF00BCD4) : Colors.grey, size: 20),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: (isDark ? Colors.white : Colors.black).withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.2)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.battery_full, color: Color(0xFF00BCD4), size: 16),
-                                const SizedBox(width: 6),
-                                const Icon(Icons.network_wifi, color: Color(0xFF00BCD4), size: 16),
-                                const SizedBox(width: 12),
-                                Text(_currentTime, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 14)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Categories
-                Container(
-                  height: 48,
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _categories.length,
-                    itemBuilder: (ctx, i) {
-                      final isSelected = _selectedIndex == i;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedIndex = i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          decoration: BoxDecoration(
-                            gradient: isSelected ? const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF00838F)]) : null,
-                            color: isSelected ? null : Colors.transparent,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFF00BCD4).withOpacity(0.3)),
-                          ),
-                          child: Center(child: Text(_categories[i]['name'].tr(), style: TextStyle(color: isSelected ? Colors.white : const Color(0xFF00BCD4)))),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Apps Grid
-                Expanded(
-                  child: GridView.builder(
-                    padding: const EdgeInsets.all(20),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 0.9, crossAxisSpacing: 16, mainAxisSpacing: 16),
-                    itemCount: filteredApps.length,
-                    itemBuilder: (ctx, i) {
-                      final app = filteredApps[i];
-                      return GestureDetector(
-                        onTap: () => _openApp(app),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: iconSize, height: iconSize,
-                              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(16)),
-                              child: IconMapper.getIcon(app['name'], size: iconSize * 0.5),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(app['name'].tr(), style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Dock
-                Container(
-                  height: 70,
-                  margin: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: (isDark ? Colors.black : Colors.white).withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(25),
-                    border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildDockIcon(Icons.terminal, 'terminal', () => _openApp(_apps.firstWhere((a) => a['name'] == 'TERMINAL'))),
-                      _buildDockIcon(Icons.folder, 'file_manager', () => _openApp(_apps.firstWhere((a) => a['name'] == 'FILE MANAGER'))),
-                      _buildDockIcon(Icons.public, 'browser', () => _openApp(_apps.firstWhere((a) => a['name'] == 'BROWSER'))),
-                      _buildDockIcon(Icons.security, 'settings', () => _openApp(_apps.firstWhere((a) => a['name'] == 'SETTINGS'))),
-                    ],
-                  ),
-                ),
+                _buildStatusBar(),
+                _buildCategories(),
+                Expanded(child: _buildWorkspace()),
+                _buildDock(),
               ],
             ),
-            if (_showRadarChart) FloatingRadarChart(onClose: () => setState(() => _showRadarChart = false)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDockIcon(IconData icon, String label, VoidCallback onTap) {
-    final isDark = Provider.of<ThemeProvider>(context).isDarkMode;
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
+  Widget _buildStatusBar() {
+    final time = '${_two(_now.hour)}:${_two(_now.minute)}';
+    final date = '${_two(_now.day)}/${_two(_now.month)}/${_now.year}';
+    return Container(
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.72),
+        border: Border(bottom: BorderSide(color: _cyan.withOpacity(.18))),
+      ),
+      child: Row(
         children: [
-          Container(width: 45, height: 45, decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: Colors.white, size: 22)),
-          const SizedBox(height: 4),
-          Text(label.tr(), style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 9)),
+          Container(
+            width: 42, height: 42,
+            decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [_cyan, _teal])),
+            alignment: Alignment.center,
+            child: const Text('Z', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w800)),
+          ),
+          const SizedBox(width: 12),
+          const Text('ZION OS', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: 2)),
+          const Spacer(),
+          const Icon(Icons.circle, color: Colors.greenAccent, size: 9),
+          const SizedBox(width: 6),
+          const Text('ONLINE', style: TextStyle(color: Colors.white60, fontSize: 10)),
+          const SizedBox(width: 18),
+          Text(time, style: const TextStyle(color: _cyan, fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Text(date, style: const TextStyle(color: Colors.white54, fontSize: 11)),
         ],
       ),
     );
   }
+
+  Widget _buildCategories() {
+    return SizedBox(
+      height: 58,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        itemCount: _categories.length,
+        itemBuilder: (context, index) {
+          final selected = index == _selectedCategory;
+          return Padding(
+            padding: const EdgeInsetsDirectional.only(end: 10),
+            child: Material(
+              color: selected ? _cyan : Colors.transparent,
+              borderRadius: BorderRadius.circular(22),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () => setState(() => _selectedCategory = index),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: selected ? Colors.transparent : _cyan.withOpacity(.28)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _categories[index],
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(color: selected ? Colors.black : _cyan, fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildWorkspace() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 600 ? 3 : 2;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              const Text('مرحباً بك في ZION OS', textDirection: TextDirection.rtl, style: TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 7),
+              const Text('واجهة النظام الرئيسية', textDirection: TextDirection.rtl, style: TextStyle(color: Colors.white54, fontSize: 13)),
+              const SizedBox(height: 22),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _apps.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 13,
+                  mainAxisSpacing: 13,
+                  childAspectRatio: 1.12,
+                ),
+                itemBuilder: (context, index) => _buildAppCard(_apps[index]),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAppCard(_DesktopApp app) {
+    return Material(
+      color: Colors.white.withOpacity(.045),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _showMessage(app.title),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _cyan.withOpacity(.16)),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 54, height: 54,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  gradient: const LinearGradient(colors: [_cyan, _teal]),
+                ),
+                alignment: Alignment.center,
+                child: Icon(app.icon, color: Colors.white, size: 27),
+              ),
+              const SizedBox(height: 10),
+              Text(app.title, textDirection: TextDirection.rtl, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDock() {
+    return Container(
+      height: 72,
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.78),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _cyan.withOpacity(.17)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _dockItem(Icons.home_outlined, 'الرئيسية'),
+          _dockItem(Icons.terminal, 'الطرفية'),
+          _dockItem(Icons.folder_outlined, 'الملفات'),
+          _dockItem(Icons.settings_outlined, 'الإعدادات'),
+        ],
+      ),
+    );
+  }
+
+  Widget _dockItem(IconData icon, String label) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showMessage(label),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: _cyan, size: 23),
+            const SizedBox(height: 3),
+            Text(label, textDirection: TextDirection.rtl, style: const TextStyle(color: Colors.white54, fontSize: 9)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMessage(String title) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('$title — الواجهة جاهزة.', textDirection: TextDirection.rtl),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+  }
+
+  String _two(int value) => value.toString().padLeft(2, '0');
 }
 
-class GridPatternPainter extends CustomPainter {
-  final bool isDark;
-  GridPatternPainter({required this.isDark});
+class _DesktopApp {
+  final String title;
+  final IconData icon;
+  const _DesktopApp(this.title, this.icon);
+}
+
+class _GridBackground extends StatelessWidget {
+  const _GridBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: CustomPaint(size: Size.infinite, painter: _GridPainter()),
+    );
+  }
+}
+
+class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = (isDark ? const Color(0xFF00BCD4) : const Color(0xFF00838F)).withOpacity(0.04)
-      ..strokeWidth = 0.5
-      ..style = PaintingStyle.stroke;
-    const spacing = 30.0;
-    for (double x = 0; x < size.width; x += spacing) canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    for (double y = 0; y < size.height; y += spacing) canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      ..color = const Color(0xFF00BCD4).withOpacity(.035)
+      ..strokeWidth = .6;
+    const spacing = 32.0;
+    for (double x = 0; x <= size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y <= size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
