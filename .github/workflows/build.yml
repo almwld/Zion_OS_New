@@ -57,9 +57,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate app icons
-        run: |
-          flutter pub get
-          flutter pub run flutter_launcher_icons
+        run: flutter pub run flutter_launcher_icons
 
       - name: Verify required Flutter assets and launcher resources
         shell: bash
