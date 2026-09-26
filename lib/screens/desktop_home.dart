@@ -51,7 +51,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
       body: SafeArea(
         child: Stack(
           children: [
-            const _GridBackground(),
+            const Positioned.fill(child: _GridBackground()),
             Column(
               children: [
                 _buildStatusBar(),
@@ -270,7 +270,7 @@ class _GridBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: Positioned.fill(child: CustomPaint(painter: _GridPainter())),
+      child: CustomPaint(painter: _GridPainter()),
     );
   }
 }
