@@ -270,7 +270,7 @@ class _GridBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: CustomPaint(size: Size.infinite, painter: _GridPainter()),
+      child: Positioned.fill(child: CustomPaint(painter: _GridPainter())),
     );
   }
 }
