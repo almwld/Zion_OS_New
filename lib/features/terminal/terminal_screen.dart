@@ -54,7 +54,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       return;
     }
     setState(() {
-      _lines.add('zion$ $command');
+      _lines.add('zion\$ $command');
       _busy = true;
       _historyIndex = -1;
     });
@@ -140,7 +140,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               color: const Color(0xFF090B0A),
-              child: SelectionArea(child: ListView.builder(controller: _scrollController, itemCount: _lines.length, itemBuilder: (context, index) => SelectableText(_lines[index], style: TextStyle(color: _lines[index].startsWith('zion$') ? const Color(0xFF00FF41) : const Color(0xFFD0D7D2), fontFamily: 'monospace', fontSize: 13, height: 1.35))),
+              child: SelectionArea(child: ListView.builder(controller: _scrollController, itemCount: _lines.length, itemBuilder: (context, index) => SelectableText(_lines[index], style: TextStyle(color: _lines[index].startsWith('zion\) ? const Color(0xFF00FF41) : const Color(0xFFD0D7D2), fontFamily: 'monospace', fontSize: 13, height: 1.35))),
             ),
           ),
           SafeArea(
@@ -151,7 +151,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
               child: Row(children: [
                 IconButton(icon: const Icon(Icons.keyboard_arrow_up), onPressed: _historyUp),
                 IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: _historyDown),
-                const Text('zion$ ', style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF41))),
+                const Text('zion\$ ', style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF41))),
+                Expanded(child: TextField(controller: _commandController, enabled: !_busy, autofocus: true, style: const TextStyle(color: Color(0xFF00FF41), fontFamily: 'monospace'), decoration: const InputDecoration(border: InputBorder.none, hintText: 'أدخل الأمر...'), onSubmitted: (_) => _run())),
+                IconButton(tooltip: 'تنفيذ', icon: Icon(_busy ? Icons.hourglass_top : Icons.send), onPressed: _busy ? null : _run),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+) ? const Color(0xFF00FF41) : const Color(0xFFD0D7D2), fontFamily: 'monospace', fontSize: 13, height: 1.35))),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              color: const Color(0xFF111511),
+              child: Row(children: [
+                IconButton(icon: const Icon(Icons.keyboard_arrow_up), onPressed: _historyUp),
+                IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: _historyDown),
+                const Text('zion\$ ', style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF41))),
                 Expanded(child: TextField(controller: _commandController, enabled: !_busy, autofocus: true, style: const TextStyle(color: Color(0xFF00FF41), fontFamily: 'monospace'), decoration: const InputDecoration(border: InputBorder.none, hintText: 'أدخل الأمر...'), onSubmitted: (_) => _run())),
                 IconButton(tooltip: 'تنفيذ', icon: Icon(_busy ? Icons.hourglass_top : Icons.send), onPressed: _busy ? null : _run),
               ]),
