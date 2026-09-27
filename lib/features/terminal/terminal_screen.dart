@@ -20,8 +20,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
   int _historyIndex = -1;
   bool _interactive = false;
   bool _busy = false;
-  int _lastRows = 0;
-  int _lastCols = 0;
 
   TerminalService get _service => context.read<TerminalService>();
 
@@ -120,16 +118,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
   }
 
-  void _syncPtySize(Size size) {
-    if (!_interactive || size.width <= 0 || size.height <= 0) return;
-    final cols = (size.width / 8.0).floor().clamp(20, 240);
-    final rows = (size.height / 18.0).floor().clamp(4, 120);
-    if (rows == _lastRows && cols == _lastCols) return;
-    _lastRows = rows;
-    _lastCols = cols;
-    unawaited(_service.resizeInteractive(rows: rows, cols: cols));
-  }
-
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -143,7 +131,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   @override
   void dispose() {
-    unawaited(_service.stopInteractive());
     _outputSubscription?.cancel();
     _commandController.dispose();
     _scrollController.dispose();
@@ -202,93 +189,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                _syncPtySize(Size(
-                  constraints.maxWidth - 24,
-                  constraints.maxHeight - 24,
-                ));
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  color: const Color(0xFF090B0A),
-                  child: SelectionArea(
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      itemCount: _lines.length,
-                      itemBuilder: (context, index) {
-                        final line = _lines[index];
-                        final isPrompt = line.startsWith('zion' + r'          SafeArea(
-            top: false,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-              color: const Color(0xFF111511),
-              child: Row(
-                children: <Widget>[
-                  IconButton(
-                    icon: const Icon(Icons.keyboard_arrow_up),
-                    onPressed: _historyUp,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                    onPressed: _historyDown,
-                  ),
-                  const Text(
-                    'zion\$ ',
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      color: Color(0xFF00FF41),
-                    ),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _commandController,
-                      enabled: !_busy,
-                      autofocus: true,
-                      style: const TextStyle(
-                        color: Color(0xFF00FF41),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: const Color(0xFF090B0A),
+              child: SelectionArea(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: _lines.length,
+                  itemBuilder: (context, index) {
+                    final line = _lines[index];
+                    final isPrompt = line.startsWith('zion\$');
+                    return SelectableText(
+                      line,
+                      style: TextStyle(
+                        color: isPrompt
+                            ? const Color(0xFF00FF41)
+                            : const Color(0xFFD0D7D2),
                         fontFamily: 'monospace',
+                        fontSize: 13,
+                        height: 1.35,
                       ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'أدخل الأمر...',
-                      ),
-                      onSubmitted: (_) => _run(),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'تنفيذ',
-                    icon: Icon(
-                      _busy ? Icons.hourglass_top : Icons.send,
-                    ),
-                    onPressed: _busy ? null : _run,
-                  ),
-                ],
+                    );
+                  },
+                ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-);
-                        return SelectableText(
-                          line,
-                          style: TextStyle(
-                            color: isPrompt
-                                ? const Color(0xFF00FF41)
-                                : const Color(0xFFD0D7D2),
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                            height: 1.35,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
             ),
           ),
           SafeArea(
