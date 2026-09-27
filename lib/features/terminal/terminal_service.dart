@@ -199,7 +199,10 @@ class TerminalService {
     // the real shell.
     final hasNewline = input.contains('\n');
     if (!hasNewline) {
-      if (input.codeUnits.any((code) => code < 0x20 || code == 0x7F)) {
+      if (input.codeUnits.any((code) => code == 0x03 || code == 0x04 || code == 0x1A)) {
+        _interactiveInputBuffer = '';
+        unawaited(_pty.write(input));
+      } else if (input.codeUnits.any((code) => code < 0x20 || code == 0x7F)) {
         unawaited(_pty.write(input));
       } else {
         _interactiveInputBuffer += input;
