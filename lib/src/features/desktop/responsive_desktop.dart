@@ -57,7 +57,7 @@ import '../communication/communication_center.dart';
 import '../store/app_store.dart';
 import '../simulation/simulation_center.dart';
 import '../automation/automation_center.dart';
-import '../../../cosmic_terminal.dart';
+import '../../../features/terminal/terminal_screen.dart';
 
 class ResponsiveDesktop extends StatefulWidget {
   const ResponsiveDesktop({super.key});
@@ -255,7 +255,7 @@ class _ResponsiveDesktopState extends State<ResponsiveDesktop> {
 
   Widget _getWidgetForRoute(String route) {
     switch (route) {
-      case '/terminal': return const CosmicTerminal();
+      case '/terminal': return const TerminalScreen();
       case '/wifi': return const ZionWifiPanel();
       case '/si_agent': return const AdvancedSIControlPanel();
       case '/file_manager': return const AdvancedFileExplorer();
@@ -393,7 +393,7 @@ class _ResponsiveDesktopState extends State<ResponsiveDesktop> {
               ListTile(
                 leading: const Icon(Icons.terminal, color: Colors.green),
                 title: const Text('Terminal', style: TextStyle(color: Colors.white)),
-                onTap: () => _openWindow('Terminal', const CosmicTerminal()),
+                onTap: () => _openWindow('Terminal', const TerminalScreen()),
               ),
               ListTile(
                 leading: const Icon(Icons.settings, color: Colors.grey),
