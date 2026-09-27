@@ -21,9 +21,11 @@ class _NetworkRadarScreenState extends State<NetworkRadarScreen> with SingleTick
     _subscription = _platform.networkRadarStream().listen((sample) {
       if (!mounted) return;
       setState(() {
-        _data = sample;
-        _push(_rx, _number(sample['rxBytesPerSec']));
-        _push(_tx, _number(sample['txBytesPerSec']));
+        _data = <String, Object?>{..._data, ...sample};
+        if (sample['event'] != true) {
+          _push(_rx, _number(sample['rxBytesPerSec']));
+          _push(_tx, _number(sample['txBytesPerSec']));
+        }
       });
     });
   }
