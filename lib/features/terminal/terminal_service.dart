@@ -272,9 +272,4 @@ class TerminalService {
     await prefs.remove(_historyKey);
   }
 
-  Future<void> dispose() async {
-    await stopInteractive();
-    await _pty.dispose();
-    await _output.close();
-  }
 }
