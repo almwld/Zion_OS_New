@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async';\nimport 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
@@ -400,21 +400,151 @@ class RadarPainter extends CustomPainter {
   final double angle;
   final Color color;
   RadarPainter({required this.angle, required this.color});
+
+  static const _networkColors = <Color>[
+    Color(0xFF00F5FF),
+    Color(0xFF2ED573),
+    Color(0xFF7C4DFF),
+    Color(0xFFFFD32A),
+    Color(0xFFFF4757),
+    Color(0xFFFFA502),
+  ];
+
+  Offset _polar(Offset center, double radius, double radians) {
+    return Offset(
+      center.dx + math.cos(radians) * radius,
+      center.dy + math.sin(radians) * radius,
+    );
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 5;
-    for (int i = 1; i <= 3; i++) {
-      canvas.drawCircle(center, radius * i / 3, Paint()..color = color.withOpacity(0.2)..style = PaintingStyle.stroke..strokeWidth = 0.5);
+    final phase = angle;
+    final spokes = 12;
+    final rings = 5;
+
+    // Soft radar atmosphere.
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            color.withOpacity(0.10),
+            color.withOpacity(0.025),
+            Colors.transparent,
+          ],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
+    );
+
+    // Concentric radar rings.
+    for (var i = 1; i <= rings; i++) {
+      final r = radius * i / rings;
+      final ringColor = _networkColors[(i - 1) % _networkColors.length];
+      canvas.drawCircle(
+        center,
+        r,
+        Paint()
+          ..color = ringColor.withOpacity(i == rings ? 0.28 : 0.14)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = i == rings ? 0.9 : 0.55,
+      );
     }
-    for (int i = 0; i < 4; i++) {
-      final lineAngle = i * 3.14159 / 2;
-      final end = Offset(center.dx + radius * (lineAngle == 0 ? 1 : (lineAngle == 3.14159 ? -1 : 0)), center.dy + radius * (lineAngle == 1.5708 ? 1 : (lineAngle == 4.71239 ? -1 : 0)));
-      canvas.drawLine(center, end, Paint()..color = color.withOpacity(0.2)..strokeWidth = 0.5);
+
+    // Animated spider-web spokes.
+    for (var i = 0; i < spokes; i++) {
+      final a = (i * 2 * math.pi / spokes) + phase * 0.18;
+      final end = _polar(center, radius, a);
+      final spokeColor = _networkColors[i % _networkColors.length];
+      canvas.drawLine(
+        center,
+        end,
+        Paint()
+          ..color = spokeColor.withOpacity(0.24)
+          ..strokeWidth = 0.65,
+      );
     }
-    final sweepGradient = SweepGradient(startAngle: 0, endAngle: angle, colors: [color.withOpacity(0.5), color.withOpacity(0.0)], stops: const [0.0, 1.0]);
-    canvas.drawCircle(center, radius, Paint()..shader = sweepGradient.createShader(Rect.fromCircle(center: center, radius: radius)));
+
+    // Polygonal spider-web layers: each layer is rotated, creating a live
+    // analytical mesh rather than a static crosshair.
+    for (var layer = 1; layer <= rings; layer++) {
+      final r = radius * layer / rings;
+      final path = Path();
+      final rotation = phase * (0.10 + layer * 0.018);
+      for (var i = 0; i <= spokes; i++) {
+        final a = (i * 2 * math.pi / spokes) + rotation;
+        final p = _polar(center, r, a);
+        if (i == 0) {
+          path.moveTo(p.dx, p.dy);
+        } else {
+          path.lineTo(p.dx, p.dy);
+        }
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = _networkColors[(layer + 1) % _networkColors.length]
+              .withOpacity(0.20)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.7,
+      );
+    }
+
+    // Moving analytical connection nodes on the web.
+    final nodes = <Offset>[];
+    for (var i = 0; i < 8; i++) {
+      final a = (i * 2 * math.pi / 8) + phase * (0.28 + (i % 3) * 0.035);
+      final orbit = radius * (0.38 + (i % 4) * 0.12);
+      nodes.add(_polar(center, orbit, a));
+    }
+    for (var i = 0; i < nodes.length; i++) {
+      final next = nodes[(i + 1) % nodes.length];
+      final nodeColor = _networkColors[i % _networkColors.length];
+      canvas.drawLine(
+        nodes[i],
+        next,
+        Paint()
+          ..color = nodeColor.withOpacity(0.42)
+          ..strokeWidth = 0.8,
+      );
+      canvas.drawCircle(
+        nodes[i],
+        1.7 + math.sin(phase * 3 + i) * 0.8,
+        Paint()
+          ..color = nodeColor.withOpacity(0.9)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+      canvas.drawCircle(nodes[i], 1.2, Paint()..color = nodeColor);
+    }
+
+    // Rotating sweep with a bright analytical leading edge.
+    final sweepAngle = phase - math.pi / 2;
+    final sweepEnd = _polar(center, radius, sweepAngle);
+    canvas.drawLine(
+      center,
+      sweepEnd,
+      Paint()
+        ..shader = LinearGradient(
+          colors: [color.withOpacity(0.05), color.withOpacity(0.9)],
+        ).createShader(Rect.fromPoints(center, sweepEnd))
+        ..strokeWidth = 1.4,
+    );
+
+    // Small animated center core.
+    final corePulse = 2.2 + (math.sin(phase * 3) + 1) * 1.1;
+    canvas.drawCircle(
+      center,
+      corePulse + 3,
+      Paint()
+        ..color = color.withOpacity(0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawCircle(center, corePulse, Paint()..color = color.withOpacity(0.9));
   }
+
   @override
-  bool shouldRepaint(covariant RadarPainter oldDelegate) => oldDelegate.angle != angle;
+  bool shouldRepaint(covariant RadarPainter oldDelegate) =>
+      oldDelegate.angle != angle || oldDelegate.color != color;
 }
