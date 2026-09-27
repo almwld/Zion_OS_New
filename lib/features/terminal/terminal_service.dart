@@ -48,9 +48,6 @@ class TerminalService {
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
-  Process? _process;
-  StreamSubscription<String>? _stdoutSub;
-  StreamSubscription<String>? _stderrSub;
   StreamSubscription<String>? _ptyOutputSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
@@ -58,7 +55,7 @@ class TerminalService {
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
-  bool get isInteractiveRunning => _pty.isRunning || _process != null;
+  bool get isInteractiveRunning => _pty.isRunning;
   bool get isNativePtyRunning => _pty.isRunning;
 
   Future<void> loadHistory() async {
@@ -195,22 +192,53 @@ class TerminalService {
   }
 
   void write(String input) {
-    if (!_pty.isRunning) return;
+    if (!_pty.isRunning || input.isEmpty) return;
+
+    // Keep terminal control keys responsive. Normal printable input is
+    // submitted through the line gate below so denied commands never reach
+    // the real shell.
+    final hasNewline = input.contains('\n');
+    if (!hasNewline) {
+      if (input.codeUnits.any((code) => code < 0x20 || code == 0x7F)) {
+        unawaited(_pty.write(input));
+      } else {
+        _interactiveInputBuffer += input;
+      }
+      return;
+    }
+
     _interactiveInputBuffer += input;
     final parts = _interactiveInputBuffer.split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
-      if (command.isEmpty) continue;
+      if (command.isEmpty) {
+        unawaited(_pty.write('\n'));
+        continue;
+      }
       if (!_authorized(command)) {
         _output.add('\r\n[ZION] command denied by SecurityCore: $command\r\n');
-        _audit(command: command, outcome: 'denied', exitCode: 126, shell: 'security-core', duration: Duration.zero, interactive: true);
+        _audit(
+          command: command,
+          outcome: 'denied',
+          exitCode: 126,
+          shell: 'security-core',
+          duration: Duration.zero,
+          interactive: true,
+        );
         continue;
       }
       _remember(command);
-      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'native-pty', duration: Duration.zero, interactive: true);
+      _audit(
+        command: command,
+        outcome: 'submitted',
+        exitCode: -1,
+        shell: 'native-pty',
+        duration: Duration.zero,
+        interactive: true,
+      );
+      unawaited(_pty.write('$rawCommand\n'));
     }
-    unawaited(_pty.write(input));
   }
 
   Future<bool> resizeInteractive({required int rows, required int cols}) => _pty.resize(rows: rows, cols: cols);
@@ -222,15 +250,6 @@ class TerminalService {
       _ptyOutputSub = null;
       _interactiveInputBuffer = '';
       _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: Duration.zero, interactive: true);
-    }
-    final process = _process;
-    if (process != null) {
-      await _stdoutSub?.cancel();
-      await _stderrSub?.cancel();
-      _stdoutSub = null;
-      _stderrSub = null;
-      process.kill();
-      _process = null;
     }
   }
 
