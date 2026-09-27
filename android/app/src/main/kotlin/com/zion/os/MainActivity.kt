@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
     private var radarThread: Thread? = null
+    private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
     companion object {
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val PTY_CHANNEL = "zion.os/pty"
@@ -82,7 +83,8 @@ class MainActivity : FlutterActivity() {
                     terminalSink = null
                 }
             })
-\n        EventChannel(flutterEngine.dartExecutor.binaryMessenger, RADAR_EVENTS)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, RADAR_EVENTS)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     radarSink = events
@@ -98,6 +100,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startNetworkRadar() {
+        registerNetworkRadarCallback()
         if (radarRunning) return
         radarRunning = true
         radarThread = Thread {
@@ -130,10 +133,46 @@ class MainActivity : FlutterActivity() {
         }.apply { name = "zion-network-radar"; isDaemon = true; start() }
     }
 
+    private fun registerNetworkRadarCallback() {
+        if (radarNetworkCallback != null) return
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        radarNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                emitRadarEvent("networkEvent", "available")
+            }
+            override fun onLost(network: android.net.Network) {
+                emitRadarEvent("networkEvent", "lost")
+            }
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) {
+                emitRadarEvent("networkEvent", "capabilitiesChanged")
+            }
+            override fun onLinkPropertiesChanged(network: android.net.Network, properties: LinkProperties) {
+                emitRadarEvent("networkEvent", "linkPropertiesChanged")
+            }
+        }
+        try {
+            connectivity.registerDefaultNetworkCallback(radarNetworkCallback!!)
+        } catch (_: Throwable) {
+            radarNetworkCallback = null
+        }
+    }
+
+    private fun emitRadarEvent(key: String, value: String) {
+        radarSink?.success(mapOf(
+            "timestampMs" to System.currentTimeMillis(),
+            key to value,
+            "event" to true
+        ))
+    }
+
     private fun stopNetworkRadar() {
         radarRunning = false
         radarThread?.interrupt()
         radarThread = null
+        radarNetworkCallback?.let { callback ->
+            try { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(callback) } catch (_: Throwable) {}
+        }
+        radarNetworkCallback = null
     }
 
     private fun readNetworkRadar(
@@ -207,7 +246,9 @@ class MainActivity : FlutterActivity() {
                 } catch (t: Throwable) {
                     terminalSink?.error("PTY_STREAM", t.message, null)
                 } finally {
-                    terminalSink?.success("\r\n[ZION] shell exited\r\n")
+                    terminalSink?.success("\r
+[ZION] shell exited\r
+")
                     terminalProcess = null
                 }
             }.apply { name = "zion-terminal-reader"; isDaemon = true }.start()
