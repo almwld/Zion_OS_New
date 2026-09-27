@@ -18,17 +18,23 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 class MainActivity : FlutterActivity() {
-    private var terminalProcess: Process? = null
+    private external fun nativePtyAvailable(): Boolean
+    private external fun nativeStartPty(rows: Int, cols: Int): Boolean
+    private external fun nativeReadPty(): ByteArray?
+    private external fun nativeWritePty(data: ByteArray): Int
+    private external fun nativeResizePty(rows: Int, cols: Int): Boolean
+    private external fun nativeStopPty()
+
+    private var terminalReaderThread: Thread? = null
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
     private var radarThread: Thread? = null
     private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
     companion object {
+        init { System.loadLibrary("zionpty") }
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val PTY_CHANNEL = "zion.os/pty"
         private const val PTY_EVENTS = "zion.os/pty/events"
@@ -51,7 +57,7 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PTY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "available" -> result.success(true)
+                    "available" -> result.success(nativePtyAvailable())
                     "start" -> {
                         val rows = call.argument<Int>("rows") ?: 24
                         val cols = call.argument<Int>("cols") ?: 80
@@ -62,8 +68,9 @@ class MainActivity : FlutterActivity() {
                         result.success(writeTerminal(input))
                     }
                     "resize" -> {
-                        // Process-backed shell does not expose a real PTY resize ioctl.
-                        result.success(false)
+                        val rows = call.argument<Int>("rows") ?: 24
+                        val cols = call.argument<Int>("cols") ?: 80
+                        result.success(resizeTerminal(rows, cols))
                     }
                     "stop" -> {
                         stopTerminal()
@@ -220,63 +227,53 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun startTerminal(rows: Int, cols: Int): Boolean {
-        if (terminalProcess?.isAlive == true) return true
+        if (terminalReaderThread?.isAlive == true) return true
+        if (!nativePtyAvailable()) return false
         return try {
-            val process = ProcessBuilder("/system/bin/sh", "-i")
-                .redirectErrorStream(true)
-                .apply {
-                    environment()["HOME"] = filesDir.absolutePath
-                    environment()["TERM"] = "xterm-256color"
-                    environment()["PATH"] = "/system/bin:/system/xbin"
-                    environment()["ZION_TERMINAL"] = "1"
-                }
-                .start()
-            terminalProcess = process
-            Thread {
+            if (!nativeStartPty(rows, cols)) return false
+            terminalReaderThread = Thread {
                 try {
-                    BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
-                        val buffer = CharArray(2048)
-                        var count: Int
-                        while (process.isAlive && reader.read(buffer).also { count = it } != -1) {
-                            if (count > 0) {
-                                terminalSink?.success(String(buffer, 0, count))
-                            }
-                        }
+                    while (!Thread.currentThread().isInterrupted) {
+                        val data = nativeReadPty()
+                        if (data == null || data.isEmpty()) break
+                        terminalSink?.success(String(data, Charsets.UTF_8))
                     }
                 } catch (t: Throwable) {
                     terminalSink?.error("PTY_STREAM", t.message, null)
                 } finally {
-                    terminalSink?.success("\r
-[ZION] shell exited\r
-")
-                    terminalProcess = null
+                    terminalSink?.success("\r\n[ZION] shell exited\r\n")
+                    terminalReaderThread = null
                 }
-            }.apply { name = "zion-terminal-reader"; isDaemon = true }.start()
+            }.apply {
+                name = "zion-native-pty-reader"
+                isDaemon = true
+                start()
+            }
             true
         } catch (_: Throwable) {
-            terminalProcess = null
+            nativeStopPty()
+            terminalReaderThread = null
             false
         }
     }
 
     private fun writeTerminal(input: String): Boolean {
-        val process = terminalProcess ?: return false
-        if (!process.isAlive) return false
         return try {
-            process.outputStream.write(input.toByteArray(Charsets.UTF_8))
-            process.outputStream.flush()
-            true
+            val data = input.toByteArray(Charsets.UTF_8)
+            nativeWritePty(data) == data.size
         } catch (_: Throwable) {
             false
         }
     }
 
+    private fun resizeTerminal(rows: Int, cols: Int): Boolean {
+        return try { nativeResizePty(rows, cols) } catch (_: Throwable) { false }
+    }
+
     private fun stopTerminal() {
-        try {
-            terminalProcess?.outputStream?.close()
-        } catch (_: Throwable) {}
-        terminalProcess?.destroy()
-        terminalProcess = null
+        try { nativeStopPty() } catch (_: Throwable) {}
+        terminalReaderThread?.interrupt()
+        terminalReaderThread = null
     }
 
     override fun onDestroy() {
