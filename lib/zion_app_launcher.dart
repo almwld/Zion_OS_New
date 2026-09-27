@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/wm/window_manager.dart';
+import 'features/terminal/terminal_screen.dart';
 import 'zion_browser.dart';
 import 'zion_file_manager.dart';
 import 'zion_system_monitor.dart';
@@ -38,7 +39,7 @@ class ZionAppLauncher extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               children: [
                 const _AppCategory(title: 'أدوات النظام'),
-                _AppItem(icon: Icons.terminal, name: 'الطرفية', onTap: () => _openApp(context, 'Terminal', const _TerminalUnavailable(), 600, 400)),
+                _AppItem(icon: Icons.terminal, name: 'الطرفية', onTap: () => _openApp(context, 'Terminal', const TerminalScreen(), 600, 400)),
                 _AppItem(icon: Icons.folder, name: 'مدير الملفات', onTap: () => _openApp(context, 'Files', const ZionFileManager(), 600, 400)),
                 _AppItem(icon: Icons.edit, name: 'محرر النصوص', onTap: () => _openApp(context, 'Editor', const _TextEditor(), 600, 450)),
                 _AppItem(icon: Icons.language, name: 'متصفح Zion', onTap: () => _openApp(context, 'Browser', const ZionBrowser(), 800, 500)),
@@ -95,12 +96,6 @@ class _SafePlaceholder extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Text('$title\nDefensive diagnostics only', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
   );
-}
-
-class _TerminalUnavailable extends StatelessWidget {
-  const _TerminalUnavailable();
-  @override
-  Widget build(BuildContext context) => const _SafePlaceholder(title: 'Terminal is available from the main Terminal screen');
 }
 
 class _TextEditor extends StatefulWidget {
