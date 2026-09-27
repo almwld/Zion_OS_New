@@ -145,6 +145,22 @@ Java_com_zion_os_MainActivity_nativeStopPty(JNIEnv *env, jobject thiz) {
     if (pid > 0) {
         kill(pid, SIGHUP);
         kill(pid, SIGTERM);
-        waitpid(pid, NULL, WNOHANG);
+        int reaped = 0;
+        for (int i = 0; i < 25; ++i) {
+            pid_t result = waitpid(pid, NULL, WNOHANG);
+            if (result == pid) {
+                reaped = 1;
+                break;
+            }
+            if (result < 0 && errno == ECHILD) {
+                reaped = 1;
+                break;
+            }
+            usleep(10000);
+        }
+        if (!reaped) {
+            kill(pid, SIGKILL);
+            waitpid(pid, NULL, 0);
+        }
     }
 }
