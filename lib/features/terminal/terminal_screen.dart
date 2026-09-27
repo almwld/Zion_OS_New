@@ -209,31 +209,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   constraints.maxHeight - 24,
                 ));
                 return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              color: const Color(0xFF090B0A),
-              child: SelectionArea(
-                child: ListView.builder(
-                  controller: _scrollController,
-                  itemCount: _lines.length,
-                  itemBuilder: (context, index) {
-                    final line = _lines[index];
-                    final isPrompt = line.startsWith('zion\$');
-                    return SelectableText(
-                      line,
-                      style: TextStyle(
-                        color: isPrompt
-                            ? const Color(0xFF00FF41)
-                            : const Color(0xFFD0D7D2),
-                        fontFamily: 'monospace',
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),;
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: const Color(0xFF090B0A),
+                  child: SelectionArea(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _lines.length,
+                      itemBuilder: (context, index) {
+                        final line = _lines[index];
+                        final isPrompt = line.startsWith('zion\\$');
+                        return SelectableText(
+                          line,
+                          style: TextStyle(
+                            color: isPrompt
+                                ? const Color(0xFF00FF41)
+                                : const Color(0xFFD0D7D2),
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
               },
             ),
           ),
