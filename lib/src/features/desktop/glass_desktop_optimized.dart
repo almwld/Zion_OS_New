@@ -20,7 +20,7 @@ import '../backup/backup_manager.dart';
 import '../exploits/exploit_database.dart';
 import '../payloads/payload_generator.dart';
 import '../qr/qr_scanner.dart';
-import '../../../cosmic_terminal.dart';
+import '../../../features/terminal/terminal_screen.dart';
 
 class GlassDesktopOptimized extends StatefulWidget {
   const GlassDesktopOptimized({super.key});
@@ -175,7 +175,7 @@ class _GlassDesktopOptimizedState extends State<GlassDesktopOptimized> {
 
   Widget _buildDesktopIcons() {
     final icons = [
-      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const CosmicTerminal(), 'color': Colors.green},
+      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const TerminalScreen(), 'color': Colors.green},
       {'icon': Icons.wifi, 'label': 'WiFi', 'widget': const ZionWifiPanel(), 'color': Colors.blue},
       {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const SIControlPanel(), 'color': Colors.purple},
       {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager(), 'color': Colors.orange},
@@ -296,7 +296,7 @@ class _GlassDesktopOptimizedState extends State<GlassDesktopOptimized> {
 
   Widget _buildStartMenu() {
     final List<Map<String, dynamic>> menuItems = [
-      {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const CosmicTerminal(), 'color': Colors.green},
+      {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const TerminalScreen(), 'color': Colors.green},
       {'icon': Icons.wifi, 'title': 'WiFi', 'widget': const ZionWifiPanel(), 'color': Colors.blue},
       {'icon': Icons.psychology, 'title': 'SI Agent', 'widget': const SIControlPanel(), 'color': Colors.purple},
       {'icon': Icons.folder, 'title': 'File Manager', 'widget': const ZionFileManager(), 'color': Colors.orange},
