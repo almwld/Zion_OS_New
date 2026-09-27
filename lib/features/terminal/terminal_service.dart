@@ -171,24 +171,25 @@ class TerminalService {
     }
   }
 
-  Future<void> startInteractive() async {
-    if (isInteractiveRunning) return;
+  Future<bool> startInteractive() async {
+    if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       _audit(command: '<interactive-start>', outcome: 'denied', exitCode: 126, shell: 'security-core', duration: Duration.zero, interactive: true);
-      return;
+      return false;
     }
     final started = DateTime.now();
     final ptyStarted = await _pty.start(rows: 30, cols: 100);
     if (!ptyStarted) {
       _output.add('ERROR: Native Android PTY is unavailable on this runtime.');
       _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
-      return;
+      return false;
     }
     _ptyOutputSub = _pty.output.listen(_output.add);
     _interactiveInputBuffer = '';
     _output.add('Connected to Android interactive shell: /system/bin/sh\r\n');
     _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
+    return true;
   }
 
   void write(String input) {
