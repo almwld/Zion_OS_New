@@ -218,7 +218,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       itemCount: _lines.length,
                       itemBuilder: (context, index) {
                         final line = _lines[index];
-                        final isPrompt = line.startsWith('zion\;
+                        final isPrompt = line.startsWith('zion\
                         return SelectableText(
                           line,
                           style: TextStyle(
