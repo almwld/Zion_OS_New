@@ -11,6 +11,8 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.StatFs
+import android.net.TrafficStats
+import android.net.wifi.WifiInfo
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,10 +24,14 @@ import java.io.InputStreamReader
 class MainActivity : FlutterActivity() {
     private var terminalProcess: Process? = null
     private var terminalSink: EventChannel.EventSink? = null
+    private var radarSink: EventChannel.EventSink? = null
+    @Volatile private var radarRunning = false
+    private var radarThread: Thread? = null
     companion object {
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val PTY_CHANNEL = "zion.os/pty"
         private const val PTY_EVENTS = "zion.os/pty/events"
+        private const val RADAR_EVENTS = "zion.os/network/radar"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -76,6 +82,102 @@ class MainActivity : FlutterActivity() {
                     terminalSink = null
                 }
             })
+\n        EventChannel(flutterEngine.dartExecutor.binaryMessenger, RADAR_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    radarSink = events
+                    startNetworkRadar()
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    radarSink = null
+                    stopNetworkRadar()
+                }
+            })
+
+    }
+
+    private fun startNetworkRadar() {
+        if (radarRunning) return
+        radarRunning = true
+        radarThread = Thread {
+            var lastRx = TrafficStats.getTotalRxBytes()
+            var lastTx = TrafficStats.getTotalTxBytes()
+            var lastRxPackets = TrafficStats.getTotalRxPackets()
+            var lastTxPackets = TrafficStats.getTotalTxPackets()
+            var lastTime = System.nanoTime()
+            while (radarRunning) {
+                val now = System.nanoTime()
+                val elapsed = ((now - lastTime).coerceAtLeast(1L)) / 1_000_000_000.0
+                val rx = TrafficStats.getTotalRxBytes()
+                val tx = TrafficStats.getTotalTxBytes()
+                val rxPackets = TrafficStats.getTotalRxPackets()
+                val txPackets = TrafficStats.getTotalTxPackets()
+                radarSink?.success(readNetworkRadar(
+                    rx, tx, rxPackets, txPackets,
+                    ((rx - lastRx).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((tx - lastTx).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((rxPackets - lastRxPackets).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong()
+                ))
+                lastRx = rx
+                lastTx = tx
+                lastRxPackets = rxPackets
+                lastTxPackets = txPackets
+                lastTime = now
+                try { Thread.sleep(750) } catch (_: InterruptedException) { break }
+            }
+        }.apply { name = "zion-network-radar"; isDaemon = true; start() }
+    }
+
+    private fun stopNetworkRadar() {
+        radarRunning = false
+        radarThread?.interrupt()
+        radarThread = null
+    }
+
+    private fun readNetworkRadar(
+        rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long,
+        rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long
+    ): Map<String, Any?> {
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivity.activeNetwork
+        val caps = network?.let { connectivity.getNetworkCapabilities(it) }
+        val links = network?.let { connectivity.getLinkProperties(it) }
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val wifiInfo: WifiInfo? = try { wifi?.connectionInfo } catch (_: SecurityException) { null }
+        val transport = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ethernet"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> "vpn"
+            else -> "none"
+        }
+        val address = links?.linkAddresses?.firstOrNull { !it.address.isLoopbackAddress }?.address?.hostAddress
+        return mapOf(
+            "timestampMs" to System.currentTimeMillis(),
+            "connected" to (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true),
+            "validated" to (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true),
+            "metered" to !(caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) ?: false),
+            "vpn" to (caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true),
+            "transport" to transport,
+            "interface" to (links?.interfaceName ?: "unknown"),
+            "ipAddress" to address,
+            "dns" to (links?.dnsServers?.mapNotNull { it.hostAddress } ?: emptyList<String>()),
+            "routes" to (links?.routes?.size ?: 0),
+            "downstreamKbps" to (caps?.linkDownstreamBandwidthKbps ?: 0),
+            "upstreamKbps" to (caps?.linkUpstreamBandwidthKbps ?: 0),
+            "wifiRssi" to if (transport == "wifi") wifiInfo?.rssi else null,
+            "wifiLinkSpeedMbps" to if (transport == "wifi") wifiInfo?.linkSpeed else null,
+            "rxBytes" to rxBytes,
+            "txBytes" to txBytes,
+            "rxPackets" to rxPackets,
+            "txPackets" to txPackets,
+            "rxBytesPerSec" to rxRate,
+            "txBytesPerSec" to txRate,
+            "rxPacketsPerSec" to rxPacketRate,
+            "txPacketsPerSec" to txPacketRate,
+        )
     }
 
     private fun startTerminal(rows: Int, cols: Int): Boolean {
@@ -137,6 +239,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        stopNetworkRadar()
         stopTerminal()
         super.onDestroy()
     }
