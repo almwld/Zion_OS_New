@@ -120,7 +120,7 @@ class _TrafficGraph extends StatelessWidget {
 }
 class _GraphPainter extends CustomPainter {
   final List<double> rx; final List<double> tx; _GraphPainter({required this.rx,required this.tx});
-  @override void paint(Canvas canvas,Size size){ final all=[...rx,...tx]; final maxValue=math.max(1024.0,all.fold<double>(0,math.max));
+  @override void paint(Canvas canvas,Size size){ final all=[...rx,...tx]; var maxValue = 1024.0; for (final value in all) { if (value > maxValue) maxValue = value; }
     void draw(List<double> v,Paint p){if(v.length<2)return;final path=Path();for(var i=0;i<v.length;i++){final x=i*size.width/47;final y=size.height-(v[i]/maxValue)*size.height;if(i==0)path.moveTo(x,y);else path.lineTo(x,y);}canvas.drawPath(path,p);}
     draw(rx,Paint()..color=const Color(0xFF37F29A)..strokeWidth=2..style=PaintingStyle.stroke);draw(tx,Paint()..color=const Color(0xFF58A6FF)..strokeWidth=2..style=PaintingStyle.stroke);
   } @override bool shouldRepaint(covariant _GraphPainter old)=>true;
