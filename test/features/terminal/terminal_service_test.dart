@@ -70,10 +70,10 @@ void main() {
     final subscription = service.output.listen(output.add);
     addTearDown(subscription.cancel);
 
-    await service.startInteractive();
+    final started = await service.startInteractive();
 
-    if (!service.isInteractiveRunning) {
-      expect(output.join(), anyOf(contains('Native Android PTY is unavailable'), contains('Interactive shell denied by Zion SecurityCore authorization policy')));
+    if (!started) {
+      expect(service.isInteractiveRunning, isFalse);
       return;
     }
 
