@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
-import 'cosmic_terminal.dart';
+import 'features/terminal/terminal_screen.dart';
 import 'src/features/dashboard/si_control_panel.dart';
 import 'src/features/wifi/zion_wifi_panel.dart';
 
@@ -93,7 +93,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
 
   Widget _buildDesktopIcons() {
     final icons = [
-      {'icon': Icons.terminal, 'label': 'Terminal', 'color': Colors.green, 'widget': const CosmicTerminal()},
+      {'icon': Icons.terminal, 'label': 'Terminal', 'color': Colors.green, 'widget': const TerminalScreen()},
       {'icon': Icons.wifi, 'label': 'WiFi', 'color': Colors.blue, 'widget': const ZionWifiPanel()},
       {'icon': Icons.psychology, 'label': 'SI Agent', 'color': Colors.purple, 'widget': const SIControlPanel()},
       {'icon': Icons.security, 'label': 'Security', 'color': Colors.red, 'widget': const Center(child: Text('Security Panel', style: TextStyle(color: Colors.white)))},
@@ -209,7 +209,7 @@ class _ZionDesktopState extends State<ZionDesktop> {
         color: Colors.black,
         child: Column(
           children: [
-            ListTile(title: const Text('Terminal', style: TextStyle(color: Colors.white)), onTap: () => _openWindow('Terminal', const CosmicTerminal())),
+            ListTile(title: const Text('Terminal', style: TextStyle(color: Colors.white)), onTap: () => _openWindow('Terminal', const TerminalScreen())),
             ListTile(title: const Text('WiFi Panel', style: TextStyle(color: Colors.white)), onTap: () => _openWindow('WiFi', const ZionWifiPanel())),
             ListTile(title: const Text('SI Agent', style: TextStyle(color: Colors.white)), onTap: () => _openWindow('SI Agent', const SIControlPanel())),
             const Divider(color: Colors.green),
