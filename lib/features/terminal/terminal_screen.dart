@@ -218,7 +218,80 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       itemCount: _lines.length,
                       itemBuilder: (context, index) {
                         final line = _lines[index];
-                        final isPrompt = line.startsWith('zion\\$');
+                        final isPrompt = line.startsWith('zion\;
+                        return SelectableText(
+                          line,
+                          style: TextStyle(
+                            color: isPrompt
+                                ? const Color(0xFF00FF41)
+                                : const Color(0xFFD0D7D2),
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+              color: const Color(0xFF111511),
+              child: Row(
+                children: <Widget>[
+                  IconButton(
+                    icon: const Icon(Icons.keyboard_arrow_up),
+                    onPressed: _historyUp,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.keyboard_arrow_down),
+                    onPressed: _historyDown,
+                  ),
+                  const Text(
+                    'zion\$ ',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: Color(0xFF00FF41),
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _commandController,
+                      enabled: !_busy,
+                      autofocus: true,
+                      style: const TextStyle(
+                        color: Color(0xFF00FF41),
+                        fontFamily: 'monospace',
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText: 'أدخل الأمر...',
+                      ),
+                      onSubmitted: (_) => _run(),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'تنفيذ',
+                    icon: Icon(
+                      _busy ? Icons.hourglass_top : Icons.send,
+                    ),
+                    onPressed: _busy ? null : _run,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+);
                         return SelectableText(
                           line,
                           style: TextStyle(
