@@ -247,13 +247,23 @@ class TerminalService {
   Future<bool> resizeInteractive({required int rows, required int cols}) => _pty.resize(rows: rows, cols: cols);
 
   Future<void> stopInteractive() async {
-    if (_pty.isRunning) {
-      await _pty.stop();
+    if (!_pty.isRunning) {
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = null;
       _interactiveInputBuffer = '';
-      _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: Duration.zero, interactive: true);
+      return;
     }
+    await _pty.stop();
+    await _ptyOutputSub?.cancel();
+    _ptyOutputSub = null;
+    _interactiveInputBuffer = '';
+    _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: Duration.zero, interactive: true);
+  }
+
+  Future<void> dispose() async {
+    await stopInteractive();
+    await _pty.dispose();
+    await _output.close();
   }
 
   Future<void> clearHistory() async {
