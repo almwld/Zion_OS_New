@@ -16,7 +16,7 @@ import '../scheduler/task_scheduler.dart';
 import '../storage/disk_usage_analyzer.dart';
 import '../backup/backup_manager.dart';
 import '../qr/qr_scanner.dart';
-import '../../../cosmic_terminal.dart';
+import '../../../features/terminal/terminal_screen.dart';
 
 class GlassDesktop extends StatefulWidget {
   const GlassDesktop({super.key});
@@ -174,7 +174,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
   Widget _buildDesktopIcons() {
     final icons = [
       // التطبيقات الأساسية
-      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const CosmicTerminal(), 'color': Colors.green},
+      {'icon': Icons.terminal, 'label': 'Terminal', 'widget': const TerminalScreen(), 'color': Colors.green},
       {'icon': Icons.wifi, 'label': 'WiFi', 'widget': const ZionWifiPanel(), 'color': Colors.blue},
       {'icon': Icons.psychology, 'label': 'SI Agent', 'widget': const SIControlPanel(), 'color': Colors.purple},
       {'icon': Icons.folder, 'label': 'Files', 'widget': const ZionFileManager(), 'color': Colors.orange},
@@ -313,7 +313,7 @@ class _GlassDesktopState extends State<GlassDesktop> {
 
   Widget _buildStartMenu() {
     final List<Map<String, dynamic>> menuItems = [
-      {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const CosmicTerminal()},
+      {'icon': Icons.terminal, 'title': 'Terminal', 'widget': const TerminalScreen()},
       {'icon': Icons.wifi, 'title': 'WiFi', 'widget': const ZionWifiPanel()},
       {'icon': Icons.psychology, 'title': 'SI Agent', 'widget': const SIControlPanel()},
       {'icon': Icons.folder, 'title': 'File Manager', 'widget': const ZionFileManager()},
