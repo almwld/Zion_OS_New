@@ -15,10 +15,17 @@ import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.EventChannel
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class MainActivity : FlutterActivity() {
+    private var terminalProcess: Process? = null
+    private var terminalSink: EventChannel.EventSink? = null
     companion object {
         private const val PLATFORM_CHANNEL = "zion.os/platform"
+        private const val PTY_CHANNEL = "zion.os/pty"
+        private const val PTY_EVENTS = "zion.os/pty/events"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -33,6 +40,105 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PTY_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "available" -> result.success(true)
+                    "start" -> {
+                        val rows = call.argument<Int>("rows") ?: 24
+                        val cols = call.argument<Int>("cols") ?: 80
+                        result.success(startTerminal(rows, cols))
+                    }
+                    "write" -> {
+                        val input = call.argument<String>("input") ?: ""
+                        result.success(writeTerminal(input))
+                    }
+                    "resize" -> {
+                        // Process-backed shell does not expose a real PTY resize ioctl.
+                        result.success(false)
+                    }
+                    "stop" -> {
+                        stopTerminal()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, PTY_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    terminalSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    terminalSink = null
+                }
+            })
+    }
+
+    private fun startTerminal(rows: Int, cols: Int): Boolean {
+        if (terminalProcess?.isAlive == true) return true
+        return try {
+            val process = ProcessBuilder("/system/bin/sh", "-i")
+                .redirectErrorStream(true)
+                .apply {
+                    environment()["HOME"] = filesDir.absolutePath
+                    environment()["TERM"] = "xterm-256color"
+                    environment()["PATH"] = "/system/bin:/system/xbin"
+                    environment()["ZION_TERMINAL"] = "1"
+                }
+                .start()
+            terminalProcess = process
+            Thread {
+                try {
+                    BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                        val buffer = CharArray(2048)
+                        var count: Int
+                        while (process.isAlive && reader.read(buffer).also { count = it } != -1) {
+                            if (count > 0) {
+                                terminalSink?.success(String(buffer, 0, count))
+                            }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    terminalSink?.error("PTY_STREAM", t.message, null)
+                } finally {
+                    terminalSink?.success("\r\n[ZION] shell exited\r\n")
+                    terminalProcess = null
+                }
+            }.apply { name = "zion-terminal-reader"; isDaemon = true }.start()
+            true
+        } catch (_: Throwable) {
+            terminalProcess = null
+            false
+        }
+    }
+
+    private fun writeTerminal(input: String): Boolean {
+        val process = terminalProcess ?: return false
+        if (!process.isAlive) return false
+        return try {
+            process.outputStream.write(input.toByteArray(Charsets.UTF_8))
+            process.outputStream.flush()
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun stopTerminal() {
+        try {
+            terminalProcess?.outputStream?.close()
+        } catch (_: Throwable) {}
+        terminalProcess?.destroy()
+        terminalProcess = null
+    }
+
+    override fun onDestroy() {
+        stopTerminal()
+        super.onDestroy()
     }
 
     private fun readBatteryInfo(): Map<String, Any?> {
