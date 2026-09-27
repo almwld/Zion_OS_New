@@ -9,6 +9,16 @@ class ZionPlatformService {
 
   static const ZionPlatformService instance = ZionPlatformService._();
   static const MethodChannel _channel = MethodChannel('zion.os/platform');
+  static const EventChannel _networkRadarChannel = EventChannel('zion.os/network/radar');
+
+  Stream<Map<String, Object?>> networkRadarStream() {
+    return _networkRadarChannel.receiveBroadcastStream().map((event) {
+      if (event is Map) {
+        return event.map((key, value) => MapEntry(key.toString(), value));
+      }
+      return const <String, Object?>{};
+    });
+  }
 
   Future<Map<String, Object?>> getBatteryInfo() async {
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('batteryInfo');
