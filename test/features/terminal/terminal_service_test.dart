@@ -73,7 +73,7 @@ void main() {
     await service.startInteractive();
 
     if (!service.isInteractiveRunning) {
-      expect(output.join(), contains('No POSIX shell'));
+      expect(output.join(), contains('Native Android PTY is unavailable'));
       return;
     }
 
