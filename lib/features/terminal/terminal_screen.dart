@@ -218,7 +218,25 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       itemCount: _lines.length,
                       itemBuilder: (context, index) {
                         final line = _lines[index];
-                        final isPrompt = line.startsWith('zion\
+                        final isPrompt = line.startsWith('zion' + r'$');
+                        return SelectableText(
+                          line,
+                          style: TextStyle(
+                            color: isPrompt
+                                ? const Color(0xFF00FF41)
+                                : const Color(0xFFD0D7D2),
+                            fontFamily: 'monospace',
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
           SafeArea(
             top: false,
             child: Container(
@@ -274,22 +292,20 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 }
 );
-                        return SelectableText(
-                          line,
-                          style: TextStyle(
-                            color: isPrompt
-                                ? const Color(0xFF00FF41)
-                                : const Color(0xFFD0D7D2),
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                            height: 1.35,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
+                    return SelectableText(
+                      line,
+                      style: TextStyle(
+                        color: isPrompt
+                            ? const Color(0xFF00FF41)
+                            : const Color(0xFFD0D7D2),
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
           SafeArea(
