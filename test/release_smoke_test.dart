@@ -1,15 +1,26 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:project_zion/core/services/unified_core_service.dart';
 import 'package:project_zion/features/terminal/native_pty_adapter.dart';
 import 'package:project_zion/features/terminal/terminal_service.dart';
 import 'package:project_zion/screens/lock_screen.dart';
 import 'package:project_zion/security/core/security_core.dart';
+import 'package:project_zion/providers/theme_provider.dart';
 import 'package:project_zion/security/runtime/runtime_integrity.dart';
 
 void main() {
   testWidgets('Lock Screen is constructible', (tester) async {
-    await tester.pumpWidget(const LockScreen());
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<ThemeProvider>(create: (_) => ThemeProvider()),
+          Provider<SecurityCore>.value(value: SecurityCore()),
+        ],
+        child: const MaterialApp(home: LockScreen()),
+      ),
+    );
     expect(find.byType(LockScreen), findsOneWidget);
   });
 
