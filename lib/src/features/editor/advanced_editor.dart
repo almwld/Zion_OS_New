@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -25,12 +26,15 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
   bool _showLineNumbers = true;
   bool _autoSave = true;
   String _currentTheme = 'dark';
+  late TextEditingController _editorController;
 
   @override
   void initState() {
     super.initState();
+    _editorController = TextEditingController();
     _addNewTab();
     _tabController = TabController(length: _tabs.length, vsync: this);
+    _syncEditorController();
     _loadSettings();
   }
 
@@ -84,6 +88,18 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
       _currentTabIndex = index;
       _tabController.animateTo(index);
     });
+    _syncEditorController();
+  }
+
+  void _syncEditorController() {
+    if (_tabs.isEmpty) return;
+    final content = _tabs[_currentTabIndex].content;
+    if (_editorController.text != content) {
+      _editorController.value = TextEditingValue(
+        text: content,
+        selection: TextSelection.collapsed(offset: content.length),
+      );
+    }
   }
 
   void _updateContent(String content) {
@@ -127,10 +143,48 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
   }
 
   Future<void> _openFile() async {
-    // محاكاة فتح ملف (سيتم تحسينه لاحقاً)
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Open file feature coming soon')),
+    final pathController = TextEditingController();
+    final path = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Open File'),
+        backgroundColor: Colors.grey.shade900,
+        content: TextField(
+          controller: pathController,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'File path',
+            hintText: '/storage/emulated/0/Download/file.txt',
+            labelStyle: TextStyle(color: Colors.cyan),
+            hintStyle: TextStyle(color: Colors.grey),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, pathController.text.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, pathController.text.trim()), child: const Text('Open')),
+        ],
+      ),
     );
+    pathController.dispose();
+    if (path == null || path.isEmpty) return;
+    try {
+      final file = File(path);
+      if (!await file.exists()) throw Exception('File not found');
+      final content = await file.readAsString();
+      setState(() {
+        final tab = _tabs[_currentTabIndex];
+        tab.content = content;
+        tab.filePath = file.path;
+        tab.title = file.uri.pathSegments.isNotEmpty ? file.uri.pathSegments.last : file.path;
+        tab.isModified = false;
+      });
+      _syncEditorController();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unable to open file: $e')));
+    }
   }
 
   void _showSaveDialog(VoidCallback onConfirm) {
@@ -155,24 +209,42 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
     );
   }
 
-  void _cut() {
-    final text = _tabs[_currentTabIndex].content;
-    // محاكاة القص
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Cut (Ctrl+X)')),
+  Future<void> _cut() async {
+    final selected = _editorController.selection.textInside(_editorController.text);
+    if (selected.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: selected));
+    final value = _editorController.value;
+    final start = value.selection.start;
+    final end = value.selection.end;
+    final text = value.text.replaceRange(start, end, '');
+    _editorController.value = value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: start),
     );
+    _updateContent(text);
   }
 
-  void _copy() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copy (Ctrl+C)')),
-    );
+  Future<void> _copy() async {
+    final selected = _editorController.selection.textInside(_editorController.text);
+    if (selected.isNotEmpty) {
+      await Clipboard.setData(ClipboardData(text: selected));
+    }
   }
 
-  void _paste() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Paste (Ctrl+V)')),
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final pasted = data?.text;
+    if (pasted == null || pasted.isEmpty) return;
+    final value = _editorController.value;
+    final start = value.selection.start.clamp(0, value.text.length);
+    final end = value.selection.end.clamp(start, value.text.length);
+    final text = value.text.replaceRange(start, end, pasted);
+    final cursor = start + pasted.length;
+    _editorController.value = value.copyWith(
+      text: text,
+      selection: TextSelection.collapsed(offset: cursor),
     );
+    _updateContent(text);
   }
 
   void _findAndReplace() {
@@ -272,6 +344,13 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
   }
 
   @override
+  void dispose() {
+    _editorController.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = _themeManager.currentTheme;
     final currentTab = _tabs[_currentTabIndex];
@@ -292,10 +371,7 @@ class _AdvancedEditorState extends State<AdvancedEditor> with SingleTickerProvid
                 Expanded(
                   child: _wordWrap
                       ? TextField(
-                          controller: TextEditingController(text: currentTab.content)
-                            ..addListener(() {
-                              _updateContent(TextEditingController(text: currentTab.content).text);
-                            }),
+                          controller: _editorController,
                           maxLines: null,
                           expands: true,
                           style: TextStyle(color: Colors.white, fontFamily: _fontFamily, fontSize: _fontSize),
