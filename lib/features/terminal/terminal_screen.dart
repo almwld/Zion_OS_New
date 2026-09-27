@@ -219,24 +219,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       itemBuilder: (context, index) {
                         final line = _lines[index];
                         final isPrompt = line.startsWith('zion\
-                        return SelectableText(
-                          line,
-                          style: TextStyle(
-                            color: isPrompt
-                                ? const Color(0xFF00FF41)
-                                : const Color(0xFFD0D7D2),
-                            fontFamily: 'monospace',
-                            fontSize: 13,
-                            height: 1.35,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
           SafeArea(
             top: false,
             child: Container(
