@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'arsenal_drawer.dart';
-import 'cosmic_terminal.dart';
+import 'features/terminal/terminal_screen.dart';
 
 class ZionHome extends StatefulWidget {
   const ZionHome({super.key});
@@ -98,7 +98,7 @@ class _ZionHomeState extends State<ZionHome> with TickerProviderStateMixin {
   }
 
   void _openTerminal(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => const CosmicTerminal()));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const TerminalScreen()));
   }
 }
 
