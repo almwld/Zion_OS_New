@@ -141,7 +141,7 @@ class TerminalService {
     if (value == 'shell-status') {
       final shell = await _findShell();
       final ptyAvailable = await _pty.isAvailable();
-      final result = TerminalResult(command: value, stdout: shell == null ? 'Shell: UNAVAILABLE\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}' : 'Shell: AVAILABLE\nPath: $shell\nNative PTY: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}\nInteractive: $isInteractiveRunning', stderr: '', exitCode: shell == null ? 127 : 0, duration: Duration.zero, shell: shell ?? 'unavailable');
+      final result = TerminalResult(command: value, stdout: shell == null ? 'Shell: UNAVAILABLE\nInteractive shell: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}' : 'Shell: AVAILABLE\nPath: $shell\nInteractive shell: ${ptyAvailable ? 'AVAILABLE' : 'UNAVAILABLE'}\nInteractive: $isInteractiveRunning', stderr: '', exitCode: shell == null ? 127 : 0, duration: Duration.zero, shell: shell ?? 'unavailable');
       _audit(command: value, outcome: result.succeeded ? 'success' : 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
@@ -190,7 +190,7 @@ class TerminalService {
     }
     _ptyOutputSub = _pty.output.listen(_output.add);
     _interactiveInputBuffer = '';
-    _output.add('Connected to native Android PTY: /system/bin/sh\r\n');
+    _output.add('Connected to Android interactive shell: /system/bin/sh\r\n');
     _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
   }
 
