@@ -56,6 +56,8 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Run Flutter tests
+        run: flutter test --reporter expanded
       - name: Generate app icons
         run: flutter pub run flutter_launcher_icons
 
