@@ -20,6 +20,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
   int _historyIndex = -1;
   bool _interactive = false;
   bool _busy = false;
+  int _lastRows = 0;
+  int _lastCols = 0;
 
   TerminalService get _service => context.read<TerminalService>();
 
@@ -118,6 +120,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
   }
 
+  void _syncPtySize(Size size) {
+    if (!_interactive || size.width <= 0 || size.height <= 0) return;
+    final cols = (size.width / 8.0).floor().clamp(20, 240);
+    final rows = (size.height / 18.0).floor().clamp(4, 120);
+    if (rows == _lastRows && cols == _lastCols) return;
+    _lastRows = rows;
+    _lastCols = cols;
+    unawaited(_service.resizeInteractive(rows: rows, cols: cols));
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -131,6 +143,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   @override
   void dispose() {
+    unawaited(_service.stopInteractive());
     _outputSubscription?.cancel();
     _commandController.dispose();
     _scrollController.dispose();
@@ -189,7 +202,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
             ),
           ),
           Expanded(
-            child: Container(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _syncPtySize(Size(
+                  constraints.maxWidth - 24,
+                  constraints.maxHeight - 24,
+                ));
+                return Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               color: const Color(0xFF090B0A),
@@ -214,6 +233,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   },
                 ),
               ),
+            ),;
+              },
             ),
           ),
           SafeArea(
