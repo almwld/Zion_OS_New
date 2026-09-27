@@ -21,6 +21,8 @@ class NativePtyAdapter {
       return await _channel.invokeMethod<bool>('available') ?? false;
     } on PlatformException {
       return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 
@@ -50,6 +52,11 @@ class NativePtyAdapter {
       _subscription = null;
       _running = false;
       return false;
+    } on MissingPluginException {
+      await _subscription?.cancel();
+      _subscription = null;
+      _running = false;
+      return false;
     }
   }
 
@@ -58,6 +65,8 @@ class NativePtyAdapter {
     try {
       await _channel.invokeMethod<void>('write', <String, Object>{'input': input});
     } on PlatformException {
+      _running = false;
+    } on MissingPluginException {
       _running = false;
     }
   }
@@ -71,6 +80,8 @@ class NativePtyAdapter {
           ) ??
           false;
     } on PlatformException {
+      return false;
+    } on MissingPluginException {
       return false;
     }
   }
