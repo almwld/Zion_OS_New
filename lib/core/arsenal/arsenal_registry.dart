@@ -83,7 +83,7 @@ class ArsenalRegistry {
     ArsenalTool(id: 'terminal.shell', name: 'Native Terminal', category: ArsenalCategory.tools, availability: ArsenalAvailability.available, command: '/system/bin/sh'),
     ArsenalTool(id: 'packages.zion-pkg', name: 'Zion Package Manager', category: ArsenalCategory.system, availability: ArsenalAvailability.notConfigured, command: 'zion-pkg', reason: 'Zion userland bootstrap is not installed.'),
     ArsenalTool(id: 'linux.proot', name: 'PRoot', category: ArsenalCategory.system, availability: ArsenalAvailability.notConfigured, command: 'proot', reason: 'Native Zion PRoot runtime is not installed.'),
-    ArsenalTool(id: 'ssh.client', name: 'SSH Client', category: ArsenalCategory.network, availability: notConfigured, command: 'ssh', reason: 'SSH userland executable is not installed.'),
+    ArsenalTool(id: 'ssh.client', name: 'SSH Client', category: ArsenalCategory.network, availability: ArsenalAvailability.notConfigured, command: 'ssh', reason: 'SSH userland executable is not installed.'),
     ArsenalTool(id: 'ssh.sftp', name: 'SFTP', category: ArsenalCategory.network, availability: ArsenalAvailability.notConfigured, command: 'sftp', reason: 'SSH userland executable is not installed.'),
     ArsenalTool(id: 'storage.setup', name: 'Storage Setup', category: ArsenalCategory.utility, availability: ArsenalAvailability.permissionRequired, reason: 'Public storage access requires Android runtime authorization.'),
     ArsenalTool(id: 'forensics.hash', name: 'File Hashing', category: ArsenalCategory.forensics, availability: ArsenalAvailability.available),
