@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64">
+  <defs>
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00E5FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00838F;stop-opacity:0.8" />
+    </linearGradient>
+  </defs>
+  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" fill="url(#cloudGrad)" opacity="0.15"/>
+  <line x1="8" y1="21" x2="8" y2="23" stroke="#00E5FF" stroke-width="1.5"/>
+  <line x1="12" y1="20" x2="12" y2="22" stroke="#00E5FF" stroke-width="1.5"/>
+  <line x1="16" y1="21" x2="16" y2="23" stroke="#00E5FF" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="eyeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00BCD4;stop-opacity:0.15" />
+      <stop offset="50%" style="stop-color:#00BCD4;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#00BCD4;stop-opacity:0.02" />
+    </linearGradient>
+    <linearGradient id="pupilGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00BCD4;stop-opacity:0.4" />
+      <stop offset="100%" style="stop-color:#00BCD4;stop-opacity:0.1" />
+    </linearGradient>
+  </defs>
+
+  <!-- العين الخارجية -->
+  <ellipse cx="100" cy="100" rx="70" ry="55" fill="none" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  
+  <!-- العين الداخلية -->
+  <ellipse cx="100" cy="100" rx="55" ry="40" fill="url(#eyeGrad)" stroke="#00BCD4" stroke-width="1" stroke-opacity="0.2"/>
+  
+  <!-- بؤبؤ العين -->
+  <ellipse cx="100" cy="100" rx="20" ry="30" fill="url(#pupilGrad)" stroke="#00BCD4" stroke-width="1" stroke-opacity="0.4"/>
+  
+  <!-- مركز البؤبؤ -->
+  <ellipse cx="100" cy="100" rx="8" ry="12" fill="#00BCD4" fill-opacity="0.3"/>
+  
+  <!-- الرموش العلوية (شكل عين حورس) -->
+  <line x1="30" y1="80" x2="10" y2="70" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="35" y1="70" x2="15" y2="55" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="45" y1="62" x2="28" y2="45" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="58" y1="58" x2="45" y2="38" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  
+  <!-- الرموش السفلية -->
+  <line x1="30" y1="120" x2="10" y2="130" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="35" y1="130" x2="15" y2="145" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="45" y1="138" x2="28" y2="155" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  <line x1="58" y1="142" x2="45" y2="162" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.3"/>
+  
+  <!-- علامات الحاجب (زاوية) -->
+  <line x1="60" y1="50" x2="80" y2="55" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  <line x1="60" y1="150" x2="80" y2="145" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  
+  <!-- خطوط زخرفية على الجوانب -->
+  <line x1="170" y1="80" x2="190" y2="70" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  <line x1="170" y1="70" x2="190" y2="55" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  <line x1="170" y1="120" x2="190" y2="130" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  <line x1="170" y1="130" x2="190" y2="145" stroke="#00BCD4" stroke-width="1.5" stroke-opacity="0.25"/>
+  
+  <!-- دائرة خارجية منقطة -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#00BCD4" stroke-width="0.8" stroke-dasharray="4,6" stroke-opacity="0.15"/>
+  
+  <!-- مثلثات زينة -->
+  <polygon points="100,10 95,20 105,20" fill="#00BCD4" fill-opacity="0.15"/>
+  <polygon points="100,190 95,180 105,180" fill="#00BCD4" fill-opacity="0.15"/>
+  <polygon points="10,100 20,95 20,105" fill="#00BCD4" fill-opacity="0.15"/>
+  <polygon points="190,100 180,95 180,105" fill="#00BCD4" fill-opacity="0.15"/>
+</svg>

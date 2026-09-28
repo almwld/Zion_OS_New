@@ -1,0 +1,44 @@
+; Cocktail of Sex - Project Configuration
+[application]
+config/name="Cocktail of Sex"
+config/description="Ultimate Sexual Simulation Platform"
+run/main_scene="res://scenes/main_scene.tscn"
+config/icon="res://icon.svg"
+config/version="1.0.0"
+
+[autoload]
+GameManager="*res://scripts/autoload/game_manager.gd"
+SoundEngine="*res://scripts/autoload/sound_engine.gd"
+SaveLoadSystem="*res://scripts/autoload/save_load_system.gd"
+RelationshipManager="*res://scripts/systems/relationship_manager.gd"
+WorldSimulation="*res://scripts/systems/world_simulation.gd"
+PregnancySystem="*res://scripts/systems/pregnancy_system.gd"
+FluidSimulation="*res://scripts/core/fluids_simulation.gd"
+
+[display]
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/mode=2
+window/stretch/mode="canvas_items"
+
+[rendering]
+renderer/rendering_method="vulkan"
+environment/defaults/default_clear_color=Color(0.02, 0.02, 0.05, 1.0)
+rendering/anti_aliasing/quality/msaa_3d=4
+
+[input]
+thrust_deeper={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":87)]}
+thrust_shallower={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":83)]}
+thrust_faster={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":68)]}
+thrust_slower={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":65)]}
+position_missionary={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":49)]}
+position_doggy={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":50)]}
+position_cowgirl={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":51)]}
+position_anal={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":52)]}
+position_69={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":53)]}
+position_double={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":54)]}
+toggle_anal={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":81)]}
+stimulate_clitoris={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":69)]}
+stimulate_anus={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":82)]}
+spank={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":32)]}
+kiss={"deadzone": 0.5, "events": [Object(InputEventKey,"resource":null,"keycode":70)]}
