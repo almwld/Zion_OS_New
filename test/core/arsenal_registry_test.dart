@@ -27,7 +27,7 @@ void main() {
   });
 
   test('runtime resolver marks missing absolute executables as not configured', () async {
-    const registry = ArsenalRegistry(tools: <ArsenalTool>[
+    final registry = ArsenalRegistry(tools: <ArsenalTool>[
       ArsenalTool(
         id: 'test.missing',
         name: 'Missing',
