@@ -14,6 +14,13 @@ class ThemeProvider extends ChangeNotifier {
   );
 
   bool _isDarkMode = true;
+  bool _cmatrixEnabled = true;
+  bool _cmatrixUseMusnad = true;
+  bool _cmatrixUseArabic = false;
+  Color _cmatrixColor = const Color(0xFF00FF41);
+  double _cmatrixOpacity = 0.15;
+  double _cmatrixSpeed = 1.0;
+  double _cmatrixFontSize = 18.0;
   // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.
   Color _primaryColor = const Color(0xFF00A896);
   double _fontScale = 1.0;
@@ -23,6 +30,13 @@ class ThemeProvider extends ChangeNotifier {
   bool _isReady = false;
 
   bool get isDarkMode => _isDarkMode;
+  bool get cmatrixEnabled => _cmatrixEnabled;
+  bool get cmatrixUseMusnad => _cmatrixUseMusnad;
+  bool get cmatrixUseArabic => _cmatrixUseArabic;
+  Color get cmatrixColor => _cmatrixColor;
+  double get cmatrixOpacity => _cmatrixOpacity;
+  double get cmatrixSpeed => _cmatrixSpeed;
+  double get cmatrixFontSize => _cmatrixFontSize;
   Color get primaryColor => _primaryColor;
   double get fontScale => _fontScale;
   double get iconSize => _iconSize;
@@ -39,6 +53,16 @@ class ThemeProvider extends ChangeNotifier {
       _isDarkMode = prefs.getBool('dark_mode') ?? true;
       _fontScale = prefs.getDouble('font_scale') ?? 1.0;
       _iconSize = prefs.getDouble('icon_size') ?? 58.0;
+      _cmatrixEnabled = prefs.getBool('cmatrix_enabled') ?? true;
+      _cmatrixUseMusnad = prefs.getBool('cmatrix_use_musnad') ?? true;
+      _cmatrixUseArabic = prefs.getBool('cmatrix_use_arabic') ?? false;
+      final cmatrixColor = prefs.getString('cmatrix_color');
+      if (cmatrixColor != null) {
+        try { _cmatrixColor = Color(int.parse(cmatrixColor)); } catch (_) {}
+      }
+      _cmatrixOpacity = prefs.getDouble('cmatrix_opacity') ?? 0.15;
+      _cmatrixSpeed = prefs.getDouble('cmatrix_speed') ?? 1.0;
+      _cmatrixFontSize = prefs.getDouble('cmatrix_font_size') ?? 18.0;
 
       // Secure storage is optional for first launch. A device/keystore problem
       // must never prevent the Flutter UI from being rendered.
@@ -125,6 +149,58 @@ class ThemeProvider extends ChangeNotifier {
   bool validatePin(String pin) {
     if (!hasPin || !RegExp(r'^\d{4}$').hasMatch(pin)) return false;
     return _hashPin(pin, _pinSalt!) == _pinHash;
+  }
+
+  Future<void> setCMatrixEnabled(bool value) async {
+    _cmatrixEnabled = value;
+    try { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('cmatrix_enabled', value); } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixUseMusnad(bool value) async {
+    _cmatrixUseMusnad = value;
+    if (value) _cmatrixUseArabic = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('cmatrix_use_musnad', _cmatrixUseMusnad);
+      await prefs.setBool('cmatrix_use_arabic', _cmatrixUseArabic);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixUseArabic(bool value) async {
+    _cmatrixUseArabic = value;
+    if (value) _cmatrixUseMusnad = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('cmatrix_use_arabic', _cmatrixUseArabic);
+      await prefs.setBool('cmatrix_use_musnad', _cmatrixUseMusnad);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixColor(Color value) async {
+    _cmatrixColor = value;
+    try { final prefs = await SharedPreferences.getInstance(); await prefs.setString('cmatrix_color', value.value.toString()); } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixOpacity(double value) async {
+    _cmatrixOpacity = value.clamp(0.05, 0.5);
+    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_opacity', _cmatrixOpacity); } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixSpeed(double value) async {
+    _cmatrixSpeed = value.clamp(0.1, 3.0);
+    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_speed', _cmatrixSpeed); } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setCMatrixFontSize(double value) async {
+    _cmatrixFontSize = value.clamp(12.0, 32.0);
+    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_font_size', _cmatrixFontSize); } catch (_) {}
+    notifyListeners();
   }
 
   Future<void> toggleTheme() async {
