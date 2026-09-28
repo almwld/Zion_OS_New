@@ -126,7 +126,9 @@ class ArsenalRuntimeResolver {
     final command = tool.command?.trim();
     if (command == null || command.isEmpty) return tool;
     final candidates = <String>[];
-    if (command.startsWith('/')) {
+    if (tool.id == 'terminal.shell') {
+      candidates.addAll(<String>['/system/bin/sh', '/bin/sh', 'sh']);
+    } else if (command.startsWith('/')) {
       candidates.add(command);
     } else {
       candidates.add('/data/data/com.zion.os/files/usr/bin/$command');
@@ -148,7 +150,7 @@ class ArsenalRuntimeResolver {
     }
     return tool.copyWith(
       availability: ArsenalAvailability.notConfigured,
-      reason: 'Executable is not installed or not reachable from the Zion runtime.',
+      reason: 'Executable is not present or not reachable from the Zion runtime.',
     );
   }
 }
