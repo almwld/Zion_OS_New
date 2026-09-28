@@ -33,13 +33,13 @@ import androidx.core.content.ContextCompat
 import android.provider.Settings
 import java.util.Locale
 import androidx.core.app.ActivityCompat
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
 import java.util.concurrent.ConcurrentHashMap
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private external fun nativePtyAvailable(): Boolean
     private external fun nativeStartPty(rows: Int, cols: Int, shell: String?): Int
     private external fun nativeReadPty(handle: Int): ByteArray?
