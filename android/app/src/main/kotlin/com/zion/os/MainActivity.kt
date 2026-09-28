@@ -10,6 +10,8 @@ import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.os.StatFs
 import android.net.TrafficStats
 import android.net.wifi.WifiInfo
@@ -55,6 +57,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     private lateinit var zionApiChannel: ZionApiChannel
+    private lateinit var zionPkgChannel: MethodChannel
 
     companion object {
         init { System.loadLibrary("zionpty") }
@@ -62,12 +65,16 @@ class MainActivity : FlutterFragmentActivity() {
         private const val PTY_CHANNEL = "zion.os/pty"
         private const val PTY_EVENTS = "zion.os/pty/events"
         private const val RADAR_EVENTS = "zion.os/network/radar"
+        private const val ZION_PKG_ACTION = "com.zion.os.ZION_PKG"
+        private const val ZION_PKG_CHANNEL = "zion.os/pkg-external"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
+        zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
         handleZionApiIntent(intent)
+        Handler(Looper.getMainLooper()).postDelayed({ handleZionPkgIntent(intent) }, 500L)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLATFORM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -136,11 +143,33 @@ class MainActivity : FlutterFragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (::zionApiChannel.isInitialized) handleZionApiIntent(intent)
+        if (::zionPkgChannel.isInitialized) handleZionPkgIntent(intent)
     }
 
     private fun handleZionApiIntent(intent: Intent) {
         if (intent.action == "com.zion.os.ZION_API" && ::zionApiChannel.isInitialized) {
             zionApiChannel.handleExternalIntent(intent)
+        }
+    }
+
+    private fun handleZionPkgIntent(intent: Intent) {
+        if (intent.action != ZION_PKG_ACTION || !::zionPkgChannel.isInitialized) return
+        val token = intent.getStringExtra("token") ?: return
+        val expected = try {
+            java.io.File(filesDir.parentFile, "etc/zion-pkg.token").readText().trim()
+        } catch (_: Throwable) {
+            return
+        }
+        if (token.isEmpty() || !java.security.MessageDigest.isEqual(token.toByteArray(), expected.toByteArray())) return
+        val requestId = intent.getStringExtra("requestId") ?: return
+        if (!requestId.matches(Regex("^[A-Za-z0-9_-]{1,80}$"))) return
+        val command = intent.getStringExtra("command") ?: "help"
+        val value = intent.getStringExtra("value") ?: ""
+        Handler(Looper.getMainLooper()).post {
+            zionPkgChannel.invokeMethod(
+                "execute",
+                mapOf("requestId" to requestId, "command" to command, "value" to value)
+            )
         }
     }
 

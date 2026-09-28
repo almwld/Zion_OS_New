@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import '../../security/core/security_core.dart';
@@ -65,6 +66,40 @@ class ZionBootstrap {
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','usr','usr/bin','usr/sbin','usr/lib','usr/share','usr/etc','usr/var/lib/zion-pkg','usr/var/cache','usr/tmp','tmp','etc'])await Directory(root+'/'+p).create(recursive:true);}
   static final Map<String, String> _zionApiScripts = {
+    'zion-pkg': r'''#!/system/bin/sh
+set -eu
+PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
+TOKEN_FILE="/data/data/com.zion.os/files/etc/zion-pkg.token"
+RESULTS="$PREFIX/tmp/zion-pkg-results"
+mkdir -p "$RESULTS"
+[ -r "$TOKEN_FILE" ] || { echo 'UNAVAILABLE: zion-pkg token is not configured.'; exit 1; }
+[ "$#" -le 2 ] || { echo 'Usage: zion-pkg <command> [argument]'; exit 2; }
+command="${1:-help}"
+value="${2:-}"
+id="zion-pkg-$(date +%s 2>/dev/null)-$"
+out="$RESULTS/$id.out"
+status="$RESULTS/$id.status"
+rm -f "$out" "$status"
+am start -n com.zion.os/.MainActivity -a com.zion.os.ZION_PKG --es command "$command" --es value "$value" --es requestId "$id" --es token "$(cat "$TOKEN_FILE")" >/dev/null 2>&1 || {
+  echo 'UNAVAILABLE: unable to start Zion package bridge.'
+  exit 1
+}
+i=0
+while [ "$i" -lt 200 ]; do
+  if [ -s "$out" ] && [ -s "$status" ]; then
+    cat "$out"
+    rc="$(cat "$status")"
+    rm -f "$out" "$status"
+    exit "${rc:-1}"
+  fi
+  i=$((i+1))
+  sleep 0.05
+done
+echo 'UNAVAILABLE: Zion package bridge timeout.'
+rm -f "$out" "$status"
+exit 1
+''',
+
     'zion-api-dispatch': r'''#!/system/bin/sh
 set -eu
 PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
@@ -203,6 +238,13 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     final h=File(home+'/.zion_history');if(!await h.exists())await h.writeAsString('');
     final hosts=File(prefix+'/etc/hosts');if(!await hosts.exists())await hosts.writeAsString('127.0.0.1 localhost\n::1 localhost\n');
     final db=File(prefix+'/var/lib/zion-pkg/installed.json');if(!await db.exists())await db.writeAsString('[]');
+    final tokenFile=File(base+'/etc/zion-pkg.token');
+    if(!await tokenFile.exists()){
+      final random=Random.secure();
+      final token=List<String>.generate(32,(_)=>random.nextInt(256).toRadixString(16).padLeft(2,'0')).join();
+      await tokenFile.parent.create(recursive:true);
+      await tokenFile.writeAsString(token,flush:true);
+    }
     await _installZionApiScripts();
   }
   static Future<void> _activate(Directory staging) async {
