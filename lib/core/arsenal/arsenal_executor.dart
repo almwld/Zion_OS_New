@@ -19,12 +19,14 @@ class ArsenalExecutor {
       : registry = registry ?? ArsenalRegistry(),
         resolver = resolver ?? const ArsenalRuntimeResolver(),
         securityCore = securityCore ?? SecurityCore(),
-        terminal = terminalService ?? TerminalService(securityCore ?? SecurityCore());
+        _terminalService = terminalService;
+
+  final TerminalService? _terminalService;
 
   final ArsenalRegistry registry;
   final ArsenalRuntimeResolver resolver;
   final SecurityCore securityCore;
-  final TerminalService terminal;
+  late final TerminalService terminal = _terminalService ?? TerminalService(securityCore);
 
   Future<ArsenalRegistry> refreshAvailability() => resolver.resolve(registry);
 
