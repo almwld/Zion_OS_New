@@ -44,7 +44,7 @@ class SecurityResourceGuard {
     required String executable,
     List<String> arguments = const <String>[],
     String? workingDirectory,
-    AuthorizationScope scope = AuthorizationScope.local,
+    required AuthorizationScope scope,
     bool requiresSimulation = false,
   }) async {
     if (!security.canExecute(
