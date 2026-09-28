@@ -70,7 +70,17 @@ static void prepare_environment(void) {
     setenv("ZION_TERMINAL", "1", 1);
 }
 
+static int is_allowed_shell(const char *shell) {
+    if (shell == NULL || shell[0] == '\\0') return 0;
+    return strcmp(shell, "/system/bin/sh") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
+}
+
 static void exec_best_shell(const char *configured_shell) {
+    if (!is_allowed_shell(configured_shell)) configured_shell = NULL;
     const char *configured = configured_shell;
     const char *candidates[] = {
         configured,
