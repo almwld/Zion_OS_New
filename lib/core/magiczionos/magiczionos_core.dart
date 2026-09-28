@@ -49,7 +49,7 @@ class Magiczionos {
   Future<ExecutionResult> execute(String command, {Duration? timeout, String? workingDirectory}) async {
     final strategy = _active;
     if (strategy == null) {
-      const result = ExecutionResult.failure('لا توجد استراتيجية متاحة', 'none');
+      final result = ExecutionResult.failure('لا توجد استراتيجية متاحة', 'none');
       _audit?.log(action: 'magiczionos.execute', actor: 'magiczionos', outcome: 'unavailable', target: 'none');
       return result;
     }
