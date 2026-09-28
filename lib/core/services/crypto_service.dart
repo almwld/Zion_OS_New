@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 
@@ -131,7 +132,32 @@ class CryptoService {
   // ============================================
   
   Future<String> hashFile(String path, String algorithm) async {
-    // يمكن إضافة تنفيذ حقيقي لاحقاً
-    return 'File hashing not implemented yet';
+    final normalized = algorithm.trim().toLowerCase().replaceAll('-', '');
+    final file = File(path);
+    if (!await file.exists()) {
+      throw FileSystemException('File not found', path);
+    }
+
+    Hash selectHash(String name) {
+      switch (name) {
+        case 'md5':
+          return md5;
+        case 'sha1':
+          return sha1;
+        case 'sha256':
+          return sha256;
+        case 'sha512':
+          return sha512;
+        default:
+          throw ArgumentError.value(
+            algorithm,
+            'algorithm',
+            'Supported algorithms: md5, sha1, sha256, sha512',
+          );
+      }
+    }
+
+    final digest = await selectHash(normalized).bind(file.openRead());
+    return digest.toString();
   }
 }
