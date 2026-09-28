@@ -7,12 +7,21 @@ import 'package:http/http.dart' as http;
 import 'zion_pkg.dart';
 
 class ZionRepository {
-  ZionRepository({this.repoUrl = 'https://repo.zion.os/', this.assetRoot = 'assets/repository/', http.Client Function()? clientFactory})
-      : _clientFactory = clientFactory ?? http.Client.new;
+  ZionRepository({
+    this.repoUrl = 'https://repo.zion.os/',
+    this.assetRoot = 'assets/repository/',
+    http.Client Function()? clientFactory,
+    Future<String> Function(String path)? assetLoader,
+    Future<List<int>> Function(String path)? packageLoader,
+  }) : _clientFactory = clientFactory ?? http.Client.new,
+       _assetLoader = assetLoader ?? rootBundle.loadString,
+       _packageLoader = packageLoader ?? _loadAssetBytes;
 
   final String repoUrl;
   final String assetRoot;
   final http.Client Function() _clientFactory;
+  final Future<String> Function(String path) _assetLoader;
+  final Future<List<int>> Function(String path) _packageLoader;
 
   String getRepoUrl() => repoUrl;
 
@@ -48,26 +57,29 @@ class ZionRepository {
 
   Future<Map<String, dynamic>> _readIndex() async {
     try {
-      final raw = await rootBundle.loadString(assetRoot + 'Packages.json');
+      final raw = await _assetLoader(assetRoot + 'Packages.json');
       final decoded = jsonDecode(raw);
       if (decoded is Map<String, dynamic>) return decoded;
       throw const FormatException('Invalid Zion repository index.');
     } on FlutterError {
-      final client = _clientFactory();
-      try {
-        final response = await client.get(Uri.parse(repoUrl + 'Packages.json'));
-        if (response.statusCode != 200) throw HttpException('Repository index HTTP ' + response.statusCode.toString());
-        final decoded = jsonDecode(response.body);
-        if (decoded is! Map) throw const FormatException('Invalid Zion repository index.');
-        return Map<String, dynamic>.from(decoded);
-      } finally { client.close(); }
+      return _readRemoteIndex();
     }
+  }
+
+  Future<Map<String, dynamic>> _readRemoteIndex() async {
+    final client = _clientFactory();
+    try {
+      final response = await client.get(Uri.parse(repoUrl + 'Packages.json'));
+      if (response.statusCode != 200) throw HttpException('Repository index HTTP ' + response.statusCode.toString());
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) throw const FormatException('Invalid Zion repository index.');
+      return Map<String, dynamic>.from(decoded);
+    } finally { client.close(); }
   }
 
   Future<List<int>> _readPackage(String relative) async {
     try {
-      final data = await rootBundle.load(assetRoot + relative);
-      return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      return await _packageLoader(assetRoot + relative);
     } on FlutterError {
       final client = _clientFactory();
       try {
@@ -76,5 +88,10 @@ class ZionRepository {
         return response.bodyBytes;
       } finally { client.close(); }
     }
+  }
+
+  static Future<List<int>> _loadAssetBytes(String path) async {
+    final data = await rootBundle.load(path);
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
   }
 }

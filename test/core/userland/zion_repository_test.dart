@@ -3,14 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../lib/core/userland/zion_pkg.dart';
 import '../../../lib/core/userland/zion_repository.dart';
 
-class _Repo extends ZionRepository {
-  _Repo() : super(assetRoot: 'assets/repository/');
-}
+ZionRepository _repo() => ZionRepository(
+  assetLoader: (_) async => '{"format":"zion-repository-v1","packages":[{"name":"hello","version":"1.0","architecture":"arm64","path":"hello/hello_1.0_arm64.deb","sha256":"22861314d69bc0afd79a9c89625005022b5f95415b3324ee5d9d01381bfe57f1","size":816}]}',
+);
 
 void main() {
   test('repository index contains hello with SHA-256', () async {
-    final repo = _Repo();
-    final info = await repo.search('hello');
+    final info = await _repo().search('hello');
     expect(info, isNotNull);
     expect(info!.version, '1.0');
     expect(info.architecture, 'arm64');
@@ -18,8 +17,7 @@ void main() {
   });
 
   test('invalid package names are rejected before repository access', () async {
-    final pkg = ZionPkg(repository: _Repo());
-    final result = await pkg.installByName('../hello');
+    final result = await ZionPkg(repository: _repo()).installByName('../hello');
     expect(result.success, isFalse);
   });
 
