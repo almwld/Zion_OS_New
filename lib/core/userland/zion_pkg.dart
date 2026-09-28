@@ -53,10 +53,20 @@ class ZionPkg {
   }
 
   Future<PackageStatus> getStatus(String n) async {
-    if (await findPackage(n) != null) return PackageStatus.installed;
-    if (await File(prefix + '/bin/' + n).exists()) return PackageStatus.available;
-    final w = await _which(n);
-    return w == null ? PackageStatus.notInstalled : PackageStatus.system;
+    PackageStatus status;
+    if (await findPackage(n) != null) {
+      status = PackageStatus.installed;
+    } else if (await File(prefix + '/bin/' + n).exists()) {
+      status = PackageStatus.available;
+    } else {
+      final w = await _which(n);
+      status = w == null ? PackageStatus.notInstalled : PackageStatus.system;
+    }
+    _audit('userland.pkg.status', 'success', {
+      'package': n,
+      'status': status.name,
+    });
+    return status;
   }
 
   Future<PkgResult> installByName(String name) async {
