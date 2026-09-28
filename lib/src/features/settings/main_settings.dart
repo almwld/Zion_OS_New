@@ -11,7 +11,16 @@ class MainSettings extends StatefulWidget {
 
 class _MainSettingsState extends State<MainSettings> {
   final AdvancedTheme _theme = AdvancedTheme();
-  late Map<String, dynamic> _appSettings;
+  Map<String, dynamic> _appSettings = <String, dynamic>{
+    'window_opacity': 0.95,
+    'show_taskbar': true,
+    'show_clock': true,
+    'animations': true,
+    'animation_speed': 1.0,
+    'notifications': true,
+    'auto_update': true,
+    'stealth_mode': false,
+  };
   String _selectedCategory = 'Appearance';
 
   final List<String> _categories = [
