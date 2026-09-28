@@ -313,7 +313,8 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
 
     private fun callPhone(number: String): Map<String, Any?> {
         if (number.isBlank()) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Phone number is required.")
-        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+        if (!PermissionHelper.call(activity)) return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Phone call permission requested.")
+        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number)))
         if (intent.resolveActivity(activity.packageManager) == null) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "No dialer is available.")
         activity.startActivity(intent); return mapOf("available" to true, "status" to "AVAILABLE", "action" to "dialer_opened")
     }
