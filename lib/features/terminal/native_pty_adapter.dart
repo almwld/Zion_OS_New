@@ -28,7 +28,7 @@ class NativePtyAdapter {
     }
   }
 
-  Future<bool> start({int rows = 24, int cols = 80}) async {
+  Future<bool> start({int rows = 24, int cols = 80, String? shell}) async {
     if (_running) return true;
     if (!await isAvailable()) return false;
 
@@ -52,7 +52,11 @@ class NativePtyAdapter {
     try {
       final handle = await _channel.invokeMethod<int>(
         'start',
-        <String, Object>{'rows': rows, 'cols': cols},
+        <String, Object>{
+          'rows': rows,
+          'cols': cols,
+          if (shell != null && shell.trim().isNotEmpty) 'shell': shell.trim(),
+        },
       );
       if (handle == null || handle <= 0) {
         await stop();
