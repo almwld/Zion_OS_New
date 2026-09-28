@@ -30,7 +30,6 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
-import java.util.UUID
 import com.zion.os.handlers.BatteryHandler
 import com.zion.os.handlers.SensorHandler
 import com.zion.os.handlers.ClipboardHandler
@@ -46,8 +45,6 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     private var recorder: MediaRecorder? = null
     private var recordingFile: File? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private val jobs = ConcurrentHashMap<Int, JobScheduler>()
-    private var requestCounter = 7600
 
     fun handleExternalIntent(intent: Intent) {
         if (intent.action != "com.zion.os.ZION_API") return
