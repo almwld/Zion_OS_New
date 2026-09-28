@@ -9,8 +9,6 @@ import android.hardware.*
 import android.location.LocationManager
 import android.media.*
 import android.speech.tts.TextToSpeech
-import JobInfo
-import JobScheduler
 import android.net.Uri
 import android.os.*
 import android.provider.ContactsContract
