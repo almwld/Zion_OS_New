@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import 'core/wm/window_manager.dart';
 import 'features/terminal/terminal_screen.dart';
-import 'features/network/network_radar_screen.dart';
 import 'zion_browser.dart';
 import 'zion_file_manager.dart';
 import 'zion_system_monitor.dart';
@@ -47,7 +46,6 @@ class ZionAppLauncher extends StatelessWidget {
                 _AppItem(icon: Icons.monitor, name: 'مراقب النظام', onTap: () => _openApp(context, 'Monitor', const ZionSystemMonitor(), 350, 400)),
                 const SizedBox(height: 16),
                 const _AppCategory(title: 'الأمان والتشخيص'),
-                _AppItem(icon: Icons.radar, name: 'الرادار الشبكي', onTap: () => _openApp(context, 'Network Radar', const NetworkRadarScreen(), 680, 650)),
                 _AppItem(icon: Icons.security, name: 'مركز الأمان', onTap: () => _openApp(context, 'Security', const _SafePlaceholder(title: 'Security Center'), 600, 400)),
                 _AppItem(icon: Icons.health_and_safety, name: 'سلامة النظام', onTap: () => _openApp(context, 'System Safety', const _SafePlaceholder(title: 'System Safety'), 600, 400)),
               ],
