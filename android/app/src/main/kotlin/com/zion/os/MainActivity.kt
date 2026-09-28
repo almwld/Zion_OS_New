@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : FlutterActivity() {
     private external fun nativePtyAvailable(): Boolean
-    private external fun nativeStartPty(rows: Int, cols: Int): Int
+    private external fun nativeStartPty(rows: Int, cols: Int, shell: String?): Int
     private external fun nativeReadPty(handle: Int): ByteArray?
     private external fun nativeWritePty(handle: Int, data: ByteArray): Int
     private external fun nativeResizePty(handle: Int, rows: Int, cols: Int): Boolean
@@ -63,7 +63,8 @@ class MainActivity : FlutterActivity() {
                     "start" -> {
                         val rows = call.argument<Int>("rows") ?: 24
                         val cols = call.argument<Int>("cols") ?: 80
-                        result.success(startTerminal(rows, cols))
+                        val shell = call.argument<String>("shell")
+                        result.success(startTerminal(rows, cols, shell))
                     }
                     "write" -> {
                         val handle = call.argument<Int>("handle") ?: 0
@@ -108,10 +109,10 @@ class MainActivity : FlutterActivity() {
             })
     }
 
-    private fun startTerminal(rows: Int, cols: Int): Int {
+    private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
         if (!nativePtyAvailable()) return 0
         return try {
-            val handle = nativeStartPty(rows, cols)
+            val handle = nativeStartPty(rows, cols, shell)
             if (handle <= 0) return 0
             terminalReaders[handle] = Thread {
                 try {
