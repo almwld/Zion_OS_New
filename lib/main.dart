@@ -5,6 +5,7 @@ import 'package:provider/provider.dart' as provider;
 
 import 'adaptive/adaptive_interface.dart';
 import 'core/services/unified_core_service.dart';
+import 'core/services/zion_api_audit_bridge.dart';
 import 'core/magiczionos/magiczionos_provider.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
@@ -25,6 +26,8 @@ Future<void> main() async {
 
   final securityCore = SecurityCore();
   final runtimeReport = const RuntimeIntegrity().verify(securityCore);
+  ZionApiAuditBridge(securityCore).register();
+
   securityCore.auditLogger.log(
     action: 'application.bootstrap',
     actor: 'zion-os',
