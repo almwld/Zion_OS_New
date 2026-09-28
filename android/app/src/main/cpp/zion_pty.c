@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +22,7 @@ typedef struct {
 } ZionPtySession;
 
 static ZionPtySession g_sessions[ZION_MAX_PTY_SESSIONS];
+static pthread_mutex_t g_sessions_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void init_sessions(void) {
     static int initialized = 0;
@@ -103,6 +105,7 @@ Java_com_zion_os_MainActivity_nativePtyAvailable(JNIEnv *env, jobject thiz) {
 JNIEXPORT jint JNICALL
 Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint rows, jint cols) {
     (void)env; (void)thiz;
+    pthread_mutex_lock(&g_sessions_lock);
     init_sessions();
 
     int slot = -1;
@@ -112,28 +115,38 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             break;
         }
     }
-    if (slot < 0) return 0;
+    if (slot < 0) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
 
     int master = open("/dev/ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
-    if (master < 0) return 0;
+    if (master < 0) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
     if (grantpt(master) != 0 || unlockpt(master) != 0) {
         close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
 
     char slave_name[128];
     if (ptsname_r(master, slave_name, sizeof(slave_name)) != 0) {
         close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
 
     pid_t pid = fork();
     if (pid < 0) {
         close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
 
     if (pid == 0) {
+        pthread_mutex_unlock(&g_sessions_lock);
         int slave = open(slave_name, O_RDWR | O_NOCTTY);
         if (slave < 0) _exit(127);
 
@@ -155,26 +168,49 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
 
     g_sessions[slot].master_fd = master;
     g_sessions[slot].child_pid = pid;
+    pthread_mutex_unlock(&g_sessions_lock);
     return slot + 1;
 }
 
 JNIEXPORT jbyteArray JNICALL
 Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint handle) {
     (void)thiz;
+    pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session) return NULL;
+    if (!session) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return NULL;
+    }
 
     unsigned char buffer[8192];
     ssize_t n = read(session->master_fd, buffer, sizeof(buffer));
     if (n > 0) {
         jbyteArray out = (*env)->NewByteArray(env, (jsize)n);
-        if (!out) return NULL;
+        if (!out) {
+            pthread_mutex_unlock(&g_sessions_lock);
+            return NULL;
+        }
         (*env)->SetByteArrayRegion(env, out, 0, (jsize)n, (const jbyte *)buffer);
+        pthread_mutex_unlock(&g_sessions_lock);
         return out;
     }
     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        pthread_mutex_unlock(&g_sessions_lock);
         return (*env)->NewByteArray(env, 0);
     }
+
+    // EIO/EOF means the slave side closed. Close and reap so the native slot
+    // is reusable and the child cannot become a zombie.
+    pid_t pid = session->child_pid;
+    int fd = session->master_fd;
+    session->master_fd = -1;
+    session->child_pid = -1;
+    if (fd >= 0) close(fd);
+    if (pid > 0) {
+        int status = 0;
+        (void)waitpid(pid, &status, WNOHANG);
+    }
+    pthread_mutex_unlock(&g_sessions_lock);
     return NULL;
 }
 
@@ -214,15 +250,20 @@ Java_com_zion_os_MainActivity_nativeResizePty(JNIEnv *env, jobject thiz, jint ha
 JNIEXPORT void JNICALL
 Java_com_zion_os_MainActivity_nativeStopPty(JNIEnv *env, jobject thiz, jint handle) {
     (void)env; (void)thiz;
+    pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session) return;
+    if (!session) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return;
+    }
 
     int fd = session->master_fd;
     pid_t pid = session->child_pid;
     session->master_fd = -1;
     session->child_pid = -1;
-
     if (fd >= 0) close(fd);
+    pthread_mutex_unlock(&g_sessions_lock);
+
     if (pid > 0) {
         kill(-pid, SIGHUP);
         kill(-pid, SIGTERM);
