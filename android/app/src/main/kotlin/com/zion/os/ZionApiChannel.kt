@@ -9,6 +9,8 @@ import android.hardware.*
 import android.location.LocationManager
 import android.media.*
 import android.speech.tts.TextToSpeech
+import JobInfo
+import JobScheduler
 import android.net.Uri
 import android.os.*
 import android.provider.ContactsContract
@@ -46,7 +48,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     private var recorder: MediaRecorder? = null
     private var recordingFile: File? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private val jobs = ConcurrentHashMap<Int, android.app.job.JobScheduler>()
+    private val jobs = ConcurrentHashMap<Int, JobScheduler>()
     private var requestCounter = 7600
 
     fun handleExternalIntent(intent: Intent) {
