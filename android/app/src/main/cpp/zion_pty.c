@@ -217,12 +217,19 @@ Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint hand
 JNIEXPORT jint JNICALL
 Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint handle, jbyteArray data) {
     (void)thiz;
+    pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session || !data) return -1;
+    if (!session || !data) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return -1;
+    }
 
     jsize len = (*env)->GetArrayLength(env, data);
     jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
-    if (!bytes) return -1;
+    if (!bytes) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return -1;
+    }
 
     jsize written = 0;
     while (written < len) {
@@ -236,15 +243,22 @@ Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint han
     }
 
     (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    pthread_mutex_unlock(&g_sessions_lock);
     return written;
 }
 
 JNIEXPORT jboolean JNICALL
 Java_com_zion_os_MainActivity_nativeResizePty(JNIEnv *env, jobject thiz, jint handle, jint rows, jint cols) {
     (void)env; (void)thiz;
+    pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session) return JNI_FALSE;
-    return set_winsize(session->master_fd, rows, cols) == 0 ? JNI_TRUE : JNI_FALSE;
+    if (!session) {
+        pthread_mutex_unlock(&g_sessions_lock);
+        return JNI_FALSE;
+    }
+    int ok = set_winsize(session->master_fd, rows, cols) == 0;
+    pthread_mutex_unlock(&g_sessions_lock);
+    return ok ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
