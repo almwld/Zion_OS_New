@@ -26,6 +26,11 @@ class ZionPkgCli {
         if (args.length != 2) return 'Usage: zion-pkg install-from-file <file.deb>';
         return _result(await pkg.installFromFile(args[1]));
       case 'import-from-termux':
+        if (args.length >= 2 && (args[1].toLowerCase().endsWith('.tar') || args[1].toLowerCase().endsWith('.tar.gz') || args[1].toLowerCase().endsWith('.tgz'))) {
+          if (args.length == 2 || (args.length == 3 && args[2] == '--check')) return _termuxResult(await _termux.runTar(args[1], TermuxImportMode.check));
+          if (args.length == 3 && args[2] == '--auto') return _termuxResult(await _termux.runTar(args[1], TermuxImportMode.auto));
+          return 'Usage: zion-pkg import-from-termux <file.tar|file.tar.gz> [--check|--auto]';
+        }
         if (args.length == 1) return _termuxResult(await _termux.run(TermuxImportMode.check));
         if (args.length != 2) return 'Usage: zion-pkg import-from-termux [--check|--auto|--verify|--clean]';
         switch (args[1]) {
@@ -69,6 +74,7 @@ Commands:
   update
   upgrade
   import-from-termux [--check|--auto|--verify|--clean]
+  import-from-termux <file.tar|file.tar.gz> [--check|--auto]
 
 Package names are resolved through the Zion Repository and verified with SHA-256.
 Only Zion Userland apt/dpkg executables are used.''';
