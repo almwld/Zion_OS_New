@@ -14,6 +14,9 @@ import 'screens/apps/calculator.dart';
 import 'screens/apps/notes_app.dart';
 import 'screens/apps/gallery_app.dart';
 import 'screens/apps/weather_app.dart';
+import 'screens/apps/maps_app.dart';
+import 'screens/apps/radio_app.dart';
+import 'screens/apps/video_player_app.dart';
 import 'widgets/cmatrix_arabic_background.dart';
 import 'screens/arsenal/arsenal_screen.dart';
 
@@ -138,6 +141,9 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'NOTES' => const NotesApp(),
       'GALLERY' => const GalleryApp(),
       'WEATHER' => const WeatherApp(),
+      'MAPS' => const MapsApp(),
+      'RADIO' => const RadioApp(),
+      'VIDEO' => const VideoPlayerApp(),
       _ => null,
     };
 
