@@ -24,6 +24,15 @@ class _SettingsAppState extends State<SettingsApp> {
         _buildSwitchTile('dark_mode'.tr(), themeProvider.isDarkMode, (_) => themeProvider.toggleTheme()),
         _buildSliderTile('font_size'.tr(), themeProvider.fontScale, 0.8, 1.5, themeProvider.setFontScale),
         _buildSliderTile('icon_size'.tr(), themeProvider.iconSize, 48, 78, themeProvider.setIconSize),
+        _buildSectionHeader('CMatrix / المسند'),
+        _buildSwitchTile('خلفية Matrix', themeProvider.cmatrixEnabled, themeProvider.setCMatrixEnabled),
+        if (themeProvider.cmatrixEnabled) ...[
+          _buildMatrixMode(themeProvider),
+          _buildSliderTile('الشفافية', themeProvider.cmatrixOpacity, 0.05, 0.5, themeProvider.setCMatrixOpacity),
+          _buildSliderTile('السرعة', themeProvider.cmatrixSpeed, 0.1, 3.0, themeProvider.setCMatrixSpeed),
+          _buildSliderTile('حجم الحروف', themeProvider.cmatrixFontSize, 12, 32, themeProvider.setCMatrixFontSize),
+          _buildMatrixColors(themeProvider),
+        ],
         _buildSectionHeader('system'.tr()),
         ListTile(leading: const Icon(Icons.dashboard_customize, color: Color(0xFF00BCD4)), title: const Text('System Capabilities'), subtitle: const Text('AVAILABLE / PERMISSION_REQUIRED / NOT_CONFIGURED / UNAVAILABLE'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SystemCapabilitiesScreen()))),
         ListTile(leading: const Icon(Icons.auto_awesome, color: Color(0xFF00BCD4)), title: const Text('Runtime Intelligence'), subtitle: const Text('Neural Analyzer + local Command Predictor'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RuntimeIntelligenceApp()))),
@@ -38,6 +47,38 @@ class _SettingsAppState extends State<SettingsApp> {
   Widget _buildSectionHeader(String title) => Container(padding: const EdgeInsets.all(16), child: Text(title, style: const TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)));
   Widget _buildSwitchTile(String title, bool value, Function(bool) onChanged) => SwitchListTile(title: Text(title), value: value, onChanged: onChanged, activeColor: const Color(0xFF00BCD4));
   Widget _buildSliderTile(String title, double value, double min, double max, Function(double) onChanged) => ListTile(title: Text(title), subtitle: Slider(value: value, min: min, max: max, onChanged: onChanged, activeColor: const Color(0xFF00BCD4)), trailing: Text(value.toStringAsFixed(1)));
+  Widget _buildMatrixMode(ThemeProvider tp) => ListTile(
+    title: const Text('نوع الحروف'),
+    subtitle: Text(tp.cmatrixUseMusnad ? 'المسند — Old South Arabian' : 'العربية الحديثة'),
+    trailing: DropdownButton<String>(
+      value: tp.cmatrixUseMusnad ? 'musnad' : 'modern',
+      items: const [
+        DropdownMenuItem(value: 'musnad', child: Text('المسند')),
+        DropdownMenuItem(value: 'modern', child: Text('عربي حديث')),
+      ],
+      onChanged: (value) {
+        if (value == 'musnad') tp.setCMatrixUseMusnad(true);
+        if (value == 'modern') tp.setCMatrixUseArabic(true);
+      },
+    ),
+  );
+
+  Widget _buildMatrixColors(ThemeProvider tp) => ListTile(
+    title: const Text('لون الحروف'),
+    subtitle: Wrap(
+      spacing: 8,
+      children: const [
+        Color(0xFF00FF41), Color(0xFF00BCD4), Color(0xFFFFD700),
+        Color(0xFFFF4757), Color(0xFF8854D0),
+      ].map((color) => Builder(
+        builder: (context) => GestureDetector(
+          onTap: () => context.read<ThemeProvider>().setCMatrixColor(color),
+          child: CircleAvatar(radius: 12, backgroundColor: color),
+        ),
+      )).toList(),
+    ),
+  );
+
   Widget _buildInfoTile(String title, VoidCallback onTap) => ListTile(title: Text(title), trailing: const Icon(Icons.chevron_right), onTap: onTap);
   Widget _buildLanguageSelector(String currentLocale) => ListTile(title: Text('language'.tr()), trailing: DropdownButton<String>(value: currentLocale == 'ar' ? 'العربية' : 'English', items: const [DropdownMenuItem(value: 'English', child: Text('English')), DropdownMenuItem(value: 'العربية', child: Text('العربية'))], onChanged: (value) { if (value == 'العربية') context.setLocale(const Locale('ar')); else context.setLocale(const Locale('en')); }));
 
