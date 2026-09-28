@@ -44,6 +44,7 @@ Commands:
   list
   status <package>
   install <package|file.deb>
+  install-from-file <file.deb>
   remove <package>
   update
   upgrade
