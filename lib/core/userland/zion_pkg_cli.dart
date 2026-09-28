@@ -19,6 +19,9 @@ class ZionPkgCli {
         return _result(args[1].toLowerCase().endsWith('.deb')
             ? await pkg.installFromFile(args[1])
             : await pkg.installByName(args[1]));
+      case 'install-from-file':
+        if (args.length != 2) return 'Usage: zion-pkg install-from-file <file.deb>';
+        return _result(await pkg.installFromFile(args[1]));
       case 'remove':
         if (args.length != 2) return 'Usage: zion-pkg remove <package>';
         return _result(await pkg.remove(args[1]));
