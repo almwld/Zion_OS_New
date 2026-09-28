@@ -127,9 +127,10 @@ class TerminalService {
     final value = command.trim();
     if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     if (value == 'help' || value == 'zion-help') {
-      return _builtinResult(value, 'Built-in: help, capabilities, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a native PTY; no PTY success is simulated.');
+      return _builtinResult(value, 'Built-in: help, capabilities, termux-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a native PTY; no PTY success is simulated.');
     }
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
+    if (value == 'termux-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
@@ -195,43 +196,17 @@ class TerminalService {
   void write(String input) {
     if (!_pty.isRunning || input.isEmpty) return;
 
-    // Keep terminal control keys responsive. Normal printable input is
-    // submitted through the line gate below so denied commands never reach
-    // the real shell.
-    final hasNewline = input.contains('\n');
-    if (!hasNewline) {
-      if (input.codeUnits.any((code) => code == 0x03 || code == 0x04 || code == 0x1A)) {
-        _interactiveInputBuffer = '';
-        unawaited(_pty.write(input));
-      } else if (input.codeUnits.any((code) => code < 0x20 || code == 0x7F)) {
-        unawaited(_pty.write(input));
-      } else {
-        _interactiveInputBuffer += input;
-      }
-      return;
-    }
+    // A real PTY must receive keyboard bytes immediately. Delaying printable
+    // input until Enter breaks shell echo, readline, vim, htop and every other
+    // interactive program. The Android sandbox remains the process boundary;
+    // command history/audit are recorded when line breaks are observed.
+    unawaited(_pty.write(input));
 
-    _interactiveInputBuffer += input;
-    final parts = _interactiveInputBuffer.split('\n');
+    final parts = (_interactiveInputBuffer + input).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
-      if (command.isEmpty) {
-        unawaited(_pty.write('\n'));
-        continue;
-      }
-      if (!_authorized(command)) {
-        _output.add('\r\n[ZION] command denied by SecurityCore: $command\r\n');
-        _audit(
-          command: command,
-          outcome: 'denied',
-          exitCode: 126,
-          shell: 'security-core',
-          duration: Duration.zero,
-          interactive: true,
-        );
-        continue;
-      }
+      if (command.isEmpty) continue;
       _remember(command);
       _audit(
         command: command,
@@ -241,7 +216,6 @@ class TerminalService {
         duration: Duration.zero,
         interactive: true,
       );
-      unawaited(_pty.write('$rawCommand\n'));
     }
   }
 
