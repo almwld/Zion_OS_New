@@ -47,6 +47,21 @@ void main() {
     expect(result?.stdout, contains('local-mlp'));
   });
 
+  test('builtin execution does not bypass authorization', () async {
+    final denied = await ArsenalBuiltinExecutor(SecurityCore()).execute(
+      toolId: 'ai.analysis',
+      arguments: const <String>['security', '0.1', '0.2', '0.1', '0.9'],
+      actor: 'test',
+      scope: AuthorizationScope(
+        target: 'local-device',
+        mode: SecurityMode.defensive,
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
+        allowedActions: const <String>{'ai.analysis'},
+      ),
+    );
+    expect(denied, isNotNull);
+  });
+
   test('system info builtin returns bounded metrics', () async {
     final result = await ArsenalBuiltinExecutor(SecurityCore()).execute(
       toolId: 'utility.system-info',
