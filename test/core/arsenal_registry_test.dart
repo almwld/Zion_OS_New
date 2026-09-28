@@ -26,6 +26,31 @@ void main() {
     }
   });
 
+  test('runtime resolver marks missing absolute executables as not configured', () async {
+    const registry = ArsenalRegistry(tools: <ArsenalTool>[
+      ArsenalTool(
+        id: 'test.missing',
+        name: 'Missing',
+        category: ArsenalCategory.tools,
+        availability: ArsenalAvailability.available,
+        command: '/definitely/missing/zion-tool',
+      ),
+    ]);
+    final resolved = await const ArsenalRuntimeResolver().resolve(registry);
+    final tool = resolved.resolve('test.missing')!;
+    expect(tool.availability, ArsenalAvailability.notConfigured);
+    expect(tool.reason, contains('not present'));
+  });
+
+  test('tool copyWith preserves immutable registry metadata', () {
+    final original = ArsenalRegistry().resolve('terminal.shell')!;
+    final changed = original.copyWith(availability: ArsenalAvailability.notConfigured, reason: 'runtime check');
+    expect(changed.id, original.id);
+    expect(changed.command, original.command);
+    expect(changed.availability, ArsenalAvailability.notConfigured);
+    expect(changed.reason, 'runtime check');
+  });
+
   test('tool serialization exposes explicit availability', () {
     final tool = ArsenalRegistry().resolve('terminal.shell')!;
     final json = tool.toJson();
