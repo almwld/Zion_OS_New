@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/arsenal/arsenal_service.dart';
 import '../../core/arsenal/arsenal_registry.dart';
+import '../../security/core/authorization_policy.dart';
 
 class ArsenalScreen extends StatefulWidget {
   const ArsenalScreen({super.key});
