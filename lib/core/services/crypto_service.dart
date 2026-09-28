@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:io';
 import 'dart:math';
-import 'package:crypto/crypto.dart';
+import 'package:crypto/crypto.dart' as crypto;
 
 class CryptoService {
   static final CryptoService _instance = CryptoService._internal();
@@ -16,19 +16,19 @@ class CryptoService {
   // ============================================
   
   String md5(String input) {
-    return md5.convert(utf8.encode(input)).toString();
+    return crypto.md5.convert(utf8.encode(input)).toString();
   }
   
   String sha1(String input) {
-    return sha1.convert(utf8.encode(input)).toString();
+    return crypto.sha1.convert(utf8.encode(input)).toString();
   }
   
   String sha256(String input) {
-    return sha256.convert(utf8.encode(input)).toString();
+    return crypto.sha256.convert(utf8.encode(input)).toString();
   }
   
   String sha512(String input) {
-    return sha512.convert(utf8.encode(input)).toString();
+    return crypto.sha512.convert(utf8.encode(input)).toString();
   }
   
   // ============================================
@@ -138,16 +138,16 @@ class CryptoService {
       throw FileSystemException('File not found', path);
     }
 
-    Hash selectHash(String name) {
+    crypto.Hash selectHash(String name) {
       switch (name) {
         case 'md5':
-          return md5;
+          return crypto.md5;
         case 'sha1':
-          return sha1;
+          return crypto.sha1;
         case 'sha256':
-          return sha256;
+          return crypto.sha256;
         case 'sha512':
-          return sha512;
+          return crypto.sha512;
         default:
           throw ArgumentError.value(
             algorithm,
