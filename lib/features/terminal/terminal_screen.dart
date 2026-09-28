@@ -216,11 +216,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
                 textStyle: TerminalStyle(
                   fontSize: _fontSize,
                   fontFamily: 'monospace',
-                  fontFamilyFallback: const [
-                    'Noto Sans Mono CJK SC',
-                    'Noto Sans Mono CJK TC',
-                    'Noto Sans Arabic',
-                  ],
                 ),
                 simulateScroll: true,
               ),
