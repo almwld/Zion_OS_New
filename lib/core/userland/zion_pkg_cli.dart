@@ -5,7 +5,7 @@ class ZionPkgCli {
   const ZionPkgCli(this.pkg);
   final ZionPkg pkg;
 
-  TermuxImporter get _termux => TermuxImporter(pkg: pkg);
+  TermuxImporter get _termux => TermuxImporter(pkg: pkg, securityCore: pkg.securityCore);
 
   Future<String> run(List<String> args) async {
     if (args.isEmpty || args.first == 'help' || args.first == '--help') return usage;

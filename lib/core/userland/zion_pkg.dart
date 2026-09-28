@@ -35,6 +35,7 @@ class ZionPkg {
 
   const ZionPkg({SecurityCore? securityCore, ZionRepository? repository}) : _securityCore = securityCore, _repository = repository;
   final SecurityCore? _securityCore;
+  SecurityCore? get securityCore => _securityCore;
   final ZionRepository? _repository;
 
   Future<List<PackageInfo>> getInstalledPackages() async {

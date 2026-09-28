@@ -88,7 +88,7 @@ class TermuxImporter {
 
     if (mode == TermuxImportMode.auto && importedNames.isNotEmpty) await _writeManifest(importedNames);
 
-    final success = failed.isEmpty;
+    final success = failed.isEmpty && unavailable.isEmpty;
     _audit('termux.import.' + mode.name, success ? 'success' : 'partial', {'checked': sourcePackages.length, 'matched': matched, 'installed': installed, 'unavailable': unavailable.length, 'failed': failed.length});
 
     return TermuxImportResult(mode: mode, success: success, message: 'checked=' + sourcePackages.length.toString() + ', matched=' + matched.toString() + ', installed=' + installed.toString() + ', unavailable=' + unavailable.length.toString() + ', failed=' + failed.length.toString(), checked: sourcePackages.length, matched: matched, installed: installed, unavailable: unavailable, failed: failed);
