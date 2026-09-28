@@ -13,7 +13,7 @@ class SettingsApp extends StatefulWidget {
 class _SettingsAppState extends State<SettingsApp> {
   @override
   Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: true);
     final isDark = themeProvider.isDarkMode;
     final currentLocale = context.locale.languageCode;
     return Scaffold(
