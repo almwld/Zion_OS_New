@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:web_socket_channel/io.dart';
 
+import '../userland/zion_bootstrap.dart';
+import '../userland/zion_proot.dart';
+
 class LlmIntegration {
   Uri? _endpoint;
   String? _token;
@@ -59,6 +62,10 @@ class ExternalRuntimeStatus {
 
 class ExternalSystems {
   Future<List<ExternalRuntimeStatus>> probe() async => [
+        await _probePath('Zion Userland', ZionBootstrap.prefix + '/etc/zion-release.json'),
+        await _probePath('Zion zion-pkg', ZionBootstrap.prefix + '/bin/zion-pkg'),
+        await _probePath('Zion API', ZionBootstrap.prefix + '/bin/zion-api-battery'),
+        await _probePath('Zion PRoot', ZionBootstrap.prefix + '/bin/proot'),
         await _probeCommand('Termux', '/data/data/com.termux/files/usr/bin/sh', const ['-c', 'printf ok']),
         await _probeCommand('Kali filesystem', '/bin/sh', const ['-c', 'test -f /etc/os-release && grep -qi kali /etc/os-release']),
         await _probePath('Ubuntu', '/etc/ubuntu-release'),
