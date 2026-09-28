@@ -62,36 +62,35 @@ class ZionRepository {
       if (decoded is Map<String, dynamic>) return decoded;
       throw const FormatException('Invalid Zion repository index.');
     } on FlutterError {
-      return _readRemoteIndex();
+      final local = File(assetRoot + 'Packages.json');
+      if (await local.exists()) {
+        final decoded = jsonDecode(await local.readAsString());
+        if (decoded is Map<String, dynamic>) return decoded;
+      }
+      final client = _clientFactory();
+      try {
+        final response = await client.get(Uri.parse(repoUrl + 'Packages.json'));
+        if (response.statusCode != 200) throw HttpException('Repository index HTTP ' + response.statusCode.toString());
+        final decoded = jsonDecode(response.body);
+        if (decoded is! Map) throw const FormatException('Invalid Zion repository index.');
+        return Map<String, dynamic>.from(decoded);
+      } finally {
+        client.close();
+      }
     }
-  }
-
-  Future<Map<String, dynamic>> _readRemoteIndex() async {
-    final client = _clientFactory();
-    try {
-      final response = await client.get(Uri.parse(repoUrl + 'Packages.json'));
-      if (response.statusCode != 200) throw HttpException('Repository index HTTP ' + response.statusCode.toString());
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map) throw const FormatException('Invalid Zion repository index.');
-      return Map<String, dynamic>.from(decoded);
-    } finally { client.close(); }
-  }
-
   Future<List<int>> _readPackage(String relative) async {
     try {
       return await _packageLoader(assetRoot + relative);
     } on FlutterError {
+      final local = File(assetRoot + relative);
+      if (await local.exists()) return local.readAsBytes();
       final client = _clientFactory();
       try {
         final response = await client.get(Uri.parse(repoUrl + relative));
         if (response.statusCode != 200) throw HttpException('Repository package HTTP ' + response.statusCode.toString());
         return response.bodyBytes;
-      } finally { client.close(); }
+      } finally {
+        client.close();
+      }
     }
-  }
-
-  static Future<List<int>> _loadAssetBytes(String path) async {
-    final data = await rootBundle.load(path);
-    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-  }
 }
