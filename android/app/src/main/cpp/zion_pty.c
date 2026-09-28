@@ -70,8 +70,8 @@ static void prepare_environment(void) {
     setenv("ZION_TERMINAL", "1", 1);
 }
 
-static void exec_best_shell(void) {
-    const char *configured = getenv("ZION_SHELL");
+static void exec_best_shell(const char *configured_shell) {
+    const char *configured = configured_shell;
     const char *candidates[] = {
         configured,
         "/data/data/com.zion.os/files/usr/bin/bash",
@@ -103,8 +103,20 @@ Java_com_zion_os_MainActivity_nativePtyAvailable(JNIEnv *env, jobject thiz) {
 }
 
 JNIEXPORT jint JNICALL
-Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint rows, jint cols) {
-    (void)env; (void)thiz;
+Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint rows, jint cols, jstring shell_arg) {
+    (void)thiz;
+    char configured_shell[128] = {0};
+    if (shell_arg != NULL) {
+        const char *raw = (*env)->GetStringUTFChars(env, shell_arg, NULL);
+        if (raw != NULL) {
+            size_t length = strlen(raw);
+            if (length < sizeof(configured_shell)) {
+                memcpy(configured_shell, raw, length);
+                configured_shell[length] = '\\0';
+            }
+            (*env)->ReleaseStringUTFChars(env, shell_arg, raw);
+        }
+    }
     pthread_mutex_lock(&g_sessions_lock);
     init_sessions();
 
@@ -163,7 +175,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
 
         prepare_environment();
         chdir("/data/data/com.zion.os/files/home");
-        exec_best_shell();
+        exec_best_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
     }
 
     g_sessions[slot].master_fd = master;
