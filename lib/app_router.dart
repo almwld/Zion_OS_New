@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/desktop_home.dart';
+import 'zion_desktop.dart';
 import 'screens/lock_screen.dart';
 
 /// Single root-level owner of the lock -> desktop UI lifecycle.
