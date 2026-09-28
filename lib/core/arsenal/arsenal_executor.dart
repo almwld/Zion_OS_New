@@ -44,6 +44,15 @@ class ArsenalExecutor {
     if (tool.availability != ArsenalAvailability.available) {
       return _fail(toolId, tool.availability.name.toUpperCase(), tool.reason ?? 'Tool is unavailable.');
     }
+    final decision = securityCore.gateway.authorize(
+      scope: scope,
+      action: tool.id,
+      capabilityId: _capabilityFor(tool),
+      actor: actor,
+      requiresSimulation: tool.category == ArsenalCategory.attack,
+    );
+    if (!decision.allowed) return _fail(toolId, decision.status, decision.reason);
+
     final builtin = await builtins.execute(
       toolId: tool.id,
       arguments: arguments,
@@ -72,15 +81,6 @@ class ArsenalExecutor {
     if (arguments.any((value) => value.contains('\u0000') || value.contains('\n') || value.contains('\r'))) {
       return _fail(toolId, 'INVALID_ARGUMENTS', 'Arguments contain prohibited control characters.');
     }
-    final decision = securityCore.gateway.authorize(
-      scope: scope,
-      action: tool.id,
-      capabilityId: _capabilityFor(tool),
-      actor: actor,
-      requiresSimulation: tool.category == ArsenalCategory.attack,
-    );
-    if (!decision.allowed) return _fail(toolId, decision.status, decision.reason);
-
     final commandLine = [command, ...arguments.map(_quote)].join(' ');
     final result = await terminal.execute(commandLine);
     securityCore.auditLogger.log(
