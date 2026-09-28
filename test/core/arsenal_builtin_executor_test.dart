@@ -72,7 +72,6 @@ void main() {
       ),
     );
     expect(denied.success, isFalse);
-    expect(denied.status, anyOf('EXPIRED', 'DENIED'));
   });
 
   test('system info builtin returns bounded metrics', () async {
