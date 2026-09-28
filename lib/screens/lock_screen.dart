@@ -7,7 +7,7 @@ import '../providers/theme_provider.dart';
 import '../security/core/security_core.dart';
 import '../security/core/security_event.dart';
 import '../security/core/security_result.dart';
-import 'desktop_home.dart';
+import '../zion_desktop.dart';
 
 class LockScreen extends StatefulWidget {
   const LockScreen({super.key, this.onAuthenticated});
