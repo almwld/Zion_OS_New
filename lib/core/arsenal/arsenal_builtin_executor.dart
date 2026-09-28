@@ -76,7 +76,7 @@ class ArsenalBuiltinExecutor {
     final file = File(path);
     if (!await file.exists()) return ArsenalBuiltinResult.failure('NOT_FOUND', 'Audit log does not exist: ${path}');
     final lines = await file.readAsLines();
-    final limit = args.length > 1 ? (int.tryParse(args[1]) ?? 50).clamp(1, 500) : 50;
+    final limit = args.length > 1 ? (int.tryParse(args[1]) ?? 50).clamp(1, 500).toInt() : 50;
     return ArsenalBuiltinResult.success(lines.reversed.take(limit).toList().reversed.join('\n'));
   }
 
