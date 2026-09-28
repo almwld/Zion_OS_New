@@ -55,6 +55,7 @@ flutter:
     - assets/icons/svg_colors/
     - assets/images/
     - assets/fonts/
+    - assets/repository/
 
 flutter_launcher_icons:
   android: true
