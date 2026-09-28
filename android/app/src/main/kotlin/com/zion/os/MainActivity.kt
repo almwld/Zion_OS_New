@@ -458,17 +458,23 @@ class MainActivity : FlutterActivity() {
         return mapOf("available" to true, "status" to "AVAILABLE")
     }
 
+    private var ttsEngine: TextToSpeech? = null
+
     private fun ttsApi(text: String): Map<String, Any?> {
         if (text.isBlank()) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Text is empty.")
-        var initialized = false
-        val tts = TextToSpeech(this) { status ->
-            initialized = status == TextToSpeech.SUCCESS
-            if (initialized) {
-                tts?.language = Locale.getDefault()
-                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "zion-" + System.currentTimeMillis())
+        try {
+            if (ttsEngine == null) {
+                ttsEngine = TextToSpeech(this) { status ->
+                    if (status == TextToSpeech.SUCCESS) {
+                        ttsEngine?.language = Locale.getDefault()
+                    }
+                }
             }
+            ttsEngine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "zion-" + System.currentTimeMillis())
+            return mapOf("available" to true, "status" to "AVAILABLE", "queued" to true)
+        } catch (t: Throwable) {
+            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "Text-to-speech is unavailable."))
         }
-        return mapOf("available" to true, "status" to "AVAILABLE", "queued" to true)
     }
 
     private fun vibrateApi(durationMs: Int): Map<String, Any?> {
@@ -495,6 +501,9 @@ class MainActivity : FlutterActivity() {
         stopAllTerminals()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+        ttsEngine?.stop()
+        ttsEngine?.shutdown()
+        ttsEngine = null
         super.onDestroy()
     }
 
