@@ -3,9 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../../lib/core/userland/zion_pkg.dart';
 import '../../../lib/core/userland/zion_repository.dart';
 
-ZionRepository _repo() => ZionRepository(
-  assetLoader: (_) async => '{"format":"zion-repository-v1","packages":[{"name":"hello","version":"1.0","architecture":"arm64","path":"hello/hello_1.0_arm64.deb","sha256":"22861314d69bc0afd79a9c89625005022b5f95415b3324ee5d9d01381bfe57f1","size":816}]}',
-);
+ZionRepository _repo() => ZionRepository();
 
 void main() {
   test('repository index contains hello with SHA-256', () async {
