@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/magiczionos/magiczionos_provider.dart';
+import 'root_terminal_screen.dart';
+import 'strategy_settings_screen.dart';
 import '../../core/magiczionos/installers/rootfs_downloader.dart';
 
 class MagiczionosInstallerScreen extends StatelessWidget {
@@ -11,7 +13,7 @@ class MagiczionosInstallerScreen extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => MagiczionosProvider()..initialize(),
       child: Consumer<MagiczionosProvider>(builder: (context, provider, _) => Scaffold(
-        appBar: AppBar(title: const Text('#magiczionos — التثبيت الحقيقي')),
+        appBar: AppBar(title: const Text('#magiczionos — التثبيت الحقيقي'), actions: [IconButton(tooltip: 'Root Terminal', icon: const Icon(Icons.terminal), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MagiczionosRootTerminalScreen()))), IconButton(tooltip: 'الإعدادات', icon: const Icon(Icons.settings), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MagiczionosStrategySettingsScreen())))],),
         body: ListView(padding: const EdgeInsets.all(16), children: [
           Text(provider.error ?? 'التنزيل يتم من المصادر الرسمية مع تحقق SHA-256 قبل التفعيل.'),
           const SizedBox(height: 16),
