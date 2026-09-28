@@ -65,7 +65,7 @@ class ZionBootstrap {
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','usr','usr/bin','usr/sbin','usr/lib','usr/share','usr/etc','usr/var/lib/zion-pkg','usr/var/cache','usr/tmp','tmp','etc'])await Directory(root+'/'+p).create(recursive:true);}
   static const Map<String, String> _zionApiScripts = {
-    'zion-api-call': r'''#!/system/bin/sh
+    'zion-api-dispatch': r'''#!/system/bin/sh
 set -eu
 PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
 RESULTS="$PREFIX/tmp/zion-api-results"
@@ -92,7 +92,7 @@ done
 echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API response timeout."}'
 exit 1
 ''',
-    'zion-api-battery': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" battery\n',
+    'zion-api-battery': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" battery\n',
     'zion-api-device-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" device-info\n',
     'zion-api-wifi-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" wifi-info\n',
     'zion-api-sensor': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sensor "${@:-}"\n',
@@ -112,7 +112,7 @@ exit 1
     'zion-api-tts-stop': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" tts-stop\n',
     'zion-api-sms-list': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sms-list\n',
     'zion-api-sms-send': '#!/system/bin/sh\nN="${1:?number required}"; shift; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sms-send --es number "$N" --es body "${*:-}"\n',
-    'zion-api-call-phone': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" call --es number "${1:?number required}"\n',
+    'zion-api-call': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" call --es number "${1:?number required}"\n',
     'zion-api-contacts-list': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" contacts-list\n',
     'zion-setup-storage': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" setup-storage\n',
     'zion-api-storage-get': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" storage-get\n',
