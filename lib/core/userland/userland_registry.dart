@@ -23,7 +23,7 @@ class UserlandRegistry {
         final status=await const ZionProot().inspect();
         return status.status==ProotStatus.available ? ArsenalAvailability.available : ArsenalAvailability.notConfigured;
       case 'api.zion-api':
-        return await File(prefix+'/bin/zion-api-battery').exists() ? ArsenalAvailability.available : ArsenalAvailability.notConfigured;
+        return await File(ZionBootstrap.prefix+'/bin/zion-api-battery').exists() ? ArsenalAvailability.available : ArsenalAvailability.notConfigured;
       default:return ArsenalAvailability.unavailable;
     }
   }
