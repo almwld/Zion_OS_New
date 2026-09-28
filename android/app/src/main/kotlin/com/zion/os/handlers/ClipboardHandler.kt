@@ -4,7 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 
-class ClipboardHandler(context: Context) {
+class ClipboardHandler(private val context: Context) {
     private val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     fun get(): Map<String, Any?> {
         val text = if (clipboard.hasPrimaryClip()) clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() else null
