@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import '../../features/terminal/native_pty_adapter.dart';
+import '../../security/runtime/security_resource_guard.dart';
 
 class TerminalService {
   static final TerminalService _instance = TerminalService._internal();
@@ -8,6 +9,7 @@ class TerminalService {
   TerminalService._internal();
 
   final NativePtyAdapter _pty = NativePtyAdapter();
+  final SecurityResourceGuard _security = SecurityResourceGuard();
   Process? _process;
   final StreamController<String> _outputController =
       StreamController<String>.broadcast();
@@ -19,6 +21,14 @@ class TerminalService {
 
   Future<void> init() async {
     _currentDir = Directory.current.path;
+    if (!_security.security.canExecute(
+      scope: SecurityResourceGuard.terminalScope(),
+      action: 'terminal.execute',
+      requiresSimulation: false,
+    )) {
+      _outputController.add('[ZION][SECURITY] Terminal execution denied.\\n');
+      return;
+    }
     try {
       _usingNativePty = await _pty.start(
         rows: 32,
