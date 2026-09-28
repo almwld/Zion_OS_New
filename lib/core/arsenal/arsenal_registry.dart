@@ -1,3 +1,5 @@
+import 'dart:io';
+
 enum ArsenalAvailability {
   available,
   permissionRequired,
@@ -38,6 +40,13 @@ class ArsenalTool {
   final String? command;
   final String? reason;
   final bool requiresAuthorization;
+
+  ArsenalTool copyWith({ArsenalAvailability? availability, String? reason}) => ArsenalTool(
+        id: id, name: name, category: category,
+        availability: availability ?? this.availability,
+        command: command, reason: reason,
+        requiresAuthorization: requiresAuthorization,
+      );
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -98,4 +107,48 @@ class ArsenalRegistry {
     ArsenalTool(id: 'utility.system-info', name: 'System Information', category: ArsenalCategory.utility, availability: ArsenalAvailability.available),
     ArsenalTool(id: 'attack.lab', name: 'Authorized Lab Runner', category: ArsenalCategory.attack, availability: ArsenalAvailability.notConfigured, reason: 'Requires an explicitly configured isolated lab target.'),
   ];
+}
+
+
+class ArsenalRuntimeResolver {
+  const ArsenalRuntimeResolver();
+
+  Future<ArsenalRegistry> resolve([ArsenalRegistry? registry]) async {
+    final source = registry ?? ArsenalRegistry();
+    final tools = <ArsenalTool>[];
+    for (final tool in source.tools) {
+      tools.add(await _resolveTool(tool));
+    }
+    return ArsenalRegistry(tools: tools);
+  }
+
+  Future<ArsenalTool> _resolveTool(ArsenalTool tool) async {
+    final command = tool.command?.trim();
+    if (command == null || command.isEmpty) return tool;
+    final candidates = <String>[];
+    if (command.startsWith('/')) {
+      candidates.add(command);
+    } else {
+      candidates.add('/data/data/com.zion.os/files/usr/bin/$command');
+      candidates.add('/data/data/com.zion.os/files/usr/sbin/$command');
+      candidates.add('/system/bin/$command');
+      candidates.add('/system/xbin/$command');
+      final path = Platform.environment['PATH'] ?? '';
+      for (final dir in path.split(':').where((e) => e.isNotEmpty)) {
+        candidates.add('$dir/$command');
+      }
+    }
+    for (final candidate in candidates.toSet()) {
+      try {
+        final stat = await File(candidate).stat();
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return tool.copyWith(availability: ArsenalAvailability.available, reason: null);
+        }
+      } catch (_) {}
+    }
+    return tool.copyWith(
+      availability: ArsenalAvailability.notConfigured,
+      reason: 'Executable is not installed or not reachable from the Zion runtime.',
+    );
+  }
 }
