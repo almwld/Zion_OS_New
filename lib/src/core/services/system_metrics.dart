@@ -42,7 +42,8 @@ class SystemMetrics {
       final idleA = a.length > 4 ? a[3] + a[4] : a[3];
       final idleB = b.length > 4 ? b[3] + b[4] : b[3];
       final total = totalB - totalA;
-      return total <= 0 ? 0 : ((total - (idleB - idleA)) / total * 100).clamp(0, 100).toDouble();
+      final value = total <= 0 ? 0.0 : ((total - (idleB - idleA)) / total * 100);
+      return value.isFinite ? value.clamp(0, 100).toDouble() : 0.0;
     } catch (_) { return 0; }
   }
 
@@ -75,11 +76,15 @@ class SystemMetrics {
 
   static Future<double> _storage() async {
     try {
-      final r = await Process.run('df', ['-k', '/']);
+      final r = await Process.run('df', ['-P', '-k', '/']);
+      if (r.exitCode != 0) return 0.0;
       final lines = r.stdout.toString().trim().split('\n');
-      if (lines.length < 2) return 0;
-      final p = lines.last.trim().split(RegExp(r'\s+'));
-      return p.length < 5 ? 0 : (double.tryParse(p[4].replaceAll('%', '')) ?? 0).clamp(0, 100).toDouble();
+      if (lines.length < 2) return 0.0;
+      final data = lines.skip(1).map((line) => line.trim().split(RegExp(r'\s+'))).where((p) => p.length >= 5);
+      final p = data.lastWhere((p) => p.last == '/', orElse: () => const <String>[]);
+      if (p.length < 5) return 0.0;
+      final value = double.tryParse(p[p.length - 2].replaceAll('%', '')) ?? 0.0;
+      return value.isFinite ? value.clamp(0, 100).toDouble() : 0.0;
     } catch (_) { return 0; }
   }
 
