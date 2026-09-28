@@ -1,0 +1,81 @@
+import 'zion_pkg.dart';
+import 'termux_importer/termux_importer.dart';
+
+class ZionPkgCli {
+  const ZionPkgCli(this.pkg);
+  final ZionPkg pkg;
+
+  TermuxImporter get _termux => TermuxImporter(pkg: pkg, securityCore: pkg.securityCore);
+
+  Future<String> run(List<String> args) async {
+    if (args.isEmpty || args.first == 'help' || args.first == '--help') return usage;
+    switch (args.first) {
+      case 'list':
+        final packages = await pkg.getInstalledPackages();
+        if (packages.isEmpty) return 'No Zion packages installed.';
+        return packages.map((p) => p.name + ' ' + p.version + ' [' + p.source + ']').join('\n');
+      case 'status':
+        if (args.length != 2) return 'Usage: zion-pkg status <package>';
+        return (await pkg.getStatus(args[1])).name;
+      case 'install':
+        if (args.length != 2) return 'Usage: zion-pkg install <package|file.deb>';
+        return _result(args[1].toLowerCase().endsWith('.deb')
+            ? await pkg.installFromFile(args[1])
+            : await pkg.installByName(args[1]));
+      case 'install-from-file':
+        if (args.length != 2) return 'Usage: zion-pkg install-from-file <file.deb>';
+        return _result(await pkg.installFromFile(args[1]));
+      case 'import-from-termux':
+        if (args.length >= 2 && (args[1].toLowerCase().endsWith('.tar') || args[1].toLowerCase().endsWith('.tar.gz') || args[1].toLowerCase().endsWith('.tgz'))) {
+          if (args.length == 2 || (args.length == 3 && args[2] == '--check')) return _termuxResult(await _termux.runTar(args[1], TermuxImportMode.check));
+          if (args.length == 3 && args[2] == '--auto') return _termuxResult(await _termux.runTar(args[1], TermuxImportMode.auto));
+          return 'Usage: zion-pkg import-from-termux <file.tar|file.tar.gz> [--check|--auto]';
+        }
+        if (args.length == 1) return _termuxResult(await _termux.run(TermuxImportMode.check));
+        if (args.length != 2) return 'Usage: zion-pkg import-from-termux [--check|--auto|--verify|--clean]';
+        switch (args[1]) {
+          case '--check':
+            return _termuxResult(await _termux.run(TermuxImportMode.check));
+          case '--auto':
+            return _termuxResult(await _termux.run(TermuxImportMode.auto));
+          case '--verify':
+            return _termuxResult(await _termux.run(TermuxImportMode.verify));
+          case '--clean':
+            return _termuxResult(await _termux.run(TermuxImportMode.clean));
+          default:
+            return 'Usage: zion-pkg import-from-termux [--check|--auto|--verify|--clean]';
+        }
+      case 'remove':
+        if (args.length != 2) return 'Usage: zion-pkg remove <package>';
+        return _result(await pkg.remove(args[1]));
+      case 'update':
+        if (args.length != 1) return 'Usage: zion-pkg update';
+        return _result(await pkg.update());
+      case 'upgrade':
+        if (args.length != 1) return 'Usage: zion-pkg upgrade';
+        return _result(await pkg.upgrade());
+      default:
+        return 'Unknown command: ' + args.first + '\n\n' + usage;
+    }
+  }
+
+  String _result(PkgResult result) => result.success ? result.message ?? 'OK' : 'ERROR: ' + (result.error ?? 'operation failed');
+
+  String _termuxResult(TermuxImportResult result) => result.success ? result.message : 'ERROR: ' + result.message;
+
+  static const usage = '''zion-pkg — Zion Userland package manager
+
+Commands:
+  list
+  status <package>
+  install <package|file.deb>
+  install-from-file <file.deb>
+  remove <package>
+  update
+  upgrade
+  import-from-termux [--check|--auto|--verify|--clean]
+  import-from-termux <file.tar|file.tar.gz> [--check|--auto]
+
+Package names are resolved through the Zion Repository and verified with SHA-256.
+Only Zion Userland apt/dpkg executables are used.''';
+}
