@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
-import 'screens/apps/terminal_app.dart';
+import 'features/terminal/terminal_screen.dart';
 import 'screens/apps/file_manager.dart';
 import 'screens/apps/web_browser.dart';
 import 'screens/apps/settings_app.dart';
@@ -121,7 +121,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   void _openApp(Map<String, dynamic> app) {
     final name = app['name'] as String;
     final Widget? screen = switch (name) {
-      'TERMINAL' => const TerminalApp(),
+      'TERMINAL' => const TerminalScreen(),
       'FILES' => const FileManagerApp(),
       'BROWSER' => const WebBrowserApp(),
       'SETTINGS' => const SettingsApp(),
