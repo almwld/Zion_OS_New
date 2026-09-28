@@ -32,14 +32,34 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            def storeFilePath = System.getenv("ZION_RELEASE_STORE_FILE")
+            if (storeFilePath != null && !storeFilePath.isBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = System.getenv("ZION_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("ZION_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("ZION_RELEASE_KEY_PASSWORD")
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+        debug {
+            enableV1Signing true
+            enableV2Signing true
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             shrinkResources false
-            // CI/test release is signed with the Android debug keystore so the
-            // generated APK is installable. Production builds must use a
-            // protected release keystore outside the repository.
-            signingConfig = signingConfigs.debug
+            // Production CI uses the protected release keystore when all
+            // ZION_RELEASE_* variables are supplied. Local/test builds retain
+            // the debug keystore instead of inventing or committing secrets.
+            signingConfig = (System.getenv("ZION_RELEASE_STORE_FILE") != null && !System.getenv("ZION_RELEASE_STORE_FILE").isBlank())
+                ? signingConfigs.release
+                : signingConfigs.debug
         }
     }
 
