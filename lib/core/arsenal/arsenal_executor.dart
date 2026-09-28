@@ -2,6 +2,7 @@ import '../../features/terminal/terminal_service.dart';
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import 'arsenal_registry.dart';
+import 'arsenal_builtin_executor.dart';
 
 class ArsenalExecutionResult {
   const ArsenalExecutionResult({required this.success, required this.status, required this.toolId, this.exitCode, this.stdout = '', this.stderr = '', this.reason});
@@ -27,6 +28,7 @@ class ArsenalExecutor {
   final ArsenalRuntimeResolver resolver;
   final SecurityCore securityCore;
   late final TerminalService terminal = _terminalService ?? TerminalService(securityCore);
+  late final ArsenalBuiltinExecutor builtins = ArsenalBuiltinExecutor(securityCore);
 
   Future<ArsenalRegistry> refreshAvailability() => resolver.resolve(registry);
 
@@ -42,6 +44,29 @@ class ArsenalExecutor {
     if (tool.availability != ArsenalAvailability.available) {
       return _fail(toolId, tool.availability.name.toUpperCase(), tool.reason ?? 'Tool is unavailable.');
     }
+    final builtin = await builtins.execute(
+      toolId: tool.id,
+      arguments: arguments,
+      actor: actor,
+      scope: scope,
+    );
+    if (builtin != null) {
+      securityCore.auditLogger.log(
+        action: 'arsenal.execute',
+        actor: actor,
+        outcome: builtin.success ? 'success' : 'failed',
+        target: scope.target,
+        metadata: <String, Object?>{'toolId': tool.id, 'source': 'ArsenalBuiltinExecutor', 'status': builtin.status},
+      );
+      return ArsenalExecutionResult(
+        success: builtin.success,
+        status: builtin.status,
+        toolId: tool.id,
+        stdout: builtin.stdout,
+        reason: builtin.reason,
+      );
+    }
+
     final command = tool.command;
     if (command == null || command.isEmpty) return _fail(toolId, 'UNSUPPORTED', 'Tool has no executable command.');
     if (arguments.any((value) => value.contains('\u0000') || value.contains('\n') || value.contains('\r'))) {
