@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
-import '../security/core/security_core.dart';
+import '../../security/core/security_core.dart';
 import '../userland/zion_pkg.dart';
 import '../userland/zion_pkg_cli.dart';
 
