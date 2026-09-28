@@ -72,7 +72,7 @@ class TerminalService {
       return;
     }
 
-    _outputController.add('\x1b[32m$ $command\x1b[0m\n');
+    _outputController.add('\x1b[32m\\$ $command\x1b[0m\n');
     if (command == 'clear' || command == 'cls') {
       _outputController.add('\x1b[2J\x1b[H');
       return;
