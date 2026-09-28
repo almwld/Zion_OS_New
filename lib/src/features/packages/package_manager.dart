@@ -35,7 +35,7 @@ class _PackageManagerState extends State<PackageManager> {
   Future<void> _loadPackages() async {
     if (mounted) setState(() => _isLoading = true);
 
-    final capabilities = await TermuxRuntimeService.probeCore();
+    final capabilities = await const TermuxRuntimeService().probeCore();
     final dpkg = capabilities['dpkg'];
     final apt = capabilities['apt'];
     final pkg = capabilities['pkg'];
