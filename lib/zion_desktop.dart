@@ -3,6 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
+import 'screens/apps/terminal_app.dart';
+import 'screens/apps/file_manager.dart';
+import 'screens/apps/web_browser.dart';
+import 'screens/apps/settings_app.dart';
+import 'screens/apps/calculator.dart';
+import 'screens/apps/notes_app.dart';
+import 'screens/apps/gallery_app.dart';
+import 'screens/apps/weather_app.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -111,15 +119,31 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
   void _openApp(Map<String, dynamic> app) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(children: [Icon(app['icon'], color: Colors.white, size: 20), const SizedBox(width: 12), Text('جاري فتح ${app['nameAr']}...')]),
-        duration: const Duration(seconds: 1),
-        backgroundColor: app['color'],
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    final name = app['name'] as String;
+    final Widget? screen = switch (name) {
+      'TERMINAL' => const TerminalApp(),
+      'FILES' => const FileManagerApp(),
+      'BROWSER' => const WebBrowserApp(),
+      'SETTINGS' => const SettingsApp(),
+      'CALCULATOR' => const CalculatorApp(),
+      'NOTES' => const NotesApp(),
+      'GALLERY' => const GalleryApp(),
+      'WEATHER' => const WeatherApp(),
+      _ => null,
+    };
+
+    if (screen == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('هذه الوظيفة غير متاحة في نسخة الإنتاج: ${app['nameAr']}'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
   @override
