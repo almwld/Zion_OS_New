@@ -63,8 +63,46 @@ jobs:
           test -f android/app/src/main/AndroidManifest.xml
           test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png || test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.webp
 
+      - name: Configure protected release signing
+        if: ${{ secrets.ZION_RELEASE_KEYSTORE_B64 != '' }}
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.ZION_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.ZION_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ZION_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ZION_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/zion-release.jks"
+          test -s "$RUNNER_TEMP/zion-release.jks"
+          {
+            echo "ZION_RELEASE_STORE_FILE=$RUNNER_TEMP/zion-release.jks"
+            echo "ZION_RELEASE_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "ZION_RELEASE_KEY_ALIAS=$KEY_ALIAS"
+            echo "ZION_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
+
+      - name: Build Android App Bundle
+        run: flutter build appbundle --release
+
+      - name: Verify AAB output
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          test -s "$AAB"
+          echo "Verified AAB: $AAB ($(stat -c%s "$AAB") bytes)"
+
+      - name: Upload Android App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-os-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Verify APK outputs and signatures
         shell: bash
