@@ -100,53 +100,34 @@ class AdvancedWirelessAnalyzer {
     return analysis;
   }
 
-  /// محاكاة التقاط مصافحة WPA
+  /// Offensive capture/cracking operations are intentionally unavailable.
+  /// The analyzer only reports observed wireless security properties.
   static Future<Map<String, dynamic>> captureHandshake(String bssid, {int timeout = 60}) async {
     return {
-      'success': true,
+      'success': false,
       'bssid': bssid,
-      'handshake_file': '/tmp/handshake_$bssid.cap',
-      'packets_captured': Random().nextInt(50000) + 10000,
-      'duration_seconds': Random().nextInt(timeout) + 10,
-      'note': 'Use aircrack-ng with a wordlist to crack',
+      'supported': false,
+      'message': 'Handshake capture is not available in the defensive analyzer.',
     };
   }
 
-  /// كسر كلمة مرور WPA (محاكاة مع aircrack-ng)
   static Future<Map<String, dynamic>> crackWpa(String handshakeFile, List<String> wordlist) async {
-    final found = wordlist.contains('admin123') || wordlist.contains('password') || Random().nextDouble() < 0.3;
-
-    if (found) {
-      return {
-        'success': true,
-        'password': wordlist.firstWhere((w) => w == 'admin123' || w == 'password', orElse: () => wordlist[Random().nextInt(wordlist.length)]),
-        'time_taken': '${Random().nextInt(300) + 30} seconds',
-        'keys_tried': Random().nextInt(wordlist.length) + 1,
-      };
-    }
-
-    return {'success': false, 'keys_tried': wordlist.length, 'note': 'Password not in wordlist'};
+    return {
+      'success': false,
+      'supported': false,
+      'message': 'Password cracking is not available in the defensive analyzer.',
+    };
   }
 
-  /// هجوم WPS PIN
   static Future<Map<String, dynamic>> wpsAttack(String bssid) async {
     return {
-      'success': Random().nextDouble() < 0.4,
-      'bssid': bssid,
-      'pin': Random().nextInt(99999999).toString().padLeft(8, '0'),
-      'method': 'Pixie Dust Attack',
-      'time_taken': '${Random().nextInt(600) + 60} seconds',
+      'success': false,
+      'supported': false,
+      'message': 'WPS attack execution is not available in the defensive analyzer.',
     };
   }
 
-  /// توليد شبكات وهمية مفصلة
-  static List<Map<String, dynamic>> _generateDetailedMockNetworks() {
-    return [
-      {'ssid': 'Home_Network_5G', 'bssid': 'AA:BB:CC:DD:EE:01', 'signal': -45, 'capabilities': '[WPA2-PSK-CCMP][ESS]', 'frequency': '5180'},
-      {'ssid': 'Office_WiFi', 'bssid': 'AA:BB:CC:DD:EE:02', 'signal': -62, 'capabilities': '[WPA2-PSK-CCMP][WPS][ESS]', 'frequency': '2437'},
-      {'ssid': 'CoffeeShop_Free', 'bssid': 'AA:BB:CC:DD:EE:03', 'signal': -55, 'capabilities': '[ESS]', 'frequency': '2412'},
-      {'ssid': 'Old_Router', 'bssid': 'AA:BB:CC:DD:EE:04', 'signal': -78, 'capabilities': '[WEP][ESS]', 'frequency': '2462'},
-      {'ssid': 'Neighbor_WPA3', 'bssid': 'AA:BB:CC:DD:EE:05', 'signal': -70, 'capabilities': '[WPA3-SAE][ESS]', 'frequency': '5240'},
-    ];
-  }
+  /// No fabricated networks are returned when platform scanning is unavailable.
+  /// This keeps the UI honest about live radio telemetry.
+  static List<Map<String, dynamic>> _generateDetailedMockNetworks() => <Map<String, dynamic>>[];
 }
