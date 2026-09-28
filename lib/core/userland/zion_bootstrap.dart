@@ -57,23 +57,26 @@ class ZionBootstrap {
       }
       final rel=File(staging.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
       await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
-      await _config(staging.path); await _activate(staging);
+      await _activate(staging); await _config();
       _audit('userland.bootstrap.install','success',{'release':release,'files':extracted,'archiveBytes':length,'durationMs':DateTime.now().difference(started).inMilliseconds,'source':'REAL_ARCHIVE'});
       onProgress?.call(1,'اكتمل تثبيت Userland.');
       return BootstrapResult.success(installedFiles:extracted);
     }catch(e){return _fail('فشل تثبيت Userland: '+e.toString());}
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','usr','usr/bin','usr/sbin','usr/lib','usr/share','usr/etc','usr/var/lib/zion-pkg','usr/var/cache','usr/tmp','tmp','etc'])await Directory(root+'/'+p).create(recursive:true);}
-  static Future<void> _config(String root) async {
-    await File(root+'/home/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
-    final h=File(root+'/home/.zion_history');if(!await h.exists())await h.writeAsString('');
-    final hosts=File(root+'/usr/etc/hosts');if(!await hosts.exists())await hosts.writeAsString('127.0.0.1 localhost\n::1 localhost\n');
-    final db=File(root+'/usr/var/lib/zion-pkg/installed.json');if(!await db.exists())await db.writeAsString('[]');
+  static Future<void> _config() async {
+    await Directory(home).create(recursive:true);
+    await File(home+'/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
+    final h=File(home+'/.zion_history');if(!await h.exists())await h.writeAsString('');
+    final hosts=File(prefix+'/etc/hosts');if(!await hosts.exists())await hosts.writeAsString('127.0.0.1 localhost\n::1 localhost\n');
+    final db=File(prefix+'/var/lib/zion-pkg/installed.json');if(!await db.exists())await db.writeAsString('[]');
   }
   static Future<void> _activate(Directory staging) async {
+    final stagedPrefix=Directory(staging.path+'/usr');
+    if(!await stagedPrefix.exists())throw StateError('حزمة Userland لا تحتوي على usr صالح.');
     final current=Directory(prefix),backup=Directory(base+'/.usr-previous-'+DateTime.now().microsecondsSinceEpoch.toString());
     if(await current.exists())await current.rename(backup.path);
-    try{await staging.rename(current.path);if(await backup.exists())await backup.delete(recursive:true);}catch(_){if(await backup.exists()&&!await current.exists())await backup.rename(current.path);rethrow;}
+    try{await stagedPrefix.rename(current.path);if(await backup.exists())await backup.delete(recursive:true);if(await staging.exists())await staging.delete(recursive:true);}catch(_){if(await backup.exists()&&!await current.exists())await backup.rename(current.path);if(await staging.exists())await staging.delete(recursive:true);rethrow;}
   }
   static Map<String,dynamic>? _manifest(Archive a){for(final e in a.files)if(e.isFile&&e.name=='zion-manifest.json'){try{final v=jsonDecode(utf8.decode(List<int>.from(e.content as List<int>)));return v is Map<String,dynamic>?v:null;}catch(_){return null;}}return null;}
   static Map<String,String>? _hashes(Object? v){if(v is! Map)return null;final out=<String,String>{};for(final x in v.entries){final p=_safe(x.key.toString()),h=x.value.toString();if(p==null||!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(h))return null;out[p]=h;}return out;}
