@@ -48,6 +48,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Fetch bundled Musnad font
+        run: bash tool/fetch_musnad_font.sh
+
       - name: Run Flutter static analysis
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
