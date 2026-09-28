@@ -13,8 +13,6 @@ class PasswordManagerApp extends StatefulWidget {
 class _PasswordManagerAppState extends State<PasswordManagerApp> {
   List<Map<String, String>> _passwords = [];
   bool _showPasswords = false;
-  String _masterPassword = '1234';
-  bool _isAuthenticated = false;
   String _searchQuery = '';
   int _selectedTab = 0;
   final Random _random = Random();
@@ -23,12 +21,6 @@ class _PasswordManagerAppState extends State<PasswordManagerApp> {
   void initState() {
     super.initState();
     _loadPasswords();
-    _checkAuth();
-  }
-
-  void _checkAuth() {
-    // Auto-authenticate for demo
-    _isAuthenticated = true;
   }
 
   Future<void> _loadPasswords() async {
@@ -38,21 +30,14 @@ class _PasswordManagerAppState extends State<PasswordManagerApp> {
       // Parse JSON
     }
     
-    if (_passwords.isEmpty) {
-      _passwords = [
-        {'site': 'Google', 'username': 'user@gmail.com', 'password': 'Google@2024', 'category': 'Email'},
-        {'site': 'Facebook', 'username': 'user@facebook.com', 'password': 'FB@Pass123', 'category': 'Social'},
-        {'site': 'Amazon', 'username': 'user@amazon.com', 'password': 'Amazon#456', 'category': 'Shopping'},
-        {'site': 'GitHub', 'username': 'dev_user', 'password': 'Gh@P@ss789', 'category': 'Dev'},
-        {'site': 'Netflix', 'username': 'user@netflix.com', 'password': 'Netflix!234', 'category': 'Entertainment'},
-        {'site': 'Bank Account', 'username': 'user123', 'password': 'Bank@Secure', 'category': 'Finance'},
-      ];
-    }
+    // Never seed the vault with fabricated credentials. A new installation
+    // starts empty and only displays credentials explicitly added by the user.
   }
 
   Future<void> _savePasswords() async {
     final prefs = await SharedPreferences.getInstance();
-    // Save passwords
+    // Persistence is intentionally left disabled until encrypted storage is wired.
+    // Never write credentials to plaintext SharedPreferences.
   }
 
   void _addPassword() {
