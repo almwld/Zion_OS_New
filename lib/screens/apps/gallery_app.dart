@@ -16,16 +16,6 @@ class _GalleryAppState extends State<GalleryApp> {
   @override
   void initState() {
     super.initState();
-    _loadDemoPhotos();
-  }
-
-  void _loadDemoPhotos() {
-    _photos.addAll([
-      {'name': 'IMG_20241201.jpg', 'size': '2.5 MB', 'date': '2024-12-01', 'type': 'image'},
-      {'name': 'Screenshot_20241201.png', 'size': '0.8 MB', 'date': '2024-12-01', 'type': 'screenshot'},
-      {'name': 'IMG_20241130.jpg', 'size': '1.8 MB', 'date': '2024-11-30', 'type': 'image'},
-      {'name': 'IMG_20241129.jpg', 'size': '3.2 MB', 'date': '2024-11-29', 'type': 'image'},
-    ]);
   }
 
   void _viewPhoto(Map<String, dynamic> photo) {
