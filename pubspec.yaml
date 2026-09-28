@@ -50,6 +50,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Musnad
+      fonts:
+        - asset: assets/fonts/Musnad.ttf
   assets:
     - assets/translations/
     - assets/icons/svg_colors/
