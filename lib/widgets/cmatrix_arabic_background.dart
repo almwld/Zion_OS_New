@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:battery_plus/battery_plus.dart';
 
 /// Animated Matrix-style background using Old South Arabian (Musnad) glyphs.
 class CMatrixArabicBackground extends StatefulWidget {
@@ -50,6 +52,8 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
   List<CMatrixColumn> _columns = const [];
   Size _lastSize = Size.zero;
   bool _fontLoaded = false;
+  bool _lowBattery = false;
+  StreamSubscription<BatteryState>? _batterySubscription;
 
   @override
   void initState() {
@@ -59,7 +63,26 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
       duration: const Duration(milliseconds: 50),
     )..addListener(_tick);
     _loadMusnadFont();
+    _watchBattery();
     if (widget.enabled) _controller.repeat();
+  }
+
+  Future<void> _watchBattery() async {
+    try {
+      final battery = Battery();
+      final level = await battery.batteryLevel;
+      if (mounted) setState(() => _lowBattery = level <= 15);
+      _batterySubscription = battery.onBatteryStateChanged.listen((state) async {
+        try {
+          final current = await battery.batteryLevel;
+          if (mounted && _lowBattery != (current <= 15)) {
+            setState(() => _lowBattery = current <= 15);
+          }
+        } catch (_) {}
+      });
+    } catch (_) {
+      _lowBattery = false;
+    }
   }
 
   Future<void> _loadMusnadFont() async {
@@ -120,13 +143,14 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
 
   @override
   void dispose() {
+    _batterySubscription?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) return const SizedBox.shrink();
+    if (!widget.enabled || _lowBattery) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
