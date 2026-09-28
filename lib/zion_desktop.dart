@@ -15,6 +15,7 @@ import 'screens/apps/notes_app.dart';
 import 'screens/apps/gallery_app.dart';
 import 'screens/apps/weather_app.dart';
 import 'widgets/cmatrix_arabic_background.dart';
+import 'screens/arsenal/arsenal_screen.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -66,6 +67,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"DATE","nameAr":"تواريخ","icon":Icons.calendar_month,"category":"ANALYSIS","color":const Color(0xFF341F97)},
     {"name":"CURRENCY","nameAr":"عملات","icon":Icons.attach_money,"category":"ANALYSIS","color":const Color(0xFF1B9CFC)},
     {"name":"TRANSLATOR","nameAr":"مترجم","icon":Icons.translate,"category":"ANALYSIS","color":const Color(0xFF25CCF7)},
+    {"name":"ARSENAL","nameAr":"ترسانة","icon":Icons.security,"category":"TOOLS","color":const Color(0xFF00BCD4)},
     {"name":"TERMINAL","nameAr":"طرفية","icon":Icons.terminal,"category":"TOOLS","color":const Color(0xFFFFA502)},
     {"name":"MAGICZIONOS","nameAr":"بيئة الجذر","icon":Icons.admin_panel_settings,"category":"TOOLS","color":const Color(0xFF00D9A6)},
     {"name":"FILES","nameAr":"ملفات","icon":Icons.folder,"category":"TOOLS","color":const Color(0xFFFFB142)},
@@ -126,6 +128,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   void _openApp(Map<String, dynamic> app) {
     final name = app['name'] as String;
     final Widget? screen = switch (name) {
+      'ARSENAL' => const ArsenalScreen(),
       'TERMINAL' => const TerminalScreen(),
       'MAGICZIONOS' => const MagiczionosInstallerScreen(),
       'FILES' => const FileManagerApp(),
