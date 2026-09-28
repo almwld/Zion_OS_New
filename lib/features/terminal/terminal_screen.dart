@@ -46,13 +46,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_createTab());
+      if (mounted) unawaited(_createTab(autoStart: false));
     });
   }
 
   static const int _maxSessions = 8;
 
-  Future<_TerminalTab?> _createTab() async {
+  Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -85,9 +85,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _selectedIndex = _tabs.length - 1;
     });
 
-    setState(() => _starting = true);
-    tab.connected = await service.startInteractive();
-    if (mounted) setState(() => _starting = false);
+    if (autoStart) {
+      setState(() => _starting = true);
+      tab.connected = await service.startInteractive();
+      if (mounted) setState(() => _starting = false);
+    }
     return tab;
   }
 
