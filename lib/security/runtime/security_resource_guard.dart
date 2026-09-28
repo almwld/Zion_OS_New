@@ -40,6 +40,14 @@ class SecurityResourceGuard {
   final SecurityCore security;
   final ResourceLimits limits;
 
+  static AuthorizationScope terminalScope({Duration validFor = const Duration(hours: 1)}) =>
+      AuthorizationScope(
+        target: 'local-device',
+        mode: SecurityMode.defensive,
+        expiresAt: DateTime.now().toUtc().add(validFor),
+        allowedActions: const <String>{'terminal.execute'},
+      );
+
   Future<GuardedProcessResult> run({
     required String executable,
     List<String> arguments = const <String>[],
