@@ -64,6 +64,7 @@ class SecurityResourceGuard {
       throw StateError('SecurityCore denied terminal execution.');
     }
 
+    final started = DateTime.now();
     final process = await Process.start(
       executable,
       arguments,
@@ -111,6 +112,22 @@ class SecurityResourceGuard {
       }
     }
     await Future.wait(<Future<void>>[stdoutFuture, stderrFuture]);
+
+    security.auditLogger.log(
+      action: 'security.resource-guard',
+      actor: 'security-core',
+      outcome: timedOut ? 'timeout' : (outputLimited ? 'output-limited' : 'success'),
+      target: scope.target,
+      metadata: <String, Object?>{
+        'executable': executable,
+        'exitCode': exitCode,
+        'timedOut': timedOut,
+        'outputLimited': outputLimited,
+        'durationMs': DateTime.now().difference(started).inMilliseconds,
+        'maxRuntimeMs': limits.maxRuntime.inMilliseconds,
+        'maxOutputBytes': limits.maxOutputBytes,
+      },
+    );
 
     return GuardedProcessResult(
       exitCode: exitCode,
