@@ -56,7 +56,10 @@ class RootfsDownloader {
     }
   }
 
-  Future<String?> _expectedDigest(Uri checksumUri, String fileName) async {
+  Future<(String algorithm, String digest)?> _expectedChecksum(
+    Uri checksumUri,
+    String fileName,
+  ) async {
     final response = await http.get(checksumUri);
     if (response.statusCode != 200) return null;
     final text = utf8.decode(response.bodyBytes);
@@ -64,7 +67,18 @@ class RootfsDownloader {
         .split(RegExp(r'\r?\n'))
         .firstWhere((line) => line.contains(fileName), orElse: () => '');
     if (line.isEmpty) return null;
-    return RegExp(r'([a-fA-F0-9]{64})').firstMatch(line)?.group(1)?.toLowerCase();
+    final match = RegExp(r'([a-fA-F0-9]{64}|[a-fA-F0-9]{128})').firstMatch(line);
+    if (match == null) return null;
+    final digest = match.group(1)!.toLowerCase();
+    return digest.length == 128 ? ('sha512', digest) : ('sha256', digest);
+  }
+
+  Future<String> _hashFile(File file, String algorithm) async {
+    final stream = file.openRead();
+    final digest = algorithm == 'sha512'
+        ? await sha512.bind(stream).first
+        : await sha256.bind(stream).first;
+    return digest.toString();
   }
 
   Future<bool> _downloadToFile(Uri uri, File destination) async {
@@ -94,18 +108,14 @@ class RootfsDownloader {
     final rootfs = await _rootfsDir();
     final target = Directory(rootfs.path + '/' + distro.name);
     if (await target.exists() && !force) {
-      return RootfsInstallResult(
-        success: true,
-        message: distro.name + ' موجودة فعلاً.',
-        path: target.path,
-      );
+      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: target.path);
     }
 
     final source = _source(distro);
     final uri = Uri.parse(source.$1);
     final fileName = uri.pathSegments.last;
-    final digest = await _expectedDigest(Uri.parse(source.$2), fileName);
-    if (digest == null) {
+    final checksum = await _expectedChecksum(Uri.parse(source.$2), fileName);
+    if (checksum == null) {
       return RootfsInstallResult(
         success: false,
         message: 'تعذر الحصول على checksum الرسمي لـ ' + fileName + '؛ لم يتم التثبيت.',
@@ -113,67 +123,42 @@ class RootfsDownloader {
     }
 
     final support = await getApplicationSupportDirectory();
-    final temp = Directory(
-      support.path + '/.rootfs-' + distro.name + '-' + DateTime.now().microsecondsSinceEpoch.toString(),
-    );
+    final temp = Directory(support.path + '/.rootfs-' + distro.name + '-' + DateTime.now().microsecondsSinceEpoch.toString());
     await temp.create(recursive: true);
     try {
       final archiveFile = File(temp.path + '/' + fileName);
-      final downloaded = await _downloadToFile(uri, archiveFile);
-      if (!downloaded) {
-        return RootfsInstallResult(
-          success: false,
-          message: 'فشل تنزيل ' + fileName + '.',
-        );
+      if (!await _downloadToFile(uri, archiveFile)) {
+        return RootfsInstallResult(success: false, message: 'فشل تنزيل ' + fileName + '.');
       }
-      final actual = (await sha256.bind(archiveFile.openRead()).first).toString();
-      if (actual != digest) {
-        return const RootfsInstallResult(
-          success: false,
-          message: 'فشل تحقق checksum الرسمي للـ rootfs.',
-        );
+      final actual = await _hashFile(archiveFile, checksum.$1);
+      if (actual != checksum.$2) {
+        return const RootfsInstallResult(success: false, message: 'فشل تحقق checksum الرسمي للـ rootfs.');
       }
 
       final staging = Directory(temp.path + '/staging');
       await staging.create(recursive: true);
       await extractFileToDisk(archiveFile.path, staging.path);
       final entries = staging.listSync(followLinks: false);
-      final sourceDir = entries.length == 1 && entries.first is Directory
-          ? entries.first as Directory
-          : staging;
-      try {
-        await target.delete(recursive: true);
-      } catch (_) {}
+      final sourceDir = entries.length == 1 && entries.first is Directory ? entries.first as Directory : staging;
+      try { await target.delete(recursive: true); } catch (_) {}
 
       if (sourceDir.path == staging.path) {
         await Directory(target.path).create(recursive: true);
         for (final entity in staging.listSync(followLinks: false)) {
           await entity.rename(target.path + '/' + entity.uri.pathSegments.last);
         }
-        try {
-          await staging.delete(recursive: true);
-        } catch (_) {}
+        try { await staging.delete(recursive: true); } catch (_) {}
       } else {
         await sourceDir.rename(target.path);
       }
 
       await File(target.path + '/.zion-rootfs.json').writeAsString(
-        jsonEncode({
-          'distro': distro.name,
-          'archive': fileName,
-          'sha256': digest,
-        }),
+        jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
         flush: true,
       );
-      return RootfsInstallResult(
-        success: true,
-        message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.',
-        path: target.path,
-      );
+      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: target.path);
     } finally {
-      try {
-        await temp.delete(recursive: true);
-      } catch (_) {}
+      try { await temp.delete(recursive: true); } catch (_) {}
     }
   }
 }
