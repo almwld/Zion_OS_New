@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.hardware.*
 import android.location.LocationManager
 import android.media.*
+import android.speech.tts.TextToSpeech
 import android.net.Uri
 import android.os.*
 import android.provider.ContactsContract
@@ -44,7 +45,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     private var recorder: MediaRecorder? = null
     private var recordingFile: File? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private val jobs = ConcurrentHashMap<Int, JobScheduler>()
+    private val jobs = ConcurrentHashMap<Int, android.app.job.JobScheduler>()
     private var requestCounter = 7600
 
     fun handleExternalIntent(intent: Intent) {
@@ -381,9 +382,9 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     }
 
     private fun jobScheduler(id: Int, delayMs: Long): Map<String, Any?> {
-        val js=activity.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+        val js=activity.getSystemService(Context.JOB_SCHEDULER_SERVICE) as android.app.job.JobScheduler
         val service=ComponentName(activity, ZionJobService::class.java)
-        val job=JobInfo.Builder(id,service).setMinimumLatency(delayMs.coerceAtLeast(0)).setPersisted(false).build()
+        val job=android.app.job.JobInfo.Builder(id,service).setMinimumLatency(delayMs.coerceAtLeast(0)).setPersisted(false).build()
         js.schedule(job)
         return mapOf("available" to true,"status" to "AVAILABLE","jobId" to id,"delayMs" to delayMs)
     }
