@@ -45,6 +45,7 @@ class TerminalService {
   static const _historyKey = 'zion_terminal_history_v1';
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
+  static const _commandTimeout = Duration(seconds: 30);
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
@@ -123,6 +124,69 @@ class TerminalService {
     return TerminalResult(command: command, stdout: stdout, stderr: '', exitCode: 0, duration: Duration.zero, shell: 'builtin');
   }
 
+  Future<TerminalResult> _runBounded({
+    required String command,
+    required String shell,
+  }) async {
+    final started = DateTime.now();
+    Process? process;
+    try {
+      process = await Process.start(shell, <String>['-c', command], runInShell: false);
+      final stdoutFuture = process.stdout.transform(utf8.decoder).join();
+      final stderrFuture = process.stderr.transform(utf8.decoder).join();
+      final exitCode = await process.exitCode.timeout(
+        _commandTimeout,
+        onTimeout: () {
+          process?.kill(ProcessSignal.sigterm);
+          return 124;
+        },
+      );
+      if (exitCode == 124) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        if (process != null) {
+          process.kill(ProcessSignal.sigkill);
+        }
+      }
+      final result = TerminalResult(
+        command: command,
+        stdout: await stdoutFuture,
+        stderr: exitCode == 124
+            ? '${await stderrFuture}\nCommand timed out after ${_commandTimeout.inSeconds}s and the process was terminated.'
+            : await stderrFuture,
+        exitCode: exitCode,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+      _audit(
+        command: command,
+        outcome: exitCode == 0 ? 'success' : (exitCode == 124 ? 'timeout' : 'failed'),
+        exitCode: exitCode,
+        shell: shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
+    } on ProcessException catch (e) {
+      final result = TerminalResult(
+        command: command,
+        stdout: '',
+        stderr: e.message,
+        exitCode: 126,
+        duration: DateTime.now().difference(started),
+        shell: shell,
+      );
+      _audit(
+        command: command,
+        outcome: 'process-error',
+        exitCode: result.exitCode,
+        shell: shell,
+        duration: result.duration,
+        interactive: false,
+      );
+      return result;
+    }
+  }
+
   Future<TerminalResult> execute(String command) async {
     final value = command.trim();
     if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
@@ -159,17 +223,7 @@ class TerminalService {
       _audit(command: value, outcome: 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     }
-    final started = DateTime.now();
-    try {
-      final processResult = await Process.run(shell, <String>['-c', value], runInShell: false);
-      final result = TerminalResult(command: value, stdout: processResult.stdout.toString(), stderr: processResult.stderr.toString(), exitCode: processResult.exitCode, duration: DateTime.now().difference(started), shell: shell);
-      _audit(command: value, outcome: result.succeeded ? 'success' : 'failed', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
-      return result;
-    } on ProcessException catch (e) {
-      final result = TerminalResult(command: value, stdout: '', stderr: e.message, exitCode: 126, duration: DateTime.now().difference(started), shell: shell);
-      _audit(command: value, outcome: 'process-error', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
-      return result;
-    }
+    return _runBounded(command: value, shell: shell);
   }
 
   Future<bool> startInteractive() async {
