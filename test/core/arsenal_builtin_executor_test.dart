@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:project_zion/core/arsenal/arsenal_builtin_executor.dart';
+import 'package:project_zion/core/arsenal/arsenal_executor.dart';
+import 'package:project_zion/core/arsenal/arsenal_registry.dart';
 import 'package:project_zion/security/core/authorization_policy.dart';
 import 'package:project_zion/security/core/security_core.dart';
 
@@ -48,7 +50,17 @@ void main() {
   });
 
   test('builtin execution does not bypass authorization', () async {
-    final denied = await ArsenalBuiltinExecutor(SecurityCore()).execute(
+    final denied = await ArsenalExecutor(
+      registry: ArsenalRegistry(tools: const <ArsenalTool>[
+        ArsenalTool(
+          id: 'ai.analysis',
+          name: 'AI',
+          category: ArsenalCategory.ai,
+          availability: ArsenalAvailability.available,
+        ),
+      ]),
+      securityCore: SecurityCore(),
+    ).execute(
       toolId: 'ai.analysis',
       arguments: const <String>['security', '0.1', '0.2', '0.1', '0.9'],
       actor: 'test',
@@ -59,7 +71,8 @@ void main() {
         allowedActions: const <String>{'ai.analysis'},
       ),
     );
-    expect(denied, isNotNull);
+    expect(denied.success, isFalse);
+    expect(denied.status, anyOf('EXPIRED', 'DENIED'));
   });
 
   test('system info builtin returns bounded metrics', () async {
