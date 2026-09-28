@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
@@ -27,6 +28,8 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONObject
+import java.util.UUID
 import com.zion.os.handlers.BatteryHandler
 import com.zion.os.handlers.SensorHandler
 import com.zion.os.handlers.ClipboardHandler
@@ -43,6 +46,80 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     private var wakeLock: PowerManager.WakeLock? = null
     private val jobs = ConcurrentHashMap<Int, JobScheduler>()
     private var requestCounter = 7600
+
+    fun handleExternalIntent(intent: Intent) {
+        if (intent.action != "com.zion.os.ZION_API") return
+        val requestId = intent.getStringExtra("requestId")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) } ?: return
+        val method = intent.getStringExtra("method") ?: return
+        val args = mutableMapOf<String, Any?>()
+        for (key in intent.extras?.keySet().orEmpty()) {
+            if (key == "requestId" || key == "method") continue
+            args[key] = intent.extras?.get(key)
+        }
+        val result = ExternalResult(requestId)
+        try {
+            when (method) {
+                "battery" -> result.success(battery.info())
+                "device-info" -> result.success(deviceInfo())
+                "wifi-info" -> result.success(wifiInfo())
+                "sensor" -> result.success(sensors.list((args["type"] as? Int)))
+                "camera-photo" -> result.success(cameraPhoto())
+                "camera-info" -> result.success(cameraInfo())
+                "media-player" -> result.success(mediaPlayer(args["path"] as? String, args["mime"] as? String))
+                "audio-record" -> result.success(audioRecord(args["stop"] == true))
+                "location" -> result.success(location())
+                "gps-status" -> result.success(gpsStatus())
+                "notification" -> result.success(notification(MethodCall("notification", args)))
+                "toast" -> result.success(toast(args["text"] as? String ?: ""))
+                "dialog" -> dialog(MethodCall("dialog", args), result)
+                "vibrate" -> result.success(vibrate((args["durationMs"] as? Number)?.toLong() ?: 250L))
+                "clipboard-get" -> result.success(clipboard.get())
+                "clipboard-set" -> result.success(clipboard.set(args["text"] as? String ?: ""))
+                "tts-speak" -> result.success(ttsSpeak(args["text"] as? String ?: ""))
+                "tts-stop" -> result.success(ttsStop())
+                "sms-list" -> result.success(smsList())
+                "sms-send" -> result.success(smsSend(args["number"] as? String ?: "", args["body"] as? String ?: ""))
+                "call" -> result.success(callPhone(args["number"] as? String ?: ""))
+                "contacts-list" -> result.success(contactsList())
+                "setup-storage" -> result.success(setupStorage())
+                "storage-get" -> result.success(storageGet())
+                "file-share" -> result.success(fileShare(args["path"] as? String ?: "", args["mime"] as? String ?: "*/*"))
+                "fingerprint" -> fingerprint(result)
+                "keystore" -> result.success(keystore(args["alias"] as? String ?: "zion-api"))
+                "wake-lock" -> result.success(wakeLock(args["enabled"] == true))
+                "job-scheduler" -> result.success(jobScheduler((args["jobId"] as? Number)?.toInt() ?: 1, (args["delayMs"] as? Number)?.toLong() ?: 1000L))
+                "brightness" -> result.success(brightness((args["value"] as? Number)?.toInt()))
+                else -> result.error("NOT_IMPLEMENTED", "Unknown Zion API: $method", null)
+            }
+        } catch (t: Throwable) {
+            result.error("UNAVAILABLE", t.message ?: t.javaClass.simpleName, null)
+        }
+    }
+
+    private inner class ExternalResult(private val requestId: String) : MethodChannel.Result {
+        private val file: File
+            get() {
+                val dir = File(activity.filesDir, "usr/tmp/zion-api-results")
+                dir.mkdirs()
+                return File(dir, requestId + ".json")
+            }
+        private fun write(payload: Map<String, Any?>) {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(JSONObject(payload).toString())
+            if (!tmp.renameTo(file)) {
+                file.writeText(JSONObject(payload).toString())
+                tmp.delete()
+            }
+        }
+        override fun success(result: Any?) {
+            val map = if (result is Map<*, *>) result.entries.associate { it.key.toString() to it.value } else mapOf("available" to true, "status" to "AVAILABLE", "result" to result)
+            write(map)
+        }
+        override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) =
+            write(mapOf("available" to false, "status" to errorCode, "reason" to (errorMessage ?: "Zion API request failed."), "details" to errorDetails))
+        override fun notImplemented() =
+            write(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Zion API method is not implemented."))
+    }
 
     fun register() {
         channel.setMethodCallHandler { call, result ->
