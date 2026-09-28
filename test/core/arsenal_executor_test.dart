@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:zion_os/core/arsenal/arsenal_executor.dart';
-import 'package:zion_os/core/arsenal/arsenal_registry.dart';
-import 'package:zion_os/security/core/authorization_policy.dart';
+import 'package:project_zion/core/arsenal/arsenal_executor.dart';
+import 'package:project_zion/core/arsenal/arsenal_registry.dart';
+import 'package:project_zion/security/core/authorization_policy.dart';
 
 void main() {
   test('Arsenal executor rejects unregistered tools before execution', () async {
