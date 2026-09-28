@@ -54,6 +54,7 @@ class MainActivity : FlutterActivity() {
     private var radarThread: Thread? = null
     private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private lateinit var zionApiChannel: ZionApiChannel
 
     companion object {
         init { System.loadLibrary("zionpty") }
@@ -65,6 +66,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLATFORM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -72,41 +74,6 @@ class MainActivity : FlutterActivity() {
                     "networkInfo" -> result.success(readNetworkInfo())
                     "storageInfo" -> result.success(readStorageInfo())
                     "wifiScan" -> result.success(scanWifi())
-                    else -> result.notImplemented()
-                }
-            }
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zion.os/termux")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "setup-storage" -> result.success(setupStorageApi())
-                    "battery" -> result.success(readBatteryInfo())
-                    "camera" -> result.success(openCameraApi())
-                    "clipboard-get" -> result.success(clipboardGetApi())
-                    "clipboard-set" -> result.success(clipboardSetApi(call.argument<String>("text") ?: ""))
-                    "dialog" -> showDialogApi(
-                        call.argument<String>("title") ?: "Zion OS",
-                        call.argument<String>("message") ?: "",
-                        call.argument<String>("positive") ?: "OK",
-                        call.argument<String>("negative") ?: "Cancel",
-                        result
-                    )
-                    "fingerprint" -> fingerprintApi(result)
-                    "location" -> result.success(locationApi())
-                    "notification" -> result.success(notificationApi(
-                        call.argument<String>("title") ?: "Zion OS",
-                        call.argument<String>("content") ?: "",
-                        call.argument<String>("channelId") ?: "zion_default"
-                    ))
-                    "sensor" -> result.success(sensorApi(call.argument<Int>("sensorType") ?: Sensor.TYPE_ACCELEROMETER))
-                    "sms" -> result.success(smsApi(
-                        call.argument<String>("number") ?: "",
-                        call.argument<String>("body")
-                    ))
-                    "toast" -> result.success(toastApi(call.argument<String>("text") ?: ""))
-                    "tts" -> result.success(ttsApi(call.argument<String>("text") ?: ""))
-                    "vibrate" -> result.success(vibrateApi(call.argument<Int>("durationMs") ?: 250))
-                    "wake-lock" -> result.success(wakeLockApi(call.argument<Boolean>("enabled") ?: false))
                     else -> result.notImplemented()
                 }
             }
@@ -504,6 +471,7 @@ class MainActivity : FlutterActivity() {
         ttsEngine?.stop()
         ttsEngine?.shutdown()
         ttsEngine = null
+        if (::zionApiChannel.isInitialized) zionApiChannel.dispose()
         super.onDestroy()
     }
 
