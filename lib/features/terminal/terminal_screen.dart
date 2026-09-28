@@ -50,7 +50,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
   }
 
-  Future<_TerminalTab> _createTab() async {
+  static const int _maxSessions = 8;
+
+  Future<_TerminalTab?> _createTab() async {
+    if (_tabs.length >= _maxSessions) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم الوصول إلى الحد الأقصى: 8 جلسات PTY.')),
+        );
+      }
+      return null;
+    }
     final security = context.read<SecurityCore>();
     final id = _nextId++;
     final terminal = Terminal(maxLines: 10000);
@@ -149,9 +159,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
         title: const Text('Zion OS Terminal'),
         actions: [
           IconButton(
-            tooltip: 'جلسة جديدة',
+            tooltip: _tabs.length >= _maxSessions
+                ? 'الحد الأقصى 8 جلسات'
+                : 'جلسة جديدة',
             icon: const Icon(Icons.add),
-            onPressed: _starting ? null : () => unawaited(_createTab()),
+            onPressed: _starting || _tabs.length >= _maxSessions
+                ? null
+                : () => unawaited(_createTab()),
           ),
           IconButton(
             tooltip: tab?.service.isInteractiveRunning == true
