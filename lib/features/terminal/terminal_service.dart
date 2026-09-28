@@ -60,18 +60,28 @@ class TerminalService {
   bool get isNativePtyRunning => _pty.isRunning;
 
   Future<void> loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
     _history
       ..clear()
       ..addAll(prefs.getStringList(_historyKey) ?? const <String>[]);
     if (_history.length > _maxHistory) {
       _history.removeRange(_maxHistory, _history.length);
     }
+    } catch (_) {
+      // Platform preferences are optional for terminal execution. Headless
+      // tests and early startup can legitimately have no ServicesBinding.
+    }
   }
 
   Future<void> _saveHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_historyKey, _history.take(_maxHistory).toList());
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_historyKey, _history.take(_maxHistory).toList());
+    } catch (_) {
+      // History persistence must never surface an unhandled async error or
+      // prevent an otherwise successful real shell command.
+    }
   }
 
   Future<String?> _findExecutable(List<String> candidates) async {
