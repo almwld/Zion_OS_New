@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../../security/core/security_core.dart';
+import 'termux_tar_archive.dart';
 import '../zion_pkg.dart';
 import '../zion_repository.dart';
 import 'dependency_checker.dart';
@@ -40,6 +41,42 @@ class TermuxImporter {
   final TermuxPackageReader _reader;
   final SecurityCore? _securityCore;
 
+  Future<TermuxImportResult> runTar(String tarPath, TermuxImportMode mode) async {
+    if (mode != TermuxImportMode.check && mode != TermuxImportMode.auto) return TermuxImportResult(mode: mode, success: false, message: 'ERROR: TAR import supports --check or --auto only.');
+    final archive = await TermuxTarArchive.open(tarPath);
+    if (!archive.success) { _audit('termux.import.tar.' + mode.name, 'failed', {'path': tarPath, 'reason': archive.message}); return TermuxImportResult(mode: mode, success: false, message: archive.message); }
+    final tempDir = await Directory.systemTemp.createTemp('zion-termux-import-');
+    try {
+      final statusFile = File(tempDir.path + '/status');
+      await statusFile.writeAsString(archive.statusContent!, flush: true);
+      final result = await _runStatus(mode, statusFile.path, 'tar:' + tarPath);
+      _audit('termux.import.tar.' + mode.name, result.success ? 'success' : 'partial', {'path': tarPath, 'checked': result.checked, 'matched': result.matched, 'installed': result.installed});
+      return result;
+    } finally { await tempDir.delete(recursive: true); }
+  }
+
+  Future<TermuxImportResult> _runStatus(TermuxImportMode mode, String statusPath, String sourceLabel) async {
+    final sourcePackages = await _reader.readStatus(statusPath);
+    final repoPackages = await _repository.listAll();
+    var matched = 0; var installed = 0;
+    final unavailable = <String>[]; final failed = <String>[]; final importedNames = <String>[];
+    for (final source in sourcePackages) {
+      final targetArch = TermuxPathConverter.normalizeArchitecture(source.architecture);
+      final candidate = _selectCandidate(source, repoPackages, targetArch);
+      if (candidate == null) { unavailable.add(source.name); continue; }
+      matched++;
+      final dependencyCheck = await TermuxDependencyChecker(_repository).check(source, candidate.architecture);
+      if (!dependencyCheck.ok) { failed.add(source.name + ': missing dependencies ' + dependencyCheck.missing.join(', ')); continue; }
+      if (mode == TermuxImportMode.check) continue;
+      final result = await _pkg.installByName(source.name, sourceLabel: 'termux-import');
+      if (result.success) { installed++; importedNames.add(source.name); _audit('termux.import.install', 'success', {'package': source.name, 'version': candidate.version, 'architecture': candidate.architecture, 'source': sourceLabel}); }
+      else { failed.add(source.name + ': ' + (result.error ?? result.message ?? '')); }
+    }
+    if (mode == TermuxImportMode.auto && importedNames.isNotEmpty) await _writeManifest(importedNames);
+    final success = failed.isEmpty && unavailable.isEmpty;
+    return TermuxImportResult(mode: mode, success: success, message: 'checked=' + sourcePackages.length.toString() + ', matched=' + matched.toString() + ', installed=' + installed.toString() + ', unavailable=' + unavailable.length.toString() + ', failed=' + failed.length.toString(), checked: sourcePackages.length, matched: matched, installed: installed, unavailable: unavailable, failed: failed);
+  }
+
   Future<TermuxImportResult> run(TermuxImportMode mode) async {
     if (mode == TermuxImportMode.clean) return _clean();
     if (mode == TermuxImportMode.verify) return _verifyManifest();
@@ -50,47 +87,9 @@ class TermuxImporter {
       return TermuxImportResult(mode: mode, success: false, message: 'UNAVAILABLE: ' + detection.reason);
     }
 
-    final sourcePackages = await _reader.readStatus(detection.statusPath);
-    final repoPackages = await _repository.listAll();
-    var matched = 0;
-    var installed = 0;
-    final unavailable = <String>[];
-    final failed = <String>[];
-    final importedNames = <String>[];
-
-    for (final source in sourcePackages) {
-      final targetArch = TermuxPathConverter.normalizeArchitecture(source.architecture);
-      final candidate = _selectCandidate(source, repoPackages, targetArch);
-      if (candidate == null) {
-        unavailable.add(source.name);
-        continue;
-      }
-      matched++;
-
-      final dependencyCheck = await TermuxDependencyChecker(_repository).check(source, candidate.architecture);
-      if (!dependencyCheck.ok) {
-        failed.add(source.name + ': missing dependencies ' + dependencyCheck.missing.join(', '));
-        continue;
-      }
-
-      if (mode == TermuxImportMode.check) continue;
-
-      final result = await _pkg.installByName(source.name, sourceLabel: 'termux-import');
-      if (result.success) {
-        installed++;
-        importedNames.add(source.name);
-        _audit('termux.import.install', 'success', {'package': source.name, 'version': candidate.version, 'architecture': candidate.architecture, 'source': 'ZION_REPOSITORY'});
-      } else {
-        failed.add(source.name + ': ' + (result.error ?? result.message ?? ''));
-        _audit('termux.import.install', 'failed', {'package': source.name, 'error': result.error ?? result.message ?? ''});
-      }
-    }
-
-    if (mode == TermuxImportMode.auto && importedNames.isNotEmpty) await _writeManifest(importedNames);
-
-    final success = failed.isEmpty && unavailable.isEmpty;
-    _audit('termux.import.' + mode.name, success ? 'success' : 'partial', {'checked': sourcePackages.length, 'matched': matched, 'installed': installed, 'unavailable': unavailable.length, 'failed': failed.length});
-
+    final result = await _runStatus(mode, detection.statusPath, 'termux');
+    _audit('termux.import.' + mode.name, result.success ? 'success' : 'partial', {'checked': result.checked, 'matched': result.matched, 'installed': result.installed, 'unavailable': result.unavailable.length, 'failed': result.failed.length});
+    return result;
     return TermuxImportResult(mode: mode, success: success, message: 'checked=' + sourcePackages.length.toString() + ', matched=' + matched.toString() + ', installed=' + installed.toString() + ', unavailable=' + unavailable.length.toString() + ', failed=' + failed.length.toString(), checked: sourcePackages.length, matched: matched, installed: installed, unavailable: unavailable, failed: failed);
   }
 
