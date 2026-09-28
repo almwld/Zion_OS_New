@@ -157,7 +157,7 @@ class CryptoService {
       }
     }
 
-    final digest = await selectHash(normalized).bind(file.openRead());
+    final digest = await selectHash(normalized).bind(file.openRead()).first;
     return digest.toString();
   }
 }
