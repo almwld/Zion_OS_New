@@ -90,7 +90,6 @@ class TermuxImporter {
     final result = await _runStatus(mode, detection.statusPath, 'termux');
     _audit('termux.import.' + mode.name, result.success ? 'success' : 'partial', {'checked': result.checked, 'matched': result.matched, 'installed': result.installed, 'unavailable': result.unavailable.length, 'failed': result.failed.length});
     return result;
-    return TermuxImportResult(mode: mode, success: success, message: 'checked=' + sourcePackages.length.toString() + ', matched=' + matched.toString() + ', installed=' + installed.toString() + ', unavailable=' + unavailable.length.toString() + ', failed=' + failed.length.toString(), checked: sourcePackages.length, matched: matched, installed: installed, unavailable: unavailable, failed: failed);
   }
 
   PackageInfo? _selectCandidate(TermuxPackage source, List<PackageInfo> packages, String targetArch) {
