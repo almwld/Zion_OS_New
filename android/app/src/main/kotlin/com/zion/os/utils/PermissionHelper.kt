@@ -24,6 +24,7 @@ object PermissionHelper {
     fun location(activity: Activity) = request(activity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), REQUEST_BASE + 3)
     fun smsRead(activity: Activity) = request(activity, arrayOf(Manifest.permission.READ_SMS), REQUEST_BASE + 4)
     fun smsSend(activity: Activity) = request(activity, arrayOf(Manifest.permission.SEND_SMS), REQUEST_BASE + 5)
+    fun call(activity: Activity) = request(activity, arrayOf(Manifest.permission.CALL_PHONE), REQUEST_BASE + 9)
     fun contacts(activity: Activity) = request(activity, arrayOf(Manifest.permission.READ_CONTACTS), REQUEST_BASE + 6)
     fun notifications(activity: Activity) = if (android.os.Build.VERSION.SDK_INT >= 33) request(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_BASE + 7) else true
     fun storage(activity: Activity) = request(activity, arrayOf(Manifest.permission.READ_MEDIA_IMAGES), REQUEST_BASE + 8)
