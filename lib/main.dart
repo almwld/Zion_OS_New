@@ -5,6 +5,7 @@ import 'package:provider/provider.dart' as provider;
 
 import 'adaptive/adaptive_interface.dart';
 import 'core/services/unified_core_service.dart';
+import 'core/magiczionos/magiczionos_provider.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
 import 'app_router.dart';
@@ -71,6 +72,9 @@ class ZionOSApp extends StatelessWidget {
           dispose: (_, service) => service.dispose(),
         ),
         provider.Provider<UnifiedCoreService>(create: (_) => UnifiedCoreService()),
+        provider.ChangeNotifierProvider<MagiczionosProvider>(
+          create: (_) => MagiczionosProvider(auditLogger: securityCore.auditLogger)..initialize(),
+        ),
       ],
       child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

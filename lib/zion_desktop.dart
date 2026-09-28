@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
 import 'features/terminal/terminal_screen.dart';
+import 'screens/magiczionos/installer_screen.dart';
+import 'screens/magiczionos/root_terminal_screen.dart';
+import 'screens/magiczionos/strategy_settings_screen.dart';
 import 'screens/apps/file_manager.dart';
 import 'screens/apps/web_browser.dart';
 import 'screens/apps/settings_app.dart';
@@ -63,6 +66,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"CURRENCY","nameAr":"عملات","icon":Icons.attach_money,"category":"ANALYSIS","color":const Color(0xFF1B9CFC)},
     {"name":"TRANSLATOR","nameAr":"مترجم","icon":Icons.translate,"category":"ANALYSIS","color":const Color(0xFF25CCF7)},
     {"name":"TERMINAL","nameAr":"طرفية","icon":Icons.terminal,"category":"TOOLS","color":const Color(0xFFFFA502)},
+    {"name":"MAGICZIONOS","nameAr":"بيئة الجذر","icon":Icons.admin_panel_settings,"category":"TOOLS","color":const Color(0xFF00D9A6)},
     {"name":"FILES","nameAr":"ملفات","icon":Icons.folder,"category":"TOOLS","color":const Color(0xFFFFB142)},
     {"name":"BROWSER","nameAr":"متصفح","icon":Icons.public,"category":"TOOLS","color":const Color(0xFFF7B731)},
     {"name":"SETTINGS","nameAr":"إعدادات","icon":Icons.settings,"category":"TOOLS","color":const Color(0xFFFA8231)},
@@ -122,6 +126,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final name = app['name'] as String;
     final Widget? screen = switch (name) {
       'TERMINAL' => const TerminalScreen(),
+      'MAGICZIONOS' => const MagiczionosInstallerScreen(),
       'FILES' => const FileManagerApp(),
       'BROWSER' => const WebBrowserApp(),
       'SETTINGS' => const SettingsApp(),
