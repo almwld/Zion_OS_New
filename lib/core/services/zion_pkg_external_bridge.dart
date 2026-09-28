@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../security/core/security_core.dart';
-import '../core/userland/zion_pkg.dart';
-import '../core/userland/zion_pkg_cli.dart';
+import '../userland/zion_pkg.dart';
+import '../userland/zion_pkg_cli.dart';
 
 class ZionPkgExternalBridge {
   ZionPkgExternalBridge(this.securityCore);

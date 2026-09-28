@@ -156,7 +156,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (intent.action != ZION_PKG_ACTION || !::zionPkgChannel.isInitialized) return
         val token = intent.getStringExtra("token") ?: return
         val expected = try {
-            java.io.File(filesDir.parentFile, "etc/zion-pkg.token").readText().trim()
+            java.io.File(applicationInfo.dataDir + "/files/etc/zion-pkg.token").readText().trim()
         } catch (_: Throwable) {
             return
         }
