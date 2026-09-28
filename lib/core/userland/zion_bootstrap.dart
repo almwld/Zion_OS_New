@@ -95,7 +95,7 @@ exit 1
     'zion-api-battery': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" battery\n',
     'zion-api-device-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" device-info\n',
     'zion-api-wifi-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wifi-info\n',
-    'zion-api-sensor': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sensor "${@:-}"\n',
+    'zion-api-sensor': '#!/system/bin/sh\nif [ -n "${1:-}" ]; then exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sensor --ei type "$1"; else exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sensor; fi\n',
     'zion-api-camera-photo': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" camera-photo\n',
     'zion-api-camera-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" camera-info\n',
     'zion-api-media-player': '#!/system/bin/sh\nP="${1:?path required}"; M="${2:-*/*}"; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" media-player --es path "$P" --es mime "$M"\n',
