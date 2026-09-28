@@ -18,21 +18,23 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : FlutterActivity() {
     private external fun nativePtyAvailable(): Boolean
-    private external fun nativeStartPty(rows: Int, cols: Int): Boolean
-    private external fun nativeReadPty(): ByteArray?
-    private external fun nativeWritePty(data: ByteArray): Int
-    private external fun nativeResizePty(rows: Int, cols: Int): Boolean
-    private external fun nativeStopPty()
+    private external fun nativeStartPty(rows: Int, cols: Int): Int
+    private external fun nativeReadPty(handle: Int): ByteArray?
+    private external fun nativeWritePty(handle: Int, data: ByteArray): Int
+    private external fun nativeResizePty(handle: Int, rows: Int, cols: Int): Boolean
+    private external fun nativeStopPty(handle: Int)
 
-    private var terminalReaderThread: Thread? = null
+    private val terminalReaders = ConcurrentHashMap<Int, Thread>()
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
     private var radarThread: Thread? = null
     private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
+
     companion object {
         init { System.loadLibrary("zionpty") }
         private const val PLATFORM_CHANNEL = "zion.os/platform"
@@ -64,16 +66,19 @@ class MainActivity : FlutterActivity() {
                         result.success(startTerminal(rows, cols))
                     }
                     "write" -> {
+                        val handle = call.argument<Int>("handle") ?: 0
                         val input = call.argument<String>("input") ?: ""
-                        result.success(writeTerminal(input))
+                        result.success(writeTerminal(handle, input))
                     }
                     "resize" -> {
+                        val handle = call.argument<Int>("handle") ?: 0
                         val rows = call.argument<Int>("rows") ?: 24
                         val cols = call.argument<Int>("cols") ?: 80
-                        result.success(resizeTerminal(rows, cols))
+                        result.success(resizeTerminal(handle, rows, cols))
                     }
                     "stop" -> {
-                        stopTerminal()
+                        val handle = call.argument<Int>("handle") ?: 0
+                        stopTerminal(handle)
                         result.success(null)
                     }
                     else -> result.notImplemented()
@@ -85,7 +90,6 @@ class MainActivity : FlutterActivity() {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     terminalSink = events
                 }
-
                 override fun onCancel(arguments: Any?) {
                     terminalSink = null
                 }
@@ -97,13 +101,74 @@ class MainActivity : FlutterActivity() {
                     radarSink = events
                     startNetworkRadar()
                 }
-
                 override fun onCancel(arguments: Any?) {
                     radarSink = null
                     stopNetworkRadar()
                 }
             })
+    }
 
+    private fun startTerminal(rows: Int, cols: Int): Int {
+        if (!nativePtyAvailable()) return 0
+        return try {
+            val handle = nativeStartPty(rows, cols)
+            if (handle <= 0) return 0
+            terminalReaders[handle] = Thread {
+                try {
+                    while (!Thread.currentThread().isInterrupted) {
+                        val data = nativeReadPty(handle) ?: break
+                        if (data.isEmpty()) {
+                            try { Thread.sleep(8) } catch (_: InterruptedException) { break }
+                            continue
+                        }
+                        terminalSink?.success(
+                            mapOf(
+                                "sessionId" to handle,
+                                "data" to String(data, Charsets.UTF_8),
+                            )
+                        )
+                    }
+                } catch (t: Throwable) {
+                    terminalSink?.error("PTY_STREAM", t.message, mapOf("sessionId" to handle))
+                } finally {
+                    terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
+                    terminalReaders.remove(handle)
+                }
+            }.apply {
+                name = "zion-native-pty-$handle"
+                isDaemon = true
+                start()
+            }
+            handle
+        } catch (_: Throwable) {
+            0
+        }
+    }
+
+    private fun writeTerminal(handle: Int, input: String): Boolean {
+        if (handle <= 0) return false
+        return try {
+            val data = input.toByteArray(Charsets.UTF_8)
+            nativeWritePty(handle, data) == data.size
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun resizeTerminal(handle: Int, rows: Int, cols: Int): Boolean {
+        if (handle <= 0) return false
+        return try { nativeResizePty(handle, rows, cols) } catch (_: Throwable) { false }
+    }
+
+    private fun stopTerminal(handle: Int) {
+        if (handle <= 0) return
+        try { nativeStopPty(handle) } catch (_: Throwable) {}
+        terminalReaders.remove(handle)?.interrupt()
+    }
+
+    private fun stopAllTerminals() {
+        terminalReaders.keys.toList().forEach(::stopTerminal)
+        terminalReaders.clear()
     }
 
     private fun startNetworkRadar() {
@@ -144,32 +209,16 @@ class MainActivity : FlutterActivity() {
         if (radarNetworkCallback != null) return
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         radarNetworkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: android.net.Network) {
-                emitRadarEvent("networkEvent", "available")
-            }
-            override fun onLost(network: android.net.Network) {
-                emitRadarEvent("networkEvent", "lost")
-            }
-            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) {
-                emitRadarEvent("networkEvent", "capabilitiesChanged")
-            }
-            override fun onLinkPropertiesChanged(network: android.net.Network, properties: LinkProperties) {
-                emitRadarEvent("networkEvent", "linkPropertiesChanged")
-            }
+            override fun onAvailable(network: android.net.Network) { emitRadarEvent("networkEvent", "available") }
+            override fun onLost(network: android.net.Network) { emitRadarEvent("networkEvent", "lost") }
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: NetworkCapabilities) { emitRadarEvent("networkEvent", "capabilitiesChanged") }
+            override fun onLinkPropertiesChanged(network: android.net.Network, properties: LinkProperties) { emitRadarEvent("networkEvent", "linkPropertiesChanged") }
         }
-        try {
-            connectivity.registerDefaultNetworkCallback(radarNetworkCallback!!)
-        } catch (_: Throwable) {
-            radarNetworkCallback = null
-        }
+        try { connectivity.registerDefaultNetworkCallback(radarNetworkCallback!!) } catch (_: Throwable) { radarNetworkCallback = null }
     }
 
     private fun emitRadarEvent(key: String, value: String) {
-        radarSink?.success(mapOf(
-            "timestampMs" to System.currentTimeMillis(),
-            key to value,
-            "event" to true
-        ))
+        radarSink?.success(mapOf("timestampMs" to System.currentTimeMillis(), key to value, "event" to true))
     }
 
     private fun stopNetworkRadar() {
@@ -182,10 +231,7 @@ class MainActivity : FlutterActivity() {
         radarNetworkCallback = null
     }
 
-    private fun readNetworkRadar(
-        rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long,
-        rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long
-    ): Map<String, Any?> {
+    private fun readNetworkRadar(rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long, rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long): Map<String, Any?> {
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivity.activeNetwork
         val caps = network?.let { connectivity.getNetworkCapabilities(it) }
@@ -226,78 +272,21 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    private fun startTerminal(rows: Int, cols: Int): Boolean {
-        if (terminalReaderThread?.isAlive == true) return true
-        if (!nativePtyAvailable()) return false
-        return try {
-            if (!nativeStartPty(rows, cols)) return false
-            terminalReaderThread = Thread {
-                try {
-                    while (!Thread.currentThread().isInterrupted) {
-                        val data = nativeReadPty()
-                        if (data == null || data.isEmpty()) break
-                        terminalSink?.success(String(data, Charsets.UTF_8))
-                    }
-                } catch (t: Throwable) {
-                    terminalSink?.error("PTY_STREAM", t.message, null)
-                } finally {
-                    terminalSink?.success("\r\n[ZION] shell exited\r\n")
-                    terminalReaderThread = null
-                }
-            }.apply {
-                name = "zion-native-pty-reader"
-                isDaemon = true
-                start()
-            }
-            true
-        } catch (_: Throwable) {
-            nativeStopPty()
-            terminalReaderThread = null
-            false
-        }
-    }
-
-    private fun writeTerminal(input: String): Boolean {
-        return try {
-            val data = input.toByteArray(Charsets.UTF_8)
-            nativeWritePty(data) == data.size
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    private fun resizeTerminal(rows: Int, cols: Int): Boolean {
-        return try { nativeResizePty(rows, cols) } catch (_: Throwable) { false }
-    }
-
-    private fun stopTerminal() {
-        try { nativeStopPty() } catch (_: Throwable) {}
-        terminalReaderThread?.interrupt()
-        terminalReaderThread = null
-    }
-
     override fun onDestroy() {
         stopNetworkRadar()
-        stopTerminal()
+        stopAllTerminals()
         super.onDestroy()
     }
 
     private fun readBatteryInfo(): Map<String, Any?> {
-        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            ?: return mapOf("available" to false)
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return mapOf("available" to false)
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
         val temperatureTenths = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
         val voltageMv = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1)
         val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
         val percentage = if (level >= 0 && scale > 0) (level * 100f / scale).coerceIn(0f, 100f) else null
-        return mapOf(
-            "available" to (percentage != null),
-            "level" to percentage,
-            "temperatureC" to if (temperatureTenths != Int.MIN_VALUE) temperatureTenths / 10.0 else null,
-            "voltageV" to if (voltageMv > 0) voltageMv / 1000.0 else null,
-            "charging" to (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL),
-        )
+        return mapOf("available" to (percentage != null), "level" to percentage, "temperatureC" to if (temperatureTenths != Int.MIN_VALUE) temperatureTenths / 10.0 else null, "voltageV" to if (voltageMv > 0) voltageMv / 1000.0 else null, "charging" to (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL))
     }
 
     private fun readNetworkInfo(): Map<String, Any?> {
@@ -313,14 +302,7 @@ class MainActivity : FlutterActivity() {
             else -> "other"
         }
         val address = linkProperties?.linkAddresses?.firstOrNull { !it.address.isLoopbackAddress }?.address?.hostAddress
-        return mapOf(
-            "available" to true,
-            "connected" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
-            "validated" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
-            "vpn" to capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
-            "transport" to transport,
-            "ipAddress" to address,
-        )
+        return mapOf("available" to true, "connected" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET), "validated" to capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED), "vpn" to capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN), "transport" to transport, "ipAddress" to address)
     }
 
     private fun readStorageInfo(): Map<String, Any?> {
@@ -332,42 +314,21 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun scanWifi(): Map<String, Any?> {
-        if (!packageManager.hasSystemFeature("android.hardware.wifi")) {
-            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi hardware is not available.", "networks" to emptyList<Map<String, Any?>>())
+        if (!packageManager.hasSystemFeature("android.hardware.wifi")) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi hardware is not available.", "networks" to emptyList<Map<String, Any?>>())
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Precise location permission is required by Android to expose Wi-Fi scan results.", "networks" to emptyList<Map<String, Any?>>())
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Android Wi-Fi service is unavailable.", "networks" to emptyList<Map<String, Any?>>())
+        if (!wifiManager.isWifiEnabled) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi is disabled on the device.", "networks" to emptyList<Map<String, Any?>>())
+        val results = try { wifiManager.scanResults } catch (e: SecurityException) { return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to (e.message ?: "Android denied Wi-Fi scan access."), "networks" to emptyList<Map<String, Any?>>()) }
+        val networks = results.filter { it.SSID.isNotBlank() }.distinctBy { it.BSSID.lowercase() }.map { result ->
+            mapOf<String, Any?>("ssid" to result.SSID, "bssid" to result.BSSID, "signal" to result.level, "frequencyMHz" to result.frequency, "channel" to frequencyToChannel(result.frequency), "capabilities" to result.capabilities)
         }
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Precise location permission is required by Android to expose Wi-Fi scan results.", "networks" to emptyList<Map<String, Any?>>())
-        }
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            ?: return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Android Wi-Fi service is unavailable.", "networks" to emptyList<Map<String, Any?>>())
-        if (!wifiManager.isWifiEnabled) {
-            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi is disabled on the device.", "networks" to emptyList<Map<String, Any?>>())
-        }
-        val results = try { wifiManager.scanResults } catch (e: SecurityException) {
-            return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to (e.message ?: "Android denied Wi-Fi scan access."), "networks" to emptyList<Map<String, Any?>>())
-        }
-        val networks = results
-            .filter { it.SSID.isNotBlank() }
-            .distinctBy { it.BSSID.lowercase() }
-            .map { result ->
-                mapOf<String, Any?>(
-                    "ssid" to result.SSID,
-                    "bssid" to result.BSSID,
-                    "signal" to result.level,
-                    "frequencyMHz" to result.frequency,
-                    "channel" to frequencyToChannel(result.frequency),
-                    "capabilities" to result.capabilities,
-                )
-            }
         return mapOf("available" to true, "status" to "AVAILABLE", "reason" to "Results returned by Android WifiManager.", "networks" to networks)
     }
 
-    private fun frequencyToChannel(frequency: Int): Int? {
-        return when {
-            frequency in 2412..2484 -> if (frequency == 2484) 14 else (frequency - 2407) / 5
-            frequency in 5000..5900 -> (frequency - 5000) / 5
-            frequency in 5925..7125 -> (frequency - 5950) / 5 + 1
-            else -> null
-        }
+    private fun frequencyToChannel(frequency: Int): Int? = when {
+        frequency in 2412..2484 -> if (frequency == 2484) 14 else (frequency - 2407) / 5
+        frequency in 5000..5900 -> (frequency - 5000) / 5
+        frequency in 5925..7125 -> (frequency - 5950) / 5 + 1
+        else -> null
     }
 }
