@@ -27,7 +27,7 @@ class _MagiczionosRootTerminalScreenState extends State<MagiczionosRootTerminalS
       if (mounted) setState(() => _output += '\n[interactive shell started]\n');
     } catch (e) { setState(() => _output += '\n[ERROR] $e\n'); }
   }
-  void _send() { final p = _process; final command = _input.text; if (p == null || command.trim().isEmpty) return; p!.stdin.writeln(command); _input.clear(); }
+  void _send() { final p = _process; final command = _input.text; if (p == null || command.trim().isEmpty) return; p.stdin.writeln(command); _input.clear(); }
   @override Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MagiczionosProvider()..initialize(),
