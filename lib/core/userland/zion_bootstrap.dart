@@ -64,7 +64,7 @@ class ZionBootstrap {
       return BootstrapResult.success(installedFiles:extracted);
     }catch(e){return _fail('فشل تثبيت Userland: '+e.toString());}
   }
-  static Future<void> _dirs(String root) async {for(final p in ['home','usr','usr/bin','usr/sbin','usr/lib','usr/share','usr/etc','usr/var/lib/zion-pkg','usr/var/cache','usr/tmp','tmp','etc'])await Directory(root+'/'+p).create(recursive:true);}
+  static Future<void> _dirs(String root) async {for(final p in ['home','tmp','etc','usr','usr/bin','usr/sbin','usr/etc','usr/include','usr/lib','usr/libexec','usr/share','usr/tmp','usr/var','usr/var/lib','usr/var/lib/zion-pkg','usr/var/cache','usr/var/log'])await Directory(root+'/'+p).create(recursive:true);}
   static final Map<String, String> _zionApiScripts = {
     'zion-pkg': r'''#!/system/bin/sh
 set -eu
