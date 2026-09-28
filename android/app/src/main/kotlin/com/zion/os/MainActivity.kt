@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
+        handleZionApiIntent(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLATFORM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -129,6 +130,18 @@ class MainActivity : FlutterActivity() {
                     stopNetworkRadar()
                 }
             })
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::zionApiChannel.isInitialized) handleZionApiIntent(intent)
+    }
+
+    private fun handleZionApiIntent(intent: Intent) {
+        if (intent.action == "com.zion.os.ZION_API" && ::zionApiChannel.isInitialized) {
+            zionApiChannel.handleExternalIntent(intent)
+        }
     }
 
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
