@@ -63,14 +63,6 @@ android {
         }
     }
 
-    // Keep APK signatures compatible with both legacy Android installers
-    // (APK Signature Scheme v1/JAR) and modern Android (v2).
-    signingConfigs {
-        debug {
-            enableV1Signing true
-            enableV2Signing true
-        }
-    }
 }
 
 flutter {
