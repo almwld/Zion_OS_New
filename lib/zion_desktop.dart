@@ -14,6 +14,7 @@ import 'screens/apps/calculator.dart';
 import 'screens/apps/notes_app.dart';
 import 'screens/apps/gallery_app.dart';
 import 'screens/apps/weather_app.dart';
+import 'widgets/cmatrix_arabic_background.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -160,6 +161,20 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       backgroundColor: isDark ? const Color(0xFF0A0E1A) : const Color(0xFFF5F7FA),
       body: Stack(children: [
         _buildBackground(isDark, primaryColor),
+        if (theme.cmatrixEnabled)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CMatrixArabicBackground(
+                enabled: theme.cmatrixEnabled,
+                useMusnad: theme.cmatrixUseMusnad,
+                useArabicModern: theme.cmatrixUseArabic,
+                color: theme.cmatrixColor,
+                opacity: theme.cmatrixOpacity,
+                speed: theme.cmatrixSpeed,
+                fontSize: theme.cmatrixFontSize,
+              ),
+            ),
+          ),
         SafeArea(child: Column(
           children: [
             _buildTopBar(theme, isDark, primaryColor),
