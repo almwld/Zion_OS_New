@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import '../../lib/core/arsenal/arsenal_registry.dart';
-import '../../lib/core/userland/userland_registry.dart';
+import 'package:zion_os_new/core/arsenal/arsenal_registry.dart';
+import 'package:zion_os_new/core/userland/userland_registry.dart';
 
 void main() {
   test('registry exposes only explicit Userland availability', () async {
