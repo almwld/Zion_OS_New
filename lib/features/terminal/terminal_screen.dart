@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:xterm2/flutter.dart';
 import 'package:xterm2/xterm.dart';
 
 import 'terminal_service.dart';

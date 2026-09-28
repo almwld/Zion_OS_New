@@ -8,7 +8,7 @@ class TerminalCapabilities {
     'exploit-automation',
   ];
 
-  static String describeStatic() => [
+  static String describe() => [
     'REAL: native PTY with up to 8 concurrent sessions',
     'REAL: VT/xterm frontend with 10,000-line scrollback',
     'REAL: Android /system/bin/sh fallback',
