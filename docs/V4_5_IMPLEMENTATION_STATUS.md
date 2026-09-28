@@ -12,6 +12,15 @@ This document is intentionally evidence-based. A capability is never marked REAL
 - **iOS/Windows:** native build validation workflow added. Device/runtime support is not claimed until the workflow passes.
 - **Tooling policy:** Nmap is retained only as a defensive discovery capability. Metasploit and Hydra are explicitly BLOCKED; no credential attack or exploitation path is exposed.
 
+## Current desktop and integrity pass
+
+- **DesktopHome:** the requested DesktopHome implementation is now the authenticated root UI.
+- **Network radar:** the floating radar uses animated multi-color concentric rings, radial spokes, polygonal spider-web layers, moving analysis nodes, connection traces, and a live sweep.
+- **Theme provider:** the primary color field is restored and consumed by the desktop UI.
+- **File hashing:** CryptoService now hashes files incrementally with MD5/SHA-1/SHA-256/SHA-512 instead of returning a placeholder.
+- **Demo-data policy:** fabricated gallery credentials/media and fabricated wireless scan results are no longer seeded into the production UI.
+- **Wireless safety:** handshake capture, password cracking, and WPS attack execution remain unavailable; the wireless analyzer is telemetry/analysis only.
+
 ## Not claimed yet
 
 - A successful iOS/Windows build until GitHub Actions reports PASS.
