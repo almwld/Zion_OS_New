@@ -1,8 +1,11 @@
 import 'zion_pkg.dart';
+import 'termux_importer/termux_importer.dart';
 
 class ZionPkgCli {
   const ZionPkgCli(this.pkg);
   final ZionPkg pkg;
+
+  TermuxImporter get _termux => TermuxImporter(pkg: pkg);
 
   Future<String> run(List<String> args) async {
     if (args.isEmpty || args.first == 'help' || args.first == '--help') return usage;
@@ -22,6 +25,21 @@ class ZionPkgCli {
       case 'install-from-file':
         if (args.length != 2) return 'Usage: zion-pkg install-from-file <file.deb>';
         return _result(await pkg.installFromFile(args[1]));
+      case 'import-from-termux':
+        if (args.length == 1) return _termuxResult(await _termux.run(TermuxImportMode.check));
+        if (args.length != 2) return 'Usage: zion-pkg import-from-termux [--check|--auto|--verify|--clean]';
+        switch (args[1]) {
+          case '--check':
+            return _termuxResult(await _termux.run(TermuxImportMode.check));
+          case '--auto':
+            return _termuxResult(await _termux.run(TermuxImportMode.auto));
+          case '--verify':
+            return _termuxResult(await _termux.run(TermuxImportMode.verify));
+          case '--clean':
+            return _termuxResult(await _termux.run(TermuxImportMode.clean));
+          default:
+            return 'Usage: zion-pkg import-from-termux [--check|--auto|--verify|--clean]';
+        }
       case 'remove':
         if (args.length != 2) return 'Usage: zion-pkg remove <package>';
         return _result(await pkg.remove(args[1]));
@@ -38,6 +56,8 @@ class ZionPkgCli {
 
   String _result(PkgResult result) => result.success ? result.message ?? 'OK' : 'ERROR: ' + (result.error ?? 'operation failed');
 
+  String _termuxResult(TermuxImportResult result) => result.success ? result.message : 'ERROR: ' + result.message;
+
   static const usage = '''zion-pkg — Zion Userland package manager
 
 Commands:
@@ -48,6 +68,7 @@ Commands:
   remove <package>
   update
   upgrade
+  import-from-termux [--check|--auto|--verify|--clean]
 
 Package names are resolved through the Zion Repository and verified with SHA-256.
 Only Zion Userland apt/dpkg executables are used.''';

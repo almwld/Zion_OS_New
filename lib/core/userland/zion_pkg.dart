@@ -69,7 +69,7 @@ class ZionPkg {
     return status;
   }
 
-  Future<PkgResult> installByName(String name) async {
+  Future<PkgResult> installByName(String name, {String sourceLabel = 'repository'}) async {
     final clean = name.trim();
     if (clean.isEmpty || clean.contains('/') || clean.contains('..')) return _fail('اسم الحزمة غير صالح.');
     try {
@@ -77,13 +77,13 @@ class ZionPkg {
       final info = await repo.search(clean);
       if (info == null) return _fail('الحزمة غير موجودة في Zion Repository: ' + clean);
       final deb = await repo.download(info);
-      final result = await installFromFile(deb.path, expectedSha256: info.sha256);
+      final result = await installFromFile(deb.path, expectedSha256: info.sha256, sourceLabel: sourceLabel);
       if (!result.success && await deb.exists()) await deb.delete();
       return result;
     } catch (e) { return _fail('فشل تنزيل الحزمة من Zion Repository: ' + e.toString()); }
   }
 
-  Future<PkgResult> installFromFile(String path, {String? expectedSha256}) async {
+  Future<PkgResult> installFromFile(String path, {String? expectedSha256, String sourceLabel = 'local-file'}) async {
     final f = File(path);
     if (!await f.exists()) return _fail('ملف الحزمة غير موجود.');
     if (!path.toLowerCase().endsWith('.deb')) return _fail('zion-pkg يدعم ملفات .deb فقط.');
@@ -105,7 +105,7 @@ class ZionPkg {
     if (parts[2] != 'all' && parts[2] != 'arm64') return _fail('معمارية الحزمة غير مدعومة: ' + parts[2]);
     final r = await Process.run(dpkg, ['--root=' + prefix, '-i', path], runInShell: false, environment: _env());
     if (r.exitCode != 0) return _fail('فشل تثبيت الحزمة: ' + r.stderr.toString().trim());
-    await _record(PackageInfo(name: parts[0], version: parts[1], architecture: parts[2], installedAt: DateTime.now().toUtc(), source: path, sha256: await _sha256(f)));
+    await _record(PackageInfo(name: parts[0], version: parts[1], architecture: parts[2], installedAt: DateTime.now().toUtc(), source: sourceLabel, path: path, sha256: await _sha256(f)));
     _audit('userland.pkg.install', 'success', {'package': parts[0], 'version': parts[1], 'source': 'REAL_DPKG'});
     return const PkgResult.success('تم تثبيت الحزمة عبر dpkg الخاص بـ Zion Userland.');
   }
