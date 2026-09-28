@@ -49,15 +49,47 @@ static int set_winsize(int fd, int rows, int cols) {
     return ioctl(fd, TIOCSWINSZ, &ws);
 }
 
+static void mkdir_p(const char *path, mode_t mode) {
+    char buffer[512];
+    size_t length = strlen(path);
+    if (length == 0 || length >= sizeof(buffer)) return;
+    memcpy(buffer, path, length + 1);
+    for (char *p = buffer + 1; *p; ++p) {
+        if (*p != '/') continue;
+        *p = '\\0';
+        (void)mkdir(buffer, mode);
+        *p = '/';
+    }
+    (void)mkdir(buffer, mode);
+}
+
 static void prepare_environment(void) {
     const char *home = "/data/data/com.zion.os/files/home";
     const char *prefix = "/data/data/com.zion.os/files/usr";
-    const char *path = "/data/data/com.zion.os/files/usr/bin:/system/bin:/system/xbin";
-    mkdir("/data/data/com.zion.os/files/home", 0700);
-    mkdir("/data/data/com.zion.os/files/usr", 0700);
-    mkdir("/data/data/com.zion.os/files/usr/bin", 0700);
-    mkdir("/data/data/com.zion.os/files/usr/lib", 0700);
-    mkdir("/data/data/com.zion.os/files/home/storage", 0700);
+    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin";
+    const char *directories[] = {
+        "/data/data/com.zion.os/files/home",
+        "/data/data/com.zion.os/files/tmp",
+        "/data/data/com.zion.os/files/etc",
+        "/data/data/com.zion.os/files/home/storage",
+        "/data/data/com.zion.os/files/usr",
+        "/data/data/com.zion.os/files/usr/bin",
+        "/data/data/com.zion.os/files/usr/sbin",
+        "/data/data/com.zion.os/files/usr/etc",
+        "/data/data/com.zion.os/files/usr/include",
+        "/data/data/com.zion.os/files/usr/lib",
+        "/data/data/com.zion.os/files/usr/libexec",
+        "/data/data/com.zion.os/files/usr/share",
+        "/data/data/com.zion.os/files/usr/tmp",
+        "/data/data/com.zion.os/files/usr/var",
+        "/data/data/com.zion.os/files/usr/var/lib",
+        "/data/data/com.zion.os/files/usr/var/lib/zion-pkg",
+        "/data/data/com.zion.os/files/usr/var/cache",
+        "/data/data/com.zion.os/files/usr/var/log",
+    };
+    for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); ++i) {
+        mkdir_p(directories[i], 0700);
+    }
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("TERMUX_HOME", home, 1);
