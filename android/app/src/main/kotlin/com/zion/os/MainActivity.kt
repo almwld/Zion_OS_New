@@ -367,7 +367,7 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         val executor = ContextCompat.getMainExecutor(this)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+        val prompt = BiometricPrompt(this as androidx.fragment.app.FragmentActivity, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(res: BiometricPrompt.AuthenticationResult) =
                 result.success(mapOf("available" to true, "status" to "AVAILABLE", "authenticated" to true))
             override fun onAuthenticationError(code: Int, err: CharSequence) =
