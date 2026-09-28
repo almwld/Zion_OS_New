@@ -76,7 +76,7 @@ class TermuxRuntimeService {
     }
   }
 
-  Future<List<RuntimeCapability>> probeCore() async {
+  Future<Map<String, RuntimeCapability>> probeCore() async {
     const executables = <String, List<String>>{
       'sh': <String>['/system/bin/sh', prefix + '/bin/sh'],
       'bash': <String>[prefix + '/bin/bash'], 'zsh': <String>[prefix + '/bin/zsh'], 'fish': <String>[prefix + '/bin/fish'],
@@ -91,14 +91,19 @@ class TermuxRuntimeService {
       'termux-clipboard-set': <String>[prefix + '/bin/termux-clipboard-set'], 'termux-notification': <String>[prefix + '/bin/termux-notification'],
       'termux-toast': <String>[prefix + '/bin/termux-toast'], 'termux-vibrate': <String>[prefix + '/bin/termux-vibrate'], 'termux-tts-speak': <String>[prefix + '/bin/termux-tts-speak'],
     };
-    return <RuntimeCapability>[await storageStatus(), ...await Future.wait(executables.entries.map((e) => probeExecutable(e.key, e.value)))];
+    final results = <String, RuntimeCapability>{};
+    results['shared-storage'] = await storageStatus();
+    for (final entry in executables.entries) {
+      results[entry.key] = await probeExecutable(entry.key, entry.value);
+    }
+    return results;
   }
 
   Future<String> describe() async {
     final results = await probeCore();
     final buffer = StringBuffer('ZION TERMUX RUNTIME\n');
     buffer.writeln('HOME=' + home); buffer.writeln('PREFIX=' + prefix);
-    for (final result in results) buffer.writeln('[' + result.status.name.toUpperCase() + '] ' + result.id + ': ' + result.detail);
+    for (final result in results.values) buffer.writeln('[' + result.status.name.toUpperCase() + '] ' + result.id + ': ' + result.detail);
     return buffer.toString().trimRight();
   }
 }
