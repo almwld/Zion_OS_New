@@ -64,12 +64,84 @@ class ZionBootstrap {
     }catch(e){return _fail('فشل تثبيت Userland: '+e.toString());}
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','usr','usr/bin','usr/sbin','usr/lib','usr/share','usr/etc','usr/var/lib/zion-pkg','usr/var/cache','usr/tmp','tmp','etc'])await Directory(root+'/'+p).create(recursive:true);}
+  static const Map<String, String> _zionApiScripts = {
+    'zion-api-call': r'''#!/system/bin/sh
+set -eu
+PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
+RESULTS="$PREFIX/tmp/zion-api-results"
+mkdir -p "$RESULTS"
+method="${1:-}"
+[ -n "$method" ] || { echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API method is required."}'; exit 2; }
+shift
+id="zion-$(date +%s 2>/dev/null)-$"
+result="$RESULTS/$id.json"
+rm -f "$result"
+am start -n com.zion.os/.MainActivity -a com.zion.os.ZION_API --es method "$method" --es requestId "$id" "$@" >/dev/null 2>&1 || {
+  echo '{"available":false,"status":"UNAVAILABLE","reason":"Unable to start Zion API bridge."}'; exit 1;
+}
+i=0
+while [ "$i" -lt 100 ]; do
+  if [ -s "$result" ]; then
+    cat "$result"
+    rm -f "$result"
+    exit 0
+  fi
+  i=$((i+1))
+  sleep 0.05
+done
+echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API response timeout."}'
+exit 1
+''',
+    'zion-api-battery': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" battery\n',
+    'zion-api-device-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" device-info\n',
+    'zion-api-wifi-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" wifi-info\n',
+    'zion-api-sensor': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sensor "${@:-}"\n',
+    'zion-api-camera-photo': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" camera-photo\n',
+    'zion-api-camera-info': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" camera-info\n',
+    'zion-api-media-player': '#!/system/bin/sh\nP="${1:?path required}"; M="${2:-*/*}"; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" media-player --es path "$P" --es mime "$M"\n',
+    'zion-api-audio-record': '#!/system/bin/sh\nif [ "${1:-start}" = "stop" ]; then exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" audio-record --ez stop true; else exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" audio-record --ez stop false; fi\n',
+    'zion-api-location': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" location\n',
+    'zion-api-gps-status': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" gps-status\n',
+    'zion-api-notification': '#!/system/bin/sh\nT="${1:-Zion OS}"; C="${2:-}"; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" notification --es title "$T" --es content "$C"\n',
+    'zion-api-toast': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" toast --es text "${*:-}"\n',
+    'zion-api-dialog': '#!/system/bin/sh\nT="${1:-Zion OS}"; M="${2:-}"; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" dialog --es title "$T" --es message "$M"\n',
+    'zion-api-vibrate': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" vibrate --el durationMs "${1:-250}"\n',
+    'zion-api-clipboard-get': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" clipboard-get\n',
+    'zion-api-clipboard-set': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" clipboard-set --es text "${*:-}"\n',
+    'zion-api-tts-speak': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" tts-speak --es text "${*:-}"\n',
+    'zion-api-tts-stop': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" tts-stop\n',
+    'zion-api-sms-list': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sms-list\n',
+    'zion-api-sms-send': '#!/system/bin/sh\nN="${1:?number required}"; shift; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" sms-send --es number "$N" --es body "${*:-}"\n',
+    'zion-api-call-phone': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" call --es number "${1:?number required}"\n',
+    'zion-api-contacts-list': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" contacts-list\n',
+    'zion-setup-storage': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" setup-storage\n',
+    'zion-api-storage-get': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" storage-get\n',
+    'zion-api-file-share': '#!/system/bin/sh\nP="${1:?path required}"; M="${2:-*/*}"; exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" file-share --es path "$P" --es mime "$M"\n',
+    'zion-api-fingerprint': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" fingerprint\n',
+    'zion-api-keystore': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" keystore --es alias "${1:-zion-api}"\n',
+    'zion-api-wake-lock': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" wake-lock --ez enabled true\n',
+    'zion-api-wake-unlock': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" wake-lock --ez enabled false\n',
+    'zion-api-job-scheduler': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" job-scheduler --ei jobId "${1:-1}" --el delayMs "${2:-1000}"\n',
+    'zion-api-brightness': '#!/system/bin/sh\nexec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-call" brightness --ei value "${1:?value 0..255 required}"\n',
+  };
+
+  static Future<void> _installZionApiScripts() async {
+    final bin = Directory(prefix + '/bin');
+    await bin.create(recursive: true);
+    for (final e in _zionApiScripts.entries) {
+      final file = File(bin.path + '/' + e.key);
+      await file.writeAsString(e.value);
+      try { await Process.run('chmod', <String>['700', file.path], runInShell: false); } catch (_) {}
+    }
+  }
+
   static Future<void> _config() async {
     await Directory(home).create(recursive:true);
     await File(home+'/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
     final h=File(home+'/.zion_history');if(!await h.exists())await h.writeAsString('');
     final hosts=File(prefix+'/etc/hosts');if(!await hosts.exists())await hosts.writeAsString('127.0.0.1 localhost\n::1 localhost\n');
     final db=File(prefix+'/var/lib/zion-pkg/installed.json');if(!await db.exists())await db.writeAsString('[]');
+    await _installZionApiScripts();
   }
   static Future<void> _activate(Directory staging) async {
     final stagedPrefix=Directory(staging.path+'/usr');
