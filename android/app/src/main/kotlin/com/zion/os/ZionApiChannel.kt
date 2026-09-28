@@ -38,6 +38,7 @@ import com.zion.os.utils.PermissionHelper
 
 class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val channel = MethodChannel(messenger, "zion.os/api")
+    private val securityChannel = MethodChannel(messenger, "zion.os/security")
     private val battery = BatteryHandler(activity)
     private val sensors = SensorHandler(activity)
     private val clipboard = ClipboardHandler(activity)
@@ -60,7 +61,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
         val result = ExternalResult(requestId)
         try {
             when (method) {
-                "battery" -> result.success(battery.info())
+                "battery" -> audited.success(battery.info())
                 "device-info" -> result.success(deviceInfo())
                 "wifi-info" -> result.success(wifiInfo())
                 "sensor" -> result.success(sensors.list((args["type"] as? Int)))
@@ -85,16 +86,34 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
                 "setup-storage" -> result.success(setupStorage())
                 "storage-get" -> result.success(storageGet())
                 "file-share" -> result.success(fileShare(args["path"] as? String ?: "", args["mime"] as? String ?: "*/*"))
-                "fingerprint" -> fingerprint(result)
+                "fingerprint" -> fingerprint(audited)
                 "keystore" -> result.success(keystore(args["alias"] as? String ?: "zion-api"))
                 "wake-lock" -> result.success(wakeLock(args["enabled"] == true))
                 "job-scheduler" -> result.success(jobScheduler((args["jobId"] as? Number)?.toInt() ?: 1, (args["delayMs"] as? Number)?.toLong() ?: 1000L))
                 "brightness" -> result.success(brightness((args["value"] as? Number)?.toInt()))
-                else -> result.error("NOT_IMPLEMENTED", "Unknown Zion API: $method", null)
+                else -> audited.error("NOT_IMPLEMENTED", "Unknown Zion API: $method", null)
             }
         } catch (t: Throwable) {
             result.error("UNAVAILABLE", t.message ?: t.javaClass.simpleName, null)
         }
+    }
+
+    private inner class AuditedResult(private val method: String, private val delegate: MethodChannel.Result) : MethodChannel.Result {
+        private fun audit(outcome: String, details: Any? = null) {
+            try {
+                securityChannel.invokeMethod("audit", mapOf(
+                    "method" to method,
+                    "outcome" to outcome,
+                    "details" to details,
+                    "source" to "NATIVE_ANDROID_ZION_API"
+                ))
+            } catch (_: Throwable) {}
+        }
+        override fun success(result: Any?) { audit("success", result); delegate.success(result) }
+        override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+            audit(errorCode, mapOf("message" to errorMessage, "details" to errorDetails)); delegate.error(errorCode, errorMessage, errorDetails)
+        }
+        override fun notImplemented() { audit("not_implemented"); delegate.notImplemented() }
     }
 
     private inner class ExternalResult(private val requestId: String) : MethodChannel.Result {
@@ -105,6 +124,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
                 return File(dir, requestId + ".json")
             }
         private fun write(payload: Map<String, Any?>) {
+            try { securityChannel.invokeMethod("audit", mapOf("method" to "external.$requestId", "outcome" to payload["status"], "details" to payload, "source" to "NATIVE_ANDROID_ZION_API_CLI")) } catch (_: Throwable) {}
             val tmp = File(file.parentFile, file.name + ".tmp")
             tmp.writeText(JSONObject(payload).toString())
             if (!tmp.renameTo(file)) {
@@ -124,6 +144,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
 
     fun register() {
         channel.setMethodCallHandler { call, result ->
+            val audited = AuditedResult(call.method, result)
             try {
                 when (call.method) {
                     "battery" -> result.success(battery.info())
@@ -138,7 +159,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
                     "gps-status" -> result.success(gpsStatus())
                     "notification" -> result.success(notification(call))
                     "toast" -> result.success(toast(call.argument<String>("text") ?: ""))
-                    "dialog" -> dialog(call, result)
+                    "dialog" -> dialog(call, audited)
                     "vibrate" -> result.success(vibrate(call.argument<Long>("durationMs") ?: 250L))
                     "clipboard-get" -> result.success(clipboard.get())
                     "clipboard-set" -> result.success(clipboard.set(call.argument<String>("text") ?: ""))
@@ -156,7 +177,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
                     "wake-lock" -> result.success(wakeLock(call.argument<Boolean>("enabled") == true))
                     "job-scheduler" -> result.success(jobScheduler(call.argument<Int>("jobId") ?: 1, call.argument<Long>("delayMs") ?: 1000L))
                     "brightness" -> result.success(brightness(call.argument<Int>("value")))
-                    else -> result.notImplemented()
+                    else -> audited.notImplemented()
                 }
             } catch (t: Throwable) {
                 result.success(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: t.javaClass.simpleName)))
