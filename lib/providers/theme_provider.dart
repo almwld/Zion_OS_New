@@ -14,7 +14,8 @@ class ThemeProvider extends ChangeNotifier {
   );
 
   bool _isDarkMode = true;
-  // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.\n  Color _primaryColor = const Color(0xFF00A896);
+  // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.
+  Color _primaryColor = const Color(0xFF00A896);
   double _fontScale = 1.0;
   double _iconSize = 58.0;
   String? _pinHash;
