@@ -203,7 +203,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       ZionToast.show(
         context,
         'هذه الوظيفة غير متاحة في نسخة الإنتاج: ${app['nameAr']}',
-        accent: primaryColor,
+        accent: context.read<ThemeProvider>().primaryColor,
       );
       return;
     }
