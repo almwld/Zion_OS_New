@@ -14,6 +14,7 @@ import 'app_router.dart';
 import 'security/core/security_core.dart';
 import 'security/runtime/runtime_integrity.dart';
 import 'services/preferences_service.dart';
+import 'widgets/startup_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -94,7 +95,7 @@ class ZionOSApp extends StatelessWidget {
             ],
             supportedLocales: context.supportedLocales,
             locale: context.locale,
-            home: const AdaptiveInterface(child: AppRouter()),
+            home: const ZionStartupGate(),
           );
         },
       ),
