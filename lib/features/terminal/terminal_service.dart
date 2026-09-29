@@ -268,16 +268,28 @@ class TerminalService {
     if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
-      _audit(command: '<interactive-start>', outcome: 'denied', exitCode: 126, shell: 'security-core', duration: Duration.zero, interactive: true);
       return false;
     }
     final started = DateTime.now();
     final shell = await _findShell();
     if (shell == null) {
       _output.add('ERROR: No POSIX shell is available on this Android runtime.');
-      _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'process-shell', duration: DateTime.now().difference(started), interactive: true);
       return false;
     }
+
+    // Prefer the real Android PTY so xterm receives a true interactive
+    // terminal (prompt, line editing, arrows and Ctrl-C all work).
+    if (await _pty.isAvailable()) {
+      final ptyStarted = await _pty.start(shell: shell);
+      if (ptyStarted) {
+        _ptyOutputSub ??= _pty.output.listen(_output.add);
+        _interactiveInputBuffer = '';
+        _output.add('Connected to Android PTY: $shell\\r\\n');
+        _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: shell, duration: DateTime.now().difference(started), interactive: true);
+        return true;
+      }
+    }
+
     try {
       final process = await Process.start(shell, const <String>[], runInShell: false);
       _interactiveProcess = process;
@@ -299,16 +311,20 @@ class TerminalService {
     } on ProcessException catch (e) {
       _interactiveProcess = null;
       _output.add('ERROR: Unable to start shell: ${e.message}\\r\\n');
-      _audit(command: '<interactive-start>', outcome: 'process-error', exitCode: 126, shell: shell, duration: DateTime.now().difference(started), interactive: true);
       return false;
     }
   }
 
   void write(String input) {
-    final process = _interactiveProcess;
-    if (process == null || input.isEmpty) return;
-    process.stdin.write(input);
-    unawaited(process.stdin.flush());
+    if (input.isEmpty) return;
+    if (_pty.isRunning) {
+      unawaited(_pty.write(input));
+    } else {
+      final process = _interactiveProcess;
+      if (process == null) return;
+      process.stdin.write(input);
+      unawaited(process.stdin.flush());
+    }
     final parts = (_interactiveInputBuffer + input).split('\\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
@@ -319,7 +335,10 @@ class TerminalService {
     }
   }
 
-  Future<bool> resizeInteractive({required int rows, required int cols}) async => false;
+  Future<bool> resizeInteractive({required int rows, required int cols}) async {
+    if (_pty.isRunning) return _pty.resize(rows: rows, cols: cols);
+    return false;
+  }
 
   Future<void> stopInteractive() async {
     final process = _interactiveProcess;
