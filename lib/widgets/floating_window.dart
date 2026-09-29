@@ -66,7 +66,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
         child: GestureDetector(
           onTap: () => setState(() {
             _isMinimized = false;
-            widget.onChanged();
+            widget.onChanged(_size, _position);
           }),
           child: Container(
             width: 120,
@@ -108,7 +108,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                 onPanUpdate: (details) => setState(() {
                   _position = _clampPosition(context, _position + details.delta);
                 }),
-                onPanEnd: (_) => widget.onChanged(),
+                onPanEnd: (_) => widget.onChanged(_size, _position),
                 child: Container(
                   height: 36,
                   decoration: const BoxDecoration(
