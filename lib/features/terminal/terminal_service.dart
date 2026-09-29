@@ -99,7 +99,15 @@ class TerminalService {
     return null;
   }
 
-  Future<String?> _findShell() => _findExecutable(const <String>['/system/bin/sh', '/bin/sh', 'sh']);
+  Future<String?> _findShell() => _findExecutable(const <String>[
+        '/data/data/com.zion.os/files/usr/bin/bash',
+        '/data/data/com.zion.os/files/usr/bin/zsh',
+        '/data/data/com.zion.os/files/usr/bin/fish',
+        '/data/data/com.zion.os/files/usr/bin/ash',
+        '/system/bin/sh',
+        '/bin/sh',
+        'sh',
+      ]);
 
   bool _authorized(String command) {
     final scope = AuthorizationScope(
@@ -291,7 +299,18 @@ class TerminalService {
     }
 
     try {
-      final process = await Process.start(shell, const <String>[], runInShell: false);
+      final process = await Process.start(
+        shell,
+        const <String>['-i'],
+        runInShell: false,
+        environment: <String, String>{
+          'TERM': 'xterm-256color',
+          'COLORTERM': 'truecolor',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+          'ZION_TERMINAL': '1',
+        },
+      );
       _interactiveProcess = process;
       _interactiveStdoutSub = process.stdout.transform(utf8.decoder).listen(_output.add);
       _interactiveStderrSub = process.stderr.transform(utf8.decoder).listen(_output.add);
