@@ -4,6 +4,7 @@ class FloatingWindow extends StatefulWidget {
   final String title;
   final Widget child;
   final VoidCallback onClose;
+  final VoidCallback onChanged;
   final int windowId;
   final Size initialSize;
   final Offset initialPosition;
@@ -13,6 +14,7 @@ class FloatingWindow extends StatefulWidget {
     required this.title,
     required this.child,
     required this.onClose,
+    required this.onChanged,
     required this.windowId,
     this.initialSize = const Size(350, 500),
     this.initialPosition = const Offset(50, 100),
@@ -53,6 +55,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
       height.clamp(300.0, maxHeight).toDouble(),
     );
     _position = _clampPosition(context, _position);
+    widget.onChanged();
   }
 
   @override
@@ -62,7 +65,10 @@ class _FloatingWindowState extends State<FloatingWindow> {
         left: _position.dx,
         top: _position.dy,
         child: GestureDetector(
-          onTap: () => setState(() => _isMinimized = false),
+          onTap: () => setState(() {
+            _isMinimized = false;
+            widget.onChanged();
+          }),
           child: Container(
             width: 120,
             height: 32,
@@ -103,6 +109,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                 onPanUpdate: (details) => setState(() {
                   _position = _clampPosition(context, _position + details.delta);
                 }),
+                onPanEnd: (_) => widget.onChanged(),
                 child: Container(
                   height: 36,
                   decoration: const BoxDecoration(
@@ -123,7 +130,10 @@ class _FloatingWindowState extends State<FloatingWindow> {
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => setState(() => _isMinimized = true),
+                        onTap: () => setState(() {
+                          _isMinimized = true;
+                          widget.onChanged();
+                        }),
                         child: const Icon(
                           Icons.horizontal_rule,
                           color: Color(0xFF00BCD4),
