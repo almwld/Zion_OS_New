@@ -371,7 +371,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
 
   Widget _buildFloatingRadar(ThemeProvider theme, bool isDark, Color primaryColor) => Positioned(
     right: 20, top: 140,
-    child: GestureDetector(
+    child: Transform.scale(
+      scale: theme.radarScale,
+      alignment: Alignment.topRight,
+      child: GestureDetector(
       child: AnimatedBuilder(
         animation: _radarController,
         builder: (context, child) => Container(
@@ -390,6 +393,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             ))),
           ]),
         ),
+      ),
       ),
     ),
   );
