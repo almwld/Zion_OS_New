@@ -56,6 +56,7 @@ jobs:
 
       - name: Run Flutter tests
         run: flutter test --reporter expanded
+
       - name: Generate app icons
         run: flutter pub run flutter_launcher_icons
 
@@ -146,3 +147,49 @@ jobs:
           path: build/app/outputs/flutter-apk/app-x86_64-release.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Appetize cloud test
+        id: appetize
+        if: ${{ env.APPETIZE_API_KEY != '' }}
+        env:
+          APPETIZE_API_KEY: ${{ secrets.APPETIZE_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.appetize.io/v1/apps" \
+            -H "X-API-KEY: $APPETIZE_API_KEY" \
+            -F "file=@$APK" \
+            -F "platform=android")"
+          echo "$RESPONSE" > "$RUNNER_TEMP/appetize-response.json"
+          APP_URL="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("publicURL",""))' "$RUNNER_TEMP/appetize-response.json")"
+          test -n "$APP_URL"
+          echo "APPETIZE_URL=$APP_URL" >> "$GITHUB_ENV"
+          echo "Appetize URL: $APP_URL"
+
+      - name: Build summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "## Build summary"
+            echo
+            echo "### Appetize cloud test"
+            if [ -n "${APPETIZE_URL:-}" ]; then
+              echo
+              echo "### [Open Zion OS in Appetize](${APPETIZE_URL})"
+              echo
+              echo "Appetize upload completed successfully for the arm64-v8a release APK."
+            elif [ -n "${{ secrets.APPETIZE_API_KEY }}" ]; then
+              echo
+              echo "Appetize upload was attempted but no public URL was returned."
+              echo "Check the Appetize upload step logs."
+            else
+              echo
+              echo "Appetize cloud test skipped: repository secret APPETIZE_API_KEY is not configured."
+              echo "Add APPETIZE_API_KEY to enable the live Appetize link."
+            fi
+            echo
+            echo "Job summary generated at run-time"
+          } >> "$GITHUB_STEP_SUMMARY"
