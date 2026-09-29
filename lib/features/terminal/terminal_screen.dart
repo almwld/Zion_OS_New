@@ -340,7 +340,7 @@ class _StatusBar extends StatelessWidget {
           Expanded(
             child: Text(
               connected
-                  ? 'Android shell • /system/bin/sh • safe child process • 10,000 scrollback'
+                  ? 'Android interactive PTY • /system/bin/sh • 10,000 scrollback'
                   : 'Shell unavailable / stopped',
               style: const TextStyle(fontSize: 11),
             ),
