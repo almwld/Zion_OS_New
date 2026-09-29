@@ -99,15 +99,30 @@ class TerminalService {
     return null;
   }
 
-  Future<String?> _findShell() => _findExecutable(const <String>[
-        '/data/data/com.zion.os/files/usr/bin/bash',
-        '/data/data/com.zion.os/files/usr/bin/zsh',
-        '/data/data/com.zion.os/files/usr/bin/fish',
-        '/data/data/com.zion.os/files/usr/bin/ash',
-        '/system/bin/sh',
-        '/bin/sh',
-        'sh',
-      ]);
+  Future<String?> _findShell() async {
+    // Android always provides /system/bin/sh. Prefer it first so terminal
+    // startup never probes a missing Termux/PRoot path before opening the UI.
+    const candidates = <String>[
+      '/system/bin/sh',
+      '/bin/sh',
+      'sh',
+      '/data/data/com.zion.os/files/usr/bin/bash',
+      '/data/data/com.zion.os/files/usr/bin/zsh',
+      '/data/data/com.zion.os/files/usr/bin/fish',
+      '/data/data/com.zion.os/files/usr/bin/ash',
+    ];
+    for (final candidate in candidates) {
+      try {
+        final result = await Process.run(
+          candidate,
+          const <String>['-c', 'exit 0'],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 2));
+        if (result.exitCode == 0) return candidate;
+      } catch (_) {}
+    }
+    return null;
+  }
 
   bool _authorized(String command) {
     final scope = AuthorizationScope(
@@ -285,19 +300,9 @@ class TerminalService {
       return false;
     }
 
-    // Prefer the real Android PTY so xterm receives a true interactive
-    // terminal (prompt, line editing, arrows and Ctrl-C all work).
-    if (await _pty.isAvailable()) {
-      final ptyStarted = await _pty.start(shell: shell);
-      if (ptyStarted) {
-        _ptyOutputSub ??= _pty.output.listen(_output.add);
-        _interactiveInputBuffer = '';
-        _output.add('Connected to Android PTY: $shell\\r\\n');
-        _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: shell, duration: DateTime.now().difference(started), interactive: true);
-        return true;
-      }
-    }
-
+    // Use a Dart-managed child process on Android. The optional native PTY
+    // bridge is deliberately not invoked during normal app startup because a
+    // native PTY failure must never be able to terminate or hang the Flutter UI.
     try {
       final process = await Process.start(
         shell,
