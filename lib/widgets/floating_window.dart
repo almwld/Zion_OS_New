@@ -111,21 +111,59 @@ class _FloatingWindowState extends State<FloatingWindow> {
                   ),
                   child: Row(
                     children: [
-                      const SizedBox(width: 12),
-                      GestureDetector(onTap: () => setState(() => _isMinimized = true), child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18)),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          style: const TextStyle(
+                            color: Color(0xFF00BCD4),
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       GestureDetector(
-                        onTap: () => setState(() => _resize(context, _size.width > 300 ? 350 : 600, _size.height > 500 ? 500 : 600)),
-                        child: const Icon(Icons.crop_square, color: Color(0xFF00BCD4), size: 14),
+                        onTap: () => setState(() => _isMinimized = true),
+                        child: const Icon(
+                          Icons.horizontal_rule,
+                          color: Color(0xFF00BCD4),
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 8),
-                      GestureDetector(onTap: widget.onClose, child: const Icon(Icons.close, color: Colors.red, size: 18)),
-                      const Expanded(child: SizedBox()),
-                      Flexible(child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis)),
-                      const Expanded(child: SizedBox()),
                       GestureDetector(
-                        onPanUpdate: (details) => setState(() => _resize(context, _size.width + details.delta.dx, _size.height + details.delta.dy)),
-                        child: const Icon(Icons.drag_handle, color: Colors.white54, size: 18),
+                        onTap: () => setState(() => _resize(
+                          context,
+                          _size.width > 300 ? 350 : 600,
+                          _size.height > 500 ? 500 : 600,
+                        )),
+                        child: const Icon(
+                          Icons.crop_square,
+                          color: Color(0xFF00BCD4),
+                          size: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: widget.onClose,
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.red,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onPanUpdate: (details) => setState(() => _resize(
+                          context,
+                          _size.width + details.delta.dx,
+                          _size.height + details.delta.dy,
+                        )),
+                        child: const Icon(
+                          Icons.drag_handle,
+                          color: Colors.white54,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 8),
                     ],
