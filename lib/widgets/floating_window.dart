@@ -55,7 +55,6 @@ class _FloatingWindowState extends State<FloatingWindow> {
       height.clamp(300.0, maxHeight).toDouble(),
     );
     _position = _clampPosition(context, _position);
-    widget.onChanged(_size, _position);
   }
 
   @override
@@ -142,11 +141,14 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       ),
                       const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () => setState(() => _resize(
+                        onTap: () {
+                          setState(() => _resize(
                           context,
                           _size.width > 300 ? 350 : 600,
                           _size.height > 500 ? 500 : 600,
-                        )),
+                        ));
+                          widget.onChanged(_size, _position);
+                        },
                         child: const Icon(
                           Icons.crop_square,
                           color: Color(0xFF00BCD4),
@@ -169,6 +171,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                           _size.width + details.delta.dx,
                           _size.height + details.delta.dy,
                         )),
+                        onPanEnd: (_) => widget.onChanged(_size, _position),
                         child: const Icon(
                           Icons.drag_handle,
                           color: Colors.white54,
