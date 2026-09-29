@@ -45,6 +45,7 @@ import 'screens/apps/notification_manager.dart';
 import 'widgets/cmatrix_arabic_background.dart';
 import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
+import 'core/ui/zion_toast.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -199,12 +200,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     };
 
     if (screen == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('هذه الوظيفة غير متاحة في نسخة الإنتاج: ${app['nameAr']}'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
+      ZionToast.show(
+        context,
+        'هذه الوظيفة غير متاحة في نسخة الإنتاج: ${app['nameAr']}',
+        accent: primaryColor,
       );
       return;
     }
