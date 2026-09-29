@@ -33,6 +33,8 @@ import 'screens/apps/forensics.dart';
 import 'screens/apps/network_analyzer.dart';
 import 'screens/apps/network_scanner.dart';
 import 'screens/apps/network_tools.dart';
+import 'screens/apps/system_monitor.dart';
+import 'screens/apps/performance_monitor.dart';
 import 'screens/apps/email_client.dart';
 import 'screens/apps/alarms_clock.dart';
 import 'screens/apps/calendar_simple.dart';
@@ -94,7 +96,11 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"FIREWALL","nameAr":"جدار","icon":Icons.security,"category":"DEFENSE","color":const Color(0xFF0FB9B1)},
     {"name":"VPN","nameAr":"VPN","icon":Icons.vpn_lock,"category":"DEFENSE","color":const Color(0xFF45AAF2)},
     {"name":"ANTIVIRUS","nameAr":"مضاد","icon":Icons.health_and_safety,"category":"DEFENSE","color":const Color(0xFF2BCBBA)},
+    {"name":"SYSTEM","nameAr":"مراقبة النظام","icon":Icons.monitor,"category":"DEFENSE","color":const Color(0xFF20BF6B)},
+    {"name":"PERFORMANCE","nameAr":"الأداء","icon":Icons.speed,"category":"DEFENSE","color":const Color(0xFF26DE81)},
     {"name":"NETWORK","nameAr":"شبكة","icon":Icons.network_wifi,"category":"ANALYSIS","color":const Color(0xFF3742FA)},
+    {"name":"NETWORK SCANNER","nameAr":"ماسح الشبكة","icon":Icons.radar,"category":"ANALYSIS","color":const Color(0xFF5B6EF5)},
+    {"name":"NET ANALYZER","nameAr":"محلل الشبكة","icon":Icons.monitor_heart,"category":"ANALYSIS","color":const Color(0xFF3F8CFF)},
     {"name":"FORENSICS","nameAr":"جنائي","icon":Icons.search,"category":"ANALYSIS","color":const Color(0xFF5352ED)},
     {"name":"TEXT","nameAr":"نصوص","icon":Icons.analytics,"category":"ANALYSIS","color":const Color(0xFF706FD3)},
     {"name":"CALCULATOR","nameAr":"حاسبة","icon":Icons.calculate,"category":"ANALYSIS","color":const Color(0xFF546DE5)},
@@ -200,6 +206,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'APP LOCK' => const AppLockApp(),
       'NOTIFY' => const NotificationManagerApp(),
       'NETWORK' => const NetworkToolsApp(),
+      'NETWORK SCANNER' => const NetworkScannerApp(),
+      'NET ANALYZER' => const NetworkAnalyzerApp(),
+      'SYSTEM' => const SystemMonitorApp(),
+      'PERFORMANCE' => const PerformanceMonitorApp(),
       'FORENSICS' => const ForensicsApp(),
       'BATTERY' => const BatterySaverApp(),
       'FIREWALL' => const FirewallApp(),
