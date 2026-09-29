@@ -18,6 +18,7 @@ import 'screens/apps/maps_app.dart';
 import 'screens/apps/radio_app.dart';
 import 'screens/apps/video_player_app.dart';
 import 'widgets/cmatrix_arabic_background.dart';
+import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
@@ -40,6 +41,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   Timer? _clockTimer;
   late AnimationController _radarController;
   late AnimationController _pulseController;
+  final GlobalKey<FloatingWindowManagerState> _windowManagerKey = GlobalKey<FloatingWindowManagerState>();
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": const Color(0xFFFF4757), "gradient": [const Color(0xFFFF4757), const Color(0xFFD63447)]},
@@ -128,7 +130,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     super.dispose();
   }
 
-  void _openApp(Map<String, dynamic> app) {
+  void _openApp(Map<String, dynamic> app, {bool fullscreen = false}) {
     final name = app['name'] as String;
     final Widget? screen = switch (name) {
       'ARSENAL' => const ArsenalScreen(),
@@ -158,7 +160,21 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       return;
     }
 
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+    if (fullscreen) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => screen),
+      );
+      return;
+    }
+
+    final screenSize = MediaQuery.sizeOf(context);
+    final windowWidth = math.min(380.0, math.max(280.0, screenSize.width - 24.0));
+    final windowHeight = math.min(560.0, math.max(360.0, screenSize.height - 150.0));
+    _windowManagerKey.currentState?.openWindow(
+      app['nameAr'] as String,
+      screen,
+      size: Size(windowWidth, windowHeight),
+    );
   }
 
   @override
@@ -166,7 +182,9 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final theme = Provider.of<ThemeProvider>(context);
     final isDark = theme.isDarkMode;
     final primaryColor = theme.primaryColor;
-    return Scaffold(
+    return FloatingWindowManager(
+      key: _windowManagerKey,
+      child: Scaffold(
       backgroundColor: isDark ? const Color(0xFF0A0E1A) : const Color(0xFFF5F7FA),
       body: Stack(children: [
         _buildBackground(isDark, primaryColor),
@@ -195,6 +213,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
         if (_showStartMenu) _buildStartMenu(theme, isDark, primaryColor),
       ]),
+    ),
     );
   }
 
@@ -294,7 +313,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         scale: value,
         child: GestureDetector(
           onTap: () => _openApp(app),
-          onLongPress: () => setState(() => _showRadar = !_showRadar),
+          onLongPress: () => _openApp(app, fullscreen: true),
           child: Container(
             decoration: BoxDecoration(
               color: isDark ? Colors.white.withOpacity(0.04) : Colors.white.withOpacity(0.8),
