@@ -17,6 +17,21 @@ import 'screens/apps/weather_app.dart';
 import 'screens/apps/maps_app.dart';
 import 'screens/apps/radio_app.dart';
 import 'screens/apps/video_player_app.dart';
+import 'screens/apps/translator_app.dart';
+import 'screens/apps/currency_converter.dart';
+import 'screens/apps/date_calculator.dart';
+import 'screens/apps/percentage_calculator.dart';
+import 'screens/apps/unit_converter.dart';
+import 'screens/apps/text_analyzer.dart';
+import 'screens/apps/crypto_tool.dart';
+import 'screens/apps/stealth_mode.dart';
+import 'screens/apps/vpn_manager.dart';
+import 'screens/apps/firewall.dart';
+import 'screens/apps/battery_saver.dart';
+import 'screens/apps/forensics.dart';
+import 'screens/apps/network_analyzer.dart';
+import 'screens/apps/network_scanner.dart';
+import 'screens/apps/network_tools.dart';
 import 'widgets/cmatrix_arabic_background.dart';
 import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
@@ -146,6 +161,19 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'MAPS' => const MapsApp(),
       'RADIO' => const RadioApp(),
       'VIDEO' => const VideoPlayerApp(),
+      'NETWORK' => const NetworkToolsApp(),
+      'FORENSICS' => const ForensicsApp(),
+      'BATTERY' => const BatterySaverApp(),
+      'FIREWALL' => const FirewallApp(),
+      'VPN' => const VPNManagerApp(),
+      'STEALTH' => const StealthModeApp(),
+      'CRYPTO' => const CryptoToolApp(),
+      'TEXT' => const TextAnalyzerApp(),
+      'UNIT' => const UnitConverterApp(),
+      'PERCENT' => const PercentageCalculatorApp(),
+      'DATE' => const DateCalculatorApp(),
+      'CURRENCY' => const CurrencyConverterApp(),
+      'TRANSLATOR' => const TranslatorApp(),
       _ => null,
     };
 
