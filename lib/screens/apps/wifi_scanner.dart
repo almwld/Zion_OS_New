@@ -24,17 +24,35 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
   }
 
   Future<void> _requestAndScan() async {
-    var status = await Permission.location.request();
-    if (status.isGranted && await Permission.nearbyWifiDevices.isDenied) status = await Permission.nearbyWifiDevices.request();
-    if (!mounted) return;
-    if (!status.isGranted) {
+    final location = await Permission.location.request();
+    if (!location.isGranted) {
+      if (!mounted) return;
       setState(() {
         _status = 'PERMISSION_REQUIRED';
-        _reason = 'يجب السماح بالموقع حتى يسمح Android بعرض نتائج شبكات Wi-Fi.';
+        _reason = location.isPermanentlyDenied
+            ? 'تم رفض إذن الموقع نهائيًا. افتح إعدادات التطبيق واسمح بالموقع ثم أعد الفحص.'
+            : 'يجب السماح بالموقع حتى يسمح Android بعرض نتائج شبكات Wi-Fi.';
         _networks = const [];
       });
       return;
     }
+
+    if (await Permission.nearbyWifiDevices.isDenied) {
+      await Permission.nearbyWifiDevices.request();
+    }
+    final nearby = await Permission.nearbyWifiDevices.status;
+    if (nearby.isDenied || nearby.isPermanentlyDenied) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'PERMISSION_REQUIRED';
+        _reason = nearby.isPermanentlyDenied
+            ? 'تم رفض إذن الأجهزة القريبة نهائيًا. افتح إعدادات التطبيق للسماح بفحص Wi-Fi.'
+            : 'يجب السماح للأجهزة القريبة حتى يستطيع Android إرجاع شبكات Wi-Fi.';
+        _networks = const [];
+      });
+      return;
+    }
+
     await _scanWiFi();
   }
 
@@ -98,7 +116,23 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
           if (_status == 'PERMISSION_REQUIRED')
             Padding(
               padding: const EdgeInsets.all(12),
-              child: ElevatedButton.icon(onPressed: _requestAndScan, icon: const Icon(Icons.location_on), label: const Text('السماح بالموقع')),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _requestAndScan,
+                      icon: const Icon(Icons.security),
+                      label: const Text('إعادة طلب الأذونات'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'فتح إعدادات التطبيق',
+                    onPressed: openAppSettings,
+                    icon: const Icon(Icons.settings),
+                  ),
+                ],
+              ),
             ),
           Expanded(
             child: _isScanning
