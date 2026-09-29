@@ -4,7 +4,7 @@ class FloatingWindow extends StatefulWidget {
   final String title;
   final Widget child;
   final VoidCallback onClose;
-  final VoidCallback onChanged;
+  final void Function(Size size, Offset position) onChanged;
   final int windowId;
   final Size initialSize;
   final Offset initialPosition;
@@ -131,7 +131,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       GestureDetector(
                         onTap: () => setState(() {
                           _isMinimized = true;
-                          widget.onChanged();
+                          widget.onChanged(_size, _position);
                         }),
                         child: const Icon(
                           Icons.horizontal_rule,
