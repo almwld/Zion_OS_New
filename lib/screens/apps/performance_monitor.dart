@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:io';
+import '../src/core/services/system_metrics.dart';
 import 'dart:async';
 
 class PerformanceMonitorApp extends StatefulWidget {
@@ -53,21 +53,21 @@ class _PerformanceMonitorAppState extends State<PerformanceMonitorApp> {
   }
 
   void _startMonitoring() {
-    _monitorTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _updateStats();
+    _monitorTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      await _updateStats();
+      if (!mounted) return;
       _updateHistory();
       _updatePerformanceScore();
       setState(() {});
     });
   }
 
-  void _updateStats() {
-    _currentCpu = _getCPUUsage();
-    _currentRam = _getRAMUsage();
-    _currentDisk = _getDiskUsage();
-    _currentTemp = _getTemperature();
-    _currentProcesses = _getProcessCount();
-    _currentUptime = _getUptime();
+  Future<void> _updateStats() async {
+    final metrics = await SystemMetrics.read();
+    _currentCpu = metrics.cpuPercent;
+    _currentRam = metrics.memoryPercent;
+    _currentDisk = metrics.storagePercent;
+    _currentUptime = metrics.uptime.inSeconds;
   }
 
   void _updateHistory() {
@@ -107,77 +107,6 @@ class _PerformanceMonitorAppState extends State<PerformanceMonitorApp> {
       _performanceStatus = 'Poor';
       _performanceColor = Colors.red;
     }
-  }
-
-  double _getCPUUsage() {
-    try {
-      final result = Process.runSync('top', ['-bn1'], runInShell: true);
-      final output = result.stdout.toString();
-      final match = RegExp(r'CPU:\s*(\d+)%').firstMatch(output);
-      if (match != null) return double.parse(match.group(1)!);
-    } catch (_) {}
-    return 0;
-  }
-
-  double _getRAMUsage() {
-    try {
-      final result = Process.runSync('free', [], runInShell: true);
-      final output = result.stdout.toString();
-      final lines = output.split('\n');
-      if (lines.length > 1) {
-        final parts = lines[1].split(RegExp(r'\s+'));
-        if (parts.length >= 3) {
-          final total = double.parse(parts[1]);
-          final used = double.parse(parts[2]);
-          return (used / total) * 100;
-        }
-      }
-    } catch (_) {}
-    return 0;
-  }
-
-  double _getDiskUsage() {
-    try {
-      final result = Process.runSync('df', ['/data'], runInShell: true);
-      final output = result.stdout.toString();
-      final lines = output.split('\n');
-      if (lines.length > 1) {
-        final parts = lines[1].split(RegExp(r'\s+'));
-        if (parts.length >= 5) {
-          final used = double.parse(parts[2]);
-          final total = double.parse(parts[3]);
-          return (used / total) * 100;
-        }
-      }
-    } catch (_) {}
-    return 0;
-  }
-
-  double _getTemperature() {
-    try {
-      final result = Process.runSync('cat', ['/sys/class/thermal/thermal_zone0/temp'], runInShell: true);
-      final temp = double.parse(result.stdout.toString().trim()) / 1000;
-      return temp;
-    } catch (_) {}
-    return 35;
-  }
-
-  int _getProcessCount() {
-    try {
-      final result = Process.runSync('ps', ['-e'], runInShell: true);
-      final lines = result.stdout.toString().split('\n');
-      return lines.length - 1;
-    } catch (_) {}
-    return 0;
-  }
-
-  int _getUptime() {
-    try {
-      final result = Process.runSync('cat', ['/proc/uptime'], runInShell: true);
-      final uptimeSeconds = double.parse(result.stdout.toString().split(' ')[0]);
-      return uptimeSeconds.toInt();
-    } catch (_) {}
-    return 0;
   }
 
   String _formatUptime(int seconds) {
