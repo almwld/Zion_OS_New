@@ -3,7 +3,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:provider/provider.dart' as provider;
 
-import 'adaptive/adaptive_interface.dart';
 import 'core/services/unified_core_service.dart';
 import 'core/services/zion_api_audit_bridge.dart';
 import 'core/services/zion_pkg_external_bridge.dart';
