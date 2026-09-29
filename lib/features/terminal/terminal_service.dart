@@ -47,6 +47,7 @@ class TerminalService {
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
+  static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
@@ -250,10 +251,10 @@ class TerminalService {
       final reason = (data['reason'] ?? '').toString();
       final rawNetworks = data['networks'];
       final networks = rawNetworks is List ? rawNetworks.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList() : const <Map<String, dynamic>>[];
-      final lines = <String>['ZION Wi-Fi scanner: $status', if (reason.isNotEmpty) reason, 'Networks: \${networks.length}'];
-      for (final n in networks) { lines.add('\${n['ssid'] ?? '<hidden>'} | \${n['bssid'] ?? '?'} | \${n['signal'] ?? '?'} dBm | \${n['frequencyMHz'] ?? '?'} MHz | Ch \${n['channel'] ?? '?'} | \${n['capabilities'] ?? 'Unknown'}'); }
+      final lines = <String>['ZION Wi-Fi scanner: $status', if (reason.isNotEmpty) reason, 'Networks: ${networks.length}'];
+      for (final n in networks) { lines.add('${n['ssid'] ?? '<hidden>'} | ${n['bssid'] ?? '?'} | ${n['signal'] ?? '?'} dBm | ${n['frequencyMHz'] ?? '?'} MHz | Ch ${n['channel'] ?? '?'} | ${n['capabilities'] ?? 'Unknown'}'); }
       final exitCode = status == 'AVAILABLE' ? 0 : (status == 'PERMISSION_REQUIRED' ? 126 : 127);
-      final result = TerminalResult(command: command, stdout: lines.join('\\n'), stderr: '', exitCode: exitCode, duration: DateTime.now().difference(started), shell: 'android-wifimanager');
+      final result = TerminalResult(command: command, stdout: lines.join('\n'), stderr: '', exitCode: exitCode, duration: DateTime.now().difference(started), shell: 'android-wifimanager');
       _audit(command: command, outcome: result.succeeded ? 'success' : 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
       return result;
     } on PlatformException catch (e) {
