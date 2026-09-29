@@ -554,10 +554,23 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun scanWifi(): Map<String, Any?> {
         if (!packageManager.hasSystemFeature("android.hardware.wifi")) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi hardware is not available.", "networks" to emptyList<Map<String, Any?>>())
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Precise location permission is required by Android to expose Wi-Fi scan results.", "networks" to emptyList<Map<String, Any?>>())
+        val hasLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasLocation) return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Location permission is required by Android to expose Wi-Fi scan results.", "networks" to emptyList<Map<String, Any?>>())
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+            return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Nearby Wi-Fi permission is required to scan networks.", "networks" to emptyList<Map<String, Any?>>())
+        }
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!locationManager.isLocationEnabled) return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to "Android Location services must be enabled for Wi-Fi scanning.", "networks" to emptyList<Map<String, Any?>>())
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Android Wi-Fi service is unavailable.", "networks" to emptyList<Map<String, Any?>>())
         if (!wifiManager.isWifiEnabled) return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Wi-Fi is disabled on the device.", "networks" to emptyList<Map<String, Any?>>())
-        val results = try { wifiManager.scanResults } catch (e: SecurityException) { return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to (e.message ?: "Android denied Wi-Fi scan access."), "networks" to emptyList<Map<String, Any?>>()) }
+        val started = try { wifiManager.startScan() } catch (_: SecurityException) { false }
+        if (!started) return mapOf("available" to false, "status" to "THROTTLED_OR_UNAVAILABLE", "reason" to "Android did not accept a fresh Wi-Fi scan request. Try again shortly.", "networks" to emptyList<Map<String, Any?>>())
+        try { Thread.sleep(1200) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        val results = try { wifiManager.scanResults } catch (e: SecurityException) {
+            return mapOf("available" to false, "status" to "PERMISSION_REQUIRED", "reason" to (e.message ?: "Android denied Wi-Fi scan access."), "networks" to emptyList<Map<String, Any?>>())
+        }
         val networks = results.filter { it.SSID.isNotBlank() }.distinctBy { it.BSSID.lowercase() }.map { result ->
             mapOf<String, Any?>("ssid" to result.SSID, "bssid" to result.BSSID, "signal" to result.level, "frequencyMHz" to result.frequency, "channel" to frequencyToChannel(result.frequency), "capabilities" to result.capabilities)
         }
