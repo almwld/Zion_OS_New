@@ -447,7 +447,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
   Widget _buildStartMenu(ThemeProvider theme, bool isDark, Color primaryColor) => GestureDetector(
-    onTap: onTap ?? () => setState(() => _showStartMenu = false),
+    onTap: () => setState(() => _showStartMenu = false),
     child: Container(color: Colors.black.withOpacity(0.5), child: Center(child: GestureDetector(
       onTap: () {},
       child: Container(
@@ -483,7 +483,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
       title: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14, fontWeight: FontWeight.w600)),
       subtitle: Text(subtitle, style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 11)),
-      onTap: () => setState(() => _showStartMenu = false),
+      onTap: onTap,
     ),
   );
 }
