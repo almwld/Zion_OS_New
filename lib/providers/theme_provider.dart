@@ -63,7 +63,13 @@ class ThemeProvider extends ChangeNotifier {
         try { _cmatrixColor = Color(int.parse(cmatrixColor)); } catch (_) {}
       }
       _cmatrixOpacity = prefs.getDouble('cmatrix_opacity') ?? 0.15;
-      _cmatrixSpeed = prefs.getDouble('cmatrix_speed') ?? 2.2;
+      final savedCMatrixSpeed = prefs.getDouble('cmatrix_speed');
+      _cmatrixSpeed = savedCMatrixSpeed == null || savedCMatrixSpeed < 1.5
+          ? 2.2
+          : savedCMatrixSpeed.clamp(0.1, 3.0);
+      if (savedCMatrixSpeed == null || savedCMatrixSpeed < 1.5) {
+        await prefs.setDouble('cmatrix_speed', _cmatrixSpeed);
+      }
       _cmatrixFontSize = prefs.getDouble('cmatrix_font_size') ?? 18.0;
       _radarScale = prefs.getDouble('radar_scale') ?? 1.0;
 
