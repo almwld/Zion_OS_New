@@ -1,281 +1,83 @@
-import 'dart:convert';
-import 'dart:math';
-
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/theme/zion_colors.dart';
+import '../core/theme/zion_theme.dart';
+
+/// Single live theme state for the desktop application.
 class ThemeProvider extends ChangeNotifier {
-  static const _pinHashKey = 'user_pin_hash';
-  static const _pinSaltKey = 'user_pin_salt';
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const _darkKey = 'zion_is_dark';
+  static const _primaryKey = 'zion_primary_color';
 
-  bool _isDarkMode = true;
-  bool _cmatrixEnabled = true;
-  bool _cmatrixUseMusnad = true;
-  bool _cmatrixUseArabic = false;
-  Color _cmatrixColor = const Color(0xFF00FF41);
-  double _cmatrixOpacity = 0.15;
-  double _cmatrixSpeed = 2.2;
-  double _cmatrixFontSize = 18.0;
-  double _radarScale = 1.0;
-  // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.
-  Color _primaryColor = const Color(0xFF00A896);
-  double _fontScale = 1.0;
-  double _iconSize = 58.0;
-  String? _pinHash;
-  String? _pinSalt;
-  bool _isReady = false;
-
-  bool get isDarkMode => _isDarkMode;
-  bool get cmatrixEnabled => _cmatrixEnabled;
-  bool get cmatrixUseMusnad => _cmatrixUseMusnad;
-  bool get cmatrixUseArabic => _cmatrixUseArabic;
-  Color get cmatrixColor => _cmatrixColor;
-  double get cmatrixOpacity => _cmatrixOpacity;
-  double get cmatrixSpeed => _cmatrixSpeed;
-  double get cmatrixFontSize => _cmatrixFontSize;
-  double get radarScale => _radarScale;
-  Color get primaryColor => _primaryColor;
-  double get fontScale => _fontScale;
-  double get iconSize => _iconSize;
-  bool get isReady => _isReady;
-  bool get hasPin => _pinHash != null && _pinSalt != null;
+  bool _isDark = true;
+  Color _primaryColor = ZionColors.cyan;
 
   ThemeProvider() {
-    _loadSettings();
+    _load();
   }
 
-  Future<void> _loadSettings() async {
+  bool get isDarkMode => _isDark;
+  bool get isDark => _isDark;
+  Color get primaryColor => _primaryColor;
+
+  Color get background =>
+      _isDark ? ZionColors.darkBackground : ZionColors.lightBackground;
+  Color get surface =>
+      _isDark ? ZionColors.darkSurface : ZionColors.lightSurface;
+  Color get card => _isDark ? ZionColors.darkCard : ZionColors.lightCard;
+  Color get border => _isDark ? ZionColors.darkBorder : ZionColors.lightBorder;
+  Color get textPrimary =>
+      _isDark ? ZionColors.darkTextPrimary : ZionColors.lightTextPrimary;
+  Color get textSecondary =>
+      _isDark ? ZionColors.darkTextSecondary : ZionColors.lightTextSecondary;
+  Color get textDisabled =>
+      _isDark ? ZionColors.darkTextDisabled : ZionColors.lightTextDisabled;
+  Color get iconPrimary =>
+      _isDark ? ZionColors.darkIconPrimary : ZionColors.lightIconPrimary;
+  Color get iconSecondary =>
+      _isDark ? ZionColors.darkIconSecondary : ZionColors.lightIconSecondary;
+  Color get divider =>
+      _isDark ? ZionColors.darkDivider : ZionColors.lightDivider;
+
+  ThemeData get themeData => _isDark ? ZionTheme.dark : ZionTheme.light;
+  ThemeData getThemeData() => themeData;
+
+  Future<void> _load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _isDarkMode = prefs.getBool('dark_mode') ?? true;
-      _fontScale = prefs.getDouble('font_scale') ?? 1.0;
-      _iconSize = prefs.getDouble('icon_size') ?? 58.0;
-      _cmatrixEnabled = prefs.getBool('cmatrix_enabled') ?? true;
-      _cmatrixUseMusnad = prefs.getBool('cmatrix_use_musnad') ?? true;
-      _cmatrixUseArabic = prefs.getBool('cmatrix_use_arabic') ?? false;
-      final cmatrixColor = prefs.getString('cmatrix_color');
-      if (cmatrixColor != null) {
-        try { _cmatrixColor = Color(int.parse(cmatrixColor)); } catch (_) {}
-      }
-      _cmatrixOpacity = prefs.getDouble('cmatrix_opacity') ?? 0.15;
-      final savedCMatrixSpeed = prefs.getDouble('cmatrix_speed');
-      _cmatrixSpeed = savedCMatrixSpeed == null || savedCMatrixSpeed < 1.5
-          ? 2.2
-          : savedCMatrixSpeed.clamp(0.1, 3.0);
-      if (savedCMatrixSpeed == null || savedCMatrixSpeed < 1.5) {
-        await prefs.setDouble('cmatrix_speed', _cmatrixSpeed);
-      }
-      _cmatrixFontSize = prefs.getDouble('cmatrix_font_size') ?? 18.0;
-      _radarScale = prefs.getDouble('radar_scale') ?? 1.0;
-
-      // Secure storage is optional for first launch. A device/keystore problem
-      // must never prevent the Flutter UI from being rendered.
-      try {
-        _pinHash = await _secureStorage.read(key: _pinHashKey);
-        _pinSalt = await _secureStorage.read(key: _pinSaltKey);
-      } catch (_) {
-        _pinHash = null;
-        _pinSalt = null;
-      }
-
-      // One-time migration from the legacy plaintext PIN.
-      final legacyPin = prefs.getString('user_pin');
-      if (!hasPin && legacyPin != null && RegExp(r'^\d{4}$').hasMatch(legacyPin)) {
-        try {
-          await _storePin(legacyPin);
-          await prefs.remove('user_pin');
-        } catch (_) {
-          // Keep the app usable even when Android secure storage is unavailable.
-        }
-      }
-
-      final colorHex = prefs.getString('theme_color');
-      if (colorHex != null && colorHex.isNotEmpty) {
-        try {
-          _primaryColor = Color(int.parse(colorHex));
-        } catch (_) {
-          _primaryColor = const Color(0xFF00A896);
-        }
-      }
-    } catch (_) {
-      // Fall back to safe defaults. Startup must not depend on persistent
-      // storage being available on a newly installed or restricted device.
-      _isDarkMode = true;
-      _primaryColor = const Color(0xFF00BCD4);
-      _fontScale = 1.0;
-      _iconSize = 58.0;
-      _pinHash = null;
-      _pinSalt = null;
-    } finally {
-      _isReady = true;
+      _isDark = prefs.getBool(_darkKey) ?? true;
+      final value = prefs.getString(_primaryKey);
+      _primaryColor = value == 'teal' ? ZionColors.teal : ZionColors.cyan;
       notifyListeners();
-    }
-  }
-
-  Future<void> _storePin(String pin) async {
-    final salt = List<int>.generate(16, (_) => Random.secure().nextInt(256));
-    final saltValue = base64UrlEncode(salt);
-    final hash = _hashPin(pin, saltValue);
-    await _secureStorage.write(key: _pinSaltKey, value: saltValue);
-    await _secureStorage.write(key: _pinHashKey, value: hash);
-    _pinSalt = saltValue;
-    _pinHash = hash;
-  }
-
-  String _hashPin(String pin, String salt) {
-    return sha256.convert(utf8.encode('$salt:$pin')).toString();
-  }
-
-  Future<bool> setInitialPin(String newPin) async {
-    if (!RegExp(r'^\d{4}$').hasMatch(newPin)) return false;
-    try {
-      await _storePin(newPin);
-      notifyListeners();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> changePin(String oldPin, String newPin) async {
-    if (!validatePin(oldPin) || !RegExp(r'^\d{4}$').hasMatch(newPin)) {
-      return false;
-    }
-    try {
-      await _storePin(newPin);
-      notifyListeners();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  bool validatePin(String pin) {
-    if (!hasPin || !RegExp(r'^\d{4}$').hasMatch(pin)) return false;
-    return _hashPin(pin, _pinSalt!) == _pinHash;
-  }
-
-  Future<void> setCMatrixEnabled(bool value) async {
-    _cmatrixEnabled = value;
-    try { final prefs = await SharedPreferences.getInstance(); await prefs.setBool('cmatrix_enabled', value); } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> setCMatrixUseMusnad(bool value) async {
-    _cmatrixUseMusnad = value;
-    if (value) _cmatrixUseArabic = false;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('cmatrix_use_musnad', _cmatrixUseMusnad);
-      await prefs.setBool('cmatrix_use_arabic', _cmatrixUseArabic);
     } catch (_) {}
-    notifyListeners();
   }
 
-  Future<void> setCMatrixUseArabic(bool value) async {
-    _cmatrixUseArabic = value;
-    if (value) _cmatrixUseMusnad = false;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('cmatrix_use_arabic', _cmatrixUseArabic);
-      await prefs.setBool('cmatrix_use_musnad', _cmatrixUseMusnad);
-    } catch (_) {}
-    notifyListeners();
+  void toggleTheme() {
+    setTheme(!_isDark);
   }
 
-  Future<void> setCMatrixColor(Color value) async {
-    _cmatrixColor = value;
-    try { final prefs = await SharedPreferences.getInstance(); await prefs.setString('cmatrix_color', value.value.toString()); } catch (_) {}
+  void setTheme(bool isDark) {
+    _isDark = isDark;
     notifyListeners();
+    _persist();
   }
 
-  Future<void> setCMatrixOpacity(double value) async {
-    _cmatrixOpacity = value.clamp(0.05, 0.5);
-    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_opacity', _cmatrixOpacity); } catch (_) {}
-    notifyListeners();
-  }
+  void setDarkMode(bool isDark) => setTheme(isDark);
 
-  Future<void> setCMatrixSpeed(double value) async {
-    _cmatrixSpeed = value.clamp(0.1, 3.0);
-    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_speed', _cmatrixSpeed); } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> setCMatrixFontSize(double value) async {
-    _cmatrixFontSize = value.clamp(12.0, 32.0);
-    try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_font_size', _cmatrixFontSize); } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> setRadarScale(double value) async {
-    _radarScale = value.clamp(0.6, 2.0);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('radar_scale', _radarScale);
-    } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> toggleTheme() async {
-    _isDarkMode = !_isDarkMode;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('dark_mode', _isDarkMode);
-    } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> setPrimaryColor(Color color) async {
+  void setPrimaryColor(Color color) {
     _primaryColor = color;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('theme_color', color.value.toString());
-    } catch (_) {}
     notifyListeners();
+    _persist();
   }
 
-  Future<void> setFontScale(double scale) async {
-    _fontScale = scale.clamp(0.8, 1.5);
+  Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('font_scale', _fontScale);
+      await prefs.setBool(_darkKey, _isDark);
+      await prefs.setString(
+        _primaryKey,
+        _primaryColor.value == ZionColors.teal.value ? 'teal' : 'cyan',
+      );
     } catch (_) {}
-    notifyListeners();
-  }
-
-  Future<void> setIconSize(double size) async {
-    _iconSize = size.clamp(48.0, 78.0);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('icon_size', _iconSize);
-    } catch (_) {}
-    notifyListeners();
-  }
-
-  ThemeData getThemeData() {
-    final baseTheme = _isDarkMode ? ThemeData.dark() : ThemeData.light();
-    return baseTheme.copyWith(
-      primaryColor: _primaryColor,
-      scaffoldBackgroundColor: _isDarkMode ? Colors.black : Colors.grey[50],
-      textTheme: baseTheme.textTheme.apply(
-        bodyColor: _isDarkMode ? Colors.white : Colors.black87,
-        displayColor: _isDarkMode ? Colors.white : Colors.black87,
-        fontFamily: 'Cairo',
-        fontSizeFactor: _fontScale,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: _isDarkMode ? Colors.black : Colors.white,
-        foregroundColor: _primaryColor,
-      ),
-      iconTheme: IconThemeData(
-        color: _primaryColor,
-        size: 24 * (_iconSize / 58),
-      ),
-    );
   }
 }
