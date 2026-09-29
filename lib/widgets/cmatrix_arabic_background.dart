@@ -16,10 +16,10 @@ class CMatrixArabicBackground extends StatefulWidget {
 
   const CMatrixArabicBackground({
     super.key,
-    this.color = const Color(0xFF00FF41),
+    this.color = const Color(0xFF00BCD4),
     this.opacity = 0.15,
     this.speed = 2.2,
-    this.fontSize = 18,
+    this.fontSize = 18.54,
     this.enabled = true,
     this.useMusnad = true,
     this.useArabicModern = false,
@@ -249,7 +249,7 @@ class CMatrixArabicPainter extends CustomPainter {
               fontSize: fontSize,
               fontWeight: head ? FontWeight.bold : FontWeight.normal,
               color: head
-                  ? Colors.white.withOpacity(alpha)
+                  ? color.withOpacity(alpha)
                   : color.withOpacity(alpha),
               shadows: head
                   ? [
