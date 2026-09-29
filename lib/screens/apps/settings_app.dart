@@ -65,7 +65,7 @@ class _SettingsAppState extends State<SettingsApp> {
                     'الوضع الليلي',
                     'تطبيق مظهر Zion الداكن',
                     tp.isDarkMode,
-                    tp.toggleTheme,
+                    () => tp.toggleTheme(),
                   ),
                   _divider(),
                   _sliderTile(
