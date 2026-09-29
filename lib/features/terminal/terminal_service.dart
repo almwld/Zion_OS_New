@@ -311,7 +311,7 @@ class TerminalService {
     unawaited(process.stdin.flush());
     final parts = (_interactiveInputBuffer + input).split('\\n');
     _interactiveInputBuffer = parts.removeLast();
-    for (final rawCommand of parts) {
+    for (final rawCommand in parts) {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       _remember(command);
