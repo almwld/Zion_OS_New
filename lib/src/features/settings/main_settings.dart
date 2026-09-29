@@ -20,6 +20,7 @@ class _MainSettingsState extends State<MainSettings> {
     'notifications': true,
     'auto_update': true,
     'stealth_mode': false,
+    'radar_scale': 1.0,
   };
   String _selectedCategory = 'Appearance';
 
@@ -45,13 +46,23 @@ class _MainSettingsState extends State<MainSettings> {
         'notifications': prefs.getBool('notifications') ?? true,
         'auto_update': prefs.getBool('auto_update') ?? true,
         'stealth_mode': prefs.getBool('stealth_mode') ?? false,
+        'radar_scale': prefs.getDouble('radar_scale') ?? 1.0,
       };
     });
   }
 
   Future<void> _saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
+    if (value is bool) {
+      await prefs.setBool(key, value);
+    } else if (value is double) {
+      await prefs.setDouble(key, value);
+    } else if (value is int) {
+      await prefs.setInt(key, value);
+    } else if (value is String) {
+      await prefs.setString(key, value);
+    }
+    if (!mounted) return;
     setState(() => _appSettings[key] = value);
   }
 
@@ -128,6 +139,7 @@ class _MainSettingsState extends State<MainSettings> {
           _buildSwitchSetting('Glass Effect', 'glass_effect'),
           _buildSliderSetting('Blur Intensity', 'blur_intensity', 0, 20),
           _buildSliderSetting('Corner Radius', 'corner_radius', 0, 30),
+          _buildSliderSetting('Radar Size', 'radar_scale', 0.6, 2.0),
         ],
       ),
     );
