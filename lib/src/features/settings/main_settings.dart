@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/advanced_theme.dart';
+import '../../../providers/theme_provider.dart';
 
 class MainSettings extends StatefulWidget {
   const MainSettings({super.key});
@@ -61,6 +63,9 @@ class _MainSettingsState extends State<MainSettings> {
       await prefs.setInt(key, value);
     } else if (value is String) {
       await prefs.setString(key, value);
+    }
+    if (key == 'radar_scale' && mounted) {
+      await context.read<ThemeProvider>().setRadarScale(value as double);
     }
     if (!mounted) return;
     setState(() => _appSettings[key] = value);
