@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../src/core/services/system_metrics.dart';
+import '../../src/core/services/system_metrics.dart';
 import 'dart:async';
 
 class PerformanceMonitorApp extends StatefulWidget {
