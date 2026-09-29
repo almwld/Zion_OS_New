@@ -35,10 +35,10 @@ class ThemeProvider extends ChangeNotifier {
   bool _cmatrixEnabled = true;
   bool _cmatrixUseMusnad = true;
   bool _cmatrixUseArabic = false;
-  Color _cmatrixColor = const Color(0xFF00FF41);
+  Color _cmatrixColor = ZionColors.cyan;
   double _cmatrixOpacity = 0.15;
   double _cmatrixSpeed = 2.2;
-  double _cmatrixFontSize = 18.0;
+  double _cmatrixFontSize = 18.54;
   double _fontScale = 1.0;
   double _iconSize = 58.0;
   String? _pinHash;
@@ -100,13 +100,13 @@ class ThemeProvider extends ChangeNotifier {
       _cmatrixUseMusnad = prefs.getBool(_cmatrixMusnadKey) ?? true;
       _cmatrixUseArabic = prefs.getBool(_cmatrixArabicKey) ?? false;
       _cmatrixColor =
-          Color(prefs.getInt(_cmatrixColorKey) ?? const Color(0xFF00FF41).value);
+          Color(prefs.getInt(_cmatrixColorKey) ?? ZionColors.cyan.value);
       _cmatrixOpacity =
           (prefs.getDouble(_cmatrixOpacityKey) ?? 0.15).clamp(0.0, 1.0).toDouble();
       _cmatrixSpeed =
           (prefs.getDouble(_cmatrixSpeedKey) ?? 2.2).clamp(0.5, 6.0).toDouble();
       _cmatrixFontSize =
-          (prefs.getDouble(_cmatrixFontSizeKey) ?? 18.0).clamp(10.0, 32.0).toDouble();
+          (prefs.getDouble(_cmatrixFontSizeKey) ?? 18.54).clamp(10.0, 32.0).toDouble();
       _fontScale =
           (prefs.getDouble(_fontScaleKey) ?? 1.0).clamp(0.8, 1.5).toDouble();
       _iconSize =
