@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm2/xterm.dart';
 
@@ -134,6 +135,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
     _selectedTab?.service.write(value);
   }
 
+  Future<void> _paste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text != null && text.isNotEmpty) {
+      _sendRaw(text);
+    }
+  }
+
+  void _sendControl(String key) {
+    const controls = <String, String>{
+      'C': '\\x03',
+      'D': '\\x04',
+      'Z': '\\x1a',
+      'L': '\\x0c',
+      'A': '\\x01',
+      'E': '\\x05',
+      'U': '\\x15',
+      'K': '\\x0b',
+    };
+    final value = controls[key];
+    if (value != null) _sendRaw(value);
+  }
+
   void _clear() {
     final terminal = _selectedTab?.terminal;
     if (terminal == null) return;
@@ -179,6 +203,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   : Icons.play_arrow,
             ),
             onPressed: tab == null || _starting ? null : _toggleSelected,
+          ),
+          IconButton(
+            tooltip: 'لصق من الحافظة',
+            icon: const Icon(Icons.content_paste),
+            onPressed: tab == null ? null : _paste,
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'اختصارات الطرفية',
+            icon: const Icon(Icons.keyboard_alt_outlined),
+            onSelected: _sendControl,
+            itemBuilder: (context) => [
+              for (final key in const ['C', 'D', 'Z', 'L', 'A', 'E', 'U', 'K'])
+                PopupMenuItem(
+                  value: key,
+                  child: Text('Ctrl+$key'),
+                ),
+            ],
           ),
           IconButton(
             tooltip: 'مسح الشاشة',
@@ -271,7 +312,7 @@ class _SessionBar extends StatelessWidget {
                 border: Border(
                   bottom: BorderSide(
                     color: selected
-                        ? Colors.greenAccent
+                        ? const Color(0xFF19D3C5)
                         : Colors.transparent,
                     width: 2,
                   ),
@@ -283,7 +324,7 @@ class _SessionBar extends StatelessWidget {
                     Icons.terminal,
                     size: 14,
                     color: tab.connected
-                        ? Colors.greenAccent
+                        ? const Color(0xFF19D3C5)
                         : Colors.orangeAccent,
                   ),
                   const SizedBox(width: 6),
@@ -328,19 +369,19 @@ class _StatusBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      color: const Color(0xFF111511),
+      color: const Color(0xFF0D1514),
       child: Row(
         children: [
           Icon(
             connected ? Icons.circle : Icons.circle_outlined,
             size: 9,
-            color: connected ? Colors.greenAccent : Colors.orangeAccent,
+            color: connected ? const Color(0xFF19D3C5) : Colors.orangeAccent,
           ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
               connected
-                  ? 'Android interactive PTY • /system/bin/sh • 10,000 scrollback'
+                  ? 'REAL PTY • xterm-256color • arrows • Ctrl-C • 10,000 scrollback'
                   : 'Shell unavailable / stopped',
               style: const TextStyle(fontSize: 11),
             ),
