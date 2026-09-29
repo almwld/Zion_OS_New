@@ -46,7 +46,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_createTab(autoStart: false));
+      if (mounted) unawaited(_createTab(autoStart: true));
     });
   }
 
@@ -340,8 +340,8 @@ class _StatusBar extends StatelessWidget {
           Expanded(
             child: Text(
               connected
-                  ? 'Native PTY • /system/bin/sh • VT/xterm • 10,000 scrollback'
-                  : 'PTY unavailable / stopped',
+                  ? 'Android shell • /system/bin/sh • safe child process • 10,000 scrollback'
+                  : 'Shell unavailable / stopped',
               style: const TextStyle(fontSize: 11),
             ),
           ),
