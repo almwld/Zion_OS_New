@@ -145,14 +145,14 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   void _sendControl(String key) {
     const controls = <String, String>{
-      'C': '\\x03',
-      'D': '\\x04',
-      'Z': '\\x1a',
-      'L': '\\x0c',
-      'A': '\\x01',
-      'E': '\\x05',
-      'U': '\\x15',
-      'K': '\\x0b',
+      'C': '\x03',
+      'D': '\x04',
+      'Z': '\x1a',
+      'L': '\x0c',
+      'A': '\x01',
+      'E': '\x05',
+      'U': '\x15',
+      'K': '\x0b',
     };
     final value = controls[key];
     if (value != null) _sendRaw(value);
