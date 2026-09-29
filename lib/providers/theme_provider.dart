@@ -99,8 +99,10 @@ class ThemeProvider extends ChangeNotifier {
       _cmatrixEnabled = prefs.getBool(_cmatrixEnabledKey) ?? true;
       _cmatrixUseMusnad = prefs.getBool(_cmatrixMusnadKey) ?? true;
       _cmatrixUseArabic = prefs.getBool(_cmatrixArabicKey) ?? false;
-      _cmatrixColor =
-          Color(prefs.getInt(_cmatrixColorKey) ?? ZionColors.cyan.value);
+      final storedCMatrixColor = prefs.getInt(_cmatrixColorKey);
+      _cmatrixColor = storedCMatrixColor == null || storedCMatrixColor == const Color(0xFF00FF41).value
+          ? ZionColors.cyan
+          : Color(storedCMatrixColor);
       _cmatrixOpacity =
           (prefs.getDouble(_cmatrixOpacityKey) ?? 0.15).clamp(0.0, 1.0).toDouble();
       _cmatrixSpeed =
