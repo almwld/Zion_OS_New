@@ -49,14 +49,17 @@ class TerminalService {
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
+  Process? _interactiveProcess;
   StreamSubscription<String>? _ptyOutputSub;
+  StreamSubscription<String>? _interactiveStdoutSub;
+  StreamSubscription<String>? _interactiveStderrSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
   String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
-  bool get isInteractiveRunning => _pty.isRunning;
+  bool get isInteractiveRunning => _interactiveProcess != null || _pty.isRunning;
   bool get isNativePtyRunning => _pty.isRunning;
 
   Future<void> loadHistory() async {
@@ -201,7 +204,7 @@ class TerminalService {
     final value = command.trim();
     if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     if (value == 'help' || value == 'zion-help') {
-      return _builtinResult(value, 'Built-in: help, capabilities, termux-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a native PTY; no PTY success is simulated.');
+      return _builtinResult(value, 'Built-in: help, capabilities, termux-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a real child shell process; no shell success is simulated.');
     }
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'termux-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
@@ -244,59 +247,70 @@ class TerminalService {
       return false;
     }
     final started = DateTime.now();
-    final ptyStarted = await _pty.start(rows: 30, cols: 100);
-    if (!ptyStarted) {
-      _output.add('ERROR: Native Android PTY is unavailable on this runtime.');
-      _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
+    final shell = await _findShell();
+    if (shell == null) {
+      _output.add('ERROR: No POSIX shell is available on this Android runtime.');
+      _audit(command: '<interactive-start>', outcome: 'unavailable', exitCode: 127, shell: 'process-shell', duration: DateTime.now().difference(started), interactive: true);
       return false;
     }
-    _ptyOutputSub = _pty.output.listen(_output.add);
-    _interactiveInputBuffer = '';
-    _output.add('Connected to Android interactive shell: /system/bin/sh\r\n');
-    _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: DateTime.now().difference(started), interactive: true);
-    return true;
+    try {
+      final process = await Process.start(shell, const <String>[], runInShell: false);
+      _interactiveProcess = process;
+      _interactiveStdoutSub = process.stdout.transform(utf8.decoder).listen(_output.add);
+      _interactiveStderrSub = process.stderr.transform(utf8.decoder).listen(_output.add);
+      unawaited(process.exitCode.then((code) async {
+        if (!identical(_interactiveProcess, process)) return;
+        _interactiveProcess = null;
+        await _interactiveStdoutSub?.cancel();
+        await _interactiveStderrSub?.cancel();
+        _interactiveStdoutSub = null;
+        _interactiveStderrSub = null;
+        _output.add('\\r\\n[ZION] Shell exited with code $code.\\r\\n');
+      }));
+      _interactiveInputBuffer = '';
+      _output.add('Connected to Android shell: $shell\\r\\n');
+      _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: shell, duration: DateTime.now().difference(started), interactive: true);
+      return true;
+    } on ProcessException catch (e) {
+      _interactiveProcess = null;
+      _output.add('ERROR: Unable to start shell: ${e.message}\\r\\n');
+      _audit(command: '<interactive-start>', outcome: 'process-error', exitCode: 126, shell: shell, duration: DateTime.now().difference(started), interactive: true);
+      return false;
+    }
   }
 
   void write(String input) {
-    if (!_pty.isRunning || input.isEmpty) return;
-
-    // A real PTY must receive keyboard bytes immediately. Delaying printable
-    // input until Enter breaks shell echo, readline, vim, htop and every other
-    // interactive program. The Android sandbox remains the process boundary;
-    // command history/audit are recorded when line breaks are observed.
-    unawaited(_pty.write(input));
-
-    final parts = (_interactiveInputBuffer + input).split('\n');
+    final process = _interactiveProcess;
+    if (process == null || input.isEmpty) return;
+    process.stdin.write(input);
+    unawaited(process.stdin.flush());
+    final parts = (_interactiveInputBuffer + input).split('\\n');
     _interactiveInputBuffer = parts.removeLast();
-    for (final rawCommand in parts) {
+    for (final rawCommand of parts) {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       _remember(command);
-      _audit(
-        command: command,
-        outcome: 'submitted',
-        exitCode: -1,
-        shell: 'native-pty',
-        duration: Duration.zero,
-        interactive: true,
-      );
+      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'process-shell', duration: Duration.zero, interactive: true);
     }
   }
 
-  Future<bool> resizeInteractive({required int rows, required int cols}) => _pty.resize(rows: rows, cols: cols);
+  Future<bool> resizeInteractive({required int rows, required int cols}) async => false;
 
   Future<void> stopInteractive() async {
-    if (!_pty.isRunning) {
-      await _ptyOutputSub?.cancel();
-      _ptyOutputSub = null;
-      _interactiveInputBuffer = '';
-      return;
+    final process = _interactiveProcess;
+    _interactiveProcess = null;
+    await _interactiveStdoutSub?.cancel();
+    await _interactiveStderrSub?.cancel();
+    _interactiveStdoutSub = null;
+    _interactiveStderrSub = null;
+    if (process != null) {
+      process.kill(ProcessSignal.sigterm);
+      _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'process-shell', duration: Duration.zero, interactive: true);
     }
     await _pty.stop();
     await _ptyOutputSub?.cancel();
     _ptyOutputSub = null;
     _interactiveInputBuffer = '';
-    _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'native-pty', duration: Duration.zero, interactive: true);
   }
 
   Future<void> dispose() async {
