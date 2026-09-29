@@ -1,77 +1,31 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 
 class WifiScanner {
   /// المسح الكامل للشبكات اللاسلكية (بدون صلاحيات روت)
   /// يستخدم أوامر نظام Android الأصلية
+  static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
+
   static Future<List<Map<String, dynamic>>> fullScan() async {
-    final networks = <Map<String, dynamic>>[];
-    
     try {
-      // الطريقة 1: استخدام الأمر الرسمي لـ Android (الأفضل)
-      final result = await Process.run(
-        'cmd',
-        ['wifi', 'scan'],
-        runInShell: true,
-      );
-      
-      if (result.exitCode == 0) {
-        // الحصول على نتائج المسح
-        final scanResult = await Process.run(
-          'cmd',
-          ['wifi', 'scan-results'],
-          runInShell: true,
-        );
-        
-        if (scanResult.exitCode == 0) {
-          final output = scanResult.stdout.toString();
-          networks.addAll(_parseAndroidWifiOutput(output));
-        }
-      }
+      final raw = await _platformChannel.invokeMethod<Map<dynamic, dynamic>>('wifiScan');
+      final data = Map<String, dynamic>.from(raw ?? const {});
+      final status = (data['status'] ?? 'UNAVAILABLE').toString();
+      if (status != 'AVAILABLE') return const <Map<String, dynamic>>[];
+      final rawNetworks = data['networks'];
+      if (rawNetworks is! List) return const <Map<String, dynamic>>[];
+      final networks = rawNetworks
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      return _enrichNetworkData(networks);
+    } on PlatformException {
+      return const <Map<String, dynamic>>[];
     } catch (_) {
-      // الطريقة 2: محاولة استخدام dumpsys (يتطلب أحيانًا صلاحيات)
-      try {
-        final result = await Process.run(
-          'dumpsys',
-          ['wifi'],
-          runInShell: true,
-        );
-        if (result.exitCode == 0) {
-          networks.addAll(_parseDumpsysOutput(result.stdout.toString()));
-        }
-      } catch (_) {
-        // الطريقة 3: محاولة استخدام /proc/net (ملفات النظام)
-        try {
-          final result = await Process.run(
-            'cat',
-            ['/proc/net/wireless'],
-            runInShell: true,
-          );
-          if (result.exitCode == 0) {
-            networks.addAll(_parseProcWireless(result.stdout.toString()));
-          }
-        } catch (_) {
-          // الطريقة 4: استخدام ip link show (أقل تفصيلاً)
-          try {
-            final result = await Process.run(
-              'ip',
-              ['link', 'show'],
-              runInShell: true,
-            );
-            if (result.exitCode == 0) {
-              networks.addAll(_parseIpLink(result.stdout.toString()));
-            }
-          } catch (_) {
-            // البيانات الاحتياطية (للتطوير فقط)
-            networks.addAll(_generateFallbackData());
-          }
-        }
-      }
+      return const <Map<String, dynamic>>[];
     }
-    
-    // إضافة معلومات إضافية لكل شبكة
-    return _enrichNetworkData(networks);
   }
 
   /// تحليل مخرجات أمر Android wifi scan-results
