@@ -55,7 +55,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
       height.clamp(300.0, maxHeight).toDouble(),
     );
     _position = _clampPosition(context, _position);
-    widget.onChanged();
+    widget.onChanged(_size, _position);
   }
 
   @override
