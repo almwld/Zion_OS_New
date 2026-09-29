@@ -33,6 +33,15 @@ import 'screens/apps/forensics.dart';
 import 'screens/apps/network_analyzer.dart';
 import 'screens/apps/network_scanner.dart';
 import 'screens/apps/network_tools.dart';
+import 'screens/apps/email_client.dart';
+import 'screens/apps/alarms_clock.dart';
+import 'screens/apps/calendar_simple.dart';
+import 'screens/apps/documents_simple.dart';
+import 'screens/apps/backup_manager.dart';
+import 'screens/apps/qr_scanner_simple.dart';
+import 'screens/apps/cleaner.dart';
+import 'screens/apps/app_lock.dart';
+import 'screens/apps/notification_manager.dart';
 import 'widgets/cmatrix_arabic_background.dart';
 import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
@@ -164,6 +173,15 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'MAPS' => const MapsApp(),
       'RADIO' => const RadioApp(),
       'VIDEO' => const VideoPlayerApp(),
+      'EMAIL' => const EmailClient(),
+      'CLOCK' => const AlarmsClockApp(),
+      'CALENDAR' => const CalendarApp(),
+      'DOCUMENTS' => const DocumentsApp(),
+      'BACKUP' => const BackupManagerApp(),
+      'QR' => const QRScannerApp(),
+      'CLEANER' => const CleanerApp(),
+      'APP LOCK' => const AppLockApp(),
+      'NOTIFY' => const NotificationManagerApp(),
       'NETWORK' => const NetworkToolsApp(),
       'FORENSICS' => const ForensicsApp(),
       'BATTERY' => const BatterySaverApp(),
