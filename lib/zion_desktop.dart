@@ -95,7 +95,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"BATTERY","nameAr":"بطارية","icon":Icons.battery_charging_full,"category":"DEFENSE","color":const Color(0xFF20BF6B)},
     {"name":"FIREWALL","nameAr":"جدار","icon":Icons.security,"category":"DEFENSE","color":const Color(0xFF0FB9B1)},
     {"name":"VPN","nameAr":"VPN","icon":Icons.vpn_lock,"category":"DEFENSE","color":const Color(0xFF45AAF2)},
-    {"name":"ANTIVIRUS","nameAr":"مضاد","icon":Icons.health_and_safety,"category":"DEFENSE","color":const Color(0xFF2BCBBA)},
     {"name":"SYSTEM","nameAr":"مراقبة النظام","icon":Icons.monitor,"category":"DEFENSE","color":const Color(0xFF20BF6B)},
     {"name":"PERFORMANCE","nameAr":"الأداء","icon":Icons.speed,"category":"DEFENSE","color":const Color(0xFF26DE81)},
     {"name":"NETWORK","nameAr":"شبكة","icon":Icons.network_wifi,"category":"ANALYSIS","color":const Color(0xFF3742FA)},
