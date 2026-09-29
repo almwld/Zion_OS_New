@@ -21,6 +21,7 @@ class ThemeProvider extends ChangeNotifier {
   double _cmatrixOpacity = 0.15;
   double _cmatrixSpeed = 1.0;
   double _cmatrixFontSize = 18.0;
+  double _radarScale = 1.0;
   // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.
   Color _primaryColor = const Color(0xFF00A896);
   double _fontScale = 1.0;
@@ -37,6 +38,7 @@ class ThemeProvider extends ChangeNotifier {
   double get cmatrixOpacity => _cmatrixOpacity;
   double get cmatrixSpeed => _cmatrixSpeed;
   double get cmatrixFontSize => _cmatrixFontSize;
+  double get radarScale => _radarScale;
   Color get primaryColor => _primaryColor;
   double get fontScale => _fontScale;
   double get iconSize => _iconSize;
@@ -63,6 +65,7 @@ class ThemeProvider extends ChangeNotifier {
       _cmatrixOpacity = prefs.getDouble('cmatrix_opacity') ?? 0.15;
       _cmatrixSpeed = prefs.getDouble('cmatrix_speed') ?? 1.0;
       _cmatrixFontSize = prefs.getDouble('cmatrix_font_size') ?? 18.0;
+      _radarScale = prefs.getDouble('radar_scale') ?? 1.0;
 
       // Secure storage is optional for first launch. A device/keystore problem
       // must never prevent the Flutter UI from being rendered.
@@ -200,6 +203,15 @@ class ThemeProvider extends ChangeNotifier {
   Future<void> setCMatrixFontSize(double value) async {
     _cmatrixFontSize = value.clamp(12.0, 32.0);
     try { final prefs = await SharedPreferences.getInstance(); await prefs.setDouble('cmatrix_font_size', _cmatrixFontSize); } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setRadarScale(double value) async {
+    _radarScale = value.clamp(0.6, 2.0);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('radar_scale', _radarScale);
+    } catch (_) {}
     notifyListeners();
   }
 
