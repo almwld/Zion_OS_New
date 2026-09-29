@@ -65,6 +65,9 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   int _selectedCategory = 0;
   bool _showRadar = true;
   bool _showStartMenu = false;
+  double _radarX = 0.72;
+  double _radarY = 0.16;
+  bool _radarPositionInitialized = false;
   Timer? _clockTimer;
   late AnimationController _radarController;
   late AnimationController _pulseController;
@@ -128,6 +131,17 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     _updateTimeAndDate();
     _radarController = AnimationController(duration: const Duration(seconds: 4), vsync: this)..repeat();
     _pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this)..repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final theme = context.read<ThemeProvider>();
+    if (!_radarPositionInitialized && theme.isReady) {
+      _radarX = theme.radarPositionX;
+      _radarY = theme.radarPositionY;
+      _radarPositionInitialized = true;
+    }
   }
 
   void _updateTimeAndDate() {
@@ -420,34 +434,171 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     ]),
   );
 
-  Widget _buildFloatingRadar(ThemeProvider theme, bool isDark, Color primaryColor) => Positioned(
-    right: 20, top: 140,
-    child: Transform.scale(
-      scale: theme.radarScale,
-      alignment: Alignment.topRight,
+  Widget _buildFloatingRadar(
+    ThemeProvider theme,
+    bool isDark,
+    Color primaryColor,
+  ) {
+    final screen = MediaQuery.sizeOf(context);
+    final radarSize = 100.0 * theme.radarScale;
+    final maxX = math.max(0.0, screen.width - radarSize);
+    final maxY = math.max(0.0, screen.height - radarSize);
+    final left = maxX * _radarX;
+    final top = maxY * _radarY;
+
+    return Positioned(
+      left: left,
+      top: top,
       child: GestureDetector(
-      child: AnimatedBuilder(
-        animation: _radarController,
-        builder: (context, child) => Container(
-          width: 100, height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle, color: isDark ? Colors.black.withOpacity(0.85) : Colors.white.withOpacity(0.9),
-            border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
-            boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 20, spreadRadius: 2)],
+        onPanUpdate: (details) {
+          if (maxX <= 0 || maxY <= 0) return;
+          setState(() {
+            _radarX = (_radarX + details.delta.dx / maxX).clamp(0.0, 1.0);
+            _radarY = (_radarY + details.delta.dy / maxY).clamp(0.0, 1.0);
+          });
+        },
+        onPanEnd: (_) => theme.setRadarPosition(_radarX, _radarY),
+        onLongPress: () => _showRadarControls(theme),
+        child: SizedBox(
+          width: radarSize,
+          height: radarSize,
+          child: Transform.scale(
+            scale: theme.radarScale,
+            alignment: Alignment.topLeft,
+            child: AnimatedBuilder(
+              animation: _radarController,
+              builder: (context, child) => Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDark
+                      ? Colors.black.withOpacity(0.85)
+                      : Colors.white.withOpacity(0.9),
+                  border: Border.all(
+                    color: primaryColor.withOpacity(0.5),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    CustomPaint(
+                      painter: RadarPainter(
+                        angle: _radarController.value * 2 * math.pi,
+                        color: primaryColor,
+                      ),
+                      size: const Size(100, 100),
+                    ),
+                    ..._buildRadarPoints(primaryColor),
+                    Positioned(
+                      left: 4,
+                      top: 4,
+                      child: GestureDetector(
+                        onTap: () => _showRadarControls(theme),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: primaryColor.withOpacity(0.85),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.tune, color: Colors.white, size: 10),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _showRadar = false),
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close, color: Colors.white, size: 10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          child: Stack(children: [
-            CustomPaint(painter: RadarPainter(angle: _radarController.value * 2 * 3.14159, color: primaryColor), size: const Size(100, 100)),
-            ..._buildRadarPoints(primaryColor),
-            Positioned(right: 4, top: 4, child: GestureDetector(onTap: () => setState(() => _showRadar = false), child: Container(
-              padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-              child: const Icon(Icons.close, color: Colors.white, size: 10),
-            ))),
-          ]),
         ),
       ),
+    );
+  }
+
+  Future<void> _showRadarControls(ThemeProvider theme) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('تحكم بالرادار العائم'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('الحجم: ${(theme.radarScale * 100).round()}%'),
+              Slider(
+                min: 0.6,
+                max: 2.5,
+                value: theme.radarScale,
+                onChanged: (value) {
+                  setDialogState(() {});
+                  theme.setRadarScale(value);
+                },
+              ),
+              Text('الموضع الأفقي: ${(_radarX * 100).round()}%'),
+              Slider(
+                value: _radarX,
+                onChanged: (value) {
+                  setState(() => _radarX = value);
+                  setDialogState(() {});
+                },
+                onChangeEnd: (value) => theme.setRadarPosition(value, _radarY),
+              ),
+              Text('الموضع الرأسي: ${(_radarY * 100).round()}%'),
+              Slider(
+                value: _radarY,
+                onChanged: (value) {
+                  setState(() => _radarY = value);
+                  setDialogState(() {});
+                },
+                onChangeEnd: (value) => theme.setRadarPosition(_radarX, value),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _radarX = 0.72;
+                    _radarY = 0.16;
+                  });
+                  theme.setRadarPosition(_radarX, _radarY);
+                  setDialogState(() {});
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('إعادة الموضع الافتراضي'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('تم'),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+
 
   List<Widget> _buildRadarPoints(Color primaryColor) {
     final points = [
