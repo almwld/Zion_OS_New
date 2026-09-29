@@ -18,6 +18,7 @@ import 'screens/apps/maps_app.dart';
 import 'screens/apps/radio_app.dart';
 import 'screens/apps/video_player_app.dart';
 import 'screens/apps/translator_app.dart';
+import 'screens/apps/wifi_scanner.dart';
 import 'screens/apps/currency_converter.dart';
 import 'screens/apps/date_calculator.dart';
 import 'screens/apps/percentage_calculator.dart';
@@ -149,6 +150,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final name = app['name'] as String;
     final Widget? screen = switch (name) {
       'ARSENAL' => const ArsenalScreen(),
+      'WIFI' => const WifiScannerApp(),
       'TERMINAL' => const TerminalScreen(),
       'MAGICZIONOS' => const MagiczionosInstallerScreen(),
       'FILES' => const FileManagerApp(),
@@ -445,7 +447,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
   Widget _buildStartMenu(ThemeProvider theme, bool isDark, Color primaryColor) => GestureDetector(
-    onTap: () => setState(() => _showStartMenu = false),
+    onTap: onTap ?? () => setState(() => _showStartMenu = false),
     child: Container(color: Colors.black.withOpacity(0.5), child: Center(child: GestureDetector(
       onTap: () {},
       child: Container(
@@ -466,16 +468,16 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             IconButton(icon: Icon(Icons.close, color: isDark ? Colors.white54 : Colors.black45), onPressed: () => setState(() => _showStartMenu = false)),
           ]),
           const Divider(height: 24),
-          _buildStartMenuItem(icon: Icons.terminal, title: 'الطرفية', subtitle: 'تنفيذ الأوامر', color: const Color(0xFFFFA502), isDark: isDark),
-          _buildStartMenuItem(icon: Icons.wifi, title: 'الواي فاي', subtitle: 'مسح الشبكات', color: const Color(0xFFFF4757), isDark: isDark),
-          _buildStartMenuItem(icon: Icons.settings, title: 'الإعدادات', subtitle: 'تخصيص النظام', color: const Color(0xFF8854D0), isDark: isDark),
-          _buildStartMenuItem(icon: Icons.security, title: 'الأمان', subtitle: 'مركز الحماية', color: const Color(0xFF2ED573), isDark: isDark),
+          _buildStartMenuItem(icon: Icons.terminal, title: 'الطرفية', subtitle: 'تنفيذ الأوامر', color: const Color(0xFFFFA502), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"TERMINAL","nameAr":"الطرفية","icon":Icons.terminal,"color":const Color(0xFFFFA502)}); }),
+          _buildStartMenuItem(icon: Icons.wifi, title: 'الواي فاي', subtitle: 'مسح الشبكات الحقيقية', color: const Color(0xFFFF4757), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"WIFI","nameAr":"الواي فاي","icon":Icons.wifi,"color":const Color(0xFFFF4757)}); }),
+          _buildStartMenuItem(icon: Icons.settings, title: 'الإعدادات', subtitle: 'تخصيص النظام', color: const Color(0xFF8854D0), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"SETTINGS","nameAr":"الإعدادات","icon":Icons.settings,"color":const Color(0xFF8854D0)}); }),
+          _buildStartMenuItem(icon: Icons.security, title: 'الأمان', subtitle: 'مركز الحماية', color: const Color(0xFF2ED573), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"ARSENAL","nameAr":"الترسانة","icon":Icons.security,"color":const Color(0xFF2ED573)}, fullscreen: true); }),
         ]),
       ),
     ))),
   );
 
-  Widget _buildStartMenuItem({required IconData icon, required String title, required String subtitle, required Color color, required bool isDark}) => Container(
+  Widget _buildStartMenuItem({required IconData icon, required String title, required String subtitle, required Color color, required bool isDark, VoidCallback? onTap}) => Container(
     margin: const EdgeInsets.only(bottom: 8),
     child: ListTile(
       leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
