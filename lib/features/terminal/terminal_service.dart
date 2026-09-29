@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
@@ -206,6 +207,7 @@ class TerminalService {
     if (value == 'help' || value == 'zion-help') {
       return _builtinResult(value, 'Built-in: help, capabilities, termux-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a real child shell process; no shell success is simulated.');
     }
+    if (value == 'wifi' || value == 'wifi scan' || value == 'wifi-scan') return _scanWifiBuiltin(value);
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'termux-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
@@ -237,6 +239,28 @@ class TerminalService {
       return result;
     }
     return _runBounded(command: value, shell: shell);
+  }
+
+  Future<TerminalResult> _scanWifiBuiltin(String command) async {
+    final started = DateTime.now();
+    try {
+      final raw = await _platformChannel.invokeMethod<Map<dynamic, dynamic>>('wifiScan');
+      final data = Map<String, dynamic>.from(raw ?? const {});
+      final status = (data['status'] ?? 'UNAVAILABLE').toString();
+      final reason = (data['reason'] ?? '').toString();
+      final rawNetworks = data['networks'];
+      final networks = rawNetworks is List ? rawNetworks.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList() : const <Map<String, dynamic>>[];
+      final lines = <String>['ZION Wi-Fi scanner: $status', if (reason.isNotEmpty) reason, 'Networks: \${networks.length}'];
+      for (final n in networks) { lines.add('\${n['ssid'] ?? '<hidden>'} | \${n['bssid'] ?? '?'} | \${n['signal'] ?? '?'} dBm | \${n['frequencyMHz'] ?? '?'} MHz | Ch \${n['channel'] ?? '?'} | \${n['capabilities'] ?? 'Unknown'}'); }
+      final exitCode = status == 'AVAILABLE' ? 0 : (status == 'PERMISSION_REQUIRED' ? 126 : 127);
+      final result = TerminalResult(command: command, stdout: lines.join('\\n'), stderr: '', exitCode: exitCode, duration: DateTime.now().difference(started), shell: 'android-wifimanager');
+      _audit(command: command, outcome: result.succeeded ? 'success' : 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
+      return result;
+    } on PlatformException catch (e) {
+      final result = TerminalResult(command: command, stdout: '', stderr: e.message ?? 'Android Wi-Fi service unavailable.', exitCode: 127, duration: DateTime.now().difference(started), shell: 'android-wifimanager');
+      _audit(command: command, outcome: 'unavailable', exitCode: result.exitCode, shell: result.shell, duration: result.duration, interactive: false);
+      return result;
+    }
   }
 
   Future<bool> startInteractive() async {
