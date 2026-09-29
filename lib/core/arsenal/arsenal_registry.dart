@@ -105,7 +105,7 @@ class ArsenalRegistry {
     ArsenalTool(id: 'defense.audit', name: 'Security Audit', category: ArsenalCategory.defense, availability: ArsenalAvailability.available),
     ArsenalTool(id: 'analysis.logs', name: 'Audit Log Analysis', category: ArsenalCategory.analysis, availability: ArsenalAvailability.available),
     ArsenalTool(id: 'utility.system-info', name: 'System Information', category: ArsenalCategory.utility, availability: ArsenalAvailability.available),
-    ArsenalTool(id: 'attack.lab', name: 'Authorized Lab Runner', category: ArsenalCategory.attack, availability: ArsenalAvailability.notConfigured, reason: 'Requires an explicitly configured isolated lab target.'),
+    ArsenalTool(id: 'attack.pentest', name: 'Authorized Pentest Runner', category: ArsenalCategory.attack, availability: ArsenalAvailability.notConfigured, reason: 'Requires an explicit authorized target scope before execution.'),
   ];
 }
 
