@@ -46,6 +46,7 @@ import 'widgets/cmatrix_arabic_background.dart';
 import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
 import 'core/ui/zion_toast.dart';
+import 'core/theme/zion_colors.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -331,9 +332,9 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
               boxShadow: selected ? [BoxShadow(color: cat['color'].withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))] : null,
             ),
             child: Row(children: [
-              Icon(cat['icon'], color: selected ? Colors.white : cat['color'], size: 18),
+              Icon(cat['icon'], color: ZionColors.cyan, size: 18),
               const SizedBox(width: 8),
-              Text(cat['nameAr'], style: TextStyle(color: selected ? Colors.white : cat['color'], fontWeight: selected ? FontWeight.bold : FontWeight.w600, fontSize: 13)),
+              Text(cat['nameAr'], style: TextStyle(color: ZionColors.cyan, fontWeight: selected ? FontWeight.bold : FontWeight.w600, fontSize: 13)),
             ]),
           ),
         );
@@ -354,7 +355,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
   Widget _buildAppIcon(Map<String, dynamic> app, ThemeProvider theme, bool isDark, Color primaryColor) {
-    final appColor = app['color'] as Color;
+    final appColor = ZionColors.cyan;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0), duration: Duration(milliseconds: 300 + (app['name'].hashCode % 200)), curve: Curves.easeOutBack,
       builder: (context, value, child) => Transform.scale(
