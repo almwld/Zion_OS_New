@@ -19,7 +19,7 @@ class ThemeProvider extends ChangeNotifier {
   bool _cmatrixUseArabic = false;
   Color _cmatrixColor = const Color(0xFF00FF41);
   double _cmatrixOpacity = 0.15;
-  double _cmatrixSpeed = 1.0;
+  double _cmatrixSpeed = 2.2;
   double _cmatrixFontSize = 18.0;
   double _radarScale = 1.0;
   // Zion OS Desktop visual system: cyan/teal accent with neutral glass surfaces.
@@ -63,7 +63,7 @@ class ThemeProvider extends ChangeNotifier {
         try { _cmatrixColor = Color(int.parse(cmatrixColor)); } catch (_) {}
       }
       _cmatrixOpacity = prefs.getDouble('cmatrix_opacity') ?? 0.15;
-      _cmatrixSpeed = prefs.getDouble('cmatrix_speed') ?? 1.0;
+      _cmatrixSpeed = prefs.getDouble('cmatrix_speed') ?? 2.2;
       _cmatrixFontSize = prefs.getDouble('cmatrix_font_size') ?? 18.0;
       _radarScale = prefs.getDouble('radar_scale') ?? 1.0;
 
