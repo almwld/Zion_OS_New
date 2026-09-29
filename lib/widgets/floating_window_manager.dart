@@ -123,7 +123,11 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
           title: w.title,
           child: w.content,
           onClose: () => closeWindow(w.id),
-          onChanged: _saveSnapshots,
+          onChanged: (size, position) {
+              w.size = size;
+              w.position = position;
+              _saveSnapshots();
+            },
           windowId: w.id,
           initialSize: w.size ?? const Size(350, 500),
           initialPosition: w.position ?? Offset(100 + w.id * 20, 100 + w.id * 20),
@@ -138,7 +142,7 @@ class FloatingWindowInstance {
   final String title;
   final Widget content;
   final String appKey;
-  final Size? size;
-  final Offset? position;
+  Size? size;
+  Offset? position;
   FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, this.size, this.position});
 }
