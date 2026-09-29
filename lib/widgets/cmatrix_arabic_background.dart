@@ -18,7 +18,7 @@ class CMatrixArabicBackground extends StatefulWidget {
     super.key,
     this.color = const Color(0xFF00FF41),
     this.opacity = 0.15,
-    this.speed = 1.0,
+    this.speed = 2.2,
     this.fontSize = 18,
     this.enabled = true,
     this.useMusnad = true,
@@ -44,7 +44,7 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
     'ع','غ','ف','ق','ك','ل','م','ن','ه','و','ي',
   ];
   static const _extraChars = <String>[
-    '٠','١','٢','٣','٤','٥','٦','٧','٨','٩','ﷲ','ﷺ','﷼',
+    '٠','١','٢','٣','٤','٥','٦','٧','٨','٩','ﷺ','﷼',
   ];
 
   late final AnimationController _controller;
@@ -60,7 +60,7 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 50),
+      duration: const Duration(milliseconds: 33),
     )..addListener(_tick);
     _loadMusnadFont();
     _watchBattery();
@@ -112,7 +112,7 @@ class _CMatrixArabicBackgroundState extends State<CMatrixArabicBackground>
   void _initialize(Size size) {
     if (_lastSize == size) return;
     _lastSize = size;
-    final width = max(12.0, widget.fontSize * 1.5);
+    final width = max(10.0, widget.fontSize * 1.2);
     final count = max(1, (size.width / width).ceil());
     _columns = List.generate(
       count,
@@ -196,12 +196,12 @@ class CMatrixColumn {
   void _reset() {
     y = -random.nextDouble() * maxHeight;
     _speed = 0.5 + random.nextDouble() * 1.5;
-    length = 10 + random.nextInt(21);
+    length = 18 + random.nextInt(28);
     columnChars = List.generate(length, (_) => chars[random.nextInt(chars.length)]);
   }
 
   void tick(double globalSpeed) {
-    y += _speed * globalSpeed * 2.5;
+    y += _speed * globalSpeed * 3.2;
     if (y - length * fontSize > maxHeight) _reset();
     if (random.nextDouble() < 0.10 && columnChars.isNotEmpty) {
       columnChars[random.nextInt(columnChars.length)] = chars[random.nextInt(chars.length)];
