@@ -301,10 +301,5 @@ class WifiScanner {
     return 'Security looks good. Keep router firmware updated.';
   }
 
-  /// بيانات احتياطية للتطوير (في حال فشل كل الطرق)
-  static List<Map<String, dynamic>> _generateFallbackData() {
-    return [
-      {'ssid': 'AndroidWifi (Simulated)', 'bssid': '00:11:22:33:44:55', 'signal': -45, 'encryption': 'WPA2', 'is_open': false},
-    ];
-  }
+
 }
