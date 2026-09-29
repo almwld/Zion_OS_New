@@ -68,6 +68,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   double _radarX = 0.72;
   double _radarY = 0.16;
   bool _radarPositionInitialized = false;
+  bool _windowSessionRestored = false;
   Timer? _clockTimer;
   late AnimationController _radarController;
   late AnimationController _pulseController;
@@ -131,6 +132,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     _updateTimeAndDate();
     _radarController = AnimationController(duration: const Duration(seconds: 4), vsync: this)..repeat();
     _pulseController = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this)..repeat(reverse: true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreWindowSession());
   }
 
   @override
@@ -171,9 +173,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     super.dispose();
   }
 
-  void _openApp(Map<String, dynamic> app, {bool fullscreen = false}) {
-    final name = app['name'] as String;
-    final Widget? screen = switch (name) {
+  Widget? _screenForApp(String name) {
+    return switch (name) {
       'ARSENAL' => const ArsenalScreen(),
       'WIFI' => const WiFiScannerApp(),
       'EXPLOIT' || 'CRACKER' || 'DDOS' || 'DATABASE' || 'CLOUD' => const ArsenalScreen(),
@@ -213,9 +214,22 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'TRANSLATOR' => const TranslatorApp(),
       _ => null,
     };
+  }
 
-    final primaryColor = context.read<ThemeProvider>().primaryColor;
+  Future<void> _restoreWindowSession() async {
+    if (_windowSessionRestored || !mounted) return;
+    _windowSessionRestored = true;
+    final snapshots = await _windowManagerKey.currentState?.loadSnapshots() ?? const [];
+    if (!mounted || snapshots.isEmpty) return;
+    await _windowManagerKey.currentState?.restoreSnapshots(
+      snapshots,
+      (appKey) => _screenForApp(appKey),
+    );
+  }
 
+  void _openApp(Map<String, dynamic> app, {bool fullscreen = false}) {
+    final name = app['name'] as String;
+    final screen = _screenForApp(name);
     if (screen == null) {
       ZionToast.show(
         context,
@@ -238,6 +252,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     _windowManagerKey.currentState?.openWindow(
       app['nameAr'] as String,
       screen,
+      appKey: name,
       size: Size(windowWidth, windowHeight),
     );
   }
