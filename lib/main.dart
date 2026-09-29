@@ -9,6 +9,7 @@ import 'core/services/zion_pkg_external_bridge.dart';
 import 'core/magiczionos/magiczionos_provider.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
+import 'adaptive/adaptive_interface.dart';
 import 'app_router.dart';
 import 'security/core/security_core.dart';
 import 'security/runtime/runtime_integrity.dart';
