@@ -183,7 +183,50 @@ class ThemeProvider extends ChangeNotifier {
     _pinHash = hash;
   }
 
-  bool _isValidPin(String pin) => RegExp(r'^\\d{4}$').hasMatch(pin);
+  bool _isValidPin(String pin) => RegExp(r'^\d{4}).hasMatch(pin);
+
+  Future<bool> setInitialPin(String newPin) async {
+    if (!_isValidPin(newPin) || hasPin) return false;
+    try {
+      await _storePin(newPin);
+      notifyListeners();
+      return true;
+    } catch (_) { return false; }
+  }
+
+  bool validatePin(String pin) {
+    if (!hasPin || !_isValidPin(pin)) return false;
+    return sha256.convert(utf8.encode(_pinSalt! + ':' + pin)).toString() == _pinHash;
+  }
+
+  Future<bool> changePin(String oldPin, String newPin) async {
+    if (!validatePin(oldPin) || !_isValidPin(newPin)) return false;
+    try {
+      await _storePin(newPin);
+      notifyListeners();
+      return true;
+    } catch (_) { return false; }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_darkKey, _isDark);
+      await prefs.setString(_primaryKey, _primaryColor.value == ZionColors.teal.value ? 'teal' : 'cyan');
+      await prefs.setDouble(_radarScaleKey, _radarScale);
+      await prefs.setBool(_cmatrixEnabledKey, _cmatrixEnabled);
+      await prefs.setBool(_cmatrixMusnadKey, _cmatrixUseMusnad);
+      await prefs.setBool(_cmatrixArabicKey, _cmatrixUseArabic);
+      await prefs.setInt(_cmatrixColorKey, _cmatrixColor.value);
+      await prefs.setDouble(_cmatrixOpacityKey, _cmatrixOpacity);
+      await prefs.setDouble(_cmatrixSpeedKey, _cmatrixSpeed);
+      await prefs.setDouble(_cmatrixFontSizeKey, _cmatrixFontSize);
+      await prefs.setDouble(_fontScaleKey, _fontScale);
+      await prefs.setDouble(_iconSizeKey, _iconSize);
+    } catch (_) {}
+  }
+}
+).hasMatch(pin);
 
   Future<bool> setInitialPin(String newPin) async {
     if (!_isValidPin(newPin) || hasPin) return false;
