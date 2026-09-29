@@ -111,13 +111,16 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
     });
     
     try {
+      _gateway = await _getGateway();
+      _dnsServers = await _getDnsServers();
       // Get local IP
       final localIpResult = await Process.run('ip', ['route', 'get', '1'], runInShell: true);
       final localIpMatch = RegExp(r'src (\d+\.\d+\.\d+\.\d+)').firstMatch(localIpResult.stdout.toString());
       final localIp = localIpMatch?.group(1) ?? 'Unknown';
       
-      // Get public IP (simulated)
-      final publicIp = 'Simulated - Use external API';
+      // Public IP is intentionally not fabricated. It requires an external
+      // service, so this screen reports it as unavailable when no provider is configured.
+      const publicIp = 'UNAVAILABLE (no external IP provider configured)';
       
       setState(() {
         _ipInfo = '''
@@ -158,6 +161,14 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
     } catch (_) {
       return 'Unknown';
     }
+  }
+
+  @override
+  void dispose() {
+    _dnsController.dispose();
+    _traceController.dispose();
+    _whoisController.dispose();
+    super.dispose();
   }
 
   @override
@@ -459,13 +470,3 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
     );
   }
 }
-
-// إضافة المتغيرات المفقودة
-String _gateway = '';
-String _dnsServers = '';
-
-// في دالة _getIpInfo، قم بتعيين هذه المتغيرات
-// نضيف هذا الكود داخل الدالة قبل استخدامها
-// يمكن إضافة سطرين في بداية _getIpInfo:
-// _gateway = await _getGateway().then((v) => _gateway = v);
-// _dnsServers = await _getDnsServers().then((v) => _dnsServers = v);
