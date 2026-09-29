@@ -13,6 +13,8 @@ class ThemeProvider extends ChangeNotifier {
   static const _darkKey = 'zion_is_dark';
   static const _primaryKey = 'zion_primary_color';
   static const _radarScaleKey = 'radar_scale';
+  static const _radarPositionXKey = 'radar_position_x';
+  static const _radarPositionYKey = 'radar_position_y';
   static const _cmatrixEnabledKey = 'cmatrix_enabled';
   static const _cmatrixMusnadKey = 'cmatrix_use_musnad';
   static const _cmatrixArabicKey = 'cmatrix_use_arabic';
@@ -32,6 +34,8 @@ class ThemeProvider extends ChangeNotifier {
   bool _isDark = true;
   Color _primaryColor = ZionColors.cyan;
   double _radarScale = 1.0;
+  double _radarPositionX = 0.72;
+  double _radarPositionY = 0.16;
   bool _cmatrixEnabled = true;
   bool _cmatrixUseMusnad = true;
   bool _cmatrixUseArabic = false;
@@ -53,6 +57,8 @@ class ThemeProvider extends ChangeNotifier {
   bool get isDark => _isDark;
   Color get primaryColor => _primaryColor;
   double get radarScale => _radarScale;
+  double get radarPositionX => _radarPositionX;
+  double get radarPositionY => _radarPositionY;
   bool get cmatrixEnabled => _cmatrixEnabled;
   bool get cmatrixUseMusnad => _cmatrixUseMusnad;
   bool get cmatrixUseArabic => _cmatrixUseArabic;
@@ -95,7 +101,11 @@ class ThemeProvider extends ChangeNotifier {
       _primaryColor =
           prefs.getString(_primaryKey) == 'teal' ? ZionColors.teal : ZionColors.cyan;
       _radarScale =
-          (prefs.getDouble(_radarScaleKey) ?? 1.0).clamp(0.6, 2.0).toDouble();
+          (prefs.getDouble(_radarScaleKey) ?? 1.0).clamp(0.6, 2.5).toDouble();
+      _radarPositionX =
+          (prefs.getDouble(_radarPositionXKey) ?? 0.72).clamp(0.0, 1.0).toDouble();
+      _radarPositionY =
+          (prefs.getDouble(_radarPositionYKey) ?? 0.16).clamp(0.0, 1.0).toDouble();
       _cmatrixEnabled = prefs.getBool(_cmatrixEnabledKey) ?? true;
       _cmatrixUseMusnad = prefs.getBool(_cmatrixMusnadKey) ?? true;
       _cmatrixUseArabic = prefs.getBool(_cmatrixArabicKey) ?? false;
@@ -155,7 +165,14 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   Future<void> setRadarScale(double scale) async {
-    _radarScale = scale.clamp(0.6, 2.0).toDouble();
+    _radarScale = scale.clamp(0.6, 2.5).toDouble();
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> setRadarPosition(double x, double y) async {
+    _radarPositionX = x.clamp(0.0, 1.0).toDouble();
+    _radarPositionY = y.clamp(0.0, 1.0).toDouble();
     notifyListeners();
     await _persist();
   }
@@ -258,6 +275,8 @@ class ThemeProvider extends ChangeNotifier {
         _primaryColor.value == ZionColors.teal.value ? 'teal' : 'cyan',
       );
       await prefs.setDouble(_radarScaleKey, _radarScale);
+      await prefs.setDouble(_radarPositionXKey, _radarPositionX);
+      await prefs.setDouble(_radarPositionYKey, _radarPositionY);
       await prefs.setBool(_cmatrixEnabledKey, _cmatrixEnabled);
       await prefs.setBool(_cmatrixMusnadKey, _cmatrixUseMusnad);
       await prefs.setBool(_cmatrixArabicKey, _cmatrixUseArabic);
