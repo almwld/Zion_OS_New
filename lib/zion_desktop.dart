@@ -151,6 +151,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final Widget? screen = switch (name) {
       'ARSENAL' => const ArsenalScreen(),
       'WIFI' => const WiFiScannerApp(),
+      'EXPLOIT' || 'CRACKER' || 'DDOS' || 'DATABASE' || 'CLOUD' => const ArsenalScreen(),
       'TERMINAL' => const TerminalScreen(),
       'MAGICZIONOS' => const MagiczionosInstallerScreen(),
       'FILES' => const FileManagerApp(),
