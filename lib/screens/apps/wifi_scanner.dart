@@ -23,7 +23,8 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
   }
 
   Future<void> _requestAndScan() async {
-    final status = await Permission.location.request();
+    var status = await Permission.location.request();
+    if (status.isGranted && await Permission.nearbyWifiDevices.isDenied) status = await Permission.nearbyWifiDevices.request();
     if (!mounted) return;
     if (!status.isGranted) {
       setState(() {
