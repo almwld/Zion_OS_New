@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../core/theme/zion_colors.dart';
 
 class WiFiScannerApp extends StatefulWidget {
   const WiFiScannerApp({super.key});
@@ -75,10 +76,9 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('WiFi Scanner', style: TextStyle(color: Color(0xFF00BCD4))),
-        backgroundColor: Colors.black,
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)), onPressed: () => Navigator.pop(context)),
         actions: [IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF00BCD4)), onPressed: _requestAndScan)],
       ),
@@ -88,11 +88,11 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.25))),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: ZionColors.cyan.withOpacity(0.25))),
             child: Row(children: [
-              Icon(_status == 'AVAILABLE' ? Icons.wifi : Icons.info_outline, color: const Color(0xFF00BCD4)),
+              Icon(_status == 'AVAILABLE' ? Icons.wifi : Icons.info_outline, color: ZionColors.cyan),
               const SizedBox(width: 10),
-              Expanded(child: Text('$_status\n$_reason', style: const TextStyle(color: Colors.white70, fontSize: 12))),
+              Expanded(child: Text('$_status\n$_reason', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.78), fontSize: 12))),
             ]),
           ),
           if (_status == 'PERMISSION_REQUIRED')
@@ -104,7 +104,7 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
             child: _isScanning
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF00BCD4)))
                 : _networks.isEmpty
-                    ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_reason, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white38))))
+                    ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_reason, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)))))
                     : RefreshIndicator(
                         onRefresh: _scanWiFi,
                         child: ListView.builder(
@@ -117,8 +117,8 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
                             final security = (n['capabilities'] ?? '').toString();
                             return ListTile(
                               leading: const Icon(Icons.wifi, color: Color(0xFF00BCD4)),
-                              title: Text((n['ssid'] ?? '<hidden>').toString(), style: const TextStyle(color: Colors.white)),
-                              subtitle: Text('${signal ?? '?'} dBm • ${frequency ?? '?'} MHz • Ch ${channel ?? '?'}\n${n['bssid'] ?? ''}\n$security', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                              title: Text((n['ssid'] ?? '<hidden>').toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+                              subtitle: Text('${signal ?? '?'} dBm • ${frequency ?? '?'} MHz • Ch ${channel ?? '?'}\n${n['bssid'] ?? ''}\n$security', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: 11)),
                               isThreeLine: true,
                             );
                           },
