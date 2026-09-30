@@ -10,6 +10,33 @@ import 'package:project_zion/agent/core/orchestrator.dart';
 import 'package:project_zion/agent/tools/tool.dart';
 import 'package:project_zion/agent/tools/tool_registry.dart';
 
+class ReviewTool extends AgentTool {
+  @override
+  String get name => 'ai';
+
+  @override
+  String get description => 'Deterministic approval test tool.';
+
+  @override
+  Map<String, dynamic> get parameters => const {};
+
+  @override
+  Future<StepResult> execute(Map<String, dynamic> params) async =>
+      StepResult.success('approved tool completed');
+}
+
+class ReviewPolicy extends AgentPolicy {
+  @override
+  AgentPolicyDecision evaluate({
+    required String tool,
+    required Map<String, dynamic> params,
+  }) => const AgentPolicyDecision(
+        risk: AgentRisk.review,
+        reason: 'approval test',
+        requiresApproval: true,
+      );
+}
+
 class SlowHttpTool extends AgentTool {
   final Duration delay;
   SlowHttpTool(this.delay);
@@ -32,6 +59,38 @@ class SlowHttpTool extends AgentTool {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('Orchestrator pauses for approval and resumes after approval', () async {
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [ReviewTool()]),
+      policy: ReviewPolicy(),
+    );
+    final future = orchestrator.executeTask('حلل المهمة');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    expect(orchestrator.isWaitingForApproval, isTrue);
+    orchestrator.approvePendingStep();
+    final result = await future;
+    expect(result.success, isTrue);
+    expect(orchestrator.state, AgentState.completed);
+    orchestrator.dispose();
+  });
+
+  test('Orchestrator denies a pending reviewed step', () async {
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [ReviewTool()]),
+      policy: ReviewPolicy(),
+    );
+    final future = orchestrator.executeTask('حلل المهمة');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.isWaitingForApproval, isTrue);
+    orchestrator.denyPendingStep();
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, contains('تم رفض تنفيذ الخطوة'));
+    expect(orchestrator.state, AgentState.failed);
+    orchestrator.dispose();
+  });
+
   test('CancellationToken is idempotent and observable', () async {
     final token = CancellationToken();
     var events = 0;
