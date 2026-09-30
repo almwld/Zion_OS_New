@@ -5,6 +5,7 @@ import '../../core/ai/long_term_memory.dart';
 import '../tools/tool_registry.dart';
 import 'agent_models.dart';
 import 'agent_policy.dart';
+import 'cancellation_token.dart';
 
 class AgentOrchestrator {
   final ToolRegistry tools;
@@ -22,7 +23,7 @@ class AgentOrchestrator {
   AgentState get state=>_state;
   bool get isRunning=>_running;
 
-  Future<AgentResult> executeTask(String task,{bool approveReviewed=false}) async {
+  Future<AgentResult> executeTask(String task,{bool approveReviewed=false,CancellationToken? cancellationToken}) async {
     final clean=task.trim();
     if(clean.isEmpty)return AgentResult.error(clean,'المهمة فارغة.');
     if(_running)return AgentResult.error(clean,'Zion Agent مشغول بمهمة أخرى.');
@@ -32,6 +33,7 @@ class AgentOrchestrator {
       final plan=await _createPlan(clean); _log('📋 الخطة: '+plan.steps.length.toString()+' خطوة.');
       _state=AgentState.executing;
       for(var i=0;i<plan.steps.length;i++){
+        cancellationToken?.throwIfCancelled();
         final step=plan.steps[i];
         final decision=policy.evaluate(tool:step.tool,params:step.params);
         _log('▶️ ['+(i+1).toString()+'/'+plan.steps.length.toString()+'] '+step.description);
@@ -41,13 +43,16 @@ class AgentOrchestrator {
         }
         final tool=tools.getTool(step.tool);
         if(tool==null){final r=StepResult.failure('الأداة غير متاحة: '+step.tool);results.add(r);return AgentResult(success:false,task:clean,steps:results,error:r.error);}
+        cancellationToken?.throwIfCancelled();
         final r=await tool.execute(step.params);results.add(r);await memory.remember(kind:'agent-step',text:step.description,metadata:{'tool':step.tool,'success':r.success});
         _log(r.success?'  ✅ '+r.summary:'  ❌ '+(r.error??r.summary));
         if(!r.success){
           _state=AgentState.evaluating;final alt=await _alternative(step,r.error??'فشل');
+          cancellationToken?.throwIfCancelled();
           if(alt!=null){
             final d=policy.evaluate(tool:alt.tool,params:alt.params);
             if(d.risk==AgentRisk.safe||(approveReviewed&&!d.requiresApproval)){
+              cancellationToken?.throwIfCancelled();
               final t=tools.getTool(alt.tool);if(t!=null){final ar=await t.execute(alt.params);results.add(ar);_log('🔄 البديل: '+(ar.success?'نجح':'فشل'));}
             }
           }
@@ -56,6 +61,7 @@ class AgentOrchestrator {
       }
       _state=AgentState.completed;final report=await _report(clean,results);_log('✅ اكتملت المهمة.');
       return AgentResult(success:true,task:clean,steps:results,report:report);
+    }catch(const AgentCancelledException){_state=AgentState.cancelled;_log('⏹️ تم إلغاء المهمة.');return AgentResult(success:false,task:clean,steps:results,error:'تم إلغاء المهمة.');
     }catch(e){_state=AgentState.failed;_log('❌ '+e.toString());return AgentResult(success:false,task:clean,steps:results,error:e.toString());}
     finally{_running=false;if(_state!=AgentState.completed&&_state!=AgentState.failed)_state=AgentState.idle;}
   }
