@@ -4,11 +4,12 @@ import 'package:flutter/services.dart';
 
 class NativePtyAdapter {
   NativePtyAdapter()
-      : _channel = const MethodChannel('zion.os/pty'),
-        _events = const EventChannel('zion.os/pty/events');
+      : _channel = const MethodChannel('zion.os/pty');
+
+  static final Stream<dynamic> _sharedEvents =
+      const EventChannel('zion.os/pty/events').receiveBroadcastStream();
 
   final MethodChannel _channel;
-  final EventChannel _events;
   StreamSubscription<dynamic>? _subscription;
   final StreamController<String> _output = StreamController<String>.broadcast();
   int? _handle;
@@ -33,7 +34,7 @@ class NativePtyAdapter {
     if (_running) return true;
     if (!await isAvailable()) return false;
 
-    _subscription ??= _events.receiveBroadcastStream().listen(
+    _subscription ??= _sharedEvents.listen(
       (dynamic value) {
         if (value is Map) {
           final id = value['sessionId'];
