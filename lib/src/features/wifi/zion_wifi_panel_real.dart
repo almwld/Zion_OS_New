@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../core/arsenal/zion_wifi_real.dart';
 
 class ZionWiFiRealPanel extends StatefulWidget {
@@ -13,6 +14,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   final TextEditingController _hostController = TextEditingController();
   bool _scanning = false;
   String _log = '';
+  String _scanStatus = 'READY';
   List<WiFiSecurityAssessment> _assessments = const [];
   NetworkPortAssessment? _portAssessment;
 
@@ -25,11 +27,25 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   Future<void> _scanWiFi() async {
     setState(() {
       _scanning = true;
+      _scanStatus = 'SCANNING';
       _log = 'Starting real Android Wi-Fi scan...\n';
       _assessments = const [];
     });
 
     try {
+      final location = await Permission.location.request();
+      if (!location.isGranted) {
+        if (!mounted) return;
+        setState(() { _scanStatus = 'PERMISSION_REQUIRED'; _log += 'Location permission is required by Android for Wi-Fi scan results.\n'; _scanning = false; });
+        return;
+      }
+      if (await Permission.nearbyWifiDevices.isDenied) await Permission.nearbyWifiDevices.request();
+      final nearby = await Permission.nearbyWifiDevices.status;
+      if (nearby.isDenied || nearby.isPermanentlyDenied) {
+        if (!mounted) return;
+        setState(() { _scanStatus = 'PERMISSION_REQUIRED'; _log += 'Nearby Wi-Fi permission is required.\n'; _scanning = false; });
+        return;
+      }
       final networks = await _wifi.scanNetworks();
       final assessments = <WiFiSecurityAssessment>[];
       for (final network in networks) {
@@ -39,6 +55,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
       if (!mounted) return;
       setState(() {
         _assessments = assessments;
+        _scanStatus = networks.isEmpty ? 'NO_RESULTS' : 'AVAILABLE';
         _log += 'Observed ${networks.length} real networks.\n';
         _log += 'Assessment source: REAL_WIFI_TELEMETRY\n';
         _scanning = false;
@@ -78,6 +95,21 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
       _log += 'Open TCP ports: ${result.openPorts.join(', ')}\n';
       _scanning = false;
     });
+  }
+
+  String _bandLabel(int frequency) {
+    if (frequency >= 2400 && frequency <= 2500) return '2.4 GHz';
+    if (frequency >= 4900 && frequency <= 5895) return '5 GHz';
+    if (frequency >= 5925 && frequency <= 7125) return '6 GHz';
+    if (frequency >= 57000 && frequency <= 71000) return '60 GHz';
+    return 'Unknown band';
+  }
+
+  int? _channel(int frequency) {
+    if (frequency >= 2412 && frequency <= 2484) return frequency == 2484 ? 14 : (frequency - 2407) ~/ 5;
+    if (frequency >= 5000 && frequency <= 5895) return (frequency - 5000) ~/ 5;
+    if (frequency >= 5925 && frequency <= 7125) return (frequency - 5950) ~/ 5 + 1;
+    return null;
   }
 
   String _securityLabel(WiFiSecurityMode mode) => switch (mode) {
@@ -140,7 +172,8 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
                         ),
                         subtitle: Text(
                           '${_securityLabel(assessment.securityMode)} · '
-                          'Risk ${assessment.riskScore}/100 · '
+                          '${_bandLabel(assessment.network.frequency)} · '
+                          'Ch ${_channel(assessment.network.frequency) ?? '?'} · '
                           'RSSI ${assessment.network.level} dBm',
                         ),
                         children: assessment.findings
