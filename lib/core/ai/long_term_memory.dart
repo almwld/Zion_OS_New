@@ -21,9 +21,15 @@ class LongTermAIMemory {
   List<AIMemoryEntry> get entries=>List.unmodifiable(_entries);
   Future<void> load() async {
     if(_loaded)return;
-    final prefs=await SharedPreferences.getInstance();
-    final raw=prefs.getStringList(_key)??const <String>[];
-    _entries..clear()..addAll(raw.map((s)=>AIMemoryEntry.fromJson(Map<String,dynamic>.from(jsonDecode(s) as Map))));
+    try {
+      final prefs=await SharedPreferences.getInstance();
+      final raw=prefs.getStringList(_key)??const <String>[];
+      _entries..clear()..addAll(raw.map((s)=>AIMemoryEntry.fromJson(Map<String,dynamic>.from(jsonDecode(s) as Map))));
+    } catch (_) {
+      // Keep the agent operational when platform-backed preferences are unavailable
+      // (for example, a pure Dart/test host). Persistent storage remains best-effort.
+      _entries.clear();
+    }
     _loaded=true;
   }
   Future<void> remember({required String kind,required String text,Map<String,dynamic> metadata=const {}}) async {
@@ -46,5 +52,12 @@ class LongTermAIMemory {
     return scored.take(limit).map((x)=>x.entry).toList();
   }
   Future<void> clear() async{_entries.clear();await _save();}
-  Future<void> _save() async{final prefs=await SharedPreferences.getInstance();await prefs.setStringList(_key,_entries.map((e)=>jsonEncode(e.toJson())).toList());}
+  Future<void> _save() async{
+    try {
+      final prefs=await SharedPreferences.getInstance();
+      await prefs.setStringList(_key,_entries.map((e)=>jsonEncode(e.toJson())).toList());
+    } catch (_) {
+      // Persistence is optional; never fail an agent task solely because storage is unavailable.
+    }
+  }
 }

@@ -33,6 +33,7 @@ class AgentOrchestrator {
     int maxRecoveryAttempts = defaultMaxRecoveryAttempts,
   }) async {
     final clean = task.trim();
+    cancellationToken?.throwIfCancelled();
     if (clean.isEmpty) return AgentResult.error(clean, 'المهمة فارغة.');
     if (_running) return AgentResult.error(clean, 'Zion Agent مشغول بمهمة أخرى.');
     _running = true;
