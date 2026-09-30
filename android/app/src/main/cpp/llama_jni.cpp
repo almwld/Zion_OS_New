@@ -90,9 +90,14 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     const uint32_t nCtx = llama_n_ctx(g_ctx);
     if (tokens.size() >= nCtx - 8) return env->NewStringUTF("ERROR: Prompt exceeds local context window");
 
-    if (temperature > 0.0f && temperature != 0.7f) {
-        llama_sampler_chain_remove(g_sampler, 2);
+    if (temperature > 0.0f) {
+        llama_sampler_free(g_sampler);
+        auto samplerParams = llama_sampler_chain_default_params();
+        g_sampler = llama_sampler_chain_init(samplerParams);
+        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
+        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
         llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
 
     auto batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()), 0, 0);
