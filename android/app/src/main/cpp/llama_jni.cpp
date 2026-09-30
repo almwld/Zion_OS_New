@@ -15,10 +15,12 @@ std::mutex g_mutex;
 llama_model * g_model = nullptr;
 llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
+llama_adapter_lora * g_lora = nullptr;
 
 void freeLocked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_ctx) { llama_free(g_ctx); g_ctx = nullptr; }
+    if (g_lora) { llama_adapter_lora_free(g_lora); g_lora = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
 }
 
@@ -26,7 +28,7 @@ std::string fail(const char * message) { LOGE("%s", message); return std::string
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring modelPath, jint threads) {
+Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring modelPath, jint threads, jstring loraPath, jfloat loraScale) {
     if (!modelPath) return JNI_FALSE;
     const char * path = env->GetStringUTFChars(modelPath, nullptr);
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -49,6 +51,23 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     ctxParams.n_threads_batch = std::max(1, static_cast<int>(threads));
     g_ctx = llama_init_from_model(g_model, ctxParams);
     if (!g_ctx) { freeLocked(); return JNI_FALSE; }
+
+    if (loraPath) {
+        const char * adapterPath = env->GetStringUTFChars(loraPath, nullptr);
+        if (adapterPath && adapterPath[0] != '\\0') {
+            g_lora = llama_adapter_lora_init(g_model, adapterPath);
+            env->ReleaseStringUTFChars(loraPath, adapterPath);
+            if (!g_lora) { freeLocked(); return JNI_FALSE; }
+            llama_adapter_lora * adapters[] = { g_lora };
+            float scales[] = { loraScale > 0.0f ? loraScale : 1.0f };
+            if (llama_set_adapters_lora(g_ctx, adapters, 1, scales) != 0) {
+                freeLocked();
+                return JNI_FALSE;
+            }
+        } else if (adapterPath) {
+            env->ReleaseStringUTFChars(loraPath, adapterPath);
+        }
+    }
 
     auto samplerParams = llama_sampler_chain_default_params();
     g_sampler = llama_sampler_chain_init(samplerParams);
