@@ -39,6 +39,12 @@ class AgentRuntime {
 
   Stream<AgentEvent> get events => _events.stream;
   AgentSession? get activeSession => _active;
+  bool get canCancel => _active != null && orchestrator.isRunning;
+  AgentSessionSnapshot? get snapshot {
+    final s = _active;
+    if (s == null) return null;
+    return AgentSessionSnapshot(id:s.id,task:s.task,state:s.state,plan:s.plan,results:s.results.map((r)=>AgentStepResult(success:r.success,summary:r.summary,data:r.data,error:r.error,duration:r.duration)).toList(growable:false),updatedAt:s.updatedAt,error:s.error);
+  }
 
   Future<AgentResult> run(String task, {bool approveReviewed = false}) async {
     final clean = task.trim();
