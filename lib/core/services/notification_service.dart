@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -115,12 +117,4 @@ class NotificationService extends ChangeNotifier {
       case NotificationType.update: return Icons.system_update;
     }
   }
-}
-
-// Helper functions
-String jsonEncode(List<Map<String, dynamic>> data) {
-  return data.toString();
-}
-List<Map<String, dynamic>> jsonDecode(String data) {
-  return [];
 }
