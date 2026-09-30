@@ -276,7 +276,7 @@ class WiFiNetworkObservation {
       bssid: (map['bssid'] as String?) ?? '',
       capabilities: (map['capabilities'] as String?) ?? '',
       frequency: (map['frequency'] as num?)?.toInt() ?? 0,
-      level: (map['level'] as num?)?.toInt() ?? -100,
+      level: (map['level'] as num?)?.toInt() ?? (map['signal'] as num?)?.toInt() ?? -100,
       channelWidth: (map['channelWidth'] as num?)?.toInt() ?? 0,
     );
   }
