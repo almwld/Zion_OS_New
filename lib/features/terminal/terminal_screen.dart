@@ -64,7 +64,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
     final security = context.read<SecurityCore>();
     final id = _nextId++;
-    final terminal = Terminal(maxLines: 10000);
+    final terminal = Terminal(maxLines: 3000);
     final controller = TerminalController();
     final service = TerminalService(security);
     final tab = _TerminalTab(
