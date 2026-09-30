@@ -4,15 +4,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'floating_window.dart';
 
 class FloatingWindowSnapshot {
-  const FloatingWindowSnapshot({required this.appKey, required this.title, required this.width, required this.height, required this.left, required this.top});
+  const FloatingWindowSnapshot({required this.appKey, required this.title, required this.width, required this.height, required this.left, required this.top, required this.workspace});
   final String appKey;
   final String title;
   final double width;
   final double height;
   final double left;
   final double top;
+  final int workspace;
 
-  Map<String, dynamic> toJson() => {'appKey': appKey, 'title': title, 'width': width, 'height': height, 'left': left, 'top': top};
+  Map<String, dynamic> toJson() => {'appKey': appKey, 'title': title, 'width': width, 'height': height, 'left': left, 'top': top, 'workspace': workspace};
 
   static FloatingWindowSnapshot? fromJson(dynamic value) {
     if (value is! Map) return null;
@@ -39,7 +40,11 @@ class FloatingWindowManager extends StatefulWidget {
 }
 
 class FloatingWindowManagerState extends State<FloatingWindowManager> {
-  static const _storageKey = 'zion.desktop.floating_windows.v1';
+  static const _storageKey = 'zion.desktop.floating_windows.v2';
+  static const int workspaceCount = 4;
+  int _activeWorkspace = 0;
+  int get activeWorkspace => _activeWorkspace;
+  void switchWorkspace(int workspace) { if (workspace < 0 || workspace >= workspaceCount || workspace == _activeWorkspace) return; setState(() => _activeWorkspace = workspace); _saveSnapshots(); }
   final List<FloatingWindowInstance> _windows = [];
   int _nextId = 0;
   bool _restoring = false;
@@ -64,6 +69,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
         title: title,
         content: content,
         appKey: appKey ?? title,
+        workspace: _activeWorkspace,
         size: size,
         position: position,
       ));
@@ -78,6 +84,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
         title: title,
         content: content,
         appKey: appKey,
+        workspace: _activeWorkspace,
         size: size,
         position: position,
       ));
@@ -90,7 +97,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     for (final snapshot in snapshots) {
       final content = contentFactory(snapshot.appKey);
       if (content == null) continue;
-      restoreWindow(snapshot.title, content, appKey: snapshot.appKey, size: Size(snapshot.width, snapshot.height), position: Offset(snapshot.left, snapshot.top));
+      restoreWindow(snapshot.title, content, appKey: snapshot.appKey, size: Size(snapshot.width, snapshot.height), position: Offset(snapshot.left, snapshot.top), workspace: snapshot.workspace);
     }
     _restoring = false;
   }
@@ -109,6 +116,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
       height: w.size?.height ?? 500,
       left: w.position?.dx ?? 100,
       top: w.position?.dy ?? 100,
+      workspace: w.workspace,
     )).map((e) => e.toJson()).toList();
     SharedPreferences.getInstance().then((prefs) => prefs.setString(_storageKey, jsonEncode(snapshots)));
   }
@@ -118,7 +126,8 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     return Stack(
       children: [
         widget.child,
-        ..._windows.map((w) => FloatingWindow(
+        Positioned(top: 10, left: 0, right: 0, child: Center(child: Material(color: Colors.transparent, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black.withOpacity(.55), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white24)), child: Row(mainAxisSize: MainAxisSize.min, children: List.generate(workspaceCount, (i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: ChoiceChip(label: Text('W${i + 1}'), selected: _activeWorkspace == i, onSelected: (_) => switchWorkspace(i))))))))),
+        ..._windows.where((w) => w.workspace == _activeWorkspace).map((w) => FloatingWindow(
           key: ValueKey(w.id),
           title: w.title,
           child: w.content,
@@ -142,7 +151,8 @@ class FloatingWindowInstance {
   final String title;
   final Widget content;
   final String appKey;
+  final int workspace;
   Size? size;
   Offset? position;
-  FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, this.size, this.position});
+  FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, required this.workspace, this.size, this.position});
 }
