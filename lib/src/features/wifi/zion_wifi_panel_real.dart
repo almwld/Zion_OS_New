@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/arsenal/zion_wifi_real.dart';
@@ -50,12 +53,23 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
         setState(() { _scanStatus = 'PERMISSION_REQUIRED'; _log += 'Location permission is required by Android for Wi-Fi scan results.\n'; _scanning = false; });
         return;
       }
-      if (await Permission.nearbyWifiDevices.isDenied) await Permission.nearbyWifiDevices.request();
-      final nearby = await Permission.nearbyWifiDevices.status;
-      if (nearby.isDenied || nearby.isPermanentlyDenied) {
-        if (!mounted) return;
-        setState(() { _scanStatus = 'PERMISSION_REQUIRED'; _log += 'Nearby Wi-Fi permission is required.\n'; _scanning = false; });
-        return;
+      // NEARBY_WIFI_DEVICES is an Android 13+ runtime permission. On
+      // Android 11 (API 30), requesting/checking it can incorrectly block a
+      // scan even after the required location permission was granted.
+      if (Platform.isAndroid) {
+        final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+        if (sdk >= 33) {
+          final nearby = await Permission.nearbyWifiDevices.request();
+          if (!nearby.isGranted) {
+            if (!mounted) return;
+            setState(() {
+              _scanStatus = 'PERMISSION_REQUIRED';
+              _log += 'Nearby Wi-Fi permission is required on Android 13+.\n';
+              _scanning = false;
+            });
+            return;
+          }
+        }
       }
       final networks = await _wifi.scanNetworks();
       final assessments = <WiFiSecurityAssessment>[];
