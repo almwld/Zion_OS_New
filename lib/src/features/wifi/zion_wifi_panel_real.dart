@@ -15,6 +15,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   bool _scanning = false;
   String _log = '';
   String _scanStatus = 'READY';
+  WiFiConnectionObservation? _connection;
   List<WiFiSecurityAssessment> _assessments = const [];
   NetworkPortAssessment? _portAssessment;
 
@@ -22,6 +23,15 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   void dispose() {
     _hostController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshConnection() async {
+    try {
+      final connection = await _wifi.currentConnection();
+      if (mounted) setState(() => _connection = connection);
+    } catch (_) {
+      if (mounted) setState(() => _connection = null);
+    }
   }
 
   Future<void> _scanWiFi() async {
@@ -33,6 +43,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
     });
 
     try {
+      await _refreshConnection();
       final location = await Permission.location.request();
       if (!location.isGranted) {
         if (!mounted) return;
@@ -129,6 +140,16 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (_connection != null && _connection!.ssid.isNotEmpty && _connection!.ssid != '<unknown ssid>')
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.wifi),
+                  title: Text('متصل الآن: ${_connection!.ssid}'),
+                  subtitle: Text('RSSI ${_connection!.rssi} dBm · ${_connection!.linkSpeed} Mbps · ${_connection!.frequency} MHz'),
+                  trailing: const Icon(Icons.check_circle),
+                ),
+              ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
