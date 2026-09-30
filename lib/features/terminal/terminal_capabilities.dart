@@ -9,9 +9,9 @@ class TerminalCapabilities {
   ];
 
   static String describe() => [
-    'REAL: native PTY with up to 8 concurrent sessions',
-    'REAL: VT/xterm frontend with 10,000-line scrollback',
-    'REAL: Android /system/bin/sh fallback',
+    'REAL: native PTY on supported Android, safe real-shell fallback on Android 11',
+    'REAL: VT/xterm frontend with 3,000-line scrollback',
+    'REAL: Android /system/bin/sh fallback when no Zion userland shell exists',
     'RUNTIME_DEPENDENT: bash/zsh/fish/ash',
     'RUNTIME_DEPENDENT: pkg/apt/dpkg',
     'RUNTIME_DEPENDENT: proot/proot-distro',

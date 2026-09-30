@@ -300,13 +300,10 @@ class TerminalService {
       return false;
     }
 
-    // Interactive terminal sessions must use a real PTY. Starting an
-    // interactive shell through Process.start() pipes leaves /system/bin/sh
-    // without a controlling tty and produces:
-    // "can't find tty fd" / "won't have full job control".
-    // The native PTY bridge owns the master/slave descriptors, controlling
-    // terminal and window size, so Enter, arrows and Ctrl-* are handled by
-    // the shell exactly as they are in a normal terminal.
+    // Android 11 uses the safe ProcessBuilder shell path in MainActivity;
+    // newer Android releases use the native PTY bridge when available.
+    // Both paths execute a real shell process; the PTY path additionally
+    // provides a controlling terminal and real window-size updates.
     try {
       final ptyStarted = await _pty.start(rows: 32, cols: 120, shell: shell);
       if (!ptyStarted) {
