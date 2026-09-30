@@ -200,11 +200,15 @@ class AgentOrchestrator {
   }
 
   void approvePendingStep() {
-    _approvalCompleter?.complete(true);
+    final completer = _approvalCompleter;
+    if (completer == null || completer.isCompleted) return;
+    completer.complete(true);
   }
 
   void denyPendingStep() {
-    _approvalCompleter?.complete(false);
+    final completer = _approvalCompleter;
+    if (completer == null || completer.isCompleted) return;
+    completer.complete(false);
   }
 
   bool get isWaitingForApproval => _approvalCompleter != null;
