@@ -7,7 +7,7 @@ class PackageManager extends StatefulWidget { const PackageManager({super.key});
 class _PackageManagerState extends State<PackageManager> {
   final _nameController=TextEditingController(), _searchController=TextEditingController();
   List<PackageInfo> _packages=const []; Map<String,PackageStatus> _tools=const {}; bool _loading=true; String _message='جارٍ فحص Zion Userland الحقيقي…';
-  ZionPkg get _pkg=>const ZionPkg(repository: ZionRepository());
+  ZionPkg get _pkg => ZionPkg(repository: ZionRepository());
   @override void initState(){super.initState();_reload();}
   @override void dispose(){_nameController.dispose();_searchController.dispose();super.dispose();}
   Future<void> _reload() async { if(mounted)setState(()=>_loading=true); final tools=await _pkg.checkTools(); final packages=await _pkg.getInstalledPackages(); if(!mounted)return; setState((){_tools=tools;_packages=packages;_message=(tools['dpkg']==PackageStatus.available||tools['dpkg']==PackageStatus.installed)?'REAL Zion Userland • '+packages.length.toString()+' حزمة مسجلة.':'NOT_CONFIGURED: ثبّت Userland يحتوي على dpkg.';_loading=false;}); }
