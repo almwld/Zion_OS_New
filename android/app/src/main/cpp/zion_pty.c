@@ -201,6 +201,10 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
 
     if (pid == 0) {
         pthread_mutex_unlock(&g_sessions_lock);
+        // The child owns the slave side only. Keeping the PTY master open in
+        // the child can prevent EOF/EIO from reaching the Flutter reader and
+        // can leave a stopped shell session looking alive.
+        close(master);
         int slave = open(slave_name, O_RDWR | O_NOCTTY);
         if (slave < 0) _exit(127);
 
