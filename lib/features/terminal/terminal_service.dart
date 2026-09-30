@@ -300,41 +300,36 @@ class TerminalService {
       return false;
     }
 
-    // Use a Dart-managed child process on Android. The optional native PTY
-    // bridge is deliberately not invoked during normal app startup because a
-    // native PTY failure must never be able to terminate or hang the Flutter UI.
+    // Interactive terminal sessions must use a real PTY. Starting an
+    // interactive shell through Process.start() pipes leaves /system/bin/sh
+    // without a controlling tty and produces:
+    // "can't find tty fd" / "won't have full job control".
+    // The native PTY bridge owns the master/slave descriptors, controlling
+    // terminal and window size, so Enter, arrows and Ctrl-* are handled by
+    // the shell exactly as they are in a normal terminal.
     try {
-      final process = await Process.start(
-        shell,
-        const <String>['-i'],
-        runInShell: false,
-        environment: <String, String>{
-          'TERM': 'xterm-256color',
-          'COLORTERM': 'truecolor',
-          'LANG': 'C.UTF-8',
-          'LC_ALL': 'C.UTF-8',
-          'ZION_TERMINAL': '1',
-        },
-      );
-      _interactiveProcess = process;
-      _interactiveStdoutSub = process.stdout.transform(utf8.decoder).listen(_output.add);
-      _interactiveStderrSub = process.stderr.transform(utf8.decoder).listen(_output.add);
-      unawaited(process.exitCode.then((code) async {
-        if (!identical(_interactiveProcess, process)) return;
-        _interactiveProcess = null;
-        await _interactiveStdoutSub?.cancel();
-        await _interactiveStderrSub?.cancel();
-        _interactiveStdoutSub = null;
-        _interactiveStderrSub = null;
-        _output.add('\\r\\n[ZION] Shell exited with code $code.\\r\\n');
-      }));
+      final ptyStarted = await _pty.start(rows: 32, cols: 120, shell: shell);
+      if (!ptyStarted) {
+        _output.add('ERROR: Unable to start native PTY shell.\\r\\n');
+        return false;
+      }
+
+      await _ptyOutputSub?.cancel();
+      _ptyOutputSub = _pty.output.listen(_output.add);
       _interactiveInputBuffer = '';
-      _output.add('Connected to Android shell: $shell\\r\\n');
-      _audit(command: '<interactive-start>', outcome: 'success', exitCode: 0, shell: shell, duration: DateTime.now().difference(started), interactive: true);
+      _output.add('Connected to Android PTY shell: $shell\\r\\n');
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'success',
+        exitCode: 0,
+        shell: shell,
+        duration: DateTime.now().difference(started),
+        interactive: true,
+      );
       return true;
-    } on ProcessException catch (e) {
-      _interactiveProcess = null;
-      _output.add('ERROR: Unable to start shell: ${e.message}\\r\\n');
+    } catch (e) {
+      await _pty.stop();
+      _output.add('ERROR: Unable to start PTY shell: $e\\r\\n');
       return false;
     }
   }
