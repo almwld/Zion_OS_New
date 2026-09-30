@@ -16,7 +16,7 @@ class _AgentScreenState extends State<AgentScreen> {
   AgentResult? _result;
   bool _approve=false;
 
-  @override void initState(){super.initState();_agent=AgentOrchestrator();_sub=_agent.events.listen((e){if(!mounted)return;setState(()=>_events.add(e));WidgetsBinding.instance.addPostFrameCallback((_){if(_scroll.hasClients)_scroll.jumpTo(_scroll.position.maxScrollExtent);});});}
+  @override void initState(){super.initState();_runtime=AgentRuntime();_sub=_runtime.events.listen((e){if(!mounted)return;setState(()=>_events.add(e));WidgetsBinding.instance.addPostFrameCallback((_){if(_scroll.hasClients)_scroll.jumpTo(_scroll.position.maxScrollExtent);});});}
   Future<void> _run() async {
     final task=_input.text.trim(); if(task.isEmpty||_runtime.canCancel)return;
     _input.clear();setState(()=>_result=null);
@@ -47,5 +47,6 @@ class _AgentScreenState extends State<AgentScreen> {
   );
   String _stateText(AgentState s){switch(s){case AgentState.idle:return'جاهز';case AgentState.planning:return'تخطيط';case AgentState.executing:return'تنفيذ';case AgentState.evaluating:return'تقييم';case AgentState.completed:return'اكتمل';case AgentState.failed:return'فشل';case AgentState.cancelled:return'أُلغي';}}
   Color _color(AgentEvent e){if(e.message.contains('❌')||e.message.contains('⛔'))return Colors.redAccent;if(e.message.contains('🔐'))return Colors.orangeAccent;if(e.message.contains('✅'))return Colors.greenAccent;return Colors.white70;}
-  Future<void> _cancel() async { await _runtime.cancel(); if(mounted)setState((){});}\n  @override void dispose(){_sub?.cancel();_runtime.dispose();_input.dispose();_scroll.dispose();super.dispose();}
+  Future<void> _cancel() async { await _runtime.cancel(); if(mounted)setState((){});}
+  @override void dispose(){_sub?.cancel();_runtime.dispose();_input.dispose();_scroll.dispose();super.dispose();}
 }
