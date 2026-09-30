@@ -35,8 +35,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 
     auto params = llama_model_default_params();
     params.n_gpu_layers = 0;
-    params.use_mmap = true;
-    params.use_mlock = false;
+    params.load_mode = LLAMA_LOAD_MODE_MMAP;
     g_model = llama_model_load_from_file(path, params);
     env->ReleaseStringUTFChars(modelPath, path);
     if (!g_model) return JNI_FALSE;
@@ -100,11 +99,10 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
 
-    auto batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()), 0, 0);
+    auto batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
     if (llama_decode(g_ctx, batch) != 0) return env->NewStringUTF("ERROR: Prompt decode failed");
 
     std::string output;
-    int32_t nPast = static_cast<int32_t>(tokens.size());
     const int limit = std::clamp(static_cast<int>(maxTokens), 1, 2048);
 
     for (int i = 0; i < limit; ++i) {
@@ -116,9 +114,8 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         if (n > 0) output.append(piece, n);
 
         llama_sampler_accept(g_sampler, next);
-        auto nextBatch = llama_batch_get_one(&next, 1, nPast, 0);
+        auto nextBatch = llama_batch_get_one(&next, 1);
         if (llama_decode(g_ctx, nextBatch) != 0) break;
-        ++nPast;
     }
     return env->NewStringUTF(output.c_str());
 }
