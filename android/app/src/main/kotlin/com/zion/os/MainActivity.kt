@@ -651,7 +651,7 @@ class MainActivity : FlutterFragmentActivity() {
                 pending?.success(mapOf("available" to false, "status" to "CANCELLED"))
             } else {
                 val uri = data.data!!
-                try { takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
+                try { contentResolver.takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
                 aiExecutor.execute {
                     val response = importSelectedModel(uri)
                     runOnUiThread { pending?.success(response) }
@@ -701,16 +701,24 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Unable to list external storage.")) }
     }
 
-    private fun deleteTreeDocument(uriString: String): Map<String, Any?> = try {
+    private fun deleteTreeDocument(uriString: String): Map<String, Any?> {
         if (uriString.isBlank()) return mapOf("available" to false, "status" to "INVALID")
-        mapOf("available" to true, "status" to if (DocumentsContract.deleteDocument(contentResolver, Uri.parse(uriString))) "DELETED" else "FAILED")
-    } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Delete failed.")) }
+        return try {
+            mapOf("available" to true, "status" to if (DocumentsContract.deleteDocument(contentResolver, Uri.parse(uriString))) "DELETED" else "FAILED")
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Delete failed."))
+        }
+    }
 
-    private fun createTreeDirectory(parentUri: String, name: String): Map<String, Any?> = try {
+    private fun createTreeDirectory(parentUri: String, name: String): Map<String, Any?> {
         if (parentUri.isBlank() || name.isBlank() || name.contains("/")) return mapOf("available" to false, "status" to "INVALID")
-        val uri = DocumentsContract.createDocument(contentResolver, Uri.parse(parentUri), DocumentsContract.Document.MIME_TYPE_DIR, name)
-        if (uri == null) mapOf("available" to false, "status" to "FAILED") else mapOf("available" to true, "status" to "CREATED", "uri" to uri.toString())
-    } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Create directory failed.")) }
+        return try {
+            val uri = DocumentsContract.createDocument(contentResolver, Uri.parse(parentUri), DocumentsContract.Document.MIME_TYPE_DIR, name)
+            if (uri == null) mapOf("available" to false, "status" to "FAILED") else mapOf("available" to true, "status" to "CREATED", "uri" to uri.toString())
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Create directory failed."))
+        }
+    }
 
     override fun onDestroy() {
         stopNetworkRadar()
