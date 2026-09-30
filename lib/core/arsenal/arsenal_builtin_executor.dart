@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
@@ -30,6 +31,14 @@ class ArsenalBuiltinExecutor {
         return _logs(arguments);
       case 'utility.system-info':
         return _systemInfo();
+      case 'utility.battery':
+        return _platformInfo('batteryInfo', 'Battery status');
+      case 'utility.storage':
+        return _platformInfo('storageInfo', 'Storage status');
+      case 'network.interfaces':
+        return _platformInfo('networkInfo', 'Network interfaces');
+      case 'wireless.scan':
+        return _wifiScan();
       case 'web.inspect':
         return _web(arguments);
       default:
@@ -84,6 +93,40 @@ class ArsenalBuiltinExecutor {
   Future<ArsenalBuiltinResult> _systemInfo() async {
     final m = await SystemMetrics.read();
     return ArsenalBuiltinResult.success(jsonEncode({'cpuPercent': m.cpuPercent, 'memoryPercent': m.memoryPercent, 'memoryUsedBytes': m.memoryUsedBytes, 'memoryTotalBytes': m.memoryTotalBytes, 'storagePercent': m.storagePercent, 'uptimeSeconds': m.uptime.inSeconds}));
+  }
+
+
+  Future<ArsenalBuiltinResult> _platformInfo(String method, String label) async {
+    try {
+      const channel = MethodChannel('zion.os/platform');
+      final raw = await channel.invokeMethod<dynamic>(method);
+      return ArsenalBuiltinResult.success(jsonEncode(<String, dynamic>{
+        'label': label,
+        'data': raw,
+      }));
+    } on PlatformException catch (e) {
+      return ArsenalBuiltinResult.failure('UNAVAILABLE', e.message ?? 'Android platform service unavailable.');
+    } catch (e) {
+      return ArsenalBuiltinResult.failure('FAILED', 'Platform diagnostic failed: $e');
+    }
+  }
+
+  Future<ArsenalBuiltinResult> _wifiScan() async {
+    try {
+      const channel = MethodChannel('zion.os/wifi');
+      final raw = await channel.invokeMethod<dynamic>('scan');
+      final networks = raw is List
+          ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList()
+          : <Map<String, dynamic>>[];
+      return ArsenalBuiltinResult.success(jsonEncode(<String, dynamic>{
+        'count': networks.length,
+        'networks': networks,
+      }));
+    } on PlatformException catch (e) {
+      return ArsenalBuiltinResult.failure('PERMISSION_REQUIRED', e.message ?? 'Wi-Fi scan permission is required.');
+    } catch (e) {
+      return ArsenalBuiltinResult.failure('FAILED', 'Wi-Fi scan failed: $e');
+    }
   }
 
   Future<ArsenalBuiltinResult> _web(List<String> args) async {
