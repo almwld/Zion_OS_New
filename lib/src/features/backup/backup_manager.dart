@@ -2,12 +2,77 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/services/backup_service.dart';
 
-class BackupManager extends StatefulWidget { const BackupManager({super.key}); @override State<BackupManager> createState()=>_BackupManagerState(); }
-class _BackupManagerState extends State<BackupManager> { final BackupService _service=BackupService(); List<Map<String,dynamic>> _backups=[]; bool _loading=true;
- @override void initState(){super.initState();_load();}
- Future<void> _load() async {setState(()=>_loading=true);final data=await _service.getBackupHistory();if(mounted)setState(()=>_backups=data..sort((a,b)=>(b['timestamp']??'').toString().compareTo((a['timestamp']??'').toString()));}
- Future<void> _create() async {final c=TextEditingController(text:'Zion');await showDialog<void>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Create backup'),content:TextField(controller:c,decoration:const InputDecoration(labelText:'Backup name')),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()async{final result=await _service.createBackup(c.text.trim().isEmpty?'Zion':c.text.trim());if(ctx.mounted)Navigator.pop(ctx);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Real backup created':'Backup failed: ${result['error']??'unknown error'}')));await _load();},child:const Text('Create'))]));c.dispose();}
- Future<void> _restore(String path) async {final result=await _service.restoreBackup(path);if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Restored ${result['restored_items']} settings':'Restore failed: ${result['error']??'unknown error'}')));}
- Future<void> _delete(String path) async {await _service.deleteBackup(path);await _load();}
- @override Widget build(BuildContext context){return Scaffold(backgroundColor:const Color(0xFF070B10),appBar:AppBar(title:const Text('Backup / Restore'),backgroundColor:const Color(0xFF101923),actions:[IconButton(onPressed:_create,icon:const Icon(Icons.add_box)),IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),body:_loading?const Center(child:CircularProgressIndicator()):_backups.isEmpty?const Center(child:Text('No backups. Create a real settings backup.',style:TextStyle(color:Colors.white54))):ListView.builder(itemCount:_backups.length,itemBuilder:(ctx,i){final b=_backups[i];final path=b['path'] as String;return Card(color:const Color(0xFF101923),child:ListTile(leading:const Icon(Icons.archive,color:Color(0xFF00BCD4)),title:Text(b['name']?.toString()??'Zion Backup',style:const TextStyle(color:Colors.white)),subtitle:Text('${b['timestamp']??''} • ${b['size']??0} bytes',style:const TextStyle(color:Colors.white54,fontSize:10)),trailing:PopupMenuButton<String>(onSelected:(v)async{if(v=='restore')await _restore(path);if(v=='share')await Share.shareXFiles([XFile(path)]);if(v=='delete')await _delete(path);},itemBuilder:(_)=>const[PopupMenuItem(value:'restore',child:Text('Restore')),PopupMenuItem(value:'share',child:Text('Share')),PopupMenuItem(value:'delete',child:Text('Delete'))])));});}
+class BackupManager extends StatefulWidget {
+  const BackupManager({super.key});
+  @override State<BackupManager> createState()=>_BackupManagerState();
+}
+class _BackupManagerState extends State<BackupManager> {
+  final BackupService _service=BackupService();
+  List<Map<String,dynamic>> _backups=[];
+  bool _loading=true;
+  @override void initState(){super.initState();_load();}
+  Future<void> _load() async {
+    if(mounted)setState(()=>_loading=true);
+    final data=await _service.getBackupHistory();
+    data.sort((a,b)=>(b['timestamp']??'').toString().compareTo((a['timestamp']??'').toString()));
+    if(mounted)setState((){_backups=data;_loading=false;});
+  }
+  Future<void> _create() async {
+    final controller=TextEditingController(text:'Zion');
+    await showDialog<void>(
+      context:context,
+      builder:(ctx)=>AlertDialog(
+        title:const Text('Create backup'),
+        content:TextField(controller:controller,decoration:const InputDecoration(labelText:'Backup name')),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),
+          FilledButton(onPressed:() async {
+            final name=controller.text.trim().isEmpty?'Zion':controller.text.trim();
+            final result=await _service.createBackup(name);
+            if(ctx.mounted)Navigator.pop(ctx);
+            if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Real backup created':'Backup failed: '+(result['error']??'unknown error').toString())));
+            await _load();
+          },child:const Text('Create')),
+        ],
+      ),
+    );
+    controller.dispose();
+  }
+  Future<void> _restore(String path) async {
+    final result=await _service.restoreBackup(path);
+    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Restored '+(result['restored_items']??0).toString()+' settings':'Restore failed: '+(result['error']??'unknown error').toString())));
+  }
+  Future<void> _delete(String path) async{await _service.deleteBackup(path);await _load();}
+  @override Widget build(BuildContext context){
+    return Scaffold(
+      backgroundColor:const Color(0xFF070B10),
+      appBar:AppBar(title:const Text('Backup / Restore'),backgroundColor:const Color(0xFF101923),actions:[IconButton(onPressed:_create,icon:const Icon(Icons.add_box)),IconButton(onPressed:_load,icon:const Icon(Icons.refresh))]),
+      body:_loading?const Center(child:CircularProgressIndicator()):_backups.isEmpty
+        ?const Center(child:Text('No backups. Create a real settings backup.',style:TextStyle(color:Colors.white54)))
+        :ListView.builder(
+          itemCount:_backups.length,
+          itemBuilder:(ctx,i){
+            final b=_backups[i];
+            final path=b['path']?.toString()??'';
+            return Card(color:const Color(0xFF101923),child:ListTile(
+              leading:const Icon(Icons.archive,color:Color(0xFF00BCD4)),
+              title:Text(b['name']?.toString()??'Zion Backup',style:const TextStyle(color:Colors.white)),
+              subtitle:Text((b['timestamp']??'').toString()+' • '+(b['size']??0).toString()+' bytes',style:const TextStyle(color:Colors.white54,fontSize:10)),
+              trailing:PopupMenuButton<String>(
+                onSelected:(v)async{
+                  if(v=='restore')await _restore(path);
+                  if(v=='share')await Share.shareXFiles([XFile(path)]);
+                  if(v=='delete')await _delete(path);
+                },
+                itemBuilder:(_)=>const[
+                  PopupMenuItem(value:'restore',child:Text('Restore')),
+                  PopupMenuItem(value:'share',child:Text('Share')),
+                  PopupMenuItem(value:'delete',child:Text('Delete')),
+                ],
+              ),
+            ));
+          },
+        ),
+    );
+  }
 }

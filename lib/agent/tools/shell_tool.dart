@@ -1,0 +1,5 @@
+import 'dart:async'; import 'dart:io'; import '../core/agent_models.dart'; import 'tool.dart';
+class ShellTool extends AgentTool {
+  String get name=>'shell'; String get description=>'أوامر تشخيص محلية ضمن صلاحيات العملية الحالية.'; Map<String,dynamic> get parameters=>const {'command':'string','timeout':'int'};
+  Future<StepResult> execute(Map<String,dynamic> p) async {final c=p['command']?.toString().trim();if(c==null||c.isEmpty)return StepResult.failure('command مطلوب.');try{final x=await Process.start('/system/bin/sh',['-c',c]);final o=StringBuffer(),e=StringBuffer();x.stdout.transform(SystemEncoding().decoder).listen(o.write);x.stderr.transform(SystemEncoding().decoder).listen(e.write);final code=await x.exitCode.timeout(Duration(seconds:(p['timeout'] as num?)?.toInt()??20),onTimeout:(){x.kill(ProcessSignal.sigterm);return -1;});if(code==0)return StepResult.success(o.toString().trim(),data:{'exitCode':code});return StepResult.failure(e.toString().trim()+' (exitCode='+code.toString()+')');}catch(e){return StepResult.failure('تعذر تشغيل shell: '+e.toString());}}
+}
