@@ -67,7 +67,7 @@ class _ArsenalScreenState extends State<ArsenalScreen> {
     final tools = _registry.byCategory(category);
     if (tools.isEmpty) return const SizedBox.shrink();
     return Card(margin: const EdgeInsets.only(top: 10), child: ExpansionTile(title: Text(category.name.toUpperCase()), children: [
-      for (final tool in tools) ListTile(title: Text(tool.name), subtitle: Text(tool.reason ?? tool.availability.name.toUpperCase()), trailing: tool.availability == ArsenalAvailability.available && tool.command != null ? IconButton(icon: const Icon(Icons.play_arrow), onPressed: () => _run(tool)) : Chip(label: Text(tool.availability.name.toUpperCase()))),
+      for (final tool in tools) ListTile(title: Text(tool.name), subtitle: Text(tool.reason ?? tool.availability.name.toUpperCase()), trailing: tool.availability == ArsenalAvailability.available ? IconButton(icon: const Icon(Icons.play_arrow), onPressed: () => _run(tool)) : Chip(label: Text(tool.availability.name.toUpperCase()))),
     ]));
   }
 }
