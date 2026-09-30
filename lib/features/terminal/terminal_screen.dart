@@ -260,7 +260,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   fontSize: _fontSize,
                   fontFamily: 'monospace',
                 ),
-                simulateScroll: true,
+                simulateScroll: false,
               ),
             )
           else
