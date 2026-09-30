@@ -192,6 +192,11 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         return 0;
     }
 
+    // Prepare the fixed Zion environment before fork(). Android/Flutter is
+    // heavily multi-threaded; calling malloc-backed functions such as
+    // setenv()/mkdir() in the post-fork child can deadlock or crash.
+    prepare_environment();
+
     pid_t pid = fork();
     if (pid < 0) {
         close(master);
@@ -221,8 +226,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
 
-        prepare_environment();
-        chdir("/data/data/com.zion.os/files/home");
+        if (chdir("/data/data/com.zion.os/files/home") != 0) {
+            _exit(126);
+        }
         exec_best_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
     }
 
