@@ -277,7 +277,8 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun ensureTerminalEnvironment(): Pair<File, File> {
-        val (home, prefix) = ensureTerminalEnvironment()
+        val home = File(filesDir, "home").apply { mkdirs() }
+        val prefix = File(filesDir, "usr").apply { mkdirs() }
         File(prefix, "bin").mkdirs()
         File(prefix, "sbin").mkdirs()
         File(prefix, "lib").mkdirs()
@@ -285,7 +286,15 @@ class MainActivity : FlutterFragmentActivity() {
         File(filesDir, "tmp").mkdirs()
         File(filesDir, "etc").mkdirs()
         val profile = File(home, ".profile")
-        if (!profile.exists()) profile.writeText(            "export HOME=\"${home.absolutePath}\n" +             "export PREFIX=\"${prefix.absolutePath}\n" +             "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\n" +             "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin\n" +             "export TERM=\"xterm-256color\"\n"        )
+        if (!profile.exists()) {
+            profile.writeText(
+                "export HOME=\"${home.absolutePath}\"\n" +
+                "export PREFIX=\"${prefix.absolutePath}\"\n" +
+                "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\"\n" +
+                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin\"\n" +
+                "export TERM=\"xterm-256color\"\n"
+            )
+        }
         val bashrc = File(home, ".bashrc")
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
