@@ -381,7 +381,7 @@ class _StatusBar extends StatelessWidget {
           Expanded(
             child: Text(
               connected
-                  ? 'REAL PTY • xterm-256color • arrows • Ctrl-C • 3,000 scrollback'
+                  ? 'REAL SHELL • xterm-256color • Ctrl-C • 3,000 scrollback'
                   : 'Shell unavailable / stopped',
               style: const TextStyle(fontSize: 11),
             ),
