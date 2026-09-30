@@ -55,6 +55,8 @@ class MainActivity : FlutterFragmentActivity() {
     private external fun nativeStopPty(handle: Int)
 
     private val terminalReaders = ConcurrentHashMap<Int, Thread>()
+    private val terminalProcesses = ConcurrentHashMap<Int, Process>()
+    private var nextProcessTerminalHandle = 1001
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
@@ -274,6 +276,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
+        if (android.os.Build.VERSION.SDK_INT <= 30) return startProcessTerminal(shell)
         if (!nativePtyAvailable()) return 0
         return try {
             val handle = nativeStartPty(rows, cols, shell)
@@ -310,8 +313,82 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun startProcessTerminal(shell: String?): Int {
+        val selected = listOf(shell?.trim(), "/system/bin/sh", "/bin/sh")
+            .filterNotNull()
+            .firstOrNull { candidate ->
+                (candidate == "/system/bin/sh" || candidate == "/bin/sh") &&
+                    File(candidate).canExecute()
+            } ?: return 0
+
+        return try {
+            val home = File(filesDir, "home").apply { mkdirs() }
+            val prefix = File(filesDir, "usr").apply { mkdirs() }
+            File(filesDir, "tmp").mkdirs()
+            File(filesDir, "etc").mkdirs()
+            val builder = ProcessBuilder(selected, "-i")
+                .directory(home)
+                .redirectErrorStream(true)
+            builder.environment().apply {
+                put("HOME", home.absolutePath)
+                put("PREFIX", prefix.absolutePath)
+                put("TERMUX_HOME", home.absolutePath)
+                put("TMPDIR", File(filesDir, "tmp").absolutePath)
+                put("PATH", "${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin")
+                put("TERM", "xterm-256color")
+                put("COLORTERM", "truecolor")
+                put("LANG", "C.UTF-8")
+                put("LC_ALL", "C.UTF-8")
+                put("SHELL", selected)
+                put("ZION_TERMINAL", "1")
+            }
+            val process = builder.start()
+            val handle = nextProcessTerminalHandle++
+            terminalProcesses[handle] = process
+            terminalReaders[handle] = Thread {
+                try {
+                    val buffer = ByteArray(8192)
+                    val input = process.inputStream
+                    while (!Thread.currentThread().isInterrupted) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        val output = String(buffer, 0, count, Charsets.UTF_8)
+                        Handler(Looper.getMainLooper()).post {
+                            terminalSink?.success(mapOf("sessionId" to handle, "data" to output))
+                        }
+                    }
+                } catch (_: Throwable) {
+                    // Normal during terminal shutdown; never propagate to the host.
+                } finally {
+                    terminalProcesses.remove(handle)
+                    terminalReaders.remove(handle)
+                    Handler(Looper.getMainLooper()).post {
+                        terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
+                    }
+                }
+            }.apply {
+                name = "zion-process-terminal-$handle"
+                isDaemon = true
+                start()
+            }
+            handle
+        } catch (_: Throwable) {
+            0
+        }
+    }
+
     private fun writeTerminal(handle: Int, input: String): Boolean {
         if (handle <= 0) return false
+        terminalProcesses[handle]?.let { process ->
+            return try {
+                process.outputStream.write(input.toByteArray(Charsets.UTF_8))
+                process.outputStream.flush()
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        }
         return try {
             val data = input.toByteArray(Charsets.UTF_8)
             nativeWritePty(handle, data) == data.size
@@ -322,11 +399,18 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun resizeTerminal(handle: Int, rows: Int, cols: Int): Boolean {
         if (handle <= 0) return false
+        if (terminalProcesses.containsKey(handle)) return true
         return try { nativeResizePty(handle, rows, cols) } catch (_: Throwable) { false }
     }
 
     private fun stopTerminal(handle: Int) {
         if (handle <= 0) return
+        terminalProcesses.remove(handle)?.let { process ->
+            try { process.destroy() } catch (_: Throwable) {}
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                try { process.destroyForcibly() } catch (_: Throwable) {}
+            }
+        }
         try { nativeStopPty(handle) } catch (_: Throwable) {}
         terminalReaders.remove(handle)?.interrupt()
     }
