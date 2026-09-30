@@ -25,7 +25,15 @@ class _AgentScreenState extends State<AgentScreen> {
   @override Widget build(BuildContext context)=>Scaffold(
     backgroundColor:const Color(0xFF070B08),
     appBar:AppBar(title:const Text('Zion Agent'),backgroundColor:const Color(0xFF0B120E),actions:[
-      Row(children:[const Text('السماح بالخطوات المراجعة',style:TextStyle(fontSize:11)),Switch(value:_approve,onChanged:_runtime.canCancel?null:(v)=>setState(()=>_approve=v)),if(_runtime.canCancel)IconButton(onPressed:_cancel,icon:const Icon(Icons.stop_circle_outlined,color:Colors.redAccent),tooltip:'إلغاء المهمة')])
+      Row(children:[
+        const Text('السماح بالخطوات المراجعة',style:TextStyle(fontSize:11)),
+        Switch(value:_approve,onChanged:_runtime.canCancel?null:(v)=>setState(()=>_approve=v)),
+        if(_runtime.canApprove) ...[
+          IconButton(onPressed:(){_runtime.approve();setState((){});},icon:const Icon(Icons.check_circle_outline,color:Colors.greenAccent),tooltip:'الموافقة على الخطوة'),
+          IconButton(onPressed:(){_runtime.deny();setState((){});},icon:const Icon(Icons.cancel_outlined,color:Colors.orangeAccent),tooltip:'رفض الخطوة'),
+        ],
+        if(_runtime.canCancel)IconButton(onPressed:_cancel,icon:const Icon(Icons.stop_circle_outlined,color:Colors.redAccent),tooltip:'إلغاء المهمة')
+      ])
     ]),
     body:Column(children:[
       Container(width:double.infinity,padding:const EdgeInsets.all(10),color:const Color(0xFF0B120E),child:Wrap(spacing:12,runSpacing:6,children:[
@@ -40,7 +48,7 @@ class _AgentScreenState extends State<AgentScreen> {
         style:const TextStyle(color:Colors.white70),
       ))),
       Padding(padding:const EdgeInsets.all(10),child:Row(children:[
-        Expanded(child:TextField(controller:_input,onSubmitted:(_)=>_run(),style:const TextStyle(color:Colors.white),decoration:const InputDecoration(hintText:'اكتب مهمة معقدة للوكيل...',border:OutlineInputBorder()))),
+        Expanded(child:TextField(enabled:!_runtime.canCancel,controller:_input,onSubmitted:(_)=>_run(),style:const TextStyle(color:Colors.white),decoration:const InputDecoration(hintText:'اكتب مهمة معقدة للوكيل...',border:OutlineInputBorder()))),
         const SizedBox(width:8),IconButton(onPressed:_runtime.canCancel?null:_run,icon:const Icon(Icons.play_arrow,color:Color(0xFF00FF41)),tooltip:'تنفيذ')
       ]))
     ])
