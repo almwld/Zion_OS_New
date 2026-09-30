@@ -16,6 +16,7 @@ class AgentOrchestrator {
   AgentState _state=AgentState.idle;
   bool _running=false;
   static const Duration defaultStepTimeout = Duration(seconds: 30);
+  static const int defaultMaxRecoveryAttempts = 2;
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai})
       :tools=tools??ToolRegistry(),policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService();
@@ -24,7 +25,7 @@ class AgentOrchestrator {
   AgentState get state=>_state;
   bool get isRunning=>_running;
 
-  Future<AgentResult> executeTask(String task,{bool approveReviewed=false,CancellationToken? cancellationToken,Duration stepTimeout=defaultStepTimeout}) async {
+  Future<AgentResult> executeTask(String task,{bool approveReviewed=false,CancellationToken? cancellationToken,Duration stepTimeout=defaultStepTimeout,int maxRecoveryAttempts=defaultMaxRecoveryAttempts}) async {
     final clean=task.trim();
     if(clean.isEmpty)return AgentResult.error(clean,'المهمة فارغة.');
     if(_running)return AgentResult.error(clean,'Zion Agent مشغول بمهمة أخرى.');
@@ -56,7 +57,14 @@ class AgentOrchestrator {
         if(!r.success){
           _state=AgentState.evaluating;
           var recovered=false;
-          final alt=await _alternative(step,r.error??'فشل');
+          var recoveryAttempt=0;
+          AgentStep? alternative;
+          while(!recovered && recoveryAttempt<maxRecoveryAttempts){
+            recoveryAttempt++;
+            cancellationToken?.throwIfCancelled();
+            alternative=await _alternative(step,r.error??'فشل (محاولة '+recoveryAttempt.toString()+')');
+            if(alternative==null)break;
+            final alt=alternative;
           cancellationToken?.throwIfCancelled();
           if(alt!=null){
             final d=policy.evaluate(tool:alt.tool,params:alt.params);
@@ -76,7 +84,7 @@ class AgentOrchestrator {
                 }
                 results.add(ar);
                 recovered=ar.success;
-                _log('🔄 البديل: '+(ar.success?'نجح':'فشل'));
+                _log('🔄 المحاولة البديلة '+recoveryAttempt.toString()+'/'+maxRecoveryAttempts+': '+(ar.success?'نجحت':'فشلت'));
               }
             }
           }
