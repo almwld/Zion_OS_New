@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/wm/window_manager.dart';
 import 'zion_desktop_icons.dart';
+import 'zion_system_monitor.dart';
 
 class ZionTaskbar extends StatelessWidget {
   const ZionTaskbar({super.key});
@@ -56,9 +57,8 @@ class ZionTaskbar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _StartMenuItem(icon: Icons.terminal, label: 'الطرفية', onTap: () { Navigator.pop(ctx); wm.open('Terminal', const KaliTerminalWindow(), width: 600, height: 400); }),
-            _StartMenuItem(icon: Icons.travel_explore, label: 'Nmap', onTap: () { Navigator.pop(ctx); wm.open('Nmap', const KaliTerminalWindow(initialCommand: 'nmap --help'), width: 600, height: 400); }),
-            _StartMenuItem(icon: Icons.bug_report, label: 'Metasploit', onTap: () { Navigator.pop(ctx); wm.open('Metasploit', const KaliTerminalWindow(initialCommand: 'msfconsole -q -x "version; exit"'), width: 700, height: 450); }),
-            _StartMenuItem(icon: Icons.storage, label: 'SQLmap', onTap: () { Navigator.pop(ctx); wm.open('SQLmap', const KaliTerminalWindow(initialCommand: 'sqlmap --help'), width: 600, height: 400); }),
+            _StartMenuItem(icon: Icons.monitor_heart, label: 'مراقب النظام', onTap: () { Navigator.pop(ctx); wm.open('System Monitor', const ZionSystemMonitor(), width: 380, height: 460); }),
+            _StartMenuItem(icon: Icons.network_check, label: 'تشخيص الشبكة', onTap: () { Navigator.pop(ctx); wm.open('Network Diagnostics', const KaliTerminalWindow(initialCommand: 'ip addr; ss -lnt'), width: 650, height: 420); }),
             const Divider(color: Color(0xFF1A3A1A)),
             _StartMenuItem(icon: Icons.power_settings_new, label: 'إيقاف التشغيل', onTap: () => Navigator.pop(ctx)),
           ],
