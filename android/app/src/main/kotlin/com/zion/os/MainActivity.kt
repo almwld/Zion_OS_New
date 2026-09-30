@@ -123,8 +123,12 @@ class MainActivity : FlutterFragmentActivity() {
                     "loadModel" -> {
                         val path = call.argument<String>("path") ?: ""
                         val threads = call.argument<Int>("threads") ?: 4
+                        val loraPath = call.argument<String>("loraPath")
+                        val loraScale = (call.argument<Double>("loraScale") ?: 1.0).toFloat()
                         aiExecutor.execute {
-                            val ok = try { llamaBridge.nativeLoadModel(path, threads) } catch (_: Throwable) { false }
+                            val ok = try {
+                                llamaBridge.nativeLoadModel(path, threads, loraPath, loraScale)
+                            } catch (_: Throwable) { false }
                             runOnUiThread { result.success(ok) }
                         }
                     }
