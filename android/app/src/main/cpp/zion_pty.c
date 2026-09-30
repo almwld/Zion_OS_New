@@ -200,7 +200,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     }
 
     if (pid == 0) {
-        pthread_mutex_unlock(&g_sessions_lock);
+        // After fork(), never unlock g_sessions_lock here: if another thread
+        // held it at fork time, the inherited pthread mutex is not safely
+        // unlockable in the child and can deadlock the PTY process.
         // The child owns the slave side only. Keeping the PTY master open in
         // the child can prevent EOF/EIO from reaching the Flutter reader and
         // can leave a stopped shell session looking alive.
