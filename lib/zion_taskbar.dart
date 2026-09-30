@@ -56,9 +56,9 @@ class ZionTaskbar extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _StartMenuItem(icon: Icons.terminal, label: 'الطرفية', onTap: () { Navigator.pop(ctx); wm.open('Terminal', const KaliTerminalWindow(), width: 600, height: 400); }),
-            _StartMenuItem(icon: Icons.monitor_heart, label: 'مراقب النظام', onTap: () { Navigator.pop(ctx); wm.open('System Monitor', const ZionSystemMonitor(), width: 380, height: 460); }),
-            _StartMenuItem(icon: Icons.network_check, label: 'تشخيص الشبكة', onTap: () { Navigator.pop(ctx); wm.open('Network Diagnostics', const KaliTerminalWindow(initialCommand: 'ip addr; ss -lnt'), width: 650, height: 420); }),
+            _StartMenuItem(icon: Icons.terminal, label: 'الطرفية', onTap: () { Navigator.pop(ctx); wm.open(title: 'Terminal', content: const KaliTerminalWindow(), width: 600, height: 400); }),
+            _StartMenuItem(icon: Icons.monitor_heart, label: 'مراقب النظام', onTap: () { Navigator.pop(ctx); wm.open(title: 'System Monitor', content: const ZionSystemMonitor(), width: 380, height: 460); }),
+            _StartMenuItem(icon: Icons.network_check, label: 'تشخيص الشبكة', onTap: () { Navigator.pop(ctx); wm.open(title: 'Network Diagnostics', content: const KaliTerminalWindow(initialCommand: 'ip addr; ss -lnt'), width: 650, height: 420); }),
             const Divider(color: Color(0xFF1A3A1A)),
             _StartMenuItem(icon: Icons.power_settings_new, label: 'إيقاف التشغيل', onTap: () => Navigator.pop(ctx)),
           ],

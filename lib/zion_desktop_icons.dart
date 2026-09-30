@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/wm/window_manager.dart';
+import 'features/window_manager/core/window_manager.dart'
 import 'core/services/kali_loader_service.dart';
 
 class DesktopIconWidget extends StatelessWidget {
@@ -17,9 +17,9 @@ class DesktopIconWidget extends StatelessWidget {
 
   void _executeCommand(BuildContext context) async {
     final wm = context.read<WindowManager>();
-    final terminalId = wm.open(
-      label,
-      KaliTerminalWindow(initialCommand: kaliCommand),
+    wm.open(
+      title: label,
+      content: KaliTerminalWindow(initialCommand: kaliCommand),
       width: 600,
       height: 400,
     );
