@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'core/wm/window_manager.dart';
+import 'features/window_manager/core/window_manager.dart';
 import 'features/terminal/terminal_screen.dart';
 import 'zion_browser.dart';
 import 'zion_file_manager.dart';
@@ -64,7 +64,7 @@ class ZionAppLauncher extends StatelessWidget {
   }
 
   void _openApp(BuildContext context, String title, Widget content, double width, double height) {
-    context.read<WindowManager>().open(title, content, width: width, height: height);
+    context.read<WindowManager>().open(title: title, content: content, width: width, height: height);
   }
 }
 

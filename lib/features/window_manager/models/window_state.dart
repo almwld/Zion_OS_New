@@ -1,0 +1,1 @@
+enum WindowState { created, focused, minimized, maximized, closed }

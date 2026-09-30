@@ -50,6 +50,8 @@ import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
 import 'core/ui/zion_toast.dart';
 import 'core/theme/zion_colors.dart';
+import 'features/window_manager/core/window_manager.dart';
+import 'features/window_manager/providers/window_provider.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
 class DesktopHome extends StatefulWidget {
@@ -76,6 +78,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   late AnimationController _radarController;
   late AnimationController _pulseController;
   final GlobalKey<FloatingWindowManagerState> _windowManagerKey = GlobalKey<FloatingWindowManagerState>();
+  final WindowManager _windowManager = WindowManager();
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": const Color(0xFFFF4757), "gradient": [const Color(0xFFFF4757), const Color(0xFFD63447)]},
@@ -177,6 +180,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     _clockTimer?.cancel();
     _radarController.dispose();
     _pulseController.dispose();
+    _windowManager.dispose();
     super.dispose();
   }
 
@@ -261,11 +265,19 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final screenSize = MediaQuery.sizeOf(context);
     final windowWidth = math.min(380.0, math.max(280.0, screenSize.width - 24.0));
     final windowHeight = math.min(560.0, math.max(360.0, screenSize.height - 150.0));
+    final windowId = _windowManager.open(
+      title: app['nameAr'] as String,
+      content: screen,
+      width: windowWidth,
+      height: windowHeight,
+      appKey: name,
+    );
     _windowManagerKey.currentState?.openWindow(
       app['nameAr'] as String,
       screen,
       appKey: name,
       size: Size(windowWidth, windowHeight),
+      windowId: windowId,
     );
   }
 
@@ -274,9 +286,12 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final theme = Provider.of<ThemeProvider>(context);
     final isDark = theme.isDarkMode;
     final primaryColor = theme.primaryColor;
-    return FloatingWindowManager(
-      key: _windowManagerKey,
-      child: Scaffold(
+    return WindowManagerProvider(
+      manager: _windowManager,
+      child: FloatingWindowManager(
+        key: _windowManagerKey,
+        windowManager: _windowManager,
+        child: Scaffold(
       backgroundColor: isDark ? const Color(0xFF0A0E1A) : const Color(0xFFF5F7FA),
       body: Stack(children: [
         _buildBackground(isDark, primaryColor),
@@ -305,7 +320,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
         if (_showStartMenu) _buildStartMenu(theme, isDark, primaryColor),
       ]),
-    ),
+        ),
+      ),
     );
   }
 

@@ -6,6 +6,7 @@ class FloatingWindow extends StatefulWidget {
   final VoidCallback onClose;
   final void Function(Size size, Offset position) onChanged;
   final int windowId;
+  final VoidCallback? onFocus;
   final Size initialSize;
   final Offset initialPosition;
 
@@ -16,6 +17,7 @@ class FloatingWindow extends StatefulWidget {
     required this.onClose,
     required this.onChanged,
     required this.windowId,
+    this.onFocus,
     this.initialSize = const Size(350, 500),
     this.initialPosition = const Offset(50, 100),
   });
@@ -64,10 +66,10 @@ class _FloatingWindowState extends State<FloatingWindow> {
         left: _position.dx,
         top: _position.dy,
         child: GestureDetector(
-          onTap: () => setState(() {
+          onTap: () { widget.onFocus?.call(); setState(() {
             _isMinimized = false;
             widget.onChanged(_size, _position);
-          }),
+          }); },
           child: Container(
             width: 120,
             height: 32,
@@ -105,6 +107,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
           child: Column(
             children: [
               GestureDetector(
+                onPanStart: (_) => widget.onFocus?.call(),
                 onPanUpdate: (details) => setState(() {
                   _position = _clampPosition(context, _position + details.delta);
                 }),

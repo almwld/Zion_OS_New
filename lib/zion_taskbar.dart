@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'core/wm/window_manager.dart';
+import 'features/window_manager/core/window_manager.dart';
 import 'zion_desktop_icons.dart';
 import 'zion_system_monitor.dart';
 
@@ -27,14 +27,14 @@ class ZionTaskbar extends StatelessWidget {
                 icon: Icons.terminal,
                 label: window.title,
                 isActive: wm.activeWindowId == window.id,
-                onTap: () => wm.setActive(window.id),
+                onTap: () => wm.focus(window.id),
               )).toList(),
             ),
           ),
           ...wm.minimizedWindows.map((window) => _TaskbarButton(
             icon: Icons.terminal,
             label: window.title,
-            onTap: () => wm.minimize(window.id),
+            onTap: () => wm.restore(window.id),
           )),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 12),

@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'floating_window.dart';
+import '../features/window_manager/core/window_manager.dart';
+import '../features/window_manager/models/window_id.dart';
+import '../features/window_manager/models/window_geometry.dart';
 
 class FloatingWindowSnapshot {
   const FloatingWindowSnapshot({required this.appKey, required this.title, required this.width, required this.height, required this.left, required this.top, required this.workspace});
@@ -35,7 +38,8 @@ class FloatingWindowSnapshot {
 
 class FloatingWindowManager extends StatefulWidget {
   final Widget child;
-  const FloatingWindowManager({super.key, required this.child});
+  final WindowManager? windowManager;
+  const FloatingWindowManager({super.key, required this.child, this.windowManager});
   @override
   State<FloatingWindowManager> createState() => FloatingWindowManagerState();
 }
@@ -63,7 +67,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     }
   }
 
-  void openWindow(String title, Widget content, {String? appKey, Size? size, Offset? position}) {
+  void openWindow(String title, Widget content, {String? appKey, Size? size, Offset? position, WindowId? windowId}) {
     setState(() {
       _windows.add(FloatingWindowInstance(
         id: _nextId++,
@@ -73,21 +77,25 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
         workspace: _activeWorkspace,
         size: size,
         position: position,
+        wmId: windowId,
       ));
     });
     _saveSnapshots();
   }
 
   void restoreWindow(String title, Widget content, {required String appKey, Size? size, Offset? position, int? workspace}) {
+    final restoredWorkspace = workspace ?? _activeWorkspace;
+    final restoredId = windowManager?.open(title: title, content: content, width: size?.width ?? 350, height: size?.height ?? 500, x: position?.dx ?? 100, y: position?.dy ?? 100, workspace: restoredWorkspace, appKey: appKey);
     setState(() {
       _windows.add(FloatingWindowInstance(
         id: _nextId++,
         title: title,
         content: content,
         appKey: appKey,
-        workspace: workspace ?? _activeWorkspace,
+        workspace: restoredWorkspace,
         size: size,
         position: position,
+        wmId: restoredId,
       ));
     });
   }
@@ -104,6 +112,9 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   }
 
   void closeWindow(int id) {
+    final matches = _windows.where((w) => w.id == id).toList(growable: false);
+    final window = matches.isEmpty ? null : matches.first;
+    if (window?.wmId != null) windowManager?.close(window!.wmId!);
     setState(() => _windows.removeWhere((w) => w.id == id));
     _saveSnapshots();
   }
@@ -133,9 +144,13 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
           title: w.title,
           child: w.content,
           onClose: () => closeWindow(w.id),
+          onFocus: () { if (w.wmId != null) windowManager?.focus(w.wmId!); },
           onChanged: (size, position) {
               w.size = size;
               w.position = position;
+              if (w.wmId != null) {
+                windowManager?.updateGeometry(w.wmId!, WindowGeometry(x: position.dx, y: position.dy, width: size.width, height: size.height));
+              }
               _saveSnapshots();
             },
           windowId: w.id,
@@ -153,7 +168,8 @@ class FloatingWindowInstance {
   final Widget content;
   final String appKey;
   final int workspace;
+  final WindowId? wmId;
   Size? size;
   Offset? position;
-  FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, required this.workspace, this.size, this.position});
+  FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, required this.workspace, this.wmId, this.size, this.position});
 }
