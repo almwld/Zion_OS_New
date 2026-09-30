@@ -9,7 +9,11 @@ target_link_libraries(zionpty ${log-lib})
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
   include(FetchContent)
-  FetchContent_Declare(llama_cpp URL https://github.com/ggml-org/llama.cpp/archive/refs/tags/b11193.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_Declare(llama_cpp
+    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
+    GIT_TAG b11193
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE)
   set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
