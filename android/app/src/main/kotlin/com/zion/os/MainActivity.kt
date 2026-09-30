@@ -319,7 +319,7 @@ class MainActivity : FlutterFragmentActivity() {
             .filterNotNull()
             .firstOrNull { candidate ->
                 (candidate == "/system/bin/sh" || candidate == "/bin/sh") &&
-                    File(candidate).canExecute()
+                    File(candidate).exists()
             } ?: return 0
 
         return try {
