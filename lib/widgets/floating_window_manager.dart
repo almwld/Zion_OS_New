@@ -85,7 +85,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
         title: title,
         content: content,
         appKey: appKey,
-        workspace: _activeWorkspace,
+        workspace: workspace ?? _activeWorkspace,
         size: size,
         position: position,
       ));
