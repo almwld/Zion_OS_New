@@ -15,6 +15,8 @@ class AgentOrchestrator {
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
+  Completer<bool>? _approvalCompleter;
+  String? _pendingApprovalStepId;
   static const Duration defaultStepTimeout = Duration(seconds: 30);
   static const int defaultMaxRecoveryAttempts = 2;
 
@@ -60,15 +62,27 @@ class AgentOrchestrator {
 
         if (decision.requiresApproval && !approveReviewed) {
           _state = AgentState.waitingApproval;
-          final r = StepResult.failure('تحتاج هذه الخطوة موافقة: ${decision.reason}');
-          results.add(r);
-          _log('🔐 ${decision.reason}');
-          return AgentResult(
-            success: false,
-            task: clean,
-            steps: results,
-            error: 'موافقة مطلوبة للخطوة: ${step.description}',
+          _pendingApprovalStepId = step.id;
+          _log('🔐 بانتظار موافقتك: ${decision.reason}');
+          final approved = await _waitForApproval(
+            cancellationToken,
+            step.description,
           );
+          _pendingApprovalStepId = null;
+          if (!approved) {
+            _state = AgentState.failed;
+            final r = StepResult.failure('تم رفض تنفيذ الخطوة: ${step.description}');
+            results.add(r);
+            _log('🚫 تم رفض الخطوة.');
+            return AgentResult(
+              success: false,
+              task: clean,
+              steps: results,
+              error: 'تم رفض تنفيذ الخطوة: ${step.description}',
+            );
+          }
+          _state = AgentState.executing;
+          _log('✅ تمت الموافقة على الخطوة.');
         }
 
         final tool = tools.getTool(step.tool);
@@ -164,6 +178,38 @@ class AgentOrchestrator {
     }
   }
 
+  Future<bool> _waitForApproval(
+    CancellationToken? cancellationToken,
+    String description,
+  ) async {
+    final completer = Completer<bool>();
+    _approvalCompleter = completer;
+    try {
+      if (cancellationToken == null) return await completer.future;
+      return await Future.any<bool>([
+        completer.future,
+        cancellationToken.onCancel.first.then<bool>((_) {
+          throw const AgentCancelledException();
+        }),
+      ]);
+    } finally {
+      if (identical(_approvalCompleter, completer)) {
+        _approvalCompleter = null;
+      }
+    }
+  }
+
+  void approvePendingStep() {
+    _approvalCompleter?.complete(true);
+  }
+
+  void denyPendingStep() {
+    _approvalCompleter?.complete(false);
+  }
+
+  bool get isWaitingForApproval => _approvalCompleter != null;
+  String? get pendingApprovalStepId => _pendingApprovalStepId;
+
   Future<AgentPlan> _createPlan(String task) async {
     await memory.load();
     if(await _nativeAiAvailable()){
@@ -207,5 +253,10 @@ class AgentOrchestrator {
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
-  void dispose(){_events.close();}
+  void dispose(){
+    if (_approvalCompleter != null && !_approvalCompleter!.isCompleted) {
+      _approvalCompleter!.complete(false);
+    }
+    _events.close();
+  }
 }
