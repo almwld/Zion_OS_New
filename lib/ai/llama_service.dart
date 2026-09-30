@@ -32,8 +32,18 @@ class LlamaService {
     return LlamaModel.fromMap(value!);
   }
 
-  Future<bool> loadModel(String path, {int threads = 4}) async {
-    final ok = await _channel.invokeMethod<bool>('loadModel', {'path': path, 'threads': threads}) ?? false;
+  Future<bool> loadModel(
+    String path, {
+    int threads = 4,
+    String? loraPath,
+    double loraScale = 1.0,
+  }) async {
+    final ok = await _channel.invokeMethod<bool>('loadModel', {
+      'path': path,
+      'threads': threads,
+      if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
+      'loraScale': loraScale > 0 ? loraScale : 1.0,
+    }) ?? false;
     _loaded = ok;
     _modelPath = ok ? path : null;
     return ok;
