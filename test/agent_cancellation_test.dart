@@ -110,3 +110,14 @@ void main() {
     await runtime.dispose();
   });
 }
+
+
+  test('Orchestrator accepts a bounded recovery configuration', () async {
+    final orchestrator = AgentOrchestrator();
+    final result = await orchestrator.executeTask(
+      'simple test',
+      maxRecoveryAttempts: 1,
+    );
+    expect(result.task, 'simple test');
+    orchestrator.dispose();
+  });
