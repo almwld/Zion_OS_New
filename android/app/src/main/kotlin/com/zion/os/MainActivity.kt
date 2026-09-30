@@ -33,6 +33,8 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import android.provider.Settings
+import android.provider.DocumentsContract
+import android.net.Uri
 import java.util.Locale
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -58,6 +60,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     private lateinit var zionApiChannel: ZionApiChannel
     private lateinit var zionPkgChannel: MethodChannel
+    private var pendingTreeResult: MethodChannel.Result? = null
 
     companion object {
         init { System.loadLibrary("zionpty") }
@@ -68,6 +71,8 @@ class MainActivity : FlutterFragmentActivity() {
         private const val RADAR_EVENTS = "zion.os/network/radar"
         private const val ZION_PKG_ACTION = "com.zion.os.ZION_PKG"
         private const val ZION_PKG_CHANNEL = "zion.os/pkg-external"
+        private const val STORAGE_CHANNEL = "zion.os/storage"
+        private const val REQUEST_OPEN_TREE = 4101
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -81,6 +86,29 @@ class MainActivity : FlutterFragmentActivity() {
                 when (call.method) {
                     "scan" -> scanWifiTelemetryAsync(result)
                     "connection" -> result.success(readCurrentWifiConnection())
+                    else -> result.notImplemented()
+                }
+            }
+
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "pickTree" -> {
+                        if (pendingTreeResult != null) {
+                            result.error("BUSY", "A storage picker is already open.", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingTreeResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION)
+                        }
+                        try { startActivityForResult(intent, REQUEST_OPEN_TREE) }
+                        catch (t: Throwable) { pendingTreeResult = null; result.success(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "Storage picker unavailable."))) }
+                    }
+                    "listTree" -> result.success(listTree(call.argument<String>("uri") ?: ""))
+                    "delete" -> result.success(deleteTreeDocument(call.argument<String>("uri") ?: ""))
+                    "createDirectory" -> result.success(createTreeDirectory(call.argument<String>("parentUri") ?: "", call.argument<String>("name") ?: ""))
                     else -> result.notImplemented()
                 }
             }
@@ -514,6 +542,59 @@ class MainActivity : FlutterFragmentActivity() {
         }
         return mapOf("available" to true, "status" to "AVAILABLE", "enabled" to enabled)
     }
+
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_OPEN_TREE) {
+            val pending = pendingTreeResult
+            pendingTreeResult = null
+            if (resultCode != RESULT_OK || data?.data == null) {
+                pending?.success(mapOf("available" to false, "status" to "CANCELLED"))
+            } else {
+                val uri = data.data!!
+                try {
+                    contentResolver.takePersistableUriPermission(uri, data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION))
+                } catch (_: Throwable) {}
+                pending?.success(mapOf("available" to true, "status" to "AVAILABLE", "uri" to uri.toString(), "name" to (uri.lastPathSegment ?: "External storage")))
+            }
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun listTree(uriString: String): Map<String, Any?> {
+        if (uriString.isBlank()) return mapOf("available" to false, "status" to "INVALID", "items" to emptyList<Map<String, Any?>>())
+        return try {
+            val tree = Uri.parse(uriString)
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+            val items = mutableListOf<Map<String, Any?>>()
+            contentResolver.query(children, projection, null, null, DocumentsContract.Document.COLUMN_DISPLAY_NAME) ?.use { cursor ->
+                val id = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                val name = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                val mime = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                val size = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_SIZE)
+                val modified = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+                while (cursor.moveToNext()) {
+                    val childId = cursor.getString(id)
+                    items.add(mapOf("name" to cursor.getString(name), "mimeType" to cursor.getString(mime), "size" to if (cursor.isNull(size)) null else cursor.getLong(size), "modified" to if (cursor.isNull(modified)) null else cursor.getLong(modified), "isDirectory" to (cursor.getString(mime) == DocumentsContract.Document.MIME_TYPE_DIR), "uri" to DocumentsContract.buildDocumentUriUsingTree(tree, childId).toString()))
+                }
+            }
+            mapOf("available" to true, "status" to "AVAILABLE", "items" to items)
+        } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Unable to list external storage.")) }
+    }
+
+    private fun deleteTreeDocument(uriString: String): Map<String, Any?> = try {
+        if (uriString.isBlank()) return mapOf("available" to false, "status" to "INVALID")
+        mapOf("available" to true, "status" to if (DocumentsContract.deleteDocument(contentResolver, Uri.parse(uriString))) "DELETED" else "FAILED")
+    } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Delete failed.")) }
+
+    private fun createTreeDirectory(parentUri: String, name: String): Map<String, Any?> = try {
+        if (parentUri.isBlank() || name.isBlank() || name.contains("/")) return mapOf("available" to false, "status" to "INVALID")
+        val uri = DocumentsContract.createDocument(contentResolver, Uri.parse(parentUri), DocumentsContract.Document.MIME_TYPE_DIR, name)
+        if (uri == null) mapOf("available" to false, "status" to "FAILED") else mapOf("available" to true, "status" to "CREATED", "uri" to uri.toString())
+    } catch (t: Throwable) { mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Create directory failed.")) }
 
     override fun onDestroy() {
         stopNetworkRadar()
