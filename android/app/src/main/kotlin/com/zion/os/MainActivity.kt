@@ -606,7 +606,7 @@ class MainActivity : FlutterFragmentActivity() {
     private fun discoverGgufModels(): List<Map<String, Any?>> {
         val roots = linkedSetOf<File>()
         roots.add(File(filesDir, "models"))
-        roots.add(File(getExternalFilesDir(null), "models"))
+        getExternalFilesDir(null)?.let { roots.add(File(it, "models")) }
         roots.add(File("/storage/emulated/0/Download"))
         roots.add(File("/storage/emulated/0/Models"))
         roots.add(File("/sdcard/Download"))
