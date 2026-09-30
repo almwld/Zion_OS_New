@@ -2,10 +2,12 @@ import 'dart:convert';
 import '../../ai/llama_service.dart';
 import 'agent_models.dart';
 class AgentPlanner {
+ final LlamaService service;
+ AgentPlanner({LlamaService? service}):service=service??LlamaService();
  Future<AgentPlan> create(String task)async{
   final prompt='حوّل المهمة إلى خطة JSON. المهمة: '+task+'\\nاستخدم read-only افتراضياً. أي كتابة أو عملية أو شبكة يجب وسم صلاحيتها. لا تولد استغلالاً أو تجاوز حماية أو سرقة بيانات اعتماد. JSON فقط.';
   try{
-   final response=await LlamaService.generate(prompt:prompt,maxTokens:900,temperature:0.2);
+   final response=await service.generate(prompt,maxTokens:900,temperature:0.2);
    final start=response.indexOf('{'),end=response.lastIndexOf('}');
    if(start>=0&&end>start){
     final decoded=Map<String,dynamic>.from(jsonDecode(response.substring(start,end+1)) as Map);
