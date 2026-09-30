@@ -45,7 +45,7 @@ class _AgentScreenState extends State<AgentScreen> {
       ]))
     ])
   );
-  String _stateText(AgentState s){switch(s){case AgentState.idle:return'جاهز';case AgentState.planning:return'تخطيط';case AgentState.executing:return'تنفيذ';case AgentState.evaluating:return'تقييم';case AgentState.completed:return'اكتمل';case AgentState.failed:return'فشل';case AgentState.cancelled:return'أُلغي';}}
+  String _stateText(AgentState s){switch(s){case AgentState.idle:return'جاهز';case AgentState.planning:return'تخطيط';case AgentState.executing:return'تنفيذ';case AgentState.evaluating:return'تقييم';case AgentState.waitingApproval:return'بانتظار الموافقة';case AgentState.completed:return'اكتمل';case AgentState.failed:return'فشل';case AgentState.cancelled:return'أُلغي';}}
   Color _color(AgentEvent e){if(e.message.contains('❌')||e.message.contains('⛔'))return Colors.redAccent;if(e.message.contains('🔐'))return Colors.orangeAccent;if(e.message.contains('✅'))return Colors.greenAccent;return Colors.white70;}
   Future<void> _cancel() async { await _runtime.cancel(); if(mounted)setState((){});}
   @override void dispose(){_sub?.cancel();_runtime.dispose();_input.dispose();_scroll.dispose();super.dispose();}
