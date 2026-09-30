@@ -7,6 +7,7 @@ import 'zion_browser.dart';
 import 'zion_file_manager.dart';
 import 'zion_system_monitor.dart';
 import 'src/features/security_center/security_center.dart';
+import 'ai/widgets/ai_chat_screen.dart';
 
 class ZionAppLauncher extends StatelessWidget {
   const ZionAppLauncher({super.key});
@@ -45,6 +46,7 @@ class ZionAppLauncher extends StatelessWidget {
                 _AppItem(icon: Icons.edit, name: 'محرر النصوص', onTap: () => _openApp(context, 'Editor', const _TextEditor(), 600, 450)),
                 _AppItem(icon: Icons.language, name: 'متصفح Zion', onTap: () => _openApp(context, 'Browser', const ZionBrowser(), 800, 500)),
                 _AppItem(icon: Icons.monitor, name: 'مراقب النظام', onTap: () => _openApp(context, 'Monitor', const ZionSystemMonitor(), 350, 400)),
+                _AppItem(icon: Icons.psychology, name: 'الذكاء المحلي Offline AI', onTap: () => _openApp(context, 'Offline AI', const AIChatScreen(), 700, 600)),
                 const SizedBox(height: 16),
                 const _AppCategory(title: 'الأمان والتشخيص'),
                 _AppItem(icon: Icons.security, name: 'مركز الأمان', onTap: () => _openApp(context, 'Security', const SecurityCenter(), 650, 560)),
