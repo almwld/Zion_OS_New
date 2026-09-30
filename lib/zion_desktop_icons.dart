@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'features/window_manager/core/window_manager.dart';
-import 'core/services/kali_loader_service.dart';
+import 'package:project_zion/features/window_manager/core/window_manager.dart';
+import 'package:project_zion/core/services/kali_loader_service.dart';
 
 class DesktopIconWidget extends StatelessWidget {
   final IconData icon;
