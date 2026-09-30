@@ -63,6 +63,7 @@ class AgentRuntime {
     String task, {
     bool approveReviewed = false,
     Duration stepTimeout = AgentOrchestrator.defaultStepTimeout,
+    int maxRecoveryAttempts = AgentOrchestrator.defaultMaxRecoveryAttempts,
   }) async {
     final clean = task.trim();
     if (clean.isEmpty) return AgentResult.error(clean, 'المهمة فارغة.');
@@ -92,6 +93,7 @@ class AgentRuntime {
         approveReviewed: approveReviewed,
         cancellationToken: token,
         stepTimeout: stepTimeout,
+        maxRecoveryAttempts: maxRecoveryAttempts,
       );
       session.state = result.success
           ? AgentState.completed
