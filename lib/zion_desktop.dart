@@ -558,7 +558,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             ),
           ),
         ),
-      ),
     );
   }
 
