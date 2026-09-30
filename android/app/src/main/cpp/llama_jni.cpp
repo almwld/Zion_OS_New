@@ -106,7 +106,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     const int limit = std::clamp(static_cast<int>(maxTokens), 1, 2048);
 
     for (int i = 0; i < limit; ++i) {
-        const llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
+        llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
 
         char piece[1024];
