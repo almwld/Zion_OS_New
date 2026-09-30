@@ -19,7 +19,7 @@ class AgentEnvironment {
 
   Future<ProcessResult> runProcess(String executable,List<String> args,{Duration timeout=const Duration(seconds:60)}) async {
     final p=await Process.start(executable,args,workingDirectory:root.path,environment:{
-      'HOME':root.path,'TMPDIR':cacheDir.path,'PYTHONUSERBASE':root.path,
+      'HOME':root.path,'TMPDIR':cacheDir.path,'PYTHONUSERBASE':root.path,'PATH':'/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin',
     });
     final out=StringBuffer(),err=StringBuffer();
     p.stdout.transform(SystemEncoding().decoder).listen(out.write);
@@ -44,5 +44,5 @@ class EnvironmentManager {
 
   static Future<void> delete(String name) async { final env=_cache.remove(_safeName(name)); if(env!=null) await env.destroy(); }
   static Future<void> deleteAll() async { for(final env in _cache.values){await env.destroy();} _cache.clear(); }
-  static String _safeName(String value)=>value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'),'_').substring(0,value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'),'_').length.clamp(0,48));
+  static String _safeName(String value){final cleaned=value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'),'_');return cleaned.length>48?cleaned.substring(0,48):cleaned;}
 }
