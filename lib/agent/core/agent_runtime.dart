@@ -2,6 +2,17 @@ import 'dart:async';
 import 'agent_models.dart';
 import 'orchestrator.dart';
 
+class AgentSessionSnapshot {
+  final String id;
+  final String task;
+  final AgentState state;
+  final AgentPlan? plan;
+  final List<StepResult> results;
+  final DateTime updatedAt;
+  final String? error;
+  const AgentSessionSnapshot({required this.id,required this.task,required this.state,this.plan,this.results=const [],required this.updatedAt,this.error});
+}
+
 class AgentSession {
   final String id;
   final String task;
