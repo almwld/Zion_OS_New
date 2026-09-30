@@ -929,7 +929,7 @@ class MainActivity : FlutterFragmentActivity() {
         if (!locationManager.isLocationEnabled) {
             result.success(mapOf(
                 "available" to false,
-                "status" to "PERMISSION_REQUIRED",
+                "status" to "LOCATION_DISABLED",
                 "reason" to "Android Location services must be enabled for Wi-Fi scanning.",
                 "networks" to emptyList<Map<String, Any?>>()
             ))

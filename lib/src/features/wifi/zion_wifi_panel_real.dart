@@ -53,6 +53,16 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
         setState(() { _scanStatus = 'PERMISSION_REQUIRED'; _log += 'Location permission is required by Android for Wi-Fi scan results.\n'; _scanning = false; });
         return;
       }
+      final locationService = await Permission.location.serviceStatus;
+      if (locationService != ServiceStatus.enabled) {
+        if (!mounted) return;
+        setState(() {
+          _scanStatus = 'LOCATION_DISABLED';
+          _log += 'Android Location services are disabled. Enable Location, then scan again.\n';
+          _scanning = false;
+        });
+        return;
+      }
       // NEARBY_WIFI_DEVICES is an Android 13+ runtime permission. On
       // Android 11 (API 30), requesting/checking it can incorrectly block a
       // scan even after the required location permission was granted.
