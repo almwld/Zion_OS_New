@@ -60,7 +60,21 @@ class AgentOrchestrator {
             final d=policy.evaluate(tool:alt.tool,params:alt.params);
             if(d.risk==AgentRisk.safe||(approveReviewed&&!d.requiresApproval)){
               cancellationToken?.throwIfCancelled();
-              final t=tools.getTool(alt.tool);if(t!=null){final ar=await t.execute(alt.params);results.add(ar);_log('🔄 البديل: '+(ar.success?'نجح':'فشل'));}
+              final t=tools.getTool(alt.tool);
+              if(t!=null){
+                final alternativeStarted=DateTime.now();
+                StepResult ar;
+                try {
+                  ar=await t.execute(alt.params).timeout(stepTimeout);
+                } on TimeoutException {
+                  ar=StepResult.failure(
+                    'انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية.',
+                    duration:DateTime.now().difference(alternativeStarted),
+                  );
+                }
+                results.add(ar);
+                _log('🔄 البديل: '+(ar.success?'نجح':'فشل'));
+              }
             }
           }
           if(!r.success)continue;
@@ -70,7 +84,12 @@ class AgentOrchestrator {
       return AgentResult(success:true,task:clean,steps:results,report:report);
     }catch(const AgentCancelledException){_state=AgentState.cancelled;_log('⏹️ تم إلغاء المهمة.');return AgentResult(success:false,task:clean,steps:results,error:'تم إلغاء المهمة.');
     }catch(e){_state=AgentState.failed;_log('❌ '+e.toString());return AgentResult(success:false,task:clean,steps:results,error:e.toString());}
-    finally{_running=false;if(_state!=AgentState.completed&&_state!=AgentState.failed)_state=AgentState.idle;}
+    finally{
+      _running=false;
+      if(_state!=AgentState.completed&&_state!=AgentState.failed&&_state!=AgentState.cancelled){
+        _state=AgentState.idle;
+      }
+    }
   }
 
   Future<AgentPlan> _createPlan(String task) async {
