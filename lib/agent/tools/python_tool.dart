@@ -1,3 +1,4 @@
+import 'dart:io';
 import '../core/agent_models.dart';
 import '../environments/environment_manager.dart';
 import 'tool.dart';

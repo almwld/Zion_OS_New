@@ -25,7 +25,7 @@ class AgentEnvironment {
     p.stdout.transform(SystemEncoding().decoder).listen(out.write);
     p.stderr.transform(SystemEncoding().decoder).listen(err.write);
     final code=await p.exitCode.timeout(timeout,onTimeout:(){p.kill(ProcessSignal.sigterm);return -1;});
-    return ProcessResult(code,out.toString(),err.toString());
+    return ProcessResult(p.pid,code,out.toString(),err.toString());
   }
 
   Future<void> destroy() async { if(await root.exists()) await root.delete(recursive:true); }
