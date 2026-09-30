@@ -15,6 +15,7 @@ class AgentOrchestrator {
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
+  static const Duration defaultStepTimeout = Duration(seconds: 30);
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai})
       :tools=tools??ToolRegistry(),policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService();
@@ -23,7 +24,7 @@ class AgentOrchestrator {
   AgentState get state=>_state;
   bool get isRunning=>_running;
 
-  Future<AgentResult> executeTask(String task,{bool approveReviewed=false,CancellationToken? cancellationToken}) async {
+  Future<AgentResult> executeTask(String task,{bool approveReviewed=false,CancellationToken? cancellationToken,Duration stepTimeout=defaultStepTimeout}) async {
     final clean=task.trim();
     if(clean.isEmpty)return AgentResult.error(clean,'المهمة فارغة.');
     if(_running)return AgentResult.error(clean,'Zion Agent مشغول بمهمة أخرى.');
@@ -44,7 +45,13 @@ class AgentOrchestrator {
         final tool=tools.getTool(step.tool);
         if(tool==null){final r=StepResult.failure('الأداة غير متاحة: '+step.tool);results.add(r);return AgentResult(success:false,task:clean,steps:results,error:r.error);}
         cancellationToken?.throwIfCancelled();
-        final r=await tool.execute(step.params);results.add(r);await memory.remember(kind:'agent-step',text:step.description,metadata:{'tool':step.tool,'success':r.success});
+        final started=DateTime.now();
+        StepResult r;
+        try {
+          r=await tool.execute(step.params).timeout(stepTimeout);
+        } on TimeoutException {
+          r=StepResult.failure('انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية.',duration:DateTime.now().difference(started));
+        }results.add(r);await memory.remember(kind:'agent-step',text:step.description,metadata:{'tool':step.tool,'success':r.success});
         _log(r.success?'  ✅ '+r.summary:'  ❌ '+(r.error??r.summary));
         if(!r.success){
           _state=AgentState.evaluating;final alt=await _alternative(step,r.error??'فشل');
