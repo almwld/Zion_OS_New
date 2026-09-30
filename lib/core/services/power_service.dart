@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../src/core/services/system_metrics.dart';
 
 class PowerService extends ChangeNotifier {
   static final PowerService _instance = PowerService._internal();
@@ -28,7 +30,10 @@ class PowerService extends ChangeNotifier {
   }
   
   Future<void> _loadSettings() async {
-    // تحميل الإعدادات المحفوظة
+    final prefs = await SharedPreferences.getInstance();
+    _powerSaveMode = prefs.getBool('power_save_mode') ?? false;
+    _performanceMode = prefs.getBool('performance_mode') ?? false;
+    if (_powerSaveMode) _performanceMode = false;
   }
   
   void _startMonitoring() {
@@ -46,11 +51,12 @@ class PowerService extends ChangeNotifier {
     notifyListeners();
   }
   
-  void _updateStats() {
-    _cpuUsage = _getCPUUsage();
-    _ramUsage = _getRAMUsage();
-    _diskUsage = _getDiskUsage();
-    _temperature = _getTemperature();
+  Future<void> _updateStats() async {
+    final metrics = await SystemMetrics.read();
+    _cpuUsage = metrics.cpuPercent;
+    _ramUsage = metrics.memoryPercent;
+    _diskUsage = metrics.storagePercent;
+    _temperature = await _getTemperature();
     notifyListeners();
   }
   
@@ -61,7 +67,7 @@ class PowerService extends ChangeNotifier {
       final match = RegExp(r'CPU:\s*(\d+)%').firstMatch(output);
       if (match != null) return double.parse(match.group(1)!);
     } catch (_) {}
-    return 15 + (DateTime.now().second % 40);
+    return 0;
   }
   
   double _getRAMUsage() {
@@ -78,7 +84,7 @@ class PowerService extends ChangeNotifier {
         }
       }
     } catch (_) {}
-    return 45;
+    return 0;
   }
   
   double _getDiskUsage() {
@@ -95,7 +101,7 @@ class PowerService extends ChangeNotifier {
         }
       }
     } catch (_) {}
-    return 60;
+    return 0;
   }
   
   double _getTemperature() {
@@ -104,22 +110,24 @@ class PowerService extends ChangeNotifier {
       final temp = double.parse(result.stdout.toString().trim()) / 1000;
       return temp;
     } catch (_) {}
-    return 35;
+    return 0;
   }
   
-  void setPowerSaveMode(bool enabled) {
+  Future<void> setPowerSaveMode(bool enabled) async {
     _powerSaveMode = enabled;
-    if (enabled) {
-      _performanceMode = false;
-    }
+    if (enabled) _performanceMode = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('power_save_mode', _powerSaveMode);
+    await prefs.setBool('performance_mode', _performanceMode);
     notifyListeners();
   }
   
-  void setPerformanceMode(bool enabled) {
+  Future<void> setPerformanceMode(bool enabled) async {
     _performanceMode = enabled;
-    if (enabled) {
-      _powerSaveMode = false;
-    }
+    if (enabled) _powerSaveMode = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('power_save_mode', _powerSaveMode);
+    await prefs.setBool('performance_mode', _performanceMode);
     notifyListeners();
   }
   
