@@ -489,14 +489,11 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         child: SizedBox(
           width: radarSize,
           height: radarSize,
-          child: Transform.scale(
-            scale: theme.radarScale,
-            alignment: Alignment.topLeft,
-            child: AnimatedBuilder(
-              animation: _radarController,
-              builder: (context, child) => Container(
-                width: 100,
-                height: 100,
+          child: AnimatedBuilder(
+            animation: _radarController,
+            builder: (context, child) => Container(
+              width: radarSize,
+              height: radarSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isDark
@@ -516,14 +513,15 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
                 ),
                 child: Stack(
                   children: [
-                    CustomPaint(
-                      painter: RadarPainter(
-                        angle: _radarController.value * 2 * math.pi,
-                        color: primaryColor,
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: RadarPainter(
+                          angle: _radarController.value * 2 * math.pi,
+                          color: primaryColor,
+                        ),
                       ),
-                      size: const Size(100, 100),
                     ),
-                    ..._buildRadarPoints(primaryColor),
+                    ..._buildRadarPoints(primaryColor, radarSize),
                     Positioned(
                       left: 4,
                       top: 4,
@@ -627,21 +625,37 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
 
-  List<Widget> _buildRadarPoints(Color primaryColor) {
-    final points = [
-      {'x':25.0,'y':30.0,'color':Colors.green},
-      {'x':70.0,'y':40.0,'color':Colors.yellow},
-      {'x':50.0,'y':70.0,'color':Colors.orange},
-      {'x':30.0,'y':60.0,'color':Colors.red},
+  List<Widget> _buildRadarPoints(Color primaryColor, double radarSize) {
+    const points = [
+      {'x': 0.25, 'y': 0.30, 'color': Colors.green},
+      {'x': 0.70, 'y': 0.40, 'color': Colors.yellow},
+      {'x': 0.50, 'y': 0.70, 'color': Colors.orange},
+      {'x': 0.30, 'y': 0.60, 'color': Colors.red},
     ];
+    final pointSize = (radarSize * 0.08).clamp(6.0, 14.0);
     return points.map((point) => Positioned(
-      left: point['x'] as double, top: point['y'] as double,
-      child: AnimatedBuilder(animation: _pulseController, builder: (context, child) => Container(
-        width: 8, height: 8,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: point['color'] as Color, boxShadow: [
-          BoxShadow(color: (point['color'] as Color).withOpacity(0.5 + (_pulseController.value * 0.5)), blurRadius: 5 + (_pulseController.value * 5), spreadRadius: 1),
-        ]),
-      )),
+      left: (point['x'] as double) * radarSize - pointSize / 2,
+      top: (point['y'] as double) * radarSize - pointSize / 2,
+      child: AnimatedBuilder(
+        animation: _pulseController,
+        builder: (context, child) => Container(
+          width: pointSize,
+          height: pointSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: point['color'] as Color,
+            boxShadow: [
+              BoxShadow(
+                color: (point['color'] as Color).withOpacity(
+                  0.5 + (_pulseController.value * 0.5),
+                ),
+                blurRadius: (radarSize * 0.05).clamp(5.0, 12.0),
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
     )).toList();
   }
 
