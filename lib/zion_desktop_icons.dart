@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'features/window_manager/core/window_manager.dart'
+import 'features/window_manager/core/window_manager.dart';
 import 'core/services/kali_loader_service.dart';
 
 class DesktopIconWidget extends StatelessWidget {

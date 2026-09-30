@@ -85,7 +85,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
 
   void restoreWindow(String title, Widget content, {required String appKey, Size? size, Offset? position, int? workspace}) {
     final restoredWorkspace = workspace ?? _activeWorkspace;
-    final restoredId = windowManager?.open(title: title, content: content, width: size?.width ?? 350, height: size?.height ?? 500, x: position?.dx ?? 100, y: position?.dy ?? 100, workspace: restoredWorkspace, appKey: appKey);
+    final restoredId = widget.windowManager?.open(title: title, content: content, width: size?.width ?? 350, height: size?.height ?? 500, x: position?.dx ?? 100, y: position?.dy ?? 100, workspace: restoredWorkspace, appKey: appKey);
     setState(() {
       _windows.add(FloatingWindowInstance(
         id: _nextId++,
@@ -114,7 +114,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   void closeWindow(int id) {
     final matches = _windows.where((w) => w.id == id).toList(growable: false);
     final window = matches.isEmpty ? null : matches.first;
-    if (window?.wmId != null) windowManager?.close(window!.wmId!);
+    if (window?.wmId != null) widget.windowManager?.close(window!.wmId!);
     setState(() => _windows.removeWhere((w) => w.id == id));
     _saveSnapshots();
   }
@@ -144,12 +144,12 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
           title: w.title,
           child: w.content,
           onClose: () => closeWindow(w.id),
-          onFocus: () { if (w.wmId != null) windowManager?.focus(w.wmId!); },
+          onFocus: () { if (w.wmId != null) widget.windowManager?.focus(w.wmId!); },
           onChanged: (size, position) {
               w.size = size;
               w.position = position;
               if (w.wmId != null) {
-                windowManager?.updateGeometry(w.wmId!, WindowGeometry(x: position.dx, y: position.dy, width: size.width, height: size.height));
+                widget.windowManager?.updateGeometry(w.wmId!, WindowGeometry(x: position.dx, y: position.dy, width: size.width, height: size.height));
               }
               _saveSnapshots();
             },
