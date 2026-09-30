@@ -1,7 +1,33 @@
 import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:project_zion/agent/core/agent_models.dart';
 import 'package:project_zion/agent/core/agent_runtime.dart';
+import 'package:project_zion/agent/core/agent_policy.dart';
 import 'package:project_zion/agent/core/cancellation_token.dart';
+import 'package:project_zion/agent/core/orchestrator.dart';
+import 'package:project_zion/agent/tools/tool.dart';
+import 'package:project_zion/agent/tools/tool_registry.dart';
+
+class SlowHttpTool extends AgentTool {
+  final Duration delay;
+  SlowHttpTool(this.delay);
+
+  @override
+  String get name => 'http';
+
+  @override
+  String get description => 'Deterministic slow HTTP test tool.';
+
+  @override
+  Map<String, dynamic> get parameters => const {};
+
+  @override
+  Future<StepResult> execute(Map<String, dynamic> params) async {
+    await Future<void>.delayed(delay);
+    return StepResult.success('slow tool completed');
+  }
+}
 
 void main() {
   test('CancellationToken is idempotent and observable', () async {
@@ -29,6 +55,58 @@ void main() {
   test('AgentRuntime exposes a cancellable active session', () async {
     final runtime = AgentRuntime();
     expect(runtime.canCancel, isFalse);
+    await runtime.dispose();
+  });
+
+  test('Orchestrator preserves cancelled state when token is already cancelled', () async {
+    final token = CancellationToken()..cancel();
+    final orchestrator = AgentOrchestrator();
+    final result = await orchestrator.executeTask(
+      'حلل المهمة',
+      cancellationToken: token,
+    );
+    expect(result.success, isFalse);
+    expect(result.error, 'تم إلغاء المهمة.');
+    expect(orchestrator.state, AgentState.cancelled);
+    orchestrator.dispose();
+    await token.dispose();
+  });
+
+  test('Orchestrator enforces the central step timeout', () async {
+    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 250))]);
+    final orchestrator = AgentOrchestrator(
+      tools: tools,
+      policy: const AgentPolicy(),
+    );
+    final result = await orchestrator.executeTask(
+      'search timeout test',
+      stepTimeout: const Duration(milliseconds: 25),
+    );
+    expect(result.success, isTrue);
+    expect(result.steps, isNotEmpty);
+    expect(result.steps.first.success, isFalse);
+    expect(result.steps.first.error, contains('انتهت مهلة الخطوة'));
+    orchestrator.dispose();
+  });
+
+  test('AgentRuntime cancellation interrupts an active orchestration', () async {
+    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 500))]);
+    final runtime = AgentRuntime(
+      orchestrator: AgentOrchestrator(tools: tools),
+    );
+
+    final future = runtime.run(
+      'search cancellation test',
+      stepTimeout: const Duration(seconds: 2),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(runtime.canCancel, isTrue);
+    await runtime.cancel();
+
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, 'تم إلغاء المهمة.');
+    expect(runtime.activeSession?.state, AgentState.cancelled);
     await runtime.dispose();
   });
 }
