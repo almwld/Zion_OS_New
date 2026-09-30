@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:project_zion/agent/core/agent_models.dart';
 import 'package:project_zion/agent/core/agent_runtime.dart';
 import 'package:project_zion/agent/core/agent_policy.dart';
@@ -30,6 +31,7 @@ class SlowHttpTool extends AgentTool {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('CancellationToken is idempotent and observable', () async {
     final token = CancellationToken();
     var events = 0;
