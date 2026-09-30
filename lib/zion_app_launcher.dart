@@ -6,6 +6,7 @@ import 'features/terminal/terminal_screen.dart';
 import 'zion_browser.dart';
 import 'zion_file_manager.dart';
 import 'zion_system_monitor.dart';
+import 'src/features/security_center/security_center.dart';
 
 class ZionAppLauncher extends StatelessWidget {
   const ZionAppLauncher({super.key});
@@ -46,8 +47,8 @@ class ZionAppLauncher extends StatelessWidget {
                 _AppItem(icon: Icons.monitor, name: 'مراقب النظام', onTap: () => _openApp(context, 'Monitor', const ZionSystemMonitor(), 350, 400)),
                 const SizedBox(height: 16),
                 const _AppCategory(title: 'الأمان والتشخيص'),
-                _AppItem(icon: Icons.security, name: 'مركز الأمان', onTap: () => _openApp(context, 'Security', const _SafePlaceholder(title: 'Security Center'), 600, 400)),
-                _AppItem(icon: Icons.health_and_safety, name: 'سلامة النظام', onTap: () => _openApp(context, 'System Safety', const _SafePlaceholder(title: 'System Safety'), 600, 400)),
+                _AppItem(icon: Icons.security, name: 'مركز الأمان', onTap: () => _openApp(context, 'Security', const SecurityCenter(), 650, 560)),
+                
               ],
             ),
           ),
