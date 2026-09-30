@@ -684,9 +684,7 @@ class MainActivity : FlutterFragmentActivity() {
         android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AX -> "Wi-Fi 6"
         android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AC -> "Wi-Fi 5"
         android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11N -> "Wi-Fi 4"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11G -> "802.11g"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11A -> "802.11a"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11B -> "802.11b"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_LEGACY -> "802.11 legacy"
         else -> "Unknown"
     }
 
