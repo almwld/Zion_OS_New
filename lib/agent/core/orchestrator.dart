@@ -54,7 +54,9 @@ class AgentOrchestrator {
         }results.add(r);await memory.remember(kind:'agent-step',text:step.description,metadata:{'tool':step.tool,'success':r.success});
         _log(r.success?'  ✅ '+r.summary:'  ❌ '+(r.error??r.summary));
         if(!r.success){
-          _state=AgentState.evaluating;final alt=await _alternative(step,r.error??'فشل');
+          _state=AgentState.evaluating;
+          var recovered=false;
+          final alt=await _alternative(step,r.error??'فشل');
           cancellationToken?.throwIfCancelled();
           if(alt!=null){
             final d=policy.evaluate(tool:alt.tool,params:alt.params);
@@ -73,11 +75,20 @@ class AgentOrchestrator {
                   );
                 }
                 results.add(ar);
+                recovered=ar.success;
                 _log('🔄 البديل: '+(ar.success?'نجح':'فشل'));
               }
             }
           }
-          if(!r.success)continue;
+          if(!recovered){
+            _state=AgentState.failed;
+            return AgentResult(
+              success:false,
+              task:clean,
+              steps:results,
+              error:'فشلت الخطوة: '+step.description,
+            );
+          }
         }
       }
       _state=AgentState.completed;final report=await _report(clean,results);_log('✅ اكتملت المهمة.');
