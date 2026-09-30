@@ -1,132 +1,15 @@
-import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 
-class ZionFileManager extends StatefulWidget {
-  const ZionFileManager({super.key});
-
-  @override
-  State<ZionFileManager> createState() => _ZionFileManagerState();
-}
-
+class ZionFileManager extends StatefulWidget { const ZionFileManager({super.key}); @override State<ZionFileManager> createState()=>_ZionFileManagerState(); }
 class _ZionFileManagerState extends State<ZionFileManager> {
-  Directory _currentDirectory = Directory('/storage/emulated/0');
-  List<FileSystemEntity> _items = [];
-  String _currentPath = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadDirectory();
-  }
-
-  Future<void> _loadDirectory() async {
-    try {
-      final items = await _currentDirectory.list().toList();
-      items.sort((a, b) {
-        if (a is Directory && b is File) return -1;
-        if (a is File && b is Directory) return 1;
-        return a.path.compareTo(b.path);
-      });
-      setState(() {
-        _items = items;
-        _currentPath = _currentDirectory.path;
-      });
-    } catch (e) {
-      debugPrint('Error loading directory: $e');
-    }
-  }
-
-  void _navigateTo(Directory dir) {
-    setState(() {
-      _currentDirectory = dir;
-      _loadDirectory();
-    });
-  }
-
-  void _navigateUp() {
-    if (_currentDirectory.path != '/') {
-      final parent = Directory(_currentDirectory.path).parent;
-      setState(() {
-        _currentDirectory = parent;
-        _loadDirectory();
-      });
-    }
-  }
-
-  Future<void> _createFolder() async {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Folder'),
-        backgroundColor: Colors.grey.shade900,
-        content: TextField(
-          controller: controller,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Folder name',
-            hintStyle: TextStyle(color: Colors.grey),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              final newFolder = Directory('${_currentDirectory.path}/${controller.text}');
-              await newFolder.create();
-              Navigator.pop(ctx);
-              _loadDirectory();
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(_currentPath, style: const TextStyle(fontSize: 12)),
-        backgroundColor: Colors.blue.shade900,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _navigateUp,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.folder),
-            onPressed: _createFolder,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadDirectory,
-          ),
-        ],
-      ),
-      body: ListView.builder(
-        itemCount: _items.length,
-        itemBuilder: (context, index) {
-          final item = _items[index];
-          final isDirectory = item is Directory;
-          final name = item.path.split('/').last;
-          final icon = isDirectory ? Icons.folder : Icons.insert_drive_file;
-          final color = isDirectory ? Colors.blue : Colors.grey;
-          
-          return ListTile(
-            leading: Icon(icon, color: color),
-            title: Text(name, style: const TextStyle(color: Colors.white)),
-            onTap: () {
-              if (isDirectory) {
-                _navigateTo(item as Directory);
-              }
-            },
-          );
-        },
-      ),
-    );
-  }
+ Directory _current=Directory('/storage/emulated/0'); List<FileSystemEntity> _items=[]; bool _loading=true; String? _error; String? _selected;
+ @override void initState(){super.initState();_load();}
+ Future<void> _load() async { setState(()=>_loading=true); try { final items=await _current.list(followLinks:false).toList(); items.sort((a,b){if(a is Directory&&b is File)return -1;if(a is File&&b is Directory)return 1;return a.path.toLowerCase().compareTo(b.path.toLowerCase());}); if(!mounted)return;setState((){_items=items;_error=null;_loading=false;}); }catch(e){if(mounted)setState((){_error=e.toString();_loading=false;});} }
+ void _up(){final parent=_current.parent;if(parent.path!=_current.path){setState(()=>_current=parent);_load();}}
+ Future<void> _create(bool folder) async {final c=TextEditingController(); await showDialog<void>(context:context,builder:(ctx)=>AlertDialog(title:Text(folder?'New folder':'New file'),content:TextField(controller:c,autofocus:true,decoration:const InputDecoration(hintText:'Name')),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()async{final name=c.text.trim();if(name.isEmpty)return;final path=_current.path+'/'+name;try{if(folder){await Directory(path).create();}else{await File(path).create();}if(ctx.mounted)Navigator.pop(ctx);await _load();}catch(e){if(ctx.mounted)ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content:Text(e.toString())));}},child:const Text('Create'))]));c.dispose();}
+ Future<void> _rename(FileSystemEntity item) async {final old=item.path;final c=TextEditingController(text:old.split('/').last);await showDialog<void>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Rename'),content:TextField(controller:c),actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()async{final name=c.text.trim();if(name.isEmpty)return;try{await item.rename(_current.path+'/'+name);if(ctx.mounted)Navigator.pop(ctx);await _load();}catch(e){if(ctx.mounted)ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content:Text(e.toString())));}},child:const Text('Rename'))]));c.dispose();}
+ Future<void> _delete(FileSystemEntity item) async {final ok=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(title:const Text('Delete'),content:Text('Delete ${item.path.split('/').last}?'),actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Delete'))]));if(ok!=true)return;try{if(item is Directory){await item.delete(recursive:true);}else{await item.delete();}setState(()=>_selected=null);await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString())));}}
+ Future<void> _copySelected() async {final path=_selected;if(path==null)return;final src=FileSystemEntity.typeSync(path)==FileSystemEntityType.directory?Directory(path):File(path);final name=path.split('/').last;final target=_current.path+'/'+name+'.copy';try{if(src is Directory){await src.copy(target);}else{await src.copy(target);}await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString())));}}
+ @override Widget build(BuildContext context){return Scaffold(backgroundColor:const Color(0xFF070B10),appBar:AppBar(title:Text(_current.path,style:const TextStyle(fontSize:13)),backgroundColor:const Color(0xFF101923),leading:IconButton(onPressed:_up,icon:const Icon(Icons.arrow_upward)),actions:[IconButton(onPressed:_load,icon:const Icon(Icons.refresh)),PopupMenuButton<String>(onSelected:(v){if(v=='folder')_create(true);if(v=='file')_create(false);if(v=='copy')_copySelected();},itemBuilder:(_)=>const[PopupMenuItem(value:'folder',child:Text('New folder')),PopupMenuItem(value:'file',child:Text('New file')),PopupMenuItem(value:'copy',child:Text('Copy selected'))])]),body:_loading?const Center(child:CircularProgressIndicator()):_error!=null?Center(child:Padding(padding:const EdgeInsets.all(20),child:Text('Storage unavailable\\n$_error',style:const TextStyle(color:Colors.orange),textAlign:TextAlign.center))):_items.isEmpty?const Center(child:Text('Folder is empty',style:TextStyle(color:Colors.white54))):ListView.builder(itemCount:_items.length,itemBuilder:(ctx,i){final item=_items[i];final dir=item is Directory;final name=item.path.split('/').last;final selected=_selected==item.path;return Card(color:selected?const Color(0xFF17313A):const Color(0xFF101923),child:ListTile(selected:selected,leading:Icon(dir?Icons.folder:Icons.insert_drive_file,color:dir?Colors.amber:Colors.white70),title:Text(name,style:const TextStyle(color:Colors.white)),subtitle:Text(item.path,style:const TextStyle(color:Colors.white38,fontSize:10),maxLines:1,overflow:TextOverflow.ellipsis),onTap:(){if(dir){setState(()=>_current=Directory(item.path));_load();}else{setState(()=>_selected=item.path);}},onLongPress:(){setState(()=>_selected=item.path);showModalBottomSheet<void>(context:context,backgroundColor:const Color(0xFF101923),builder:(_)=>SafeArea(child:Wrap(children:[ListTile(leading:const Icon(Icons.drive_file_rename_outline),title:const Text('Rename',style:TextStyle(color:Colors.white)),onTap:(){Navigator.pop(context);_rename(item);}),ListTile(leading:const Icon(Icons.delete_outline),title:const Text('Delete',style:TextStyle(color:Colors.white)),onTap:(){Navigator.pop(context);_delete(item);})])));}});}}
 }
