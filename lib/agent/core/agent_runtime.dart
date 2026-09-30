@@ -56,7 +56,7 @@ class AgentRuntime {
   AgentSessionSnapshot? get snapshot {
     final s = _active;
     if (s == null) return null;
-    return AgentSessionSnapshot(id:s.id,task:s.task,state:s.state,plan:s.plan,results:s.results.map((r)=>AgentStepResult(success:r.success,summary:r.summary,data:r.data,error:r.error,duration:r.duration)).toList(growable:false),updatedAt:s.updatedAt,error:s.error);
+    return AgentSessionSnapshot(id:s.id,task:s.task,state:s.state,plan:s.plan,results:List<StepResult>.unmodifiable(s.results),updatedAt:s.updatedAt,error:s.error);
   }
 
   Future<AgentResult> run(
