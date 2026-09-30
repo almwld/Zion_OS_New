@@ -105,6 +105,11 @@ class ArsenalRegistry {
     ArsenalTool(id: 'defense.audit', name: 'Security Audit', category: ArsenalCategory.defense, availability: ArsenalAvailability.available),
     ArsenalTool(id: 'analysis.logs', name: 'Audit Log Analysis', category: ArsenalCategory.analysis, availability: ArsenalAvailability.available),
     ArsenalTool(id: 'utility.system-info', name: 'System Information', category: ArsenalCategory.utility, availability: ArsenalAvailability.available),
+    ArsenalTool(id: 'utility.battery', name: 'Battery Status', category: ArsenalCategory.utility, availability: ArsenalAvailability.available),
+    ArsenalTool(id: 'utility.storage', name: 'Storage Status', category: ArsenalCategory.utility, availability: ArsenalAvailability.available),
+    ArsenalTool(id: 'utility.processes', name: 'Process List', category: ArsenalCategory.utility, availability: ArsenalAvailability.available, command: 'ps'),
+    ArsenalTool(id: 'network.interfaces', name: 'Network Interfaces', category: ArsenalCategory.network, availability: ArsenalAvailability.available),
+    ArsenalTool(id: 'wireless.scan', name: 'Wi-Fi Live Scan', category: ArsenalCategory.wireless, availability: ArsenalAvailability.permissionRequired, reason: 'Android location and nearby Wi-Fi permissions are required for live results.'),
     ArsenalTool(id: 'attack.pentest', name: 'Authorized Pentest Runner', category: ArsenalCategory.attack, availability: ArsenalAvailability.notConfigured, reason: 'Requires an explicit authorized target scope before execution.'),
   ];
 }
