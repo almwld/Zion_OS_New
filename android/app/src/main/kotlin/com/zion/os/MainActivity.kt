@@ -2,6 +2,7 @@ package com.zion.os
 
 import android.Manifest
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -924,46 +925,107 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
 
-        val started = try { wifiManager.startScan() } catch (_: SecurityException) { false }
-
-        // Android throttles active scans. Even when startScan() returns false,
-        // scanResults can contain the most recent real scan and must not be discarded.
-        Handler(Looper.getMainLooper()).postDelayed({
-            val networks = try {
-                wifiManager.scanResults
-                    .distinctBy { it.BSSID.lowercase() }
-                    .map { scan ->
-                        mapOf<String, Any?>(
-                            "ssid" to scan.SSID,
-                            "bssid" to scan.BSSID,
-                            "signal" to scan.level,
-                            "frequency" to scan.frequency,
-                            "frequencyMHz" to scan.frequency,
-                            "channel" to frequencyToChannel(scan.frequency),
-                            "channelWidth" to scan.channelWidth,
-                            "capabilities" to scan.capabilities,
-                            "standard" to wifiStandard(scan),
-                            "band" to wifiBand(scan.frequency),
-                            "hidden" to scan.SSID.isBlank()
-                        )
-                    }
-            } catch (e: SecurityException) {
-                result.success(mapOf(
-                    "available" to false,
-                    "status" to "PERMISSION_REQUIRED",
-                    "reason" to (e.message ?: "Android denied Wi-Fi scan access."),
-                    "networks" to emptyList<Map<String, Any?>>()
-                ))
-                return@postDelayed
+        var finished = false
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (finished) return
+                finished = true
+                try { unregisterReceiver(this) } catch (_: Throwable) {}
+                publishWifiScanResults(
+                    result = result,
+                    wifiManager = wifiManager,
+                    scanStarted = true,
+                    reason = "Android delivered SCAN_RESULTS_AVAILABLE_ACTION."
+                )
             }
+        }
+        val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                receiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } catch (_: Throwable) {
+            // Some vendor Android builds reject dynamic receiver registration.
+            // Cached WifiManager results remain a valid fallback below.
+        }
 
+        val started = try { wifiManager.startScan() } catch (_: SecurityException) { false }
+        if (!started) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (finished) return@postDelayed
+                finished = true
+                try { unregisterReceiver(receiver) } catch (_: Throwable) {}
+                publishWifiScanResults(
+                    result = result,
+                    wifiManager = wifiManager,
+                    scanStarted = false,
+                    reason = "Android returned the latest cached Wi-Fi scan because active scanning is throttled or unavailable."
+                )
+            }, 700L)
+            return
+        }
+
+        // A successful startScan() completes asynchronously. Android 10+
+        // may throttle requests, so the receiver is preferred over a fixed
+        // sleep and a bounded timeout prevents a hanging MethodChannel call.
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (finished) return@postDelayed
+            finished = true
+            try { unregisterReceiver(receiver) } catch (_: Throwable) {}
+            publishWifiScanResults(
+                result = result,
+                wifiManager = wifiManager,
+                scanStarted = true,
+                reason = "Android scan timed out; returning the latest available results."
+            )
+        }, 5000L)
+    }
+
+    private fun publishWifiScanResults(
+        result: MethodChannel.Result,
+        wifiManager: WifiManager,
+        scanStarted: Boolean,
+        reason: String
+    ) {
+        val networks = try {
+            wifiManager.scanResults
+                .distinctBy { it.BSSID.lowercase() }
+                .map { scan ->
+                    mapOf<String, Any?>(
+                        "ssid" to scan.SSID,
+                        "bssid" to scan.BSSID,
+                        "signal" to scan.level,
+                        "frequency" to scan.frequency,
+                        "frequencyMHz" to scan.frequency,
+                        "channel" to frequencyToChannel(scan.frequency),
+                        "channelWidth" to scan.channelWidth,
+                        "capabilities" to scan.capabilities,
+                        "standard" to wifiStandard(scan),
+                        "band" to wifiBand(scan.frequency),
+                        "hidden" to scan.SSID.isBlank()
+                    )
+                }
+        } catch (e: SecurityException) {
             result.success(mapOf(
-                "available" to networks.isNotEmpty(),
-                "status" to if (networks.isNotEmpty()) "AVAILABLE" else if (!started) "THROTTLED_OR_UNAVAILABLE" else "NO_RESULTS",
-                "reason" to if (started) "Results returned by Android WifiManager." else "Android returned the latest cached Wi-Fi scan because active scanning is throttled.",
-                "networks" to networks
+                "available" to false,
+                "status" to "PERMISSION_REQUIRED",
+                "reason" to (e.message ?: "Android denied Wi-Fi scan access."),
+                "networks" to emptyList<Map<String, Any?>>()
             ))
-        }, 1200L)
+            return
+        }
+
+        result.success(mapOf(
+            "available" to networks.isNotEmpty(),
+            "status" to if (networks.isNotEmpty()) "AVAILABLE"
+                else if (!scanStarted) "THROTTLED_OR_UNAVAILABLE"
+                else "NO_RESULTS",
+            "reason" to reason,
+            "networks" to networks
+        ))
     }
 
     private fun wifiBand(frequency: Int): String = when {
