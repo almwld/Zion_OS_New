@@ -33,7 +33,6 @@ class AgentOrchestrator {
     int maxRecoveryAttempts = defaultMaxRecoveryAttempts,
   }) async {
     final clean = task.trim();
-    cancellationToken?.throwIfCancelled();
     if (clean.isEmpty) return AgentResult.error(clean, 'المهمة فارغة.');
     if (_running) return AgentResult.error(clean, 'Zion Agent مشغول بمهمة أخرى.');
     _running = true;
@@ -41,6 +40,7 @@ class AgentOrchestrator {
     _log('🎯 بدء المهمة: $clean');
     final results = <StepResult>[];
     try {
+      cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean);
       _log('📋 الخطة: ${plan.steps.length} خطوة.');
       _state = AgentState.executing;
@@ -166,7 +166,7 @@ class AgentOrchestrator {
 
   Future<AgentPlan> _createPlan(String task) async {
     await memory.load();
-    if(await ai.nativeLoaded){
+    if(await _nativeAiAvailable()){
       final prompt='''أنت مخطط Zion Agent. المهمة: $task
 أنشئ خطوات عملية باستخدام الأدوات: ai,data,file,http,shell,python.
 لا تستخدم أدوات هجومية أو استغلال أو تجاوز حماية.
@@ -190,6 +190,10 @@ class AgentOrchestrator {
     return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
   }
 
+  Future<bool> _nativeAiAvailable() async {
+    try { return await ai.nativeLoaded; } catch (_) { return false; }
+  }
+
   Future<AgentStep?> _alternative(AgentStep step,String error) async {
     if(!await ai.nativeLoaded)return null;
     final response=await ai.generate('الخطوة الفاشلة: '+step.description+'\nالأداة: '+step.tool+'\nالخطأ: '+error+'\nاقترح خطوة دفاعية بديلة JSON فقط.',maxTokens:500,temperature:0.1);
@@ -198,7 +202,7 @@ class AgentOrchestrator {
 
   Future<String> _report(String task,List<StepResult> results) async {
     final summary=results.map((r)=>r.success?'نجاح: '+r.summary:'فشل: '+(r.error??r.summary)).join('\n');
-    if(await ai.nativeLoaded){final r=await ai.generate('المهمة: '+task+'\nالنتائج:\n'+summary+'\nاكتب تقريراً مختصراً.',maxTokens:700,temperature:0.2);if(!r.startsWith('ERROR:'))return r;}
+    if(await _nativeAiAvailable()){final r=await ai.generate('المهمة: '+task+'\nالنتائج:\n'+summary+'\nاكتب تقريراً مختصراً.',maxTokens:700,temperature:0.2);if(!r.startsWith('ERROR:'))return r;}
     return summary;
   }
 
