@@ -59,7 +59,11 @@ class AgentRuntime {
     return AgentSessionSnapshot(id:s.id,task:s.task,state:s.state,plan:s.plan,results:s.results.map((r)=>AgentStepResult(success:r.success,summary:r.summary,data:r.data,error:r.error,duration:r.duration)).toList(growable:false),updatedAt:s.updatedAt,error:s.error);
   }
 
-  Future<AgentResult> run(String task, {bool approveReviewed = false}) async {
+  Future<AgentResult> run(
+    String task, {
+    bool approveReviewed = false,
+    Duration stepTimeout = AgentOrchestrator.defaultStepTimeout,
+  }) async {
     final clean = task.trim();
     if (clean.isEmpty) return AgentResult.error(clean, 'المهمة فارغة.');
     if (_active != null && orchestrator.isRunning) {
@@ -87,8 +91,11 @@ class AgentRuntime {
         clean,
         approveReviewed: approveReviewed,
         cancellationToken: token,
+        stepTimeout: stepTimeout,
       );
-      session.state = result.success ? AgentState.completed : AgentState.failed;
+      session.state = result.success
+          ? AgentState.completed
+          : (token.isCancelled ? AgentState.cancelled : AgentState.failed);
       session.results
         ..clear()
         ..addAll(result.steps);
@@ -121,6 +128,7 @@ class AgentRuntime {
   }
 
   Future<void> dispose() async {
+    _token?.cancel();
     await _subscription?.cancel();
     await _events.close();
     orchestrator.dispose();
