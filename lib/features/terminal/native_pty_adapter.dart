@@ -13,6 +13,7 @@ class NativePtyAdapter {
   final StreamController<String> _output = StreamController<String>.broadcast();
   int? _handle;
   bool _running = false;
+  final List<Map<dynamic, dynamic>> _pendingEvents = <Map<dynamic, dynamic>>[];
 
   Stream<String> get output => _output.stream;
   bool get isRunning => _running;
@@ -38,6 +39,8 @@ class NativePtyAdapter {
           final id = value['sessionId'];
           if (id == _handle && value['data'] != null) {
             _output.add(value['data'].toString());
+          } else if (_handle == null && value['data'] != null) {
+            _pendingEvents.add(Map<dynamic, dynamic>.from(value));
           }
           if (id == _handle && value['closed'] == true) {
             _running = false;
@@ -64,6 +67,13 @@ class NativePtyAdapter {
       }
       _handle = handle;
       _running = true;
+      if (_pendingEvents.isNotEmpty) {
+        final pending = List<Map<dynamic, dynamic>>.from(_pendingEvents);
+        _pendingEvents.clear();
+        for (final event in pending) {
+          if (event['data'] != null) _output.add(event['data'].toString());
+        }
+      }
       return true;
     } on PlatformException {
       await stop();
@@ -106,6 +116,7 @@ class NativePtyAdapter {
   }
 
   Future<void> stop() async {
+    _pendingEvents.clear();
     final handle = _handle;
     _handle = null;
     _running = false;
