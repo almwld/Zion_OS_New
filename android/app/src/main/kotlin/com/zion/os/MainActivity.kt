@@ -62,6 +62,7 @@ class MainActivity : FlutterFragmentActivity() {
     companion object {
         init { System.loadLibrary("zionpty") }
         private const val PLATFORM_CHANNEL = "zion.os/platform"
+        private const val WIFI_CHANNEL = "zion.os/wifi"
         private const val PTY_CHANNEL = "zion.os/pty"
         private const val PTY_EVENTS = "zion.os/pty/events"
         private const val RADAR_EVENTS = "zion.os/network/radar"
@@ -75,6 +76,15 @@ class MainActivity : FlutterFragmentActivity() {
         zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
         handleZionApiIntent(intent)
         Handler(Looper.getMainLooper()).postDelayed({ handleZionPkgIntent(intent) }, 500L)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIFI_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scan" -> scanWifiTelemetryAsync(result)
+                    "connection" -> result.success(readCurrentWifiConnection())
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PLATFORM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -619,34 +629,27 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
 
-        val started = try {
-            wifiManager.startScan()
-        } catch (_: SecurityException) {
-            false
-        }
-        if (!started) {
-            result.success(mapOf(
-                "available" to false,
-                "status" to "THROTTLED_OR_UNAVAILABLE",
-                "reason" to "Android did not accept a fresh Wi-Fi scan request. Try again shortly.",
-                "networks" to emptyList<Map<String, Any?>>()
-            ))
-            return
-        }
+        val started = try { wifiManager.startScan() } catch (_: SecurityException) { false }
 
+        // Android throttles active scans. Even when startScan() returns false,
+        // scanResults can contain the most recent real scan and must not be discarded.
         Handler(Looper.getMainLooper()).postDelayed({
             val networks = try {
                 wifiManager.scanResults
-                    .filter { it.SSID.isNotBlank() }
                     .distinctBy { it.BSSID.lowercase() }
                     .map { scan ->
                         mapOf<String, Any?>(
                             "ssid" to scan.SSID,
                             "bssid" to scan.BSSID,
                             "signal" to scan.level,
+                            "frequency" to scan.frequency,
                             "frequencyMHz" to scan.frequency,
                             "channel" to frequencyToChannel(scan.frequency),
-                            "capabilities" to scan.capabilities
+                            "channelWidth" to scan.channelWidth,
+                            "capabilities" to scan.capabilities,
+                            "standard" to wifiStandard(scan),
+                            "band" to wifiBand(scan.frequency),
+                            "hidden" to scan.SSID.isBlank()
                         )
                     }
             } catch (e: SecurityException) {
@@ -660,12 +663,58 @@ class MainActivity : FlutterFragmentActivity() {
             }
 
             result.success(mapOf(
-                "available" to true,
-                "status" to "AVAILABLE",
-                "reason" to "Results returned by Android WifiManager.",
+                "available" to networks.isNotEmpty(),
+                "status" to if (networks.isNotEmpty()) "AVAILABLE" else if (!started) "THROTTLED_OR_UNAVAILABLE" else "NO_RESULTS",
+                "reason" to if (started) "Results returned by Android WifiManager." else "Android returned the latest cached Wi-Fi scan because active scanning is throttled.",
                 "networks" to networks
             ))
         }, 1200L)
+    }
+
+    private fun wifiBand(frequency: Int): String = when {
+        frequency in 2400..2500 -> "2.4 GHz"
+        frequency in 4900..5895 -> "5 GHz"
+        frequency in 5925..7125 -> "6 GHz"
+        frequency in 57000..71000 -> "60 GHz"
+        else -> "Unknown"
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wifiStandard(scan: android.net.wifi.ScanResult): String = when {
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AX -> "Wi-Fi 6"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AC -> "Wi-Fi 5"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11N -> "Wi-Fi 4"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11G -> "802.11g"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11A -> "802.11a"
+        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11B -> "802.11b"
+        else -> "Unknown"
+    }
+
+    private fun readCurrentWifiConnection(): Map<String, Any?> {
+        val manager = getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return emptyMap()
+        return try {
+            val info = manager.connectionInfo
+            mapOf(
+                "ssid" to (info.ssid ?: "").removeSurrounding("\""),
+                "bssid" to info.bssid,
+                "rssi" to info.rssi,
+                "linkSpeed" to info.linkSpeed,
+                "frequency" to info.frequency
+            )
+        } catch (_: SecurityException) {
+            emptyMap()
+        }
+    }
+
+    private fun scanWifiTelemetryAsync(result: MethodChannel.Result) {
+        scanWifiAsync(object : MethodChannel.Result {
+            override fun success(value: Any?) {
+                val payload = value as? Map<*, *> ?: return result.success(emptyList<Map<String, Any?>>())
+                result.success(payload["networks"] ?: emptyList<Map<String, Any?>>())
+            }
+            override fun error(code: String, message: String?, details: Any?) = result.error(code, message, details)
+            override fun notImplemented() = result.notImplemented()
+        })
     }
 
     private fun frequencyToChannel(frequency: Int): Int? = when {
