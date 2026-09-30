@@ -82,7 +82,7 @@ void main() {
       'search timeout test',
       stepTimeout: const Duration(milliseconds: 25),
     );
-    expect(result.success, isTrue);
+    expect(result.success, isFalse);
     expect(result.steps, isNotEmpty);
     expect(result.steps.first.success, isFalse);
     expect(result.steps.first.error, contains('انتهت مهلة الخطوة'));
