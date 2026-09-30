@@ -42,6 +42,9 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : FlutterFragmentActivity() {
     private external fun nativePtyAvailable(): Boolean
@@ -61,6 +64,9 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var zionApiChannel: ZionApiChannel
     private lateinit var zionPkgChannel: MethodChannel
     private var pendingTreeResult: MethodChannel.Result? = null
+    private var pendingModelResult: MethodChannel.Result? = null
+    private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
+    private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
 
     companion object {
         init { System.loadLibrary("zionpty") }
@@ -73,6 +79,8 @@ class MainActivity : FlutterFragmentActivity() {
         private const val ZION_PKG_CHANNEL = "zion.os/pkg-external"
         private const val STORAGE_CHANNEL = "zion.os/storage"
         private const val REQUEST_OPEN_TREE = 4101
+        private const val AI_CHANNEL = "zion.os/ai"
+        private const val REQUEST_OPEN_MODEL = 4102
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -90,6 +98,56 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AI_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "discoverModels" -> result.success(discoverGgufModels())
+                    "pickModel" -> {
+                        if (pendingModelResult != null) {
+                            result.error("BUSY", "A model picker is already open.", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingModelResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            type = "application/octet-stream"
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        try { startActivityForResult(intent, REQUEST_OPEN_MODEL) }
+                        catch (t: Throwable) {
+                            pendingModelResult = null
+                            result.success(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "Model picker unavailable.")))
+                        }
+                    }
+                    "loadModel" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        val threads = call.argument<Int>("threads") ?: 4
+                        aiExecutor.execute {
+                            val ok = try { llamaBridge.nativeLoadModel(path, threads) } catch (_: Throwable) { false }
+                            runOnUiThread { result.success(ok) }
+                        }
+                    }
+                    "generate" -> {
+                        val prompt = call.argument<String>("prompt") ?: ""
+                        val maxTokens = call.argument<Int>("maxTokens") ?: 512
+                        val temperature = (call.argument<Double>("temperature") ?: 0.7).toFloat()
+                        aiExecutor.execute {
+                            val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" }
+                            runOnUiThread { result.success(response) }
+                        }
+                    }
+                    "freeModel" -> {
+                        aiExecutor.execute {
+                            try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
+                            runOnUiThread { result.success(null) }
+                        }
+                    }
+                    "isLoaded" -> result.success(try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false })
+                    "version" -> result.success(try { llamaBridge.nativeVersion() } catch (_: Throwable) { "unavailable" })
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -544,7 +602,65 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
 
+
+    private fun discoverGgufModels(): List<Map<String, Any?>> {
+        val roots = linkedSetOf<File>()
+        roots.add(File(filesDir, "models"))
+        roots.add(File(getExternalFilesDir(null), "models"))
+        roots.add(File("/storage/emulated/0/Download"))
+        roots.add(File("/storage/emulated/0/Models"))
+        roots.add(File("/sdcard/Download"))
+        val out = mutableListOf<Map<String, Any?>>()
+        val seen = HashSet<String>()
+        fun visit(dir: File, depth: Int) {
+            if (depth > 3 || !dir.exists() || !dir.isDirectory) return
+            val children = try { dir.listFiles() ?: return } catch (_: Throwable) { return }
+            for (f in children) {
+                if (f.isFile && f.name.lowercase().endsWith(".gguf") && seen.add(f.absolutePath)) {
+                    val size = try { f.length() } catch (_: Throwable) { 0L }
+                    out.add(mapOf("name" to f.name, "path" to f.absolutePath, "sizeBytes" to size, "readable" to f.canRead()))
+                } else if (f.isDirectory && !f.name.startsWith(".")) visit(f, depth + 1)
+            }
+        }
+        roots.forEach { visit(it, 0) }
+        return out.sortedBy { it["name"].toString().lowercase() }
+    }
+
+    private fun importSelectedModel(uri: Uri): Map<String, Any?> {
+        return try {
+            val name = (contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: "model.gguf").replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            if (!name.lowercase().endsWith(".gguf")) return mapOf("available" to false, "status" to "INVALID", "reason" to "Only GGUF model files are supported.")
+            val dir = File(filesDir, "models").apply { mkdirs() }
+            val target = File(dir, name)
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(target).use { output -> input.copyTo(output, 1024 * 1024) }
+            } ?: return mapOf("available" to false, "status" to "ERROR", "reason" to "Unable to open selected model.")
+            mapOf("available" to true, "status" to "IMPORTED", "name" to name, "path" to target.absolutePath, "sizeBytes" to target.length())
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Model import failed."))
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_OPEN_MODEL) {
+            val pending = pendingModelResult
+            pendingModelResult = null
+            if (resultCode != RESULT_OK || data?.data == null) {
+                pending?.success(mapOf("available" to false, "status" to "CANCELLED"))
+            } else {
+                val uri = data.data!!
+                try { takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
+                aiExecutor.execute {
+                    val response = importSelectedModel(uri)
+                    runOnUiThread { pending?.success(response) }
+                }
+            }
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+
         if (requestCode == REQUEST_OPEN_TREE) {
             val pending = pendingTreeResult
             pendingTreeResult = null
@@ -605,6 +721,8 @@ class MainActivity : FlutterFragmentActivity() {
         ttsEngine?.shutdown()
         ttsEngine = null
         if (::zionApiChannel.isInitialized) zionApiChannel.dispose()
+        aiExecutor.shutdownNow()
+        try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
         super.onDestroy()
     }
 
