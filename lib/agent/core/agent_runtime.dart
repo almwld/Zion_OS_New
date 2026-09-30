@@ -112,6 +112,18 @@ class AgentRuntime {
     }
   }
 
+  bool get canApprove => _active != null && orchestrator.isWaitingForApproval;
+
+  void approve() {
+    if (!canApprove) return;
+    orchestrator.approvePendingStep();
+  }
+
+  void deny() {
+    if (!canApprove) return;
+    orchestrator.denyPendingStep();
+  }
+
   Future<void> cancel() async {
     final session = _active;
     if (session == null) return;
