@@ -315,19 +315,26 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun startProcessTerminal(shell: String?): Int {
-        val selected = listOf(shell?.trim(), "/system/bin/sh", "/bin/sh")
-            .filterNotNull()
-            .firstOrNull { candidate ->
-                (candidate == "/system/bin/sh" || candidate == "/bin/sh") &&
-                    File(candidate).exists()
-            } ?: return 0
+        val home = File(filesDir, "home").apply { mkdirs() }
+        val prefix = File(filesDir, "usr").apply { mkdirs() }
+        val allowedShells = listOf(
+            prefix.resolve("bin/bash").absolutePath,
+            prefix.resolve("bin/zsh").absolutePath,
+            prefix.resolve("bin/fish").absolutePath,
+            prefix.resolve("bin/ash").absolutePath,
+            "/system/bin/sh",
+            "/bin/sh",
+        )
+        val requested = shell?.trim().orEmpty()
+        val resolved = ((if (requested.isNotEmpty()) listOf(requested) else emptyList()) + allowedShells)
+            .distinct()
+            .firstOrNull { candidate -> allowedShells.contains(candidate) && File(candidate).exists() }
+            ?: return 0
 
         return try {
-            val home = File(filesDir, "home").apply { mkdirs() }
-            val prefix = File(filesDir, "usr").apply { mkdirs() }
             File(filesDir, "tmp").mkdirs()
             File(filesDir, "etc").mkdirs()
-            val builder = ProcessBuilder(selected, "-i")
+            val builder = ProcessBuilder(resolved, "-i")
                 .directory(home)
                 .redirectErrorStream(true)
             builder.environment().apply {
@@ -336,11 +343,12 @@ class MainActivity : FlutterFragmentActivity() {
                 put("TERMUX_HOME", home.absolutePath)
                 put("TMPDIR", File(filesDir, "tmp").absolutePath)
                 put("PATH", "${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin")
+                put("LD_LIBRARY_PATH", "${prefix.absolutePath}/lib:${prefix.absolutePath}/lib64")
                 put("TERM", "xterm-256color")
                 put("COLORTERM", "truecolor")
                 put("LANG", "C.UTF-8")
                 put("LC_ALL", "C.UTF-8")
-                put("SHELL", selected)
+                put("SHELL", resolved)
                 put("ZION_TERMINAL", "1")
             }
             val process = builder.start()

@@ -100,16 +100,16 @@ class TerminalService {
   }
 
   Future<String?> _findShell() async {
-    // Android always provides /system/bin/sh. Prefer it first so terminal
-    // startup never probes a missing Termux/PRoot path before opening the UI.
+    // Prefer an installed Zion userland shell; keep Android's system shell
+    // as a last-resort fallback when no bundled shell exists.
     const candidates = <String>[
-      '/system/bin/sh',
-      '/bin/sh',
-      'sh',
       '/data/data/com.zion.os/files/usr/bin/bash',
       '/data/data/com.zion.os/files/usr/bin/zsh',
       '/data/data/com.zion.os/files/usr/bin/fish',
       '/data/data/com.zion.os/files/usr/bin/ash',
+      '/system/bin/sh',
+      '/bin/sh',
+      'sh',
     ];
     for (final candidate in candidates) {
       try {
