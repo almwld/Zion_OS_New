@@ -111,11 +111,12 @@ static int is_allowed_shell(const char *shell) {
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
 }
 
-static void exec_best_shell(const char *configured_shell) {
-    if (!is_allowed_shell(configured_shell)) configured_shell = NULL;
-    const char *configured = configured_shell;
-    const char *candidates[] = {
-        configured,
+static const char *select_shell(const char *configured_shell) {
+    if (is_allowed_shell(configured_shell) && access(configured_shell, X_OK) == 0) {
+        return configured_shell;
+    }
+
+    static const char *fallbacks[] = {
         "/data/data/com.zion.os/files/usr/bin/bash",
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
@@ -123,15 +124,22 @@ static void exec_best_shell(const char *configured_shell) {
         "/system/bin/sh",
         NULL
     };
-
-    for (int i = 0; candidates[i] != NULL; ++i) {
-        if (candidates[i][0] == '\0') continue;
-        if (access(candidates[i], X_OK) != 0) continue;
-        const char *name = strrchr(candidates[i], '/');
-        name = name ? name + 1 : candidates[i];
-        setenv("SHELL", candidates[i], 1);
-        execl(candidates[i], name, "-i", (char *)NULL);
+    for (int i = 0; fallbacks[i] != NULL; ++i) {
+        if (access(fallbacks[i], X_OK) == 0) return fallbacks[i];
     }
+    return NULL;
+}
+
+static void exec_selected_shell(const char *shell_path) {
+    if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
+
+    const char *name = shell_path;
+    for (const char *p = shell_path; *p != '\0'; ++p) {
+        if (*p == '/') name = p + 1;
+    }
+    // shell_path was selected and SHELL was configured before fork().
+    // After fork(), avoid malloc/stdio/string/env helpers and exec directly.
+    execl(shell_path, name, "-i", (char *)NULL);
     _exit(127);
 }
 
@@ -196,6 +204,13 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
+    const char *selected_shell = select_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
+    if (selected_shell == NULL) {
+        close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
+    setenv("SHELL", selected_shell, 1);
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -229,7 +244,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         if (chdir("/data/data/com.zion.os/files/home") != 0) {
             _exit(126);
         }
-        exec_best_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
+        exec_selected_shell(selected_shell);
     }
 
     g_sessions[slot].master_fd = master;
