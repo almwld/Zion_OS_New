@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
 import 'features/terminal/terminal_screen.dart';
+import 'src/features/control/zion_control_center.dart';
 import 'screens/magiczionos/installer_screen.dart';
 import 'screens/magiczionos/root_terminal_screen.dart';
 import 'screens/magiczionos/strategy_settings_screen.dart';
@@ -109,6 +110,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"CURRENCY","nameAr":"عملات","icon":Icons.attach_money,"category":"ANALYSIS","color":const Color(0xFF1B9CFC)},
     {"name":"TRANSLATOR","nameAr":"مترجم","icon":Icons.translate,"category":"ANALYSIS","color":const Color(0xFF25CCF7)},
     {"name":"ARSENAL","nameAr":"ترسانة","icon":Icons.security,"category":"TOOLS","color":const Color(0xFF00BCD4)},
+    {"name":"CONTROL","nameAr":"مركز التحكم","icon":Icons.dashboard_customize,"category":"TOOLS","color":const Color(0xFF00BCD4)},
     {"name":"TERMINAL","nameAr":"طرفية","icon":Icons.terminal,"category":"TOOLS","color":const Color(0xFFFFA502)},
     {"name":"MAGICZIONOS","nameAr":"بيئة الجذر","icon":Icons.admin_panel_settings,"category":"TOOLS","color":const Color(0xFF00D9A6)},
     {"name":"FILES","nameAr":"ملفات","icon":Icons.folder,"category":"TOOLS","color":const Color(0xFFFFB142)},
@@ -181,6 +183,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   Widget? _screenForApp(String name) {
     return switch (name) {
       'ARSENAL' => const ArsenalScreen(),
+      'CONTROL' => const ZionControlCenter(),
       'WIFI' => const WiFiScannerApp(),
       'EXPLOIT' || 'CRACKER' || 'DDOS' || 'DATABASE' || 'CLOUD' => const ArsenalScreen(),
       'TERMINAL' => const TerminalScreen(),
@@ -664,6 +667,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             IconButton(icon: Icon(Icons.close, color: isDark ? Colors.white54 : Colors.black45), onPressed: () => setState(() => _showStartMenu = false)),
           ]),
           const Divider(height: 24),
+          _buildStartMenuItem(icon: Icons.dashboard_customize, title: 'مركز التحكم', subtitle: 'إدارة التوزيعة والقدرات الحقيقية', color: const Color(0xFF00BCD4), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"CONTROL","nameAr":"مركز التحكم","icon":Icons.dashboard_customize,"color":const Color(0xFF00BCD4)}); }),
           _buildStartMenuItem(icon: Icons.terminal, title: 'الطرفية', subtitle: 'تنفيذ الأوامر', color: const Color(0xFFFFA502), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"TERMINAL","nameAr":"الطرفية","icon":Icons.terminal,"color":const Color(0xFFFFA502)}); }),
           _buildStartMenuItem(icon: Icons.wifi, title: 'الواي فاي', subtitle: 'مسح الشبكات الحقيقية', color: const Color(0xFFFF4757), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"WIFI","nameAr":"الواي فاي","icon":Icons.wifi,"color":const Color(0xFFFF4757)}); }),
           _buildStartMenuItem(icon: Icons.settings, title: 'الإعدادات', subtitle: 'تخصيص النظام', color: const Color(0xFF8854D0), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"SETTINGS","nameAr":"الإعدادات","icon":Icons.settings,"color":const Color(0xFF8854D0)}); }),
