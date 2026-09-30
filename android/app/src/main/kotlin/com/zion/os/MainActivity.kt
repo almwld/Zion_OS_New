@@ -276,7 +276,22 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun ensureTerminalEnvironment(): Pair<File, File> {
+        val (home, prefix) = ensureTerminalEnvironment()
+        File(prefix, "bin").mkdirs()
+        File(prefix, "sbin").mkdirs()
+        File(prefix, "lib").mkdirs()
+        File(prefix, "lib64").mkdirs()
+        File(filesDir, "tmp").mkdirs()
+        File(filesDir, "etc").mkdirs()
+        val profile = File(home, ".profile")
+        if (!profile.exists()) profile.writeText(            "export HOME=\"${home.absolutePath}\n" +             "export PREFIX=\"${prefix.absolutePath}\n" +             "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\n" +             "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin\n" +             "export TERM=\"xterm-256color\"\n"        )
+        val bashrc = File(home, ".bashrc")
+        if (!bashrc.exists()) bashrc.writeText(profile.readText())
+        return home to prefix
+    }
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
+        ensureTerminalEnvironment()
         if (android.os.Build.VERSION.SDK_INT <= 30) return startProcessTerminal(shell)
         if (!nativePtyAvailable()) return 0
         return try {
