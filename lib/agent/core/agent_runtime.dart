@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'agent_models.dart';
 import 'orchestrator.dart';
+import 'cancellation_token.dart';
 
 class AgentSessionSnapshot {
   final String id;
@@ -41,6 +42,7 @@ class AgentSession {
 
 class AgentRuntime {
   final AgentOrchestrator orchestrator;
+  CancellationToken? _token;
   AgentSession? _active;
   StreamSubscription<AgentEvent>? _subscription;
   final StreamController<AgentEvent> _events = StreamController<AgentEvent>.broadcast();
@@ -70,6 +72,8 @@ class AgentRuntime {
       state: AgentState.planning,
     );
     _active = session;
+    final token = CancellationToken();
+    _token = token;
 
     await _subscription?.cancel();
     _subscription = orchestrator.events.listen((event) {
@@ -82,6 +86,7 @@ class AgentRuntime {
       final result = await orchestrator.executeTask(
         clean,
         approveReviewed: approveReviewed,
+        cancellationToken: token,
       );
       session.state = result.success ? AgentState.completed : AgentState.failed;
       session.results
@@ -93,14 +98,15 @@ class AgentRuntime {
     } finally {
       await _subscription?.cancel();
       _subscription = null;
+      await token.dispose();
+      if (identical(_token, token)) _token = null;
     }
   }
 
   Future<void> cancel() async {
-    // Orchestrator currently runs cooperatively. This preserves the session
-    // and exposes a deterministic cancellation state without killing a process.
     final session = _active;
     if (session == null) return;
+    _token?.cancel();
     session.state = AgentState.cancelled;
     session.touch();
     _events.add(AgentEvent(
