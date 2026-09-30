@@ -58,47 +58,35 @@ class AgentOrchestrator {
           _state=AgentState.evaluating;
           var recovered=false;
           var recoveryAttempt=0;
-          AgentStep? alternative;
           while(!recovered && recoveryAttempt<maxRecoveryAttempts){
             recoveryAttempt++;
             cancellationToken?.throwIfCancelled();
-            alternative=await _alternative(step,r.error??'فشل (محاولة '+recoveryAttempt.toString()+')');
-            if(alternative==null)break;
-            final alt=alternative;
-          cancellationToken?.throwIfCancelled();
-          if(alt!=null){
+            final alt=await _alternative(step,r.error??'فشل (محاولة '+recoveryAttempt.toString()+')');
+            if(alt==null) break;
             final d=policy.evaluate(tool:alt.tool,params:alt.params);
-            if(d.risk==AgentRisk.safe||(approveReviewed&&!d.requiresApproval)){
-              cancellationToken?.throwIfCancelled();
-              final t=tools.getTool(alt.tool);
-              if(t!=null){
-                final alternativeStarted=DateTime.now();
-                StepResult ar;
-                try {
-                  ar=await t.execute(alt.params).timeout(stepTimeout);
-                } on TimeoutException {
-                  ar=StepResult.failure(
-                    'انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية.',
-                    duration:DateTime.now().difference(alternativeStarted),
-                  );
-                }
-                results.add(ar);
-                recovered=ar.success;
-                _log('🔄 المحاولة البديلة '+recoveryAttempt.toString()+'/'+maxRecoveryAttempts+': '+(ar.success?'نجحت':'فشلت'));
-              }
+            if(d.risk!=AgentRisk.safe && !(approveReviewed&&!d.requiresApproval)){
+              _log('🔐 البديل يحتاج موافقة أو محظور.');
+              break;
             }
+            cancellationToken?.throwIfCancelled();
+            final t=tools.getTool(alt.tool);
+            if(t==null) break;
+            final alternativeStarted=DateTime.now();
+            StepResult ar;
+            try {
+              ar=await t.execute(alt.params).timeout(stepTimeout);
+            } on TimeoutException {
+              ar=StepResult.failure('انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية.',duration:DateTime.now().difference(alternativeStarted));
+            }
+            results.add(ar);
+            recovered=ar.success;
+            _log('🔄 المحاولة البديلة '+recoveryAttempt.toString()+'/'+maxRecoveryAttempts.toString()+': '+(ar.success?'نجحت':'فشلت'));
           }
           if(!recovered){
             _state=AgentState.failed;
-            return AgentResult(
-              success:false,
-              task:clean,
-              steps:results,
-              error:'فشلت الخطوة: '+step.description,
-            );
+            return AgentResult(success:false,task:clean,steps:results,error:'فشلت الخطوة: '+step.description);
           }
         }
-      }
       _state=AgentState.completed;final report=await _report(clean,results);_log('✅ اكتملت المهمة.');
       return AgentResult(success:true,task:clean,steps:results,report:report);
     }catch(const AgentCancelledException){_state=AgentState.cancelled;_log('⏹️ تم إلغاء المهمة.');return AgentResult(success:false,task:clean,steps:results,error:'تم إلغاء المهمة.');
