@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
