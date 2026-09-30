@@ -28,6 +28,7 @@ class FloatingWindowSnapshot {
       height: (map['height'] as num?)?.toDouble() ?? 500,
       left: (map['left'] as num?)?.toDouble() ?? 100,
       top: (map['top'] as num?)?.toDouble() ?? 100,
+      workspace: (map['workspace'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -77,7 +78,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     _saveSnapshots();
   }
 
-  void restoreWindow(String title, Widget content, {required String appKey, Size? size, Offset? position}) {
+  void restoreWindow(String title, Widget content, {required String appKey, Size? size, Offset? position, int? workspace}) {
     setState(() {
       _windows.add(FloatingWindowInstance(
         id: _nextId++,
