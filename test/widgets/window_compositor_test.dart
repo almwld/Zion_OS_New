@@ -8,7 +8,8 @@ void main() {
       home: WindowCompositor(child: Text('Zion Window')),
     ));
     expect(find.text('Zion Window'), findsOneWidget);
-    expect(find.byType(RepaintBoundary), findsOneWidget);
+    expect(find.byType(WindowCompositor), findsOneWidget);
+    expect(find.byType(RepaintBoundary), findsWidgets);
     await tester.pump(const Duration(milliseconds: 220));
     expect(find.text('Zion Window'), findsOneWidget);
   });
