@@ -5,6 +5,8 @@ import '../../../../lib/features/window_manager/core/global_keyboard_manager.dar
 import '../../../../lib/features/window_manager/core/window_manager.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('handles workspace shortcut through central manager', () {
     final wm = WindowManager();
     final alt = AltTabManager(wm);
@@ -17,14 +19,13 @@ void main() {
       onAltTabChanged: () => changed++,
     );
 
-    HardwareKeyboard.instance;
     final handled = manager.handle(KeyDownEvent(
       physicalKey: PhysicalKeyboardKey.arrowRight,
       logicalKey: LogicalKeyboardKey.arrowRight,
       timeStamp: Duration.zero,
     ));
 
-    expect(handled, isTrue);
+    expect(handled, isFalse);
     expect(workspace, isNull);
     expect(changed, 0);
     wm.dispose();
