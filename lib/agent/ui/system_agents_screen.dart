@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../system/system_agent.dart';
+import '../core/agent_models.dart';
 import '../system/system_agent_tool.dart';
 import '../core/agent_runtime.dart';
 
