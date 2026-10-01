@@ -11,11 +11,31 @@ import 'ai/widgets/ai_chat_screen.dart';
 import 'src/features/ai/advanced_ai_center.dart';
 import 'agent/ui/agent_screen.dart';
 
-class ZionAppLauncher extends StatelessWidget {
+class ZionAppLauncher extends StatefulWidget {
   const ZionAppLauncher({super.key});
+  @override State<ZionAppLauncher> createState() => _ZionAppLauncherState();
+}
+
+class _ZionAppLauncherState extends State<ZionAppLauncher> {
+  final TextEditingController _search = TextEditingController();
+  @override void dispose() { _search.dispose(); super.dispose(); }
+
 
   @override
   Widget build(BuildContext context) {
+    final query = _search.text.trim().toLowerCase();
+    final apps = <({String category, Widget item})>[
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.terminal, name: 'الطرفية', onTap: () => _openApp(context, 'Terminal', const TerminalScreen(), 600, 400))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.folder, name: 'مدير الملفات', onTap: () => _openApp(context, 'Files', const ZionFileManager(), 600, 400))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.edit, name: 'محرر النصوص', onTap: () => _openApp(context, 'Editor', const _TextEditor(), 600, 450))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.language, name: 'متصفح Zion', onTap: () => _openApp(context, 'Browser', const ZionBrowser(), 800, 500))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.monitor, name: 'مراقب النظام', onTap: () => _openApp(context, 'Monitor', const ZionSystemMonitor(), 350, 400))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.psychology, name: 'الذكاء المحلي Offline AI', onTap: () => _openApp(context, 'Offline AI', const AIChatScreen(), 700, 600))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.hub, name: 'مركز الوكلاء والذكاء المتقدم', onTap: () => _openApp(context, 'Zion AI Center', const AdvancedAICenter(), 760, 720))),
+      (category: 'أدوات النظام', item: _AppItem(icon: Icons.smart_toy, name: 'Zion Agent', onTap: () => _openApp(context, 'Zion Agent', const AgentScreen(), 820, 700))),
+      (category: 'الأمان والتشخيص', item: _AppItem(icon: Icons.security, name: 'مركز الأمان', onTap: () => _openApp(context, 'Security', const SecurityCenter(), 650, 560))),
+    ];
+    final filtered = query.isEmpty ? apps : apps.where((a) => (a.item as _AppItem).name.toLowerCase().contains(query)).toList();
     return Container(
       width: 400,
       height: 500,
@@ -29,6 +49,9 @@ class ZionAppLauncher extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              textInputAction: TextInputAction.search,
               style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'ابحث عن تطبيق...',
@@ -41,7 +64,9 @@ class ZionAppLauncher extends StatelessWidget {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(8),
-              children: [
+              children: query.isNotEmpty && filtered.isEmpty
+                  ? [const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا توجد تطبيقات مطابقة', style: TextStyle(color: Colors.white54))))]
+                  : filtered.map((a) => a.item).toList(),
                 const _AppCategory(title: 'أدوات النظام'),
                 _AppItem(icon: Icons.terminal, name: 'الطرفية', onTap: () => _openApp(context, 'Terminal', const TerminalScreen(), 600, 400)),
                 _AppItem(icon: Icons.folder, name: 'مدير الملفات', onTap: () => _openApp(context, 'Files', const ZionFileManager(), 600, 400)),
