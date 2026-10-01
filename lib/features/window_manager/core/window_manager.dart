@@ -66,7 +66,8 @@ class WindowManager extends ChangeNotifier {
     if(snap==WindowSnap.maximize){ if(!lifecycleManager.transition(w,WindowState.maximized))return false; }
     else if(w.isMaximized){ if(!lifecycleManager.transition(w,WindowState.focused))return false; }
     w.geometry=g.copyWith(width:g.width.clamp(c.minWidth,c.maxWidth),height:g.height.clamp(c.minHeight,c.maxHeight));
-    focusManager.focus(w);zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.snapped,id);return true;
+    if(snap==WindowSnap.maximize){ focusManager.activate(w); } else { focusManager.focus(w); }
+    zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.snapped,id);return true;
   }
 
   bool updateGeometry(WindowId id,WindowGeometry g){final w=registry.get(id);if(w==null||w.isClosed)return false;final c=w.constraints.normalized();w.geometry=g.copyWith(width:g.width.clamp(c.minWidth,c.maxWidth),height:g.height.clamp(c.minHeight,c.maxHeight));notifyListeners();return true;}
