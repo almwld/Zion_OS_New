@@ -9,6 +9,7 @@ import 'src/features/security_center/security_center.dart';
 import 'ai/widgets/ai_chat_screen.dart';
 import 'src/features/ai/advanced_ai_center.dart';
 import 'agent/ui/agent_screen.dart';
+import 'agent/ui/system_agents_screen.dart';
 
 class ZionAppLauncher extends StatefulWidget {
   const ZionAppLauncher({super.key});
@@ -25,6 +26,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
     _LauncherApp('أدوات النظام','الذكاء المحلي Offline AI',Icons.psychology,'Offline AI',700,600),
     _LauncherApp('أدوات النظام','مركز الوكلاء والذكاء المتقدم',Icons.hub,'Zion AI Center',760,720),
     _LauncherApp('أدوات النظام','Zion Agent',Icons.smart_toy,'Zion Agent',820,700),
+    _LauncherApp('أدوات النظام','وكلاء النظام',Icons.hub,'System Agents',760,650),
     _LauncherApp('الأمان والتشخيص','مركز الأمان',Icons.security,'Security',650,560),
   ];
   @override void dispose(){_search.dispose();super.dispose();}
@@ -38,6 +40,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
       case 'Offline AI': return const AIChatScreen();
       case 'Zion AI Center': return const AdvancedAICenter();
       case 'Zion Agent': return const AgentScreen();
+      case 'System Agents': return const SystemAgentsScreen();
       case 'Security': return const SecurityCenter();
       default: return const SizedBox.shrink();
     }
