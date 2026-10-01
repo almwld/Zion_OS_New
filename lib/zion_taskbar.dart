@@ -5,13 +5,17 @@ import 'zion_desktop_icons.dart';
 import 'zion_system_monitor.dart';
 
 class ZionTaskbar extends StatelessWidget {
-  const ZionTaskbar({super.key});
+  const ZionTaskbar({super.key, this.onOpenApp});
+  final void Function(String appKey)? onOpenApp;
 
   @override
   Widget build(BuildContext context) {
     final wm = context.watch<WindowManager>();
+    final workspaceWindows = wm.windows.where((w) => w.workspace == wm.activeWorkspace).toList();
+    final now = DateTime.now();
+    final time = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     return Container(
-      height: 36,
+      height: 44,
       decoration: const BoxDecoration(
         color: Color(0xFF0A0E0A),
         border: Border(top: BorderSide(color: Color(0xFF1A3A1A))),
@@ -19,27 +23,19 @@ class ZionTaskbar extends StatelessWidget {
       child: Row(
         children: [
           _TaskbarButton(icon: Icons.menu, label: 'ابدأ', onTap: () => _showStartMenu(context)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: wm.windows.map((window) => _TaskbarButton(
-                icon: Icons.terminal,
-                label: window.title,
-                isActive: wm.activeWindowId == window.id,
-                onTap: () => wm.focus(window.id),
-              )).toList(),
-            ),
-          ),
-          ...wm.minimizedWindows.map((window) => _TaskbarButton(
-            icon: Icons.terminal,
-            label: window.title,
-            onTap: () => wm.restore(window.id),
-          )),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
-            child: Text('21:37', style: TextStyle(color: Color(0xFF00FF41), fontSize: 12)),
-          ),
+          const SizedBox(width: 6),
+          ...List.generate(WindowManager.workspaceCount, (i) => _TaskbarButton(icon: Icons.workspaces, label: 'W${i + 1}', isActive: wm.activeWorkspace == i, onTap: () => wm.switchWorkspace(i))),
+          const SizedBox(width: 6),
+          Expanded(child: ListView(scrollDirection: Axis.horizontal, children: workspaceWindows.map((window) {
+            final active = wm.activeWindowId == window.id;
+            return _TaskbarButton(
+              icon: window.isMinimized ? Icons.remove : Icons.desktop_windows,
+              label: window.title,
+              isActive: active,
+              onTap: () { if (window.isMinimized) { wm.restore(window.id); } else if (active) { wm.minimize(window.id); } else { wm.focus(window.id); } },
+            );
+          }).toList())),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(time, style: const TextStyle(color: Color(0xFF00FF41), fontSize: 12))),
         ],
       ),
     );
@@ -56,9 +52,9 @@ class ZionTaskbar extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _StartMenuItem(icon: Icons.terminal, label: 'الطرفية', onTap: () { Navigator.pop(ctx); wm.open(title: 'Terminal', content: const KaliTerminalWindow(), width: 600, height: 400); }),
-            _StartMenuItem(icon: Icons.monitor_heart, label: 'مراقب النظام', onTap: () { Navigator.pop(ctx); wm.open(title: 'System Monitor', content: const ZionSystemMonitor(), width: 380, height: 460); }),
-            _StartMenuItem(icon: Icons.network_check, label: 'تشخيص الشبكة', onTap: () { Navigator.pop(ctx); wm.open(title: 'Network Diagnostics', content: const KaliTerminalWindow(initialCommand: 'ip addr; ss -lnt'), width: 650, height: 420); }),
+            _StartMenuItem(icon: Icons.terminal, label: 'الطرفية', onTap: () { Navigator.pop(ctx); onOpenApp?.call('TERMINAL'); }),
+            _StartMenuItem(icon: Icons.monitor_heart, label: 'مراقب النظام', onTap: () { Navigator.pop(ctx); onOpenApp?.call('SYSTEM'); }),
+            _StartMenuItem(icon: Icons.network_check, label: 'تشخيص الشبكة', onTap: () { Navigator.pop(ctx); onOpenApp?.call('NETWORK'); }),
             const Divider(color: Color(0xFF1A3A1A)),
             _StartMenuItem(icon: Icons.power_settings_new, label: 'إيقاف التشغيل', onTap: () => Navigator.pop(ctx)),
           ],

@@ -54,6 +54,7 @@ import 'core/theme/zion_colors.dart';
 import 'features/window_manager/core/window_manager.dart';
 import 'features/window_manager/core/alt_tab_manager.dart';
 import 'widgets/alt_tab_overlay.dart';
+import 'zion_taskbar.dart';
 import 'features/window_manager/providers/window_provider.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
@@ -358,7 +359,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             _buildTopBar(theme, isDark, primaryColor),
             _buildCategoriesBar(theme, isDark, primaryColor),
             Expanded(child: _buildAppsGrid(theme, isDark, primaryColor)),
-            _buildDock(theme, isDark, primaryColor),
+            ZionTaskbar(onOpenApp: (appKey) {
+              final matches = _apps.where((item) => item['name'] == appKey);
+              if (matches.isNotEmpty) _openApp(matches.first);
+            }),
           ],
         )),
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
