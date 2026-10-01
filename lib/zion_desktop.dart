@@ -53,6 +53,7 @@ import 'core/ui/zion_toast.dart';
 import 'core/theme/zion_colors.dart';
 import 'features/window_manager/core/window_manager.dart';
 import 'features/window_manager/core/alt_tab_manager.dart';
+import 'features/window_manager/core/global_keyboard_manager.dart';
 import 'widgets/alt_tab_overlay.dart';
 import 'zion_taskbar.dart';
 import 'features/window_manager/providers/window_provider.dart';
@@ -85,6 +86,15 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   final WindowManager _windowManager = WindowManager();
   final FocusNode _desktopKeyboardFocusNode = FocusNode();
   late final AltTabManager _altTabManager = AltTabManager(_windowManager);
+  late final GlobalKeyboardManager _keyboardManager = GlobalKeyboardManager(
+    windowManager: _windowManager,
+    altTabManager: _altTabManager,
+    onWorkspaceChanged: (workspace) {
+      _windowManagerKey.currentState?.switchWorkspace(workspace);
+      if (mounted) setState(() {});
+    },
+    onAltTabChanged: () { if (mounted) setState(() {}); },
+  );
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": const Color(0xFFFF4757), "gradient": [const Color(0xFFFF4757), const Color(0xFFD63447)]},
@@ -288,39 +298,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     );
   }
 
-  void _handleGlobalKey(KeyEvent event) {
-    final keyboard=HardwareKeyboard.instance;
-    if(event.logicalKey==LogicalKeyboardKey.tab && keyboard.isAltPressed &&
-        (event is KeyDownEvent || event is KeyRepeatEvent)) {
-      if(!_altTabManager.isActive) _altTabManager.begin();
-      if(_altTabManager.isActive) {
-        _altTabManager.cycle(reverse:keyboard.isShiftPressed);
-        setState(() {});
-      }
-      return;
-    }
-    if(event is KeyDownEvent &&
-        keyboard.isControlPressed && keyboard.isAltPressed &&
-        (event.logicalKey==LogicalKeyboardKey.arrowLeft ||
-         event.logicalKey==LogicalKeyboardKey.arrowRight)) {
-      final delta = event.logicalKey==LogicalKeyboardKey.arrowLeft ? -1 : 1;
-      final next = _windowManager.activeWorkspace + delta;
-      if (_windowManager.switchWorkspace(next)) {
-        _windowManagerKey.currentState?.switchWorkspace(next);
-        setState(() {});
-      }
-      return;
-    }
-    if(event is KeyUpEvent &&
-        (event.logicalKey==LogicalKeyboardKey.altLeft ||
-         event.logicalKey==LogicalKeyboardKey.altRight ||
-         event.logicalKey==LogicalKeyboardKey.alt)) {
-      if(_altTabManager.isActive) {
-        _altTabManager.end();
-        setState(() {});
-      }
-    }
-  }
+  void _handleGlobalKey(KeyEvent event) => _keyboardManager.handle(event);
 
   @override
   Widget build(BuildContext context) {
