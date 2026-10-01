@@ -165,88 +165,89 @@ class _FloatingWindowState extends State<FloatingWindow> {
       child: WindowCompositor(
         child: Material(
           color: Colors.transparent,
-        child: Container(
-          width: _size.width,
-          height: _size.height,
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.95),
-            borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
-            border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
-            boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
-          ),
-          child: Column(
-            children: [
-              GestureDetector(
-                onDoubleTap: () => _toggleMaximize(context),
-                onPanStart: (_) => widget.onFocus?.call(),
-                onPanUpdate: (details) {
-                  if (_isMaximized) return;
-                  setState(() {
-                    _position = _clampPosition(context, _position + details.delta);
-                  });
-                },
-                onPanEnd: (_) {
-                  _snapToEdge(context);
-                  if (!_isMaximized) widget.onChanged(_size, _position);
-                },
-                child: Container(
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: const Color(0x2600BCD4),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(_isMaximized ? 0 : 16),
-                      topRight: Radius.circular(_isMaximized ? 0 : 16),
+          child: Container(
+            width: _size.width,
+            height: _size.height,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
+              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
+              boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
+            ),
+            child: Column(
+              children: [
+                GestureDetector(
+                  onDoubleTap: () => _toggleMaximize(context),
+                  onPanStart: (_) => widget.onFocus?.call(),
+                  onPanUpdate: (details) {
+                    if (_isMaximized) return;
+                    setState(() {
+                      _position = _clampPosition(context, _position + details.delta);
+                    });
+                  },
+                  onPanEnd: (_) {
+                    _snapToEdge(context);
+                    if (!_isMaximized) widget.onChanged(_size, _position);
+                  },
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0x2600BCD4),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(_isMaximized ? 0 : 16),
+                        topRight: Radius.circular(_isMaximized ? 0 : 16),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
+                        ),
+                        GestureDetector(
+                          onTap: () => setState(() {
+                            _isMinimized = true;
+                            widget.onChanged(_size, _position);
+                          }),
+                          child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _toggleMaximize(context),
+                          child: Icon(_isMaximized ? Icons.filter_none : Icons.crop_square, color: const Color(0xFF00BCD4), size: 15),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: widget.onClose,
+                          child: const Icon(Icons.close, color: Colors.red, size: 18),
+                        ),
+                        const SizedBox(width: 8),
+                        if (!_isMaximized)
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onPanUpdate: (details) => setState(() => _resize(context, _size.width + details.delta.dx, _size.height + details.delta.dy)),
+                            onPanEnd: (_) => widget.onChanged(_size, _position),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.drag_handle, color: Colors.white54, size: 18),
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
-                      ),
-                      GestureDetector(
-                        onTap: () => setState(() {
-                          _isMinimized = true;
-                          widget.onChanged(_size, _position);
-                        }),
-                        child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => _toggleMaximize(context),
-                        child: Icon(_isMaximized ? Icons.filter_none : Icons.crop_square, color: const Color(0xFF00BCD4), size: 15),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: widget.onClose,
-                        child: const Icon(Icons.close, color: Colors.red, size: 18),
-                      ),
-                      const SizedBox(width: 8),
-                      if (!_isMaximized)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onPanUpdate: (details) => setState(() => _resize(context, _size.width + details.delta.dx, _size.height + details.delta.dy)),
-                          onPanEnd: (_) => widget.onChanged(_size, _position),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: Icon(Icons.drag_handle, color: Colors.white54, size: 18),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                    ],
+                ),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(_isMaximized ? 0 : 16),
+                      bottomRight: Radius.circular(_isMaximized ? 0 : 16),
+                    ),
+                    child: widget.child,
                   ),
                 ),
-              ),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(_isMaximized ? 0 : 16),
-                    bottomRight: Radius.circular(_isMaximized ? 0 : 16),
-                  ),
-                  child: widget.child,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
