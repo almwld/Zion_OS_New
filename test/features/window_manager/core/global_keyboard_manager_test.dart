@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zion_os/features/window_manager/core/alt_tab_manager.dart';
-import 'package:zion_os/features/window_manager/core/global_keyboard_manager.dart';
-import 'package:zion_os/features/window_manager/core/window_manager.dart';
+import '../../../../lib/features/window_manager/core/alt_tab_manager.dart';
+import '../../../../lib/features/window_manager/core/global_keyboard_manager.dart';
+import '../../../../lib/features/window_manager/core/window_manager.dart';
 
 void main() {
   test('handles workspace shortcut through central manager', () {
@@ -18,9 +18,10 @@ void main() {
     );
 
     HardwareKeyboard.instance;
-    final handled = manager.handle(const KeyDownEvent(
+    final handled = manager.handle(KeyDownEvent(
       physicalKey: PhysicalKeyboardKey.arrowRight,
       logicalKey: LogicalKeyboardKey.arrowRight,
+      timeStamp: Duration.zero,
     ));
 
     expect(handled, isTrue);
@@ -39,9 +40,10 @@ void main() {
       onAltTabChanged: () {},
     );
 
-    final handled = manager.handle(const KeyDownEvent(
+    final handled = manager.handle(KeyDownEvent(
       physicalKey: PhysicalKeyboardKey.keyA,
       logicalKey: LogicalKeyboardKey.keyA,
+      timeStamp: Duration.zero,
     ));
 
     expect(handled, isFalse);
