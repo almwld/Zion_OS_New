@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 import 'package:project_zion/features/window_manager/core/window_manager.dart';
+import 'package:project_zion/features/window_manager/models/window_geometry.dart';
 import 'package:project_zion/features/window_manager/models/window_resize_edge.dart';
 import 'package:project_zion/features/window_manager/models/window_snap.dart';
 
