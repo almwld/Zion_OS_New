@@ -20,21 +20,29 @@ class WindowManager extends ChangeNotifier {
   final WindowFocusManager focusManager;
   final WindowZOrderManager zOrderManager;
   final WindowLifecycleManager lifecycleManager;
+  static const int workspaceCount = 4;
+  final Map<int, WindowId?> _lastFocusedByWorkspace = {};
+  int _activeWorkspace = 0;
   int _sequence=0;
+  int get activeWorkspace => _activeWorkspace;
   WindowId? get activeWindowId=>focusManager.activeWindowId;
   List<AppWindow> get windows=>zOrderManager.sort(registry.all.where((w)=>!w.isClosed));
-  List<AppWindow> get visibleWindows=>windows.where((w)=>!w.isMinimized).toList(growable:false);
-  List<AppWindow> get minimizedWindows=>windows.where((w)=>w.isMinimized).toList(growable:false);
+  List<AppWindow> get visibleWindows=>windows.where((w)=>!w.isMinimized&&w.workspace==_activeWorkspace).toList(growable:false);
+  List<AppWindow> get minimizedWindows=>windows.where((w)=>w.isMinimized&&w.workspace==_activeWorkspace).toList(growable:false);
+  List<AppWindow> windowsInWorkspace(int workspace)=>windows.where((w)=>w.workspace==workspace).toList(growable:false);
 
   WindowId open({required String title,required Widget content,double width=600,double height=400,double x=50,double y=50,int workspace=0,String? appKey,WindowConstraints constraints=const WindowConstraints()}){
     final id=WindowId('zion-window-${DateTime.now().microsecondsSinceEpoch}-$_sequence');
     _sequence++;
-    final w=AppWindow(id:id,title:title,content:content,geometry:WindowGeometry(x:x,y:y,width:width,height:height),constraints:constraints,workspace:workspace,appKey:appKey);
-    registry.add(w);lifecycleManager.transition(w,WindowState.focused);zOrderManager.raise(w);focusManager.focus(w);notifyListeners();_emit(WindowEventType.opened,id);return id;
+    final target=workspace.clamp(0,workspaceCount-1).toInt();
+    final w=AppWindow(id:id,title:title,content:content,geometry:WindowGeometry(x:x,y:y,width:width,height:height),constraints:constraints,workspace:target,appKey:appKey);
+    registry.add(w);lifecycleManager.transition(w,WindowState.focused);zOrderManager.raise(w);if(target==_activeWorkspace){focusManager.focus(w);_lastFocusedByWorkspace[target]=id;}notifyListeners();_emit(WindowEventType.opened,id);return id;
   }
-  bool close(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;lifecycleManager.transition(w,WindowState.closed);focusManager.clearIf(id);_focusTop();notifyListeners();_emit(WindowEventType.closed,id);return true;}
-  bool focus(WindowId id){final w=registry.get(id);if(w==null||w.isClosed||w.isMinimized)return false;focusManager.focus(w);zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.focused,id);return true;}
-  bool raise(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;zOrderManager.raise(w);if(!w.isMinimized)focusManager.focus(w);notifyListeners();_emit(WindowEventType.raised,id);return true;}
+  bool switchWorkspace(int workspace){if(workspace<0||workspace>=workspaceCount||workspace==_activeWorkspace)return false;final old=_activeWorkspace;final active=focusManager.activeWindowId;if(active!=null){final w=registry.get(active);if(w!=null&&w.workspace==old)_lastFocusedByWorkspace[old]=active;}focusManager.clear();_activeWorkspace=workspace;final candidate=_lastFocusedByWorkspace[workspace];if(candidate!=null&&focus(candidate))return true;_focusTop();notifyListeners();return true;}
+  bool moveToWorkspace(WindowId id,int workspace,{bool follow=false}){if(workspace<0||workspace>=workspaceCount)return false;final w=registry.get(id);if(w==null||w.isClosed)return false;final old=w.workspace;if(old==workspace)return true;if(focusManager.activeWindowId==id){_lastFocusedByWorkspace[old]=null;focusManager.clear();}w.workspace=workspace;if(follow){_activeWorkspace=workspace;focus(id);}else{_focusTop();notifyListeners();}return true;}
+  bool close(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;lifecycleManager.transition(w,WindowState.closed);focusManager.clearIf(id);if(_lastFocusedByWorkspace[w.workspace]==id)_lastFocusedByWorkspace[w.workspace]=null;_focusTop();notifyListeners();_emit(WindowEventType.closed,id);return true;}
+  bool focus(WindowId id){final w=registry.get(id);if(w==null||w.isClosed||w.isMinimized||w.workspace!=_activeWorkspace)return false;focusManager.focus(w);_lastFocusedByWorkspace[w.workspace]=id;zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.focused,id);return true;}
+  bool raise(WindowId id){final w=registry.get(id);if(w==null||w.isClosed||w.workspace!=_activeWorkspace)return false;zOrderManager.raise(w);if(!w.isMinimized){focusManager.focus(w);_lastFocusedByWorkspace[w.workspace]=id;}notifyListeners();_emit(WindowEventType.raised,id);return true;}
   bool minimize(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;if(!lifecycleManager.transition(w,WindowState.minimized))return false;focusManager.clearIf(id);_focusTop();notifyListeners();_emit(WindowEventType.minimized,id);return true;}
   bool maximize(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;if(!lifecycleManager.transition(w,WindowState.maximized))return false;focusManager.focus(w);zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.maximized,id);return true;}
   bool restore(WindowId id){final w=registry.get(id);if(w==null||w.isClosed)return false;if(!lifecycleManager.transition(w,WindowState.focused))return false;focusManager.focus(w);zOrderManager.raise(w);notifyListeners();return true;}
