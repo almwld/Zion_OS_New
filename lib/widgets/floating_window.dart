@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'window_compositor.dart';
 
 class FloatingWindow extends StatefulWidget {
   final String title;
@@ -161,8 +162,9 @@ class _FloatingWindowState extends State<FloatingWindow> {
     return Positioned(
       left: _position.dx,
       top: _position.dy,
-      child: Material(
-        color: Colors.transparent,
+      child: WindowCompositor(
+        child: Material(
+          color: Colors.transparent,
         child: Container(
           width: _size.width,
           height: _size.height,
