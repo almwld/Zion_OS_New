@@ -28,8 +28,8 @@ void main() {
     final altTab=AltTabManager(wm);
     altTab.begin();
     expect(altTab.selectedId,second);
-    expect(altTab.cycle(reverse:true),third);
     expect(altTab.cycle(reverse:true),first);
+    expect(altTab.cycle(reverse:true),third);
   });
 
   test('minimized and closed windows are excluded',(){
