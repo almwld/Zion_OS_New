@@ -298,6 +298,18 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       }
       return;
     }
+    if(event is KeyDownEvent &&
+        keyboard.isControlPressed && keyboard.isAltPressed &&
+        (event.logicalKey==LogicalKeyboardKey.arrowLeft ||
+         event.logicalKey==LogicalKeyboardKey.arrowRight)) {
+      final delta = event.logicalKey==LogicalKeyboardKey.arrowLeft ? -1 : 1;
+      final next = _windowManager.activeWorkspace + delta;
+      if (_windowManager.switchWorkspace(next)) {
+        _windowManagerKey.currentState?.switchWorkspace(next);
+        setState(() {});
+      }
+      return;
+    }
     if(event is KeyUpEvent &&
         (event.logicalKey==LogicalKeyboardKey.altLeft ||
          event.logicalKey==LogicalKeyboardKey.altRight ||

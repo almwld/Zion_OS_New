@@ -50,7 +50,7 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   static const int workspaceCount = 4;
   int _activeWorkspace = 0;
   int get activeWorkspace => _activeWorkspace;
-  void switchWorkspace(int workspace) { if (workspace < 0 || workspace >= workspaceCount || workspace == _activeWorkspace) return; setState(() => _activeWorkspace = workspace); _saveSnapshots(); }
+  void switchWorkspace(int workspace) { if (workspace < 0 || workspace >= workspaceCount || workspace == _activeWorkspace) return; widget.windowManager?.switchWorkspace(workspace); setState(() => _activeWorkspace = workspace); _saveSnapshots(); }
   final List<FloatingWindowInstance> _windows = [];
   int _nextId = 0;
   bool _restoring = false;
