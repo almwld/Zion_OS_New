@@ -1,0 +1,1 @@
+enum WindowSnap { none, left, right, maximize }

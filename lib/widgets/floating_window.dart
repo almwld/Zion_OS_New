@@ -27,36 +27,99 @@ class FloatingWindow extends StatefulWidget {
 }
 
 class _FloatingWindowState extends State<FloatingWindow> {
+  static const double _minWidth = 240;
+  static const double _minHeight = 180;
+  static const double _snapThreshold = 28;
   late Offset _position;
   late Size _size;
+  Size? _restoreSize;
+  Offset? _restorePosition;
   bool _isMinimized = false;
+  bool _isMaximized = false;
 
   @override
   void initState() {
     super.initState();
     _position = widget.initialPosition;
-    _size = widget.initialSize;
+    _size = Size(
+      widget.initialSize.width < _minWidth ? _minWidth : widget.initialSize.width,
+      widget.initialSize.height < _minHeight ? _minHeight : widget.initialSize.height,
+    );
   }
 
-  Offset _clampPosition(BuildContext context, Offset position) {
+  Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
-    final maxX = (screen.width - _size.width).clamp(0.0, double.infinity).toDouble();
-    final maxY = (screen.height - _size.height - 50).clamp(0.0, double.infinity).toDouble();
+    final currentSize = size ?? _size;
+    final maxX = (screen.width - currentSize.width).clamp(0.0, double.infinity).toDouble();
+    final maxY = (screen.height - currentSize.height).clamp(0.0, double.infinity).toDouble();
     return Offset(
       position.dx.clamp(0.0, maxX).toDouble(),
       position.dy.clamp(0.0, maxY).toDouble(),
     );
   }
 
-  void _resize(BuildContext context, double width, double height) {
+  Size _clampSize(BuildContext context, Size size) {
     final screen = MediaQuery.sizeOf(context);
-    final maxWidth = screen.width.clamp(250.0, 600.0).toDouble();
-    final maxHeight = (screen.height - 50).clamp(300.0, 700.0).toDouble();
-    _size = Size(
-      width.clamp(250.0, maxWidth).toDouble(),
-      height.clamp(300.0, maxHeight).toDouble(),
+    final maxWidth = screen.width.clamp(_minWidth, double.infinity).toDouble();
+    final maxHeight = screen.height.clamp(_minHeight, double.infinity).toDouble();
+    return Size(
+      size.width.clamp(_minWidth, maxWidth).toDouble(),
+      size.height.clamp(_minHeight, maxHeight).toDouble(),
     );
+  }
+
+  void _resize(BuildContext context, double width, double height) {
+    _size = _clampSize(context, Size(width, height));
     _position = _clampPosition(context, _position);
+  }
+
+  void _toggleMaximize(BuildContext context) {
+    widget.onFocus?.call();
+    final screen = MediaQuery.sizeOf(context);
+    setState(() {
+      if (_isMaximized) {
+        _size = _restoreSize ?? _clampSize(context, const Size(350, 500));
+        _position = _clampPosition(context, _restorePosition ?? const Offset(50, 100), size: _size);
+        _isMaximized = false;
+      } else {
+        _restoreSize = _size;
+        _restorePosition = _position;
+        _position = Offset.zero;
+        _size = Size(screen.width, screen.height);
+        _isMaximized = true;
+      }
+      widget.onChanged(_size, _position);
+    });
+  }
+
+  void _snapToEdge(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final x = _position.dx;
+    final y = _position.dy;
+    WindowSnapVisual? target;
+    if (y <= _snapThreshold) {
+      target = WindowSnapVisual.maximize;
+    } else if (x <= _snapThreshold) {
+      target = WindowSnapVisual.left;
+    } else if (x + _size.width >= screen.width - _snapThreshold) {
+      target = WindowSnapVisual.right;
+    }
+    if (target == null) return;
+    setState(() {
+      if (target == WindowSnapVisual.maximize) {
+        _restoreSize = _size;
+        _restorePosition = _position;
+        _position = Offset.zero;
+        _size = Size(screen.width, screen.height);
+        _isMaximized = true;
+      } else {
+        if (_isMaximized) _isMaximized = false;
+        final half = screen.width / 2;
+        _position = target == WindowSnapVisual.left ? Offset.zero : Offset(half, 0);
+        _size = Size(half, screen.height);
+      }
+      widget.onChanged(_size, _position);
+    });
   }
 
   @override
@@ -66,10 +129,13 @@ class _FloatingWindowState extends State<FloatingWindow> {
         left: _position.dx,
         top: _position.dy,
         child: GestureDetector(
-          onTap: () { widget.onFocus?.call(); setState(() {
-            _isMinimized = false;
-            widget.onChanged(_size, _position);
-          }); },
+          onTap: () {
+            widget.onFocus?.call();
+            setState(() {
+              _isMinimized = false;
+              widget.onChanged(_size, _position);
+            });
+          },
           child: Container(
             width: 120,
             height: 32,
@@ -81,7 +147,9 @@ class _FloatingWindowState extends State<FloatingWindow> {
             child: Row(
               children: [
                 const Icon(Icons.window, color: Color(0xFF00BCD4), size: 16),
-                Expanded(child: Text(widget.title, style: const TextStyle(color: Colors.white70, fontSize: 11), overflow: TextOverflow.ellipsis)),
+                Expanded(
+                  child: Text(widget.title, style: const TextStyle(color: Colors.white70, fontSize: 11), overflow: TextOverflow.ellipsis),
+                ),
                 IconButton(icon: const Icon(Icons.close, size: 14, color: Colors.red), onPressed: widget.onClose),
               ],
             ),
@@ -100,87 +168,68 @@ class _FloatingWindowState extends State<FloatingWindow> {
           height: _size.height,
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.95),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
             border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
             boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
           ),
           child: Column(
             children: [
               GestureDetector(
+                onDoubleTap: () => _toggleMaximize(context),
                 onPanStart: (_) => widget.onFocus?.call(),
-                onPanUpdate: (details) => setState(() {
-                  _position = _clampPosition(context, _position + details.delta);
-                }),
-                onPanEnd: (_) => widget.onChanged(_size, _position),
+                onPanUpdate: (details) {
+                  if (_isMaximized) return;
+                  setState(() {
+                    _position = _clampPosition(context, _position + details.delta);
+                  });
+                },
+                onPanEnd: (_) {
+                  _snapToEdge(context);
+                  if (!_isMaximized) widget.onChanged(_size, _position);
+                },
                 child: Container(
                   height: 36,
-                  decoration: const BoxDecoration(
-                    color: Color(0x2600BCD4),
-                    borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+                  decoration: BoxDecoration(
+                    color: const Color(0x2600BCD4),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(_isMaximized ? 0 : 16),
+                      topRight: Radius.circular(_isMaximized ? 0 : 16),
+                    ),
                   ),
                   child: Row(
                     children: [
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          widget.title,
-                          style: const TextStyle(
-                            color: Color(0xFF00BCD4),
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
                       ),
                       GestureDetector(
                         onTap: () => setState(() {
                           _isMinimized = true;
                           widget.onChanged(_size, _position);
                         }),
-                        child: const Icon(
-                          Icons.horizontal_rule,
-                          color: Color(0xFF00BCD4),
-                          size: 18,
-                        ),
+                        child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18),
                       ),
                       const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () {
-                          setState(() => _resize(
-                          context,
-                          _size.width > 300 ? 350 : 600,
-                          _size.height > 500 ? 500 : 600,
-                        ));
-                          widget.onChanged(_size, _position);
-                        },
-                        child: const Icon(
-                          Icons.crop_square,
-                          color: Color(0xFF00BCD4),
-                          size: 14,
-                        ),
+                        onTap: () => _toggleMaximize(context),
+                        child: Icon(_isMaximized ? Icons.filter_none : Icons.crop_square, color: const Color(0xFF00BCD4), size: 15),
                       ),
                       const SizedBox(width: 8),
                       GestureDetector(
                         onTap: widget.onClose,
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.red,
-                          size: 18,
-                        ),
+                        child: const Icon(Icons.close, color: Colors.red, size: 18),
                       ),
                       const SizedBox(width: 8),
-                      GestureDetector(
-                        onPanUpdate: (details) => setState(() => _resize(
-                          context,
-                          _size.width + details.delta.dx,
-                          _size.height + details.delta.dy,
-                        )),
-                        onPanEnd: (_) => widget.onChanged(_size, _position),
-                        child: const Icon(
-                          Icons.drag_handle,
-                          color: Colors.white54,
-                          size: 18,
+                      if (!_isMaximized)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) => setState(() => _resize(context, _size.width + details.delta.dx, _size.height + details.delta.dy)),
+                          onPanEnd: (_) => widget.onChanged(_size, _position),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(Icons.drag_handle, color: Colors.white54, size: 18),
+                          ),
                         ),
-                      ),
                       const SizedBox(width: 8),
                     ],
                   ),
@@ -188,7 +237,10 @@ class _FloatingWindowState extends State<FloatingWindow> {
               ),
               Expanded(
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(_isMaximized ? 0 : 16),
+                    bottomRight: Radius.circular(_isMaximized ? 0 : 16),
+                  ),
                   child: widget.child,
                 ),
               ),
@@ -199,3 +251,5 @@ class _FloatingWindowState extends State<FloatingWindow> {
     );
   }
 }
+
+enum WindowSnapVisual { left, right, maximize }

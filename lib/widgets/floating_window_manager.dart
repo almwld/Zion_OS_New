@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'floating_window.dart';
 import '../features/window_manager/core/window_manager.dart';
 import '../features/window_manager/models/window_id.dart';
+import '../features/window_manager/models/window_snap.dart';
 import '../features/window_manager/models/window_geometry.dart';
 
 class FloatingWindowSnapshot {
@@ -148,8 +149,34 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
           onChanged: (size, position) {
               w.size = size;
               w.position = position;
-              if (w.wmId != null) {
-                widget.windowManager?.updateGeometry(w.wmId!, WindowGeometry(x: position.dx, y: position.dy, width: size.width, height: size.height));
+              final manager = widget.windowManager;
+              if (w.wmId != null && manager != null) {
+                final screen = MediaQuery.sizeOf(context);
+                final isFull = position.dx <= 0.5 && position.dy <= 0.5 &&
+                    (size.width - screen.width).abs() <= 1.0 &&
+                    (size.height - screen.height).abs() <= 1.0;
+                if (isFull) {
+                  manager.snap(w.wmId!, WindowSnap.maximize,
+                      viewportWidth: screen.width, viewportHeight: screen.height);
+                } else {
+                  final isLeft = position.dx <= 0.5 &&
+                      (size.width - screen.width / 2).abs() <= 1.0;
+                  final isRight = (position.dx + size.width - screen.width).abs() <= 1.0 &&
+                      (size.width - screen.width / 2).abs() <= 1.0;
+                  if (isLeft) {
+                    manager.snap(w.wmId!, WindowSnap.left,
+                        viewportWidth: screen.width, viewportHeight: screen.height);
+                  } else if (isRight) {
+                    manager.snap(w.wmId!, WindowSnap.right,
+                        viewportWidth: screen.width, viewportHeight: screen.height);
+                  } else {
+                    if (manager.find(w.wmId!)?.isMaximized == true) {
+                      manager.restore(w.wmId!);
+                    }
+                    manager.updateGeometry(w.wmId!, WindowGeometry(
+                      x: position.dx, y: position.dy, width: size.width, height: size.height));
+                  }
+                }
               }
               _saveSnapshots();
             },
