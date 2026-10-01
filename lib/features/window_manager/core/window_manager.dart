@@ -70,6 +70,12 @@ class WindowManager extends ChangeNotifier {
     zOrderManager.raise(w);notifyListeners();_emit(WindowEventType.snapped,id);return true;
   }
 
+  /// Focuses a window from a stable Alt+Tab session snapshot.
+  bool focusFromSnapshot(List<WindowId> ids, int index) {
+    if (index < 0 || index >= ids.length) return false;
+    return focus(ids[index]);
+  }
+
   bool updateGeometry(WindowId id,WindowGeometry g){final w=registry.get(id);if(w==null||w.isClosed)return false;final c=w.constraints.normalized();w.geometry=g.copyWith(width:g.width.clamp(c.minWidth,c.maxWidth),height:g.height.clamp(c.minHeight,c.maxHeight));notifyListeners();return true;}
   AppWindow? find(WindowId id)=>registry.get(id);
   WindowGeometry? geometryOf(WindowId id)=>registry.get(id)?.geometry;

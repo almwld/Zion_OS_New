@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
 import 'features/terminal/terminal_screen.dart';
@@ -51,6 +52,8 @@ import 'screens/arsenal/arsenal_screen.dart';
 import 'core/ui/zion_toast.dart';
 import 'core/theme/zion_colors.dart';
 import 'features/window_manager/core/window_manager.dart';
+import 'features/window_manager/core/alt_tab_manager.dart';
+import 'widgets/alt_tab_overlay.dart';
 import 'features/window_manager/providers/window_provider.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
@@ -79,6 +82,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   late AnimationController _pulseController;
   final GlobalKey<FloatingWindowManagerState> _windowManagerKey = GlobalKey<FloatingWindowManagerState>();
   final WindowManager _windowManager = WindowManager();
+  final FocusNode _desktopKeyboardFocusNode = FocusNode();
+  late final AltTabManager _altTabManager = AltTabManager(_windowManager);
 
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": const Color(0xFFFF4757), "gradient": [const Color(0xFFFF4757), const Color(0xFFD63447)]},
@@ -181,6 +186,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     _radarController.dispose();
     _pulseController.dispose();
     _windowManager.dispose();
+    _desktopKeyboardFocusNode.dispose();
     super.dispose();
   }
 
@@ -281,6 +287,28 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     );
   }
 
+  void _handleGlobalKey(KeyEvent event) {
+    final keyboard=HardwareKeyboard.instance;
+    if(event.logicalKey==LogicalKeyboardKey.tab && keyboard.isAltPressed &&
+        (event is KeyDownEvent || event is KeyRepeatEvent)) {
+      if(!_altTabManager.isActive) _altTabManager.begin();
+      if(_altTabManager.isActive) {
+        _altTabManager.cycle(reverse:keyboard.isShiftPressed);
+        setState(() {});
+      }
+      return;
+    }
+    if(event is KeyUpEvent &&
+        (event.logicalKey==LogicalKeyboardKey.altLeft ||
+         event.logicalKey==LogicalKeyboardKey.altRight ||
+         event.logicalKey==LogicalKeyboardKey.alt)) {
+      if(_altTabManager.isActive) {
+        _altTabManager.end();
+        setState(() {});
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Provider.of<ThemeProvider>(context);
@@ -288,7 +316,11 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final primaryColor = theme.primaryColor;
     return WindowManagerProvider(
       manager: _windowManager,
-      child: FloatingWindowManager(
+      child: KeyboardListener(
+        focusNode: _desktopKeyboardFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleGlobalKey,
+        child: FloatingWindowManager(
         key: _windowManagerKey,
         windowManager: _windowManager,
         child: Scaffold(
@@ -319,7 +351,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         )),
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
         if (_showStartMenu) _buildStartMenu(theme, isDark, primaryColor),
+        if (_altTabManager.isActive)
+          AltTabOverlay(manager:_windowManager,selectedId:_altTabManager.selectedId),
       ]),
+        ),
         ),
       ),
     );
