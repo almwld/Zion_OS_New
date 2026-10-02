@@ -232,6 +232,7 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     }
   }
 
+  static Future<void> initializeRuntime() async => _config();
   static Future<void> _config() async {
     await Directory(home).create(recursive:true);
     await File(home+'/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
