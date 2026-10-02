@@ -98,14 +98,13 @@ static void prepare_environment(void) {
     setenv("COLORTERM", "truecolor", 1);
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C.UTF-8", 1);
-    setenv("SHELL", "/system/bin/sh", 1);
+    setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1);
     setenv("ZION_TERMINAL", "1", 1);
 }
 
 static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\\0') return 0;
-    return strcmp(shell, "/system/bin/sh") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
+    return strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
@@ -121,7 +120,6 @@ static const char *select_shell(const char *configured_shell) {
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
         "/data/data/com.zion.os/files/usr/bin/ash",
-        "/system/bin/sh",
         NULL
     };
     for (int i = 0; fallbacks[i] != NULL; ++i) {
