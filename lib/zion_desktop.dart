@@ -205,7 +205,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     return switch (name) {
       'ARSENAL' => const ArsenalScreen(),
       'CONTROL' => const ZionControlCenter(),
-      'WIFI' => const WiFiScannerApp(),
+      'WIFI' => const ZionWifiPanel(),
       'EXPLOIT' || 'CRACKER' || 'DDOS' || 'DATABASE' || 'CLOUD' => const ArsenalScreen(),
       'TERMINAL' => const TerminalScreen(),
       'MAGICZIONOS' => const MagiczionosInstallerScreen(),
