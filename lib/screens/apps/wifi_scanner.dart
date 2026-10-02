@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/zion_colors.dart';
 
@@ -37,20 +38,26 @@ class _WiFiScannerAppState extends State<WiFiScannerApp> {
       return;
     }
 
-    if (await Permission.nearbyWifiDevices.isDenied) {
-      await Permission.nearbyWifiDevices.request();
-    }
-    final nearby = await Permission.nearbyWifiDevices.status;
-    if (nearby.isDenied || nearby.isPermanentlyDenied) {
-      if (!mounted) return;
-      setState(() {
-        _status = 'PERMISSION_REQUIRED';
-        _reason = nearby.isPermanentlyDenied
-            ? 'تم رفض إذن الأجهزة القريبة نهائيًا. افتح إعدادات التطبيق للسماح بفحص Wi-Fi.'
-            : 'يجب السماح للأجهزة القريبة حتى يستطيع Android إرجاع شبكات Wi-Fi.';
-        _networks = const [];
-      });
-      return;
+    // NEARBY_WIFI_DEVICES is only a runtime permission on Android 13+.
+    // Do not query/request it on Android 11/12; permission_handler may throw
+    // or report a misleading state on devices where the permission does not
+    // exist, which previously could abort this screen during initState.
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+      if (sdk >= 33) {
+        final nearby = await Permission.nearbyWifiDevices.request();
+        if (!nearby.isGranted) {
+          if (!mounted) return;
+          setState(() {
+            _status = 'PERMISSION_REQUIRED';
+            _reason = nearby.isPermanentlyDenied
+                ? 'تم رفض إذن الأجهزة القريبة نهائيًا. افتح إعدادات التطبيق للسماح بفحص Wi-Fi.'
+                : 'يجب السماح للأجهزة القريبة حتى يستطيع Android إرجاع شبكات Wi-Fi.';
+            _networks = const [];
+          });
+          return;
+        }
+      }
     }
 
     await _scanWiFi();
