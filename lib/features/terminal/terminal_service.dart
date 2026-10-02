@@ -107,19 +107,19 @@ class TerminalService {
   }
 
   Future<String?> _findShell() async {
-    // Prefer an installed Zion userland shell; keep Android's system shell
-    // as a last-resort fallback when no bundled shell exists.
+    // Zion Terminal is a real Userland terminal. Android /system/bin/sh is
+    // intentionally NOT a fallback: running it would break the Termux-like
+    // contract (job control, Userland paths, package environment).
     const candidates = <String>[
       '/data/data/com.zion.os/files/usr/bin/bash',
       '/data/data/com.zion.os/files/usr/bin/zsh',
       '/data/data/com.zion.os/files/usr/bin/fish',
       '/data/data/com.zion.os/files/usr/bin/ash',
-      '/system/bin/sh',
-      '/bin/sh',
-      'sh',
     ];
     for (final candidate in candidates) {
       try {
+        final stat = await File(candidate).stat();
+        if (stat.type != FileSystemEntityType.file) continue;
         final result = await Process.run(
           candidate,
           const <String>['-c', 'exit 0'],
@@ -328,10 +328,10 @@ class TerminalService {
       return false;
     }
 
-    // Prefer Dart's Android Process API for the interactive session.
-    // This avoids forking the Flutter/ART process from native JNI during UI
-    // startup, which is unsafe on some Android runtimes.
-    // The native PTY adapter remains available for explicit PTY features.
+    // The interactive terminal must use the native PTY. A pipe-backed
+    // Process.start() session is not a terminal: it cannot provide job
+    // control, TTY ioctls, correct resize semantics, or reliable interactive
+    // programs such as vim/top/nano.
     try {
       final environment = <String, String>{
         'HOME': environmentDirs.home,
@@ -345,34 +345,26 @@ class TerminalService {
         'SHELL': shell,
         'ZION_TERMINAL': '1',
       };
-      final process = await Process.start(
-        shell,
-        const <String>['-i'],
-        runInShell: false,
-        workingDirectory: '/data/data/com.zion.os/files/home',
-        environment: environment,
-      );
-      _interactiveProcess = process;
-      await _interactiveStdoutSub?.cancel();
-      await _interactiveStderrSub?.cancel();
-      _interactiveStdoutSub = process.stdout
-          .transform(utf8.decoder)
-          .listen(_output.add, onError: (Object error, StackTrace stack) {
-        _output.add('\\r\\n[STDOUT ERROR] $error\\r\\n');
-      });
-      _interactiveStderrSub = process.stderr
-          .transform(utf8.decoder)
-          .listen((data) => _output.add(data), onError: (Object error, StackTrace stack) {
-        _output.add('\\r\\n[STDERR ERROR] $error\\r\\n');
-      });
-      unawaited(process.exitCode.then((code) {
-        if (identical(_interactiveProcess, process)) {
-          _interactiveProcess = null;
-          _output.add('\\r\\n[Shell exited: $code]\\r\\n');
-        }
-      }));
+      final ptyAvailable = await _pty.isAvailable();
+      if (!ptyAvailable) {
+        _output.add('ERROR: Zion PTY is unavailable on this Android runtime.\\r\\n');
+        return false;
+      }
+      final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
+      if (!startedPty) {
+        _output.add('ERROR: Unable to start Zion Userland PTY: $shell\\r\\n');
+        _audit(
+          command: '<interactive-start>',
+          outcome: 'process-error',
+          exitCode: 126,
+          shell: shell,
+          duration: DateTime.now().difference(started),
+          interactive: true,
+        );
+        return false;
+      }
       _interactiveInputBuffer = '';
-      _output.add('Connected to Android shell: $shell\\r\\n');
+      _output.add('Connected to Zion Userland: $shell • PTY\\r\\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -383,8 +375,7 @@ class TerminalService {
       );
       return true;
     } on ProcessException catch (e) {
-      _interactiveProcess = null;
-      _output.add('ERROR: Unable to start interactive shell: ${e.message}\\r\\n');
+      _output.add('ERROR: Unable to start Zion Userland PTY: ${e.message}\\r\\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -395,22 +386,15 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _interactiveProcess = null;
-      _output.add('ERROR: Unable to start interactive shell: $e\\r\\n');
+      _output.add('ERROR: Unable to start Zion Userland PTY: $e\\r\\n');
       return false;
     }
   }
 
   void write(String input) {
     if (input.isEmpty) return;
-    if (_pty.isRunning) {
-      unawaited(_pty.write(input));
-    } else {
-      final process = _interactiveProcess;
-      if (process == null) return;
-      process.stdin.write(input);
-      unawaited(process.stdin.flush());
-    }
+    if (!_pty.isRunning) return;
+    unawaited(_pty.write(input));
     final parts = (_interactiveInputBuffer + input).split('\\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
@@ -422,20 +406,18 @@ class TerminalService {
   }
 
   Future<bool> resizeInteractive({required int rows, required int cols}) async {
-    if (_pty.isRunning) return _pty.resize(rows: rows, cols: cols);
-    return false;
+    if (!_pty.isRunning) return false;
+    return _pty.resize(rows: rows, cols: cols);
   }
 
   Future<void> stopInteractive() async {
-    final process = _interactiveProcess;
     _interactiveProcess = null;
     await _interactiveStdoutSub?.cancel();
     await _interactiveStderrSub?.cancel();
     _interactiveStdoutSub = null;
     _interactiveStderrSub = null;
-    if (process != null) {
-      process.kill(ProcessSignal.sigterm);
-      _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'process-shell', duration: Duration.zero, interactive: true);
+    if (_pty.isRunning) {
+      _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'zion-userland-pty', duration: Duration.zero, interactive: true);
     }
     await _pty.stop();
     await _ptyOutputSub?.cancel();
