@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(zion_pty SHARED zion_pty.c)
 find_library(log-lib log)
-target_link_libraries(zionpty ${log-lib})
+target_link_libraries(zion_pty ${log-lib})
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
   include(FetchContent)
