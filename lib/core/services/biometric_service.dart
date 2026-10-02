@@ -1,12 +1,12 @@
 import 'package:local_auth/local_auth.dart';
+import 'package:flutter/services.dart';
 
-/// Real device biometric integration for Android.
-///
-/// This service intentionally delegates authentication to Android's secure
-/// biometric prompt through the `local_auth` plugin instead of simulating
-/// availability or successful authentication.
+/// Real device biometric integration for the Zion OS lock screen.
+/// Authentication is delegated to Android's secure biometric/device-credential
+/// prompt. No biometric material is stored or transmitted by the app.
 class BiometricService {
-  BiometricService({LocalAuthentication? auth}) : _auth = auth ?? LocalAuthentication();
+  BiometricService({LocalAuthentication? auth})
+      : _auth = auth ?? LocalAuthentication();
 
   final LocalAuthentication _auth;
 
@@ -14,16 +14,26 @@ class BiometricService {
     try {
       final supported = await _auth.isDeviceSupported();
       final canCheck = await _auth.canCheckBiometrics;
-      return supported && canCheck;
+      if (!supported || !canCheck) return false;
+      final enrolled = await _auth.getAvailableBiometrics();
+      return enrolled.isNotEmpty;
     } catch (_) {
       return false;
     }
   }
 
-  Future<bool> authenticate({String reason = 'التحقق من هويتك للوصول إلى Zion OS'}) async {
+  Future<BiometricAuthResult> authenticateResult({
+    String reason = 'التحقق من هويتك للوصول إلى Zion OS',
+  }) async {
     try {
-      if (!await isAvailable()) return false;
-      return await _auth.authenticate(
+      if (!await isAvailable()) {
+        return const BiometricAuthResult(
+          success: false,
+          error: 'البصمة غير متاحة أو لم يتم تسجيلها على هذا الجهاز',
+        );
+      }
+
+      final authenticated = await _auth.authenticate(
         localizedReason: reason,
         options: const AuthenticationOptions(
           biometricOnly: false,
@@ -32,9 +42,28 @@ class BiometricService {
           sensitiveTransaction: true,
         ),
       );
-    } catch (_) {
-      return false;
+
+      return authenticated
+          ? const BiometricAuthResult(success: true)
+          : const BiometricAuthResult(
+              success: false,
+              error: 'لم يتم التحقق من الهوية',
+            );
+    } on PlatformException catch (e) {
+      return BiometricAuthResult(success: false, error: _errorMessage(e));
+    } catch (e) {
+      return BiometricAuthResult(
+        success: false,
+        error: 'تعذر استخدام المصادقة البيومترية: $e',
+      );
     }
+  }
+
+  Future<bool> authenticate({
+    String reason = 'التحقق من هويتك للوصول إلى Zion OS',
+  }) async {
+    final result = await authenticateResult(reason: reason);
+    return result.success;
   }
 
   Future<List<BiometricType>> getAvailableBiometrics() async {
@@ -44,4 +73,34 @@ class BiometricService {
       return const <BiometricType>[];
     }
   }
+
+  String _errorMessage(PlatformException e) {
+    switch (e.code) {
+      case 'NotAvailable':
+      case 'notAvailable':
+        return 'البصمة غير متاحة على هذا الجهاز';
+      case 'NotEnrolled':
+      case 'notEnrolled':
+        return 'لم يتم تسجيل بصمة على هذا الجهاز';
+      case 'LockedOut':
+      case 'lockedOut':
+        return 'تم قفل المصادقة البيومترية مؤقتاً. استخدم PIN أو حاول لاحقاً';
+      case 'PermanentlyLockedOut':
+      case 'permanentlyLockedOut':
+        return 'تم قفل المصادقة البيومترية. استخدم PIN';
+      case 'UserCanceled':
+      case 'userCanceled':
+        return 'تم إلغاء المصادقة';
+      default:
+        return e.message?.isNotEmpty == true
+            ? 'فشل التحقق: ${e.message}'
+            : 'فشل التحقق البيومتري';
+    }
+  }
+}
+
+class BiometricAuthResult {
+  const BiometricAuthResult({required this.success, this.error});
+  final bool success;
+  final String? error;
 }

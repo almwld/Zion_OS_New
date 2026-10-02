@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/services/biometric_service.dart';
+
 import '../providers/theme_provider.dart';
 import '../security/core/security_core.dart';
 import '../security/core/security_event.dart';
@@ -29,11 +31,13 @@ class _LockScreenState extends State<LockScreen> {
   int _failedAttempts = 0;
   DateTime? _lockedUntil;
   bool _isAuthenticating = false;
+  bool _biometricAvailable = false;
 
   @override
   void initState() {
     super.initState();
     _updateDateTime();
+    _checkBiometricAvailability();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) _updateDateTime();
     });
@@ -46,6 +50,39 @@ class _LockScreenState extends State<LockScreen> {
       _currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
       _currentDate = '${now.day}/${now.month}/${now.year}';
     });
+  }
+
+  Future<void> _checkBiometricAvailability() async {
+    final available = await BiometricService().isAvailable();
+    if (!mounted) return;
+    setState(() => _biometricAvailable = available);
+  }
+
+  Future<void> _authenticateWithBiometric() async {
+    if (_isAuthenticating || !_biometricAvailable) return;
+    final theme = context.read<ThemeProvider>();
+    if (!theme.isReady) return;
+
+    setState(() {
+      _isAuthenticating = true;
+      _errorMessage = '';
+    });
+
+    final result = await BiometricService().authenticateResult(
+      reason: 'قم بمسح بصمتك للدخول إلى Zion OS',
+    );
+    if (!mounted) return;
+
+    if (result.success) {
+      _publishLockEvent('lock.biometric', 'success');
+      _completeAuthentication();
+    } else {
+      setState(() {
+        _isAuthenticating = false;
+        _errorMessage = result.error ?? 'فشل التحقق البيومتري';
+      });
+      _publishLockEvent('lock.biometric', 'failure');
+    }
   }
 
   void _publishLockEvent(String type, String outcome) {
@@ -260,7 +297,7 @@ class _LockScreenState extends State<LockScreen> {
                         _buildButton('1', foreground, surface), _buildButton('2', foreground, surface), _buildButton('3', foreground, surface),
                         _buildButton('4', foreground, surface), _buildButton('5', foreground, surface), _buildButton('6', foreground, surface),
                         _buildButton('7', foreground, surface), _buildButton('8', foreground, surface), _buildButton('9', foreground, surface),
-                        _buildButton('', foreground, surface), _buildButton('0', foreground, surface), _buildButton('⌫', foreground, surface),
+                        _buildBiometricButton(foreground, surface), _buildButton('0', foreground, surface), _buildButton('⌫', foreground, surface),
                       ],
                     ),
                   ),
@@ -272,6 +309,41 @@ class _LockScreenState extends State<LockScreen> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBiometricButton(Color foreground, Color surface) {
+    if (!_biometricAvailable) {
+      return const SizedBox.shrink();
+    }
+
+    return GestureDetector(
+      onTap: _isAuthenticating ? null : _authenticateWithBiometric,
+      child: Container(
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: const Color(0xFF00BCD4).withOpacity(0.3),
+          ),
+        ),
+        child: Center(
+          child: _isAuthenticating
+              ? const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF00BCD4),
+                  ),
+                )
+              : const Icon(
+                  Icons.fingerprint,
+                  size: 38,
+                  color: Color(0xFF00BCD4),
+                ),
         ),
       ),
     );
