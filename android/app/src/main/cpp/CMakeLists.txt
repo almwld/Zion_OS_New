@@ -3,7 +3,7 @@ project(zion_native LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(zionpty SHARED zion_pty.c)
+add_library(zion_pty SHARED zion_pty.c)
 find_library(log-lib log)
 target_link_libraries(zionpty ${log-lib})
 

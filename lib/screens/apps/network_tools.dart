@@ -18,6 +18,7 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
   final TextEditingController _dnsController = TextEditingController();
   String _dnsResult = '';
   bool _isDnsLookup = false;
+  String _networkStatus = 'جارٍ فحص الشبكة…';
   
   // Traceroute
   final TextEditingController _traceController = TextEditingController();
@@ -52,7 +53,7 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
       });
     } catch (e) {
       setState(() {
-        _dnsResult = 'Error: $e';
+        _dnsResult = 'تعذر تنفيذ DNS Lookup: $e\nتحقق من توفر nslookup محلياً أو من اتصال الشبكة.';
         _isDnsLookup = false;
       });
     }
@@ -164,6 +165,35 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _checkNetworkStatus();
+  }
+
+  Future<void> _checkNetworkStatus() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        includeLinkLocal: true,
+      );
+      if (interfaces.isEmpty) {
+        if (mounted) setState(() => _networkStatus = 'بدون شبكة — الأدوات المحلية متاحة');
+        return;
+      }
+      try {
+        final socket = await Socket.connect('1.1.1.1', 53)
+            .timeout(const Duration(seconds: 3));
+        socket.destroy();
+        if (mounted) setState(() => _networkStatus = 'الإنترنت متاح');
+      } catch (_) {
+        if (mounted) setState(() => _networkStatus = 'شبكة محلية فقط — لا يوجد إنترنت');
+      }
+    } catch (_) {
+      if (mounted) setState(() => _networkStatus = 'حالة الشبكة غير متاحة — الأدوات المحلية متاحة');
+    }
+  }
+
+  @override
   void dispose() {
     _dnsController.dispose();
     _traceController.dispose();
@@ -190,13 +220,36 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
           tabs: _tools.map((tool) => Tab(text: tool)).toList(),
         ),
       ),
-      body: IndexedStack(
+      body: Column(
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            color: const Color(0xFF101923),
+            child: Row(
+              children: [
+                const Icon(Icons.network_check, size: 16, color: Color(0xFF00BCD4)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_networkStatus, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ),
+                IconButton(
+                  tooltip: 'تحديث حالة الشبكة',
+                  icon: const Icon(Icons.refresh, size: 17, color: Color(0xFF00BCD4)),
+                  onPressed: _checkNetworkStatus,
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: IndexedStack(
         index: _selectedTool,
         children: [
           _buildDnsTab(),
           _buildTracerouteTab(),
           _buildWhoisTab(),
           _buildIpInfoTab(),
+        ],
+          ),
         ],
       ),
     );

@@ -72,7 +72,7 @@ class MainActivity : FlutterFragmentActivity() {
     private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
 
     companion object {
-        init { System.loadLibrary("zionpty") }
+        init { System.loadLibrary("zion_pty") }
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val WIFI_CHANNEL = "zion.os/wifi"
         private const val PTY_CHANNEL = "zion.os/pty"
@@ -201,7 +201,7 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "write" -> {
                         val handle = call.argument<Int>("handle") ?: 0
-                        val input = call.argument<String>("input") ?: ""
+                        val input = call.argument<ByteArray>("input") ?: byteArrayOf()
                         result.success(writeTerminal(handle, input))
                     }
                     "resize" -> {
@@ -301,7 +301,6 @@ class MainActivity : FlutterFragmentActivity() {
     }
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
         ensureTerminalEnvironment()
-        if (android.os.Build.VERSION.SDK_INT <= 30) return startProcessTerminal(shell)
         if (!nativePtyAvailable()) return 0
         return try {
             val handle = nativeStartPty(rows, cols, shell)
@@ -317,7 +316,7 @@ class MainActivity : FlutterFragmentActivity() {
                         terminalSink?.success(
                             mapOf(
                                 "sessionId" to handle,
-                                "data" to String(data, Charsets.UTF_8),
+                                "data" to data,
                             )
                         )
                     }
@@ -338,93 +337,10 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun startProcessTerminal(shell: String?): Int {
-        val home = File(filesDir, "home").apply { mkdirs() }
-        val prefix = File(filesDir, "usr").apply { mkdirs() }
-        val allowedShells = listOf(
-            prefix.resolve("bin/bash").absolutePath,
-            prefix.resolve("bin/zsh").absolutePath,
-            prefix.resolve("bin/fish").absolutePath,
-            prefix.resolve("bin/ash").absolutePath,
-            "/system/bin/sh",
-            "/bin/sh",
-        )
-        val requested = shell?.trim().orEmpty()
-        val resolved = ((if (requested.isNotEmpty()) listOf(requested) else emptyList()) + allowedShells)
-            .distinct()
-            .firstOrNull { candidate -> allowedShells.contains(candidate) && File(candidate).exists() }
-            ?: return 0
-
+    private fun writeTerminal(handle: Int, input: ByteArray): Boolean {
+        if (handle <= 0 || input.isEmpty()) return false
         return try {
-            File(filesDir, "tmp").mkdirs()
-            File(filesDir, "etc").mkdirs()
-            val builder = ProcessBuilder(resolved, "-i")
-                .directory(home)
-                .redirectErrorStream(true)
-            builder.environment().apply {
-                put("HOME", home.absolutePath)
-                put("PREFIX", prefix.absolutePath)
-                put("TERMUX_HOME", home.absolutePath)
-                put("TMPDIR", File(filesDir, "tmp").absolutePath)
-                put("PATH", "${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin")
-                put("LD_LIBRARY_PATH", "${prefix.absolutePath}/lib:${prefix.absolutePath}/lib64")
-                put("TERM", "xterm-256color")
-                put("COLORTERM", "truecolor")
-                put("LANG", "C.UTF-8")
-                put("LC_ALL", "C.UTF-8")
-                put("SHELL", resolved)
-                put("ZION_TERMINAL", "1")
-            }
-            val process = builder.start()
-            val handle = nextProcessTerminalHandle++
-            terminalProcesses[handle] = process
-            terminalReaders[handle] = Thread {
-                try {
-                    val buffer = ByteArray(8192)
-                    val input = process.inputStream
-                    while (!Thread.currentThread().isInterrupted) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        if (count == 0) continue
-                        val output = String(buffer, 0, count, Charsets.UTF_8)
-                        Handler(Looper.getMainLooper()).post {
-                            terminalSink?.success(mapOf("sessionId" to handle, "data" to output))
-                        }
-                    }
-                } catch (_: Throwable) {
-                    // Normal during terminal shutdown; never propagate to the host.
-                } finally {
-                    terminalProcesses.remove(handle)
-                    terminalReaders.remove(handle)
-                    Handler(Looper.getMainLooper()).post {
-                        terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
-                    }
-                }
-            }.apply {
-                name = "zion-process-terminal-$handle"
-                isDaemon = true
-                start()
-            }
-            handle
-        } catch (_: Throwable) {
-            0
-        }
-    }
-
-    private fun writeTerminal(handle: Int, input: String): Boolean {
-        if (handle <= 0) return false
-        terminalProcesses[handle]?.let { process ->
-            return try {
-                process.outputStream.write(input.toByteArray(Charsets.UTF_8))
-                process.outputStream.flush()
-                true
-            } catch (_: Throwable) {
-                false
-            }
-        }
-        return try {
-            val data = input.toByteArray(Charsets.UTF_8)
-            nativeWritePty(handle, data) == data.size
+            nativeWritePty(handle, input) == input.size
         } catch (_: Throwable) {
             false
         }

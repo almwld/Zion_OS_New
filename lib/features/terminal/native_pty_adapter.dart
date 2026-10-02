@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
 class NativePtyAdapter {
-  NativePtyAdapter()
-      : _channel = const MethodChannel('zion.os/pty');
+  NativePtyAdapter() : _channel = const MethodChannel('zion.os/pty');
 
   static final Stream<dynamic> _sharedEvents =
       const EventChannel('zion.os/pty/events').receiveBroadcastStream();
@@ -12,9 +13,11 @@ class NativePtyAdapter {
   final MethodChannel _channel;
   StreamSubscription<dynamic>? _subscription;
   final StreamController<String> _output = StreamController<String>.broadcast();
+  final StreamController<List<int>> _rawBytes =
+      StreamController<List<int>>.broadcast();
+  StreamSubscription<String>? _decoderSubscription;
   int? _handle;
   bool _running = false;
-  final List<Map<dynamic, dynamic>> _pendingEvents = <Map<dynamic, dynamic>>[];
 
   Stream<String> get output => _output.stream;
   bool get isRunning => _running;
@@ -34,18 +37,24 @@ class NativePtyAdapter {
     if (_running) return true;
     if (!await isAvailable()) return false;
 
+    _decoderSubscription ??= _rawBytes
+        .transform(const Utf8Decoder(allowMalformed: true))
+        .listen(_output.add);
+
     _subscription ??= _sharedEvents.listen(
       (dynamic value) {
-        if (value is Map) {
-          final id = value['sessionId'];
-          if (id == _handle && value['data'] != null) {
-            _output.add(value['data'].toString());
-          } else if (_handle == null && value['data'] != null) {
-            _pendingEvents.add(Map<dynamic, dynamic>.from(value));
-          }
-          if (id == _handle && value['closed'] == true) {
-            _running = false;
-          }
+        if (value is! Map) return;
+        final id = value['sessionId'];
+        if (id != _handle) return;
+        if (value['closed'] == true) {
+          _running = false;
+          return;
+        }
+        final data = value['data'];
+        if (data is Uint8List) {
+          _rawBytes.add(data);
+        } else if (data is List<int>) {
+          _rawBytes.add(data);
         }
       },
       onError: (Object error, StackTrace stack) {
@@ -68,13 +77,6 @@ class NativePtyAdapter {
       }
       _handle = handle;
       _running = true;
-      if (_pendingEvents.isNotEmpty) {
-        final pending = List<Map<dynamic, dynamic>>.from(_pendingEvents);
-        _pendingEvents.clear();
-        for (final event in pending) {
-          if (event['data'] != null) _output.add(event['data'].toString());
-        }
-      }
       return true;
     } on PlatformException {
       await stop();
@@ -85,13 +87,16 @@ class NativePtyAdapter {
     }
   }
 
-  Future<void> write(String input) async {
+  Future<void> write(String input) =>
+      writeBytes(Uint8List.fromList(utf8.encode(input)));
+
+  Future<void> writeBytes(Uint8List bytes) async {
     final handle = _handle;
-    if (!_running || handle == null) return;
+    if (!_running || handle == null || bytes.isEmpty) return;
     try {
       await _channel.invokeMethod<void>('write', <String, Object>{
         'handle': handle,
-        'input': input,
+        'input': bytes,
       });
     } on PlatformException {
       _running = false;
@@ -117,13 +122,15 @@ class NativePtyAdapter {
   }
 
   Future<void> stop() async {
-    _pendingEvents.clear();
     final handle = _handle;
     _handle = null;
     _running = false;
     if (handle != null) {
       try {
-        await _channel.invokeMethod<void>('stop', <String, Object>{'handle': handle});
+        await _channel.invokeMethod<void>(
+          'stop',
+          <String, Object>{'handle': handle},
+        );
       } catch (_) {}
     }
   }
@@ -132,6 +139,9 @@ class NativePtyAdapter {
     await stop();
     await _subscription?.cancel();
     _subscription = null;
+    await _decoderSubscription?.cancel();
+    _decoderSubscription = null;
+    await _rawBytes.close();
     await _output.close();
   }
 }
