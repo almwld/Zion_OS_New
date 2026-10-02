@@ -20,7 +20,6 @@ import 'screens/apps/maps_app.dart';
 import 'screens/apps/radio_app.dart';
 import 'screens/apps/video_player_app.dart';
 import 'screens/apps/translator_app.dart';
-import 'screens/apps/wifi_scanner.dart';
 import 'src/features/wifi/zion_wifi_panel.dart';
 import 'screens/apps/currency_converter.dart';
 import 'screens/apps/date_calculator.dart';
