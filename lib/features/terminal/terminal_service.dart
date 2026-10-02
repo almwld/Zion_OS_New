@@ -300,21 +300,51 @@ class TerminalService {
       return false;
     }
 
-    // Android 11 uses the safe ProcessBuilder shell path in MainActivity;
-    // newer Android releases use the native PTY bridge when available.
-    // Both paths execute a real shell process; the PTY path additionally
-    // provides a controlling terminal and real window-size updates.
+    // Prefer Dart's Android Process API for the interactive session.
+    // This avoids forking the Flutter/ART process from native JNI during UI
+    // startup, which is unsafe on some Android runtimes.
+    // The native PTY adapter remains available for explicit PTY features.
     try {
-      final ptyStarted = await _pty.start(rows: 32, cols: 120, shell: shell);
-      if (!ptyStarted) {
-        _output.add('ERROR: Unable to start native PTY shell.\\r\\n');
-        return false;
-      }
-
-      await _ptyOutputSub?.cancel();
-      _ptyOutputSub = _pty.output.listen(_output.add);
+      final environment = <String, String>{
+        'HOME': '/data/data/com.zion.os/files/home',
+        'PREFIX': '/data/data/com.zion.os/files/usr',
+        'TMPDIR': '/data/data/com.zion.os/files/tmp',
+        'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin',
+        'TERM': 'xterm-256color',
+        'COLORTERM': 'truecolor',
+        'LANG': 'C.UTF-8',
+        'LC_ALL': 'C.UTF-8',
+        'SHELL': shell,
+        'ZION_TERMINAL': '1',
+      };
+      final process = await Process.start(
+        shell,
+        const <String>['-i'],
+        runInShell: false,
+        workingDirectory: '/data/data/com.zion.os/files/home',
+        environment: environment,
+      );
+      _interactiveProcess = process;
+      await _interactiveStdoutSub?.cancel();
+      await _interactiveStderrSub?.cancel();
+      _interactiveStdoutSub = process.stdout
+          .transform(utf8.decoder)
+          .listen(_output.add, onError: (Object error, StackTrace stack) {
+        _output.add('\\r\\n[STDOUT ERROR] $error\\r\\n');
+      });
+      _interactiveStderrSub = process.stderr
+          .transform(utf8.decoder)
+          .listen((data) => _output.add(data), onError: (Object error, StackTrace stack) {
+        _output.add('\\r\\n[STDERR ERROR] $error\\r\\n');
+      });
+      unawaited(process.exitCode.then((code) {
+        if (identical(_interactiveProcess, process)) {
+          _interactiveProcess = null;
+          _output.add('\\r\\n[Shell exited: $code]\\r\\n');
+        }
+      }));
       _interactiveInputBuffer = '';
-      _output.add('Connected to Android PTY shell: $shell\\r\\n');
+      _output.add('Connected to Android shell: $shell\\r\\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -324,9 +354,21 @@ class TerminalService {
         interactive: true,
       );
       return true;
+    } on ProcessException catch (e) {
+      _interactiveProcess = null;
+      _output.add('ERROR: Unable to start interactive shell: ${e.message}\\r\\n');
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'process-error',
+        exitCode: 126,
+        shell: shell,
+        duration: DateTime.now().difference(started),
+        interactive: true,
+      );
+      return false;
     } catch (e) {
-      await _pty.stop();
-      _output.add('ERROR: Unable to start PTY shell: $e\\r\\n');
+      _interactiveProcess = null;
+      _output.add('ERROR: Unable to start interactive shell: $e\\r\\n');
       return false;
     }
   }
