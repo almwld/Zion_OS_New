@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ffi';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import '../../security/core/security_core.dart';
@@ -20,6 +21,127 @@ class ZionBootstrap {
   static const _maxArchiveBytes=256*1024*1024, _maxFiles=20000;
   const ZionBootstrap({SecurityCore? securityCore}):_securityCore=securityCore;
   final SecurityCore? _securityCore;
+  static const _backupRoot = base + '/.bootstrap-backups';
+  static const _maxBackups = 2;
+
+  static bool isSupportedAndroidAbi() {
+    final abi = Abi.current();
+    return abi == Abi.androidArm64 ||
+        abi == Abi.androidArm ||
+        abi == Abi.androidX64 ||
+        abi == Abi.androidX86;
+  }
+
+  static Future<BootstrapResult> prepareExistingUserlandBackup({
+    void Function(String message)? onProgress,
+  }) async {
+    if (!isSupportedAndroidAbi()) {
+      return BootstrapResult.failure('ABI غير مدعوم: ${Abi.current()}');
+    }
+    final current = Directory(prefix);
+    if (!await current.exists()) {
+      return BootstrapResult.failure('Zion Userland غير موجود على الجهاز: $prefix');
+    }
+    if (!await _hasUsableShell(current.path)) {
+      return BootstrapResult.failure('الـ bootstrap الموجود على الجهاز لا يحتوي Bash صالحاً.');
+    }
+    final root = Directory(_backupRoot);
+    await root.create(recursive: true);
+    final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(RegExp(r'[^0-9]'), '');
+    final backup = Directory(root.path + '/usr-' + stamp);
+    onProgress?.call('إنشاء نسخة احتياطية محلية من Userland الموجود على الجهاز...');
+    await _copyDirectory(current, backup);
+    final meta = File(backup.path + '/etc/zion-backup.json');
+    await meta.parent.create(recursive: true);
+    await meta.writeAsString(jsonEncode({
+      'format': 'zion-userland-backup-v1',
+      'abi': Abi.current().toString(),
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'sourcePrefix': prefix,
+      'sourceRelease': await _releaseValue(File(current.path + '/etc/zion-release.json')),
+    }), flush: true);
+    await _trimBackups();
+    await _config();
+    return BootstrapResult.success();
+  }
+
+  static Future<String> currentRelease() async =>
+      _releaseValue(File(prefix + '/etc/zion-release.json'));
+
+  static Future<bool> _hasUsableShell(String root) async {
+    final bash = File(root + '/bin/bash');
+    if (!await bash.exists()) return false;
+    try {
+      final r = await Process.run(bash.path, const ['-c', 'exit 0'], runInShell: false);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<String> _releaseValue(File marker) async {
+    if (!await marker.exists()) return 'unknown';
+    try {
+      final v = jsonDecode(await marker.readAsString());
+      return v is Map ? (v['release']?.toString() ?? 'unknown') : 'unknown';
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
+  static Future<void> _copyDirectory(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final name = entity.path.substring(source.path.length + 1);
+      final destination = target.path + '/' + name;
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(destination));
+      } else if (entity is File) {
+        await File(destination).parent.create(recursive: true);
+        await entity.copy(destination);
+      } else if (entity is Link) {
+        await Link(destination).parent.create(recursive: true);
+        await Link(destination).create(await entity.target());
+      }
+    }
+  }
+
+  static Future<void> _trimBackups() async {
+    final root = Directory(_backupRoot);
+    if (!await root.exists()) return;
+    final dirs = (await root.list(followLinks: false).where((e) => e is Directory).toList())
+        .cast<Directory>();
+    dirs.sort((a, b) => b.path.compareTo(a.path));
+    for (var i = _maxBackups; i < dirs.length; i++) {
+      try { await dirs[i].delete(recursive: true); } catch (_) {}
+    }
+  }
+
+  static Future<bool> restoreLatestBackup() async {
+    final root = Directory(_backupRoot);
+    if (!await root.exists()) return false;
+    final dirs = (await root.list(followLinks: false).where((e) => e is Directory).toList())
+        .cast<Directory>();
+    dirs.sort((a, b) => b.path.compareTo(a.path));
+    for (final backup in dirs) {
+      if (!await _hasUsableShell(backup.path)) continue;
+      final current = Directory(prefix);
+      final failed = Directory(base + '/.usr-failed-' + DateTime.now().microsecondsSinceEpoch.toString());
+      try {
+        if (await current.exists()) await current.rename(failed.path);
+        await backup.rename(current.path);
+        if (await failed.exists()) await failed.delete(recursive: true);
+        await _config();
+        return await isInstalled();
+      } catch (_) {
+        if (!await current.exists() && await failed.exists()) {
+          await failed.rename(current.path);
+        }
+      }
+    }
+    return false;
+  }
+
   static Future<bool> isInstalled() async {
     final marker=File(prefix+'/etc/zion-release.json'), pkg=File(prefix+'/bin/zion-pkg');
     if(!await marker.exists()||!await pkg.exists())return false;
