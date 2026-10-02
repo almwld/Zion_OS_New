@@ -168,6 +168,8 @@ class ZionUserlandInstaller {
         rethrow;
       }
 
+      await ZionBootstrap.initializeRuntime();
+
       if (!await File(ZionBootstrap.prefix + '/etc/zion-release.json').exists()) {
         throw const FileSystemException('Zion Userland marker was not created.');
       }
