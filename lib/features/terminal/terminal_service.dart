@@ -9,6 +9,7 @@ import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
+import '../../core/userland/zion_userland_installer.dart';
 
 class _TerminalEnvironment {
   const _TerminalEnvironment({required this.home, required this.prefix, required this.tmp});
@@ -319,10 +320,22 @@ class TerminalService {
     final started = DateTime.now();
     // Create app-local terminal directories before Process.start().
     await _ensureTerminalEnvironment();
-    final shell = await _findShell();
+    var shell = await _findShell();
     if (shell == null) {
-      _output.add('ERROR: No POSIX shell is available on this Android runtime.');
-      return false;
+      _output.add('Zion Userland غير مثبت — بدء Bootstrap آمن...\\r\\n');
+      final install = await const ZionUserlandInstaller().installLatest(
+        onProgress: (message) => _output.add('[Userland] ' + message + '\\r\\n'),
+      );
+      if (!install.success) {
+        _output.add('ERROR: ' + install.message + '\\r\\n');
+        return false;
+      }
+      shell = await _findShell();
+      if (shell == null) {
+        _output.add('ERROR: تم تثبيت Userland لكن Bash لم يصبح قابلاً للتنفيذ.\\r\\n');
+        return false;
+      }
+      _output.add('Zion Userland جاهز: ' + shell + '\\r\\n');
     }
 
     // The interactive terminal must use the native PTY. A pipe-backed
