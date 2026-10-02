@@ -37,7 +37,7 @@ class NativePtyAdapter {
     if (_running) return true;
     if (!await isAvailable()) return false;
 
-    _decoderSubscription ??= _rawBytes
+    _decoderSubscription ??= _rawBytes.stream
         .transform(const Utf8Decoder(allowMalformed: true))
         .listen(_output.add);
 

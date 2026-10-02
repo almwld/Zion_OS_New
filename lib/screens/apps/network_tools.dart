@@ -250,6 +250,7 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
           _buildIpInfoTab(),
         ],
           ),
+          ),
         ],
       ),
     );
