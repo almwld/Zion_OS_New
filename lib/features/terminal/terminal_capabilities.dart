@@ -9,9 +9,9 @@ class TerminalCapabilities {
   ];
 
   static String describe() => [
-    'REAL: native PTY on supported Android, safe real-shell fallback on Android 11',
+    'REAL: native PTY for Zion Userland sessions',
     'REAL: VT/xterm frontend with 3,000-line scrollback',
-    'REAL: Android /system/bin/sh fallback when no Zion userland shell exists',
+    'REQUIRED: Zion Userland shell (Bash/Zsh/Fish/Ash); Android /system/bin/sh is never used by the Zion Terminal',
     'RUNTIME_DEPENDENT: bash/zsh/fish/ash',
     'RUNTIME_DEPENDENT: pkg/apt/dpkg',
     'RUNTIME_DEPENDENT: proot/proot-distro',
