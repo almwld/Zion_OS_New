@@ -58,17 +58,14 @@ class TerminalService {
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
-  Process? _interactiveProcess;
   StreamSubscription<String>? _ptyOutputSub;
-  StreamSubscription<String>? _interactiveStdoutSub;
-  StreamSubscription<String>? _interactiveStderrSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
   String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
-  bool get isInteractiveRunning => _interactiveProcess != null || _pty.isRunning;
+  bool get isInteractiveRunning => _pty.isRunning;
   bool get isNativePtyRunning => _pty.isRunning;
 
   Future<void> loadHistory() async {
@@ -321,7 +318,7 @@ class TerminalService {
     }
     final started = DateTime.now();
     // Create app-local terminal directories before Process.start().
-    final environmentDirs = await _ensureTerminalEnvironment();
+    await _ensureTerminalEnvironment();
     final shell = await _findShell();
     if (shell == null) {
       _output.add('ERROR: No POSIX shell is available on this Android runtime.');
@@ -333,23 +330,13 @@ class TerminalService {
     // control, TTY ioctls, correct resize semantics, or reliable interactive
     // programs such as vim/top/nano.
     try {
-      final environment = <String, String>{
-        'HOME': environmentDirs.home,
-        'PREFIX': environmentDirs.prefix,
-        'TMPDIR': environmentDirs.tmp,
-        'PATH': environmentDirs.prefix + '/bin:' + environmentDirs.prefix + '/sbin:/system/bin:/system/xbin',
-        'TERM': 'xterm-256color',
-        'COLORTERM': 'truecolor',
-        'LANG': 'C.UTF-8',
-        'LC_ALL': 'C.UTF-8',
-        'SHELL': shell,
-        'ZION_TERMINAL': '1',
-      };
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
         _output.add('ERROR: Zion PTY is unavailable on this Android runtime.\\r\\n');
         return false;
       }
+      await _ptyOutputSub?.cancel();
+      _ptyOutputSub = _pty.output.listen(_output.add);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
         _output.add('ERROR: Unable to start Zion Userland PTY: $shell\\r\\n');
@@ -411,11 +398,6 @@ class TerminalService {
   }
 
   Future<void> stopInteractive() async {
-    _interactiveProcess = null;
-    await _interactiveStdoutSub?.cancel();
-    await _interactiveStderrSub?.cancel();
-    _interactiveStdoutSub = null;
-    _interactiveStderrSub = null;
     if (_pty.isRunning) {
       _audit(command: '<interactive-stop>', outcome: 'success', exitCode: 0, shell: 'zion-userland-pty', duration: Duration.zero, interactive: true);
     }
