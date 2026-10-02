@@ -1,6 +1,11 @@
 name: Build Zion Userland Bootstrap
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-zion-userland.yml'
+      - 'lib/core/userland/**'
   workflow_dispatch:
   schedule:
     - cron: '30 3 * * 0'
