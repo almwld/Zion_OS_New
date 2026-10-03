@@ -172,7 +172,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
             width: _size.width,
             height: _size.height,
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.95),
+              color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.98),
               borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
               border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
               boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
@@ -197,7 +197,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                   child: Container(
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0x2600BCD4),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.14),
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(_isMaximized ? 0 : 16),
                         topRight: Radius.circular(_isMaximized ? 0 : 16),
@@ -219,7 +219,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () => _toggleMaximize(context),
-                          child: Icon(_isMaximized ? Icons.filter_none : Icons.crop_square, color: const Color(0xFF00BCD4), size: 15),
+                          child: Icon(_isMaximized ? Icons.filter_none : Icons.crop_square, color: Theme.of(context).colorScheme.primary, size: 15),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
