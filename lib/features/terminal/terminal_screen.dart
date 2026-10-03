@@ -54,24 +54,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
         unawaited(_createTab(autoStart: true));
-        // Keep the local assistant ready in the background. No command is
-        // executed automatically; the model only prepares responses.
-        unawaited(_prepareLocalAi());
       }
     });
   }
 
   static const int _maxSessions = 8;
-
-  Future<void> _prepareLocalAi() async {
-    try {
-      final model = await _ai.autoLoadBestModel(threads: 4);
-      if (mounted) setState(() => _aiReady = model != null);
-    } catch (_) {
-      if (mounted) setState(() => _aiReady = false);
-    }
-  }
 
 
   Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
