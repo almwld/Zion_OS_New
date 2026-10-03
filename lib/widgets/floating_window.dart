@@ -50,6 +50,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
 
   Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
+    final safeTop = MediaQuery.paddingOf(context).top;
     final currentSize = size ?? _size;
     final maxX = (screen.width - currentSize.width).clamp(0.0, double.infinity).toDouble();
     final maxY = (screen.height - currentSize.height).clamp(0.0, double.infinity).toDouble();
@@ -85,8 +86,8 @@ class _FloatingWindowState extends State<FloatingWindow> {
       } else {
         _restoreSize = _size;
         _restorePosition = _position;
-        _position = Offset.zero;
-        _size = Size(screen.width, screen.height);
+        _position = Offset(0, safeTop + 6);
+        _size = Size(screen.width, (screen.height - safeTop - 6).clamp(_minHeight, screen.height));
         _isMaximized = true;
       }
       widget.onChanged(_size, _position);
@@ -110,8 +111,8 @@ class _FloatingWindowState extends State<FloatingWindow> {
       if (target == WindowSnapVisual.maximize) {
         _restoreSize = _size;
         _restorePosition = _position;
-        _position = Offset.zero;
-        _size = Size(screen.width, screen.height);
+        _position = Offset(0, safeTop + 6);
+        _size = Size(screen.width, (screen.height - safeTop - 6).clamp(_minHeight, screen.height));
         _isMaximized = true;
       } else {
         if (_isMaximized) _isMaximized = false;
@@ -190,7 +191,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                     if (!_isMaximized) widget.onChanged(_size, _position);
                   },
                   child: Container(
-                    height: 36,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: const Color(0x2600BCD4),
                       borderRadius: BorderRadius.only(
@@ -200,7 +201,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                     ),
                     child: Row(
                       children: [
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
                         ),
@@ -221,18 +222,44 @@ class _FloatingWindowState extends State<FloatingWindow> {
                           onTap: widget.onClose,
                           child: const Icon(Icons.close, color: Colors.red, size: 18),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         if (!_isMaximized)
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onPanUpdate: (details) => setState(() => _resize(context, _size.width + details.delta.dx, _size.height + details.delta.dy)),
-                            onPanEnd: (_) => widget.onChanged(_size, _position),
-                            child: const Padding(
-                              padding: EdgeInsets.all(4),
-                              child: Icon(Icons.drag_handle, color: Colors.white54, size: 18),
-                            ),
+                          _ResizeHandle(
+                            alignment: Alignment.topLeft,
+                            cursor: SystemMouseCursors.resizeUpLeft,
+                            onDrag: (d) => setState(() {
+                              final old = _size;
+                              final next = _clampSize(context, Size(old.width - d.dx, old.height - d.dy));
+                              _position += Offset(old.width - next.width, old.height - next.height);
+                              _size = next;
+                              _position = _clampPosition(context, _position, size: _size);
+                            }),
                           ),
-                        const SizedBox(width: 8),
+                        if (!_isMaximized)
+                          _ResizeHandle(
+                            alignment: Alignment.topRight,
+                            cursor: SystemMouseCursors.resizeUpRight,
+                            onDrag: (d) => setState(() => _resize(context, _size.width + d.dx, _size.height - d.dy)),
+                          ),
+                        if (!_isMaximized)
+                          _ResizeHandle(
+                            alignment: Alignment.bottomLeft,
+                            cursor: SystemMouseCursors.resizeDownLeft,
+                            onDrag: (d) => setState(() {
+                              final old = _size;
+                              final next = _clampSize(context, Size(old.width - d.dx, old.height + d.dy));
+                              _position += Offset(old.width - next.width, 0);
+                              _size = next;
+                              _position = _clampPosition(context, _position, size: _size);
+                            }),
+                          ),
+                        if (!_isMaximized)
+                          _ResizeHandle(
+                            alignment: Alignment.bottomRight,
+                            cursor: SystemMouseCursors.resizeDownRight,
+                            onDrag: (d) => setState(() => _resize(context, _size.width + d.dx, _size.height + d.dy)),
+                          ),
+                        const SizedBox(width: 4),
                       ],
                     ),
                   ),
@@ -256,3 +283,23 @@ class _FloatingWindowState extends State<FloatingWindow> {
 }
 
 enum WindowSnapVisual { left, right, maximize }
+
+class _ResizeHandle extends StatelessWidget {
+  const _ResizeHandle({required this.alignment, required this.cursor, required this.onDrag});
+  final Alignment alignment;
+  final MouseCursor cursor;
+  final ValueChanged<Offset> onDrag;
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: alignment,
+    child: MouseRegion(
+      cursor: cursor,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (details) => onDrag(details.delta),
+        onPanEnd: (_) {},
+        child: const SizedBox(width: 18, height: 18),
+      ),
+    ),
+  );
+}
