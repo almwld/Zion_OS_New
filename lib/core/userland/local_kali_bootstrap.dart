@@ -91,7 +91,20 @@ class ZionLocalKaliBootstrap {
 
     try {
       final direct = await findLocalPackage();
-      final discovered = direct == null ? await discoverPackages() : const <Map<String, dynamic>>[];
+      var discovered = direct == null ? await discoverPackages() : const <Map<String, dynamic>>[];
+      if (direct == null && discovered.isEmpty) {
+        // Android's scoped storage may hide another app's Download entry.
+        // Use the system document picker as a permission-safe fallback.
+        try {
+          final picked = await _storage.invokeMethod<Map<dynamic, dynamic>>('pickKaliPackage');
+          final pickedMap = picked == null ? null : Map<String, dynamic>.from(picked);
+          if (pickedMap?['available'] == true && pickedMap?['uri'] is String) {
+            discovered = <Map<String, dynamic>>[
+              <String, dynamic>{'uri': pickedMap!['uri']},
+            ];
+          }
+        } catch (_) {}
+      }
       if (direct == null && discovered.isEmpty) {
         progress(ZionKaliInstallState.notFound, 0,
             'لم يتم العثور على حزمة Kali المحلية.');
