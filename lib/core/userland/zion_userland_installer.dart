@@ -46,7 +46,7 @@ class ZionUserlandInstaller {
 
     return ZionUserlandInstallResult(
       success: false,
-      message: state.message +
+      message: (state.error ?? 'فشل تجهيز Zion Userland.') +
           ' لم يتم العثور على bootstrap صالح على الجهاز، ولن يتم تنزيله أو إنشاؤه من المستودع تلقائياً.',
     );
   }
