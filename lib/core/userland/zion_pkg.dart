@@ -170,7 +170,7 @@ class ZionPkg {
   Map<String, String> _env() => {
     'PREFIX': prefix,
     'HOME': home,
-    'PATH': prefix + '/bin:/system/bin:/system/xbin',
+    'PATH': prefix + '/bin:'+prefix+'/sbin',
     'TMPDIR': prefix + '/tmp',
   };
 

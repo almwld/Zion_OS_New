@@ -262,7 +262,7 @@ class ZionBootstrap {
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','tmp','etc','usr','usr/bin','usr/sbin','usr/etc','usr/include','usr/lib','usr/libexec','usr/share','usr/tmp','usr/var','usr/var/lib','usr/var/lib/zion-pkg','usr/var/cache','usr/var/log'])await Directory(root+'/'+p).create(recursive:true);}
   static final Map<String, String> _zionApiScripts = {
-    'zion-pkg': r'''#!/system/bin/sh
+    'zion-pkg': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 set -eu
 PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
 TOKEN_FILE="/data/data/com.zion.os/files/etc/zion-pkg.token"
@@ -296,7 +296,7 @@ rm -f "$out" "$status"
 exit 1
 ''',
 
-    'zion-api-dispatch': r'''#!/system/bin/sh
+    'zion-api-dispatch': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 set -eu
 PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
 RESULTS="$PREFIX/tmp/zion-api-results"
@@ -321,102 +321,102 @@ done
 echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API response timeout."}'
 exit 1
 ''',
-    'zion-api-battery': r'''#!/system/bin/sh
+    'zion-api-battery': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" battery
 ''',
-    'zion-api-device-info': r'''#!/system/bin/sh
+    'zion-api-device-info': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" device-info
 ''',
-    'zion-api-wifi-info': r'''#!/system/bin/sh
+    'zion-api-wifi-info': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wifi-info
 ''',
-    'zion-api-sensor': r'''#!/system/bin/sh
+    'zion-api-sensor': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 if [ -n "${1:-}" ]; then exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sensor --ei type "$1"; else exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sensor; fi
 ''',
-    'zion-api-camera-photo': r'''#!/system/bin/sh
+    'zion-api-camera-photo': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" camera-photo
 ''',
-    'zion-api-camera-info': r'''#!/system/bin/sh
+    'zion-api-camera-info': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" camera-info
 ''',
-    'zion-api-media-player': r'''#!/system/bin/sh
+    'zion-api-media-player': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 P="${1:?path required}"; M="${2:-*/*}"
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" media-player --es path "$P" --es mime "$M"
 ''',
-    'zion-api-audio-record': r'''#!/system/bin/sh
+    'zion-api-audio-record': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 if [ "${1:-start}" = "stop" ]; then exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" audio-record --ez stop true; else exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" audio-record --ez stop false; fi
 ''',
-    'zion-api-location': r'''#!/system/bin/sh
+    'zion-api-location': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" location
 ''',
-    'zion-api-gps-status': r'''#!/system/bin/sh
+    'zion-api-gps-status': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" gps-status
 ''',
-    'zion-api-notification': r'''#!/system/bin/sh
+    'zion-api-notification': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 T="${1:-Zion OS}"; C="${2:-}"
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" notification --es title "$T" --es content "$C"
 ''',
-    'zion-api-toast': r'''#!/system/bin/sh
+    'zion-api-toast': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" toast --es text "$*"
 ''',
-    'zion-api-dialog': r'''#!/system/bin/sh
+    'zion-api-dialog': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 T="${1:-Zion OS}"; M="${2:-}"
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" dialog --es title "$T" --es message "$M"
 ''',
-    'zion-api-vibrate': r'''#!/system/bin/sh
+    'zion-api-vibrate': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" vibrate --el durationMs "${1:-250}"
 ''',
-    'zion-api-clipboard-get': r'''#!/system/bin/sh
+    'zion-api-clipboard-get': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" clipboard-get
 ''',
-    'zion-api-clipboard-set': r'''#!/system/bin/sh
+    'zion-api-clipboard-set': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" clipboard-set --es text "$*"
 ''',
-    'zion-api-tts-speak': r'''#!/system/bin/sh
+    'zion-api-tts-speak': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" tts-speak --es text "$*"
 ''',
-    'zion-api-tts-stop': r'''#!/system/bin/sh
+    'zion-api-tts-stop': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" tts-stop
 ''',
-    'zion-api-sms-list': r'''#!/system/bin/sh
+    'zion-api-sms-list': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sms-list
 ''',
-    'zion-api-sms-send': r'''#!/system/bin/sh
+    'zion-api-sms-send': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 N="${1:?number required}"; shift
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" sms-send --es number "$N" --es body "$*"
 ''',
-    'zion-api-call': r'''#!/system/bin/sh
+    'zion-api-call': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" call --es number "${1:?number required}"
 ''',
-    'zion-api-contacts-list': r'''#!/system/bin/sh
+    'zion-api-contacts-list': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" contacts-list
 ''',
-    'zion-setup-storage': r'''#!/system/bin/sh
+    'zion-setup-storage': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" setup-storage
 ''',
-    'zion-api-storage-get': r'''#!/system/bin/sh
+    'zion-api-storage-get': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" storage-get
 ''',
-    'zion-api-file-share': r'''#!/system/bin/sh
+    'zion-api-file-share': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 P="${1:?path required}"; M="${2:-*/*}"
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" file-share --es path "$P" --es mime "$M"
 ''',
-    'zion-api-fingerprint': r'''#!/system/bin/sh
+    'zion-api-fingerprint': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" fingerprint
 ''',
-    'zion-api-keystore': r'''#!/system/bin/sh
+    'zion-api-keystore': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" keystore --es alias "${1:-zion-api}"
 ''',
-    'zion-api-wake-lock': r'''#!/system/bin/sh
+    'zion-api-wake-lock': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wake-lock --ez enabled true
 ''',
-    'zion-api-wake-unlock': r'''#!/system/bin/sh
+    'zion-api-wake-unlock': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wake-lock --ez enabled false
 ''',
-    'zion-api-job-scheduler': r'''#!/system/bin/sh
+    'zion-api-job-scheduler': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" job-scheduler --ei jobId "${1:-1}" --el delayMs "${2:-1000}"
 ''',
-    'zion-api-brightness': r'''#!/system/bin/sh
+    'zion-api-brightness': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightness --ei value "${1:?value 0..255 required}"
 ''',
   };
