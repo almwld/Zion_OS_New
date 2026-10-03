@@ -302,6 +302,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
         ),
         ),
       ),
+      ),
     );
   }
 }
