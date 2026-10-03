@@ -9,7 +9,7 @@ Flutter/Dart
 → ZionApiChannel.kt
 → Android framework APIs
 
-CLI commands in Zion Userland use the same native implementation through the explicit com.zion.os.ZION_API activity IPC bridge. The bridge writes a request result under:
+CLI commands in Zion Userland use the same native implementation through the explicit com.zion.os.ZION_API activity IPC bridge. The dispatcher supplies the per-install token and ordinary third-party callers are blocked by the signature-level component permission. The bridge writes a request result under:
 
 /data/data/com.zion.os/files/usr/tmp/zion-api-results/
 

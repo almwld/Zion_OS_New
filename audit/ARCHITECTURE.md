@@ -8,7 +8,7 @@ A-03: core/wm/window_manager.dart is a compatibility export/typedef layer around
 
 A-04: MainActivity.kt and ZionApiChannel.kt both own substantial native API responsibilities, increasing the size of the platform boundary.
 
-A-05: Authorization is inconsistent between the token-protected package bridge and the unprotected general external Zion API path.
+A-05: RESOLVED. Both the package bridge and general external Zion API path require their respective per-install credentials; ZION_API additionally has a signature-level component permission.
 
 A-06: OTA models an honest unavailable state rather than pretending to succeed, but remains incomplete.
 
