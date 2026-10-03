@@ -46,28 +46,58 @@ jobs:
               raise SystemExit("bootstrap-aarch64.zip was not produced")
 
           files = {}
-          symlink_file = "SYMLINKS.txt"
+          symlinks = []
 
           with zipfile.ZipFile(source) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+              # Termux bootstraps deliberately encode symlinks in SYMLINKS.txt
+              # instead of storing filesystem symlink entries in the ZIP.
               for info in zin.infolist():
-                  if info.is_dir():
+                  if info.is_dir() or info.filename == "SYMLINKS.txt":
                       continue
-                  name = info.filename.replace("\\", "/")
-                  if name.startswith("/") or ".." in Path(name).parts:
+                  name = info.filename.replace("\\", "/").lstrip("./")
+                  if name.startswith("/") or ".." in Path(name).parts or not name:
                       raise SystemExit(f"unsafe source path: {name}")
                   target = "usr/" + name
                   data = zin.read(info)
                   zi = zipfile.ZipInfo(target, info.date_time)
+                  zi.create_system = info.create_system
                   zi.external_attr = info.external_attr
                   zi.compress_type = zipfile.ZIP_DEFLATED
                   zout.writestr(zi, data)
                   files[target] = hashlib.sha256(data).hexdigest()
+
+              try:
+                  raw_links = zin.read("SYMLINKS.txt").decode("utf-8")
+              except KeyError:
+                  raw_links = ""
+
+              for line in raw_links.splitlines():
+                  if "←" not in line:
+                      continue
+                  link_target, link_name = line.split("←", 1)
+                  link_target = link_target.strip().replace("\\", "/")
+                  link_name = link_name.strip().replace("\\", "/").lstrip("./")
+                  if (not link_name or link_name.startswith("/") or
+                      ".." in Path(link_name).parts or
+                      not link_target or link_target.startswith("/") or
+                      ".." in Path(link_target).parts):
+                      raise SystemExit(f"unsafe symlink: {link_target} -> {link_name}")
+                  archive_link = "usr/" + link_name
+                  # The installer validates the target stays inside usr/.
+                  zi = zipfile.ZipInfo(archive_link)
+                  zi.create_system = 3
+                  zi.external_attr = (0o120777 << 16) | 0x80000000
+                  zi.compress_type = zipfile.ZIP_DEFLATED
+                  zout.writestr(zi, link_target.encode("utf-8"))
+                  files[archive_link] = hashlib.sha256(link_target.encode("utf-8")).hexdigest()
+                  symlinks.append({"path": archive_link, "target": link_target})
 
               manifest = {
                   "format": "zion-userland-v1",
                   "release": os.environ.get("GITHUB_SHA", "unknown")[:12],
                   "source": "termux-packages-custom-prefix",
                   "abi": "aarch64",
+                  "symlinks": symlinks,
                   "files": files,
               }
               zout.writestr(
