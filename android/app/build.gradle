@@ -32,6 +32,12 @@ android {
         }
     }
 
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         release {
             def storeFilePath = System.getenv("ZION_RELEASE_STORE_FILE")
