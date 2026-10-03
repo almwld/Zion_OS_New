@@ -222,7 +222,7 @@ class _DeviceAdminAppState extends State<DeviceAdminApp> {
                 const SizedBox(height: 16),
                 LinearProgressIndicator(
                   value: _getUsagePercentage(),
-                  backgroundColor: Colors.white24,
+                  backgroundColor: Theme.of(context).scaffoldBackgroundColor24,
                   color: Colors.white,
                   minHeight: 8,
                 ),
@@ -332,7 +332,7 @@ class _DeviceAdminAppState extends State<DeviceAdminApp> {
           const SizedBox(height: 4),
           LinearProgressIndicator(
             value: percentage / 100,
-            backgroundColor: Colors.white24,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor24,
             color: color,
             minHeight: 4,
           ),
