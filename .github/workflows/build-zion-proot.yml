@@ -1,0 +1,57 @@
+name: Zion PRoot Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-zion-proot.yml'
+      - 'android/app/src/main/cpp/**'
+
+jobs:
+  build-proot-arm64:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Zion
+        uses: actions/checkout@v4
+
+      - name: Checkout OpenMinis PRoot build environment
+        uses: actions/checkout@v4
+        with:
+          repository: OpenMinis/OpenMinis
+          path: .ci/openminis
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Build PRoot + Android loaders
+        working-directory: .ci/openminis
+        run: |
+          chmod +x deps/build_proot.sh
+          ./deps/build_proot.sh
+          test -f assets/proot-aarch64
+          test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+          test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
+
+      - name: Import runtime artifacts
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/assets
+          cp .ci/openminis/assets/proot-aarch64 android/app/src/main/assets/proot-aarch64
+          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Verify artifacts
+        run: |
+          file android/app/src/main/assets/proot-aarch64
+          file android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+          file android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
+
+      - name: Upload PRoot runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-proot-arm64
+          path: |
+            android/app/src/main/assets/proot-aarch64
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
