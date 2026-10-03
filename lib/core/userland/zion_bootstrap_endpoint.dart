@@ -32,8 +32,6 @@ class ZionBootstrapEndpoint {
   static String currentAbi() {
     final abi = Abi.current();
     if (abi == Abi.androidArm64) return 'aarch64';
-    if (abi == Abi.androidArm) return 'arm';
-    if (abi == Abi.androidX64) return 'x86_64';
     return abi.toString();
   }
 }
