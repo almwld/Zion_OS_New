@@ -16,7 +16,7 @@ class ZionTaskbar extends StatelessWidget {
     final windows = wm.windows.where((w) => w.workspace == wm.activeWorkspace).toList();
     return Container(
       height: 86,
-      decoration: BoxDecoration(color: const Color(0xFF0A0E0A).withOpacity(0.96), border: const Border(top: BorderSide(color: Color(0xFF243524)))),
+      decoration: BoxDecoration(color: const Color(0xFF09051A).withOpacity(0.96), border: const Border(top: BorderSide(color: Color(0xFF7C4DFF)))),
       child: Column(children: [
         SizedBox(height: 40, child: ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), scrollDirection: Axis.horizontal,
@@ -39,7 +39,7 @@ class ZionTaskbar extends StatelessWidget {
                 width: 48,
                 height: 32,
                 decoration: BoxDecoration(color: const Color(0xFF7C4DFF).withOpacity(0.18), borderRadius: BorderRadius.circular(9), border: Border.all(color: const Color(0xFF7C4DFF).withOpacity(0.7))),
-                child: const Icon(Icons.apps_rounded, color: Color(0xFF9C7BFF), size: 19),
+                child: const Icon(Icons.apps_rounded, color: Color(0xFFB388FF), size: 19),
               ),
             ),
           ),
@@ -49,7 +49,7 @@ class ZionTaskbar extends StatelessWidget {
             final active = wm.activeWindowId == window.id;
             return _TaskbarButton(icon: window.isMinimized ? Icons.remove : Icons.desktop_windows, label: window.title, isActive: active, onTap: () { if (window.isMinimized) wm.restore(window.id); else if (active) wm.minimize(window.id); else wm.focus(window.id); });
           }).toList())),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(_time(), style: const TextStyle(color: Color(0xFF00FF41), fontSize: 11))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text(_time(), style: const TextStyle(color: Color(0xFF7C4DFF), fontSize: 11))),
         ])),
       ]),
     );
@@ -64,7 +64,7 @@ class _TaskbarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GestureDetector(onTap: onTap, child: Container(
     padding: const EdgeInsets.symmetric(horizontal: 9), margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
-    decoration: BoxDecoration(color: isActive ? const Color(0xFF00FF41).withOpacity(0.14) : Colors.transparent, borderRadius: BorderRadius.circular(7)),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: const Color(0xFF00FF41), size: 13), const SizedBox(width: 4), Text(label, style: const TextStyle(color: Color(0xFF00FF41), fontSize: 10))]),
+    decoration: BoxDecoration(color: isActive ? const Color(0xFF7C4DFF).withOpacity(0.14) : Colors.transparent, borderRadius: BorderRadius.circular(7)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, color: const Color(0xFF7C4DFF), size: 13), const SizedBox(width: 4), Text(label, style: const TextStyle(color: Color(0xFF7C4DFF), fontSize: 10))]),
   ));
 }
