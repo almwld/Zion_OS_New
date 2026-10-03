@@ -229,9 +229,12 @@ class AgentOrchestrator {
 
   AgentPlan? _parsePlan(String response){
     try{final s=response.indexOf('{'),e=response.lastIndexOf('}');if(s<0||e<=s)return null;final j=jsonDecode(response.substring(s,e+1));final list=j['steps'];if(list is! List)return null;
-      return AgentPlan(steps:list.whereType<Map>().map((x)=>AgentStep(id:x['id']?.toString()??DateTime.now().microsecondsSinceEpoch.toString(),description:x['description']?.toString()??'خطوة',tool:x['tool']?.toString()??'ai',params:Map<String,dynamic>.from(x['params'] is Map?x['params']:{},),requiresEvaluation:x['requiresEvaluation']==true)).toList());
+      return AgentPlan(task: '', steps:list.whereType<Map>().map((x)=>AgentStep(id:x['id']?.toString()??DateTime.now().microsecondsSinceEpoch.toString(),description:x['description']?.toString()??'خطوة',tool:x['tool']?.toString()??'ai',params:Map<String,dynamic>.from(x['params'] is Map?x['params']:{},),requiresEvaluation:x['requiresEvaluation']==true,requiresApproval:x['requiresApproval']==true || _permissionFrom(x['permission']) != AgentPermission.readOnly,permission:_permissionFrom(x['permission']),risk:_riskFrom(x['risk']))).toList());
     }catch(_){return null;}
   }
+
+  AgentPermission _permissionFrom(dynamic value){switch(value?.toString()){case 'localWrite':return AgentPermission.localWrite;case 'network':return AgentPermission.network;case 'process':return AgentPermission.process;case 'externalSideEffect':return AgentPermission.externalSideEffect;default:return AgentPermission.readOnly;}}
+  AgentRisk _riskFrom(dynamic value){switch(value?.toString()){case 'review':return AgentRisk.review;case 'blocked':return AgentRisk.blocked;default:return AgentRisk.safe;}}
 
   AgentPlan _heuristicPlan(String task){
     final lower=task.toLowerCase();
