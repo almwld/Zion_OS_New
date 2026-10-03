@@ -21,15 +21,6 @@ class TermuxRuntimeService {
   static const prefix = '/data/data/com.zion.os/files/usr';
   const TermuxRuntimeService();
 
-  Future<String?> _which(String command) async {
-    try {
-      final result = await Process.run('/system/bin/sh', <String>['-c', 'command -v "$command"'], runInShell: false);
-      if (result.exitCode != 0) return null;
-      final path = result.stdout.toString().trim();
-      return path.isEmpty ? null : path;
-    } catch (_) { return null; }
-  }
-
   Future<RuntimeCapability> probeExecutable(String id, List<String> candidates) async {
     for (final candidate in candidates) {
       try {
@@ -37,8 +28,6 @@ class TermuxRuntimeService {
         if (stat.type == FileSystemEntityType.file) return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable detected.', path: candidate);
       } catch (_) {}
     }
-    final found = await _which(id);
-    if (found != null) return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable resolved by PATH.', path: found);
     return RuntimeCapability(id: id, status: RuntimeStatus.notConfigured, detail: 'No executable is installed in the Zion userland.');
   }
 
@@ -78,7 +67,7 @@ class TermuxRuntimeService {
 
   Future<Map<String, RuntimeCapability>> probeCore() async {
     const executables = <String, List<String>>{
-      'sh': <String>['/system/bin/sh', prefix + '/bin/sh'],
+      'sh': <String>[prefix + '/bin/sh'],
       'bash': <String>[prefix + '/bin/bash'], 'zsh': <String>[prefix + '/bin/zsh'], 'fish': <String>[prefix + '/bin/fish'],
       'pkg': <String>[prefix + '/bin/pkg'], 'apt': <String>[prefix + '/bin/apt'], 'dpkg': <String>[prefix + '/bin/dpkg'],
       'proot': <String>[prefix + '/bin/proot'], 'proot-distro': <String>[prefix + '/bin/proot-distro'],
