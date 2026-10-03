@@ -96,7 +96,7 @@ class ZionLocalKaliBootstrap {
         progress(ZionKaliInstallState.notFound, 0,
             'لم يتم العثور على حزمة Kali المحلية.');
         await _saveState(filesDir, 'NOT_FOUND');
-        return Result.failure(StateError(
+        return ZionKaliInstallResult.failure(StateError(
           'Missing ${ZionLocalKaliConfig.expectedFilename}',
         ));
       }
@@ -205,10 +205,10 @@ class ZionLocalKaliBootstrap {
       try { await File(tarPath).delete(); } catch (_) {}
       try { await internal.delete(); } catch (_) {}
       progress(ZionKaliInstallState.ready, 100, 'Kali جاهز للتشغيل.');
-      return Result.success(rootfs);
+      return ZionKaliInstallResult.success(rootfs);
     } catch (e) {
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
-      return Result.failure(e);
+      return ZionKaliInstallResult.failure(e);
     }
   }
 
@@ -284,6 +284,19 @@ class ZionLocalKaliBootstrap {
     };
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
   }
+}
+
+class ZionKaliInstallResult {
+  const ZionKaliInstallResult.success(this.value)
+      : error = null,
+        isSuccess = true;
+  const ZionKaliInstallResult.failure(this.error)
+      : value = null,
+        isSuccess = false;
+
+  final Directory? value;
+  final Object? error;
+  final bool isSuccess;
 }
 
 class SecurityException implements Exception {
