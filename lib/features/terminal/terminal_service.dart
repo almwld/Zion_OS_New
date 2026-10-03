@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,17 @@ import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 import '../../core/userland/zion_userland_installer.dart';
 
+Future<String> _installZionUserlandInBackground() async {
+  try {
+    const installer = ZionUserlandInstaller();
+    final result = await installer.installLatest();
+    return result.success
+        ? 'تم تجهيز Zion Userland في الخلفية بنجاح.'
+        : 'تعذر تجهيز Zion Userland في الخلفية: ' + result.message;
+  } catch (e) {
+    return 'تعذر تجهيز Zion Userland في الخلفية: ' + e.toString();
+  }
+}
 class _TerminalEnvironment {
   const _TerminalEnvironment({required this.home, required this.prefix, required this.tmp});
   final String home;
@@ -345,19 +357,9 @@ class TerminalService {
     // Create app-local terminal directories before Process.start().
     await _ensureTerminalEnvironment();
     var shell = await _findShell();
+    final userlandMissing = shell == null || shell == '/system/bin/sh';
     if (shell == null) {
-      _output.add('Zion Userland غير متوفر؛ محاولة تجهيز Userland...\\r\\n');
-      final install = await const ZionUserlandInstaller().installLatest(
-        onProgress: (message) => _output.add('[Userland] ' + message + '\\r\\n'),
-      );
-      if (install.success) {
-        shell = await _findShell();
-      } else {
-        _output.add('[Userland] ' + install.message + '\\r\\n');
-      }
-    }
-    if (shell == null) {
-      _output.add('Zion Userland غير متوفر؛ سيتم تشغيل Android POSIX shell لضمان طرفية تفاعلية حقيقية.\\r\\n');
+      _output.add('Zion Userland غير جاهز؛ سيتم تشغيل Android POSIX shell مؤقتًا بينما يجهز Userland في الخلفية.\\r\\n');
       shell = '/system/bin/sh';
     } else if (shell != '/system/bin/sh') {
       _output.add('Zion Userland جاهز: ' + shell + '\\r\\n');
@@ -392,6 +394,12 @@ class TerminalService {
       }
       _interactiveInputBuffer = '';
       _output.add('Connected to Zion Userland: $shell • PTY\\r\\n');
+      if (userlandMissing) {
+        // Large bootstrap download/extraction must never execute on the UI isolate.
+        unawaited(Isolate.run(_installZionUserlandInBackground).then((message) {
+          if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+        }));
+      }
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
