@@ -48,7 +48,10 @@ jobs:
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --no-build-unneeded-subpackages
+          # Zion's package bridge does not require apt/gpgv inside the bootstrap.
+          # Android-10-compatible mode keeps bash/coreutils/curl while replacing
+          # the heavy apt/gpgv path with the native bootstrap tooling.
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10 --no-build-unneeded-subpackages
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
