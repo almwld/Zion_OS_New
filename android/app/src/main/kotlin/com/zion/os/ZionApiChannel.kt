@@ -58,7 +58,7 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
         val method = intent.getStringExtra("method")?.takeIf { TrustVerifier.isValidMethod(it) } ?: return
         val args = mutableMapOf<String, Any?>()
         for (key in intent.extras?.keySet().orEmpty()) {
-            if (key == "requestId" || key == "method") continue
+            if (key == "requestId" || key == "method" || key == "token") continue
             args[key] = intent.extras?.get(key)
         }
         val result = ExternalResult(requestId)
