@@ -369,6 +369,66 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     );
   }
 
+  Widget _buildAppsGrid(ThemeProvider theme, bool isDark, Color primaryColor) {
+    final category = _categories[_selectedCategory]['name'] as String;
+    final apps = _apps.where((app) => app['category'] == category).toList();
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = math.max(3, math.min(6, (width / 105).floor()));
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: columns,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.92,
+      ),
+      itemCount: apps.length,
+      itemBuilder: (context, index) {
+        final app = apps[index];
+        final color = app['color'] as Color? ?? primaryColor;
+        return InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => _openApp(app),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.035) : Colors.white.withOpacity(0.72),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: color.withOpacity(0.28)),
+            ),
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: color.withOpacity(0.4)),
+                  ),
+                  child: Icon(app['icon'] as IconData, color: color, size: 25),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  app['nameAr'] as String,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildStartMenu(ThemeProvider theme, bool isDark) {
     return Positioned(
       left: 12,
@@ -387,7 +447,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
           child: ZionAppLauncher(
             apps: _apps,
             iconSize: theme.iconSize,
-            columns: 4,
+            iconsPerRow: 4,
             showAppNames: true,
             isDark: isDark,
             accentColor: _neonIndigo,
