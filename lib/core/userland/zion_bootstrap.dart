@@ -28,8 +28,7 @@ class ZionBootstrap {
     final abi = Abi.current();
     return abi == Abi.androidArm64 ||
         abi == Abi.androidArm ||
-        abi == Abi.androidX64 ||
-        abi == Abi.androidX86;
+        abi == Abi.androidX64;
   }
 
   static Future<BootstrapResult> prepareExistingUserlandBackup({
