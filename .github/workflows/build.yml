@@ -39,6 +39,23 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
+      - name: Prepare Android PRoot runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --recurse-submodules https://github.com/OpenMinis/OpenMinis.git "$RUNNER_TEMP/openminis"
+          cd "$RUNNER_TEMP/openminis"
+          chmod +x deps/build_proot.sh
+          ./deps/build_proot.sh
+          mkdir -p "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$GITHUB_WORKSPACE/android/app/src/main/assets"
+          cp assets/proot-aarch64 "$GITHUB_WORKSPACE/android/app/src/main/assets/proot-aarch64"
+          cp src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a/"
+          cp src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a/"
+          test -s "$GITHUB_WORKSPACE/android/app/src/main/assets/proot-aarch64"
+          test -s "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so"
+          test -s "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
