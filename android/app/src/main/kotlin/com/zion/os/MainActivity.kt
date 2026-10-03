@@ -302,8 +302,15 @@ class MainActivity : FlutterFragmentActivity() {
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
         ensureTerminalEnvironment()
         if (!nativePtyAvailable()) return 0
+        val nativeShell = if (shell == "zion-kali") {
+            val rootfs = File(filesDir, "zion/userland/kali-arm64")
+            val proot = File(applicationInfo.nativeLibraryDir, "libproot.so")
+            val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+            if (!rootfs.exists() || !proot.exists() || !loader.exists()) return 0
+            "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+        } else shell
         return try {
-            val handle = nativeStartPty(rows, cols, shell)
+            val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
             terminalReaders[handle] = Thread {
                 try {
