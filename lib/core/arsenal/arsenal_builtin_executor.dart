@@ -37,6 +37,12 @@ class ArsenalBuiltinExecutor {
         return _platformInfo('storageInfo', 'Storage status');
       case 'network.interfaces':
         return _platformInfo('networkInfo', 'Network interfaces');
+      case 'net.dns.lookup':
+        return _dnsLookup(arguments);
+      case 'net.dns.reverse':
+        return _dnsReverse(arguments);
+      case 'net.latency':
+        return _latency(arguments);
       case 'wireless.scan':
         return _wifiScan();
       case 'web.inspect':
@@ -126,6 +132,61 @@ class ArsenalBuiltinExecutor {
       return ArsenalBuiltinResult.failure('PERMISSION_REQUIRED', e.message ?? 'Wi-Fi scan permission is required.');
     } catch (e) {
       return ArsenalBuiltinResult.failure('FAILED', 'Wi-Fi scan failed: $e');
+    }
+  }
+
+  Future<ArsenalBuiltinResult> _dnsLookup(List<String> args) async {
+    if (args.length != 1 || args.first.trim().isEmpty) {
+      return ArsenalBuiltinResult.failure('INVALID_ARGUMENTS', 'Usage: net.dns.lookup <domain>');
+    }
+    try {
+      final addresses = await InternetAddress.lookup(args.first.trim());
+      return ArsenalBuiltinResult.success(jsonEncode({
+        'host': args.first.trim(),
+        'addresses': addresses.map((a) => a.address).toList(),
+      }));
+    } catch (e) {
+      return ArsenalBuiltinResult.failure('FAILED', 'DNS lookup failed: $e');
+    }
+  }
+
+  Future<ArsenalBuiltinResult> _dnsReverse(List<String> args) async {
+    if (args.length != 1 || args.first.trim().isEmpty) {
+      return ArsenalBuiltinResult.failure('INVALID_ARGUMENTS', 'Usage: net.dns.reverse <ip>');
+    }
+    try {
+      final addresses = await InternetAddress.lookup(args.first.trim());
+      return ArsenalBuiltinResult.success(jsonEncode({
+        'input': args.first.trim(),
+        'hosts': addresses.map((a) => a.host).toList(),
+      }));
+    } catch (e) {
+      return ArsenalBuiltinResult.failure('FAILED', 'Reverse DNS failed: $e');
+    }
+  }
+
+  Future<ArsenalBuiltinResult> _latency(List<String> args) async {
+    if (args.length < 1 || args.length > 2 || args.first.trim().isEmpty) {
+      return ArsenalBuiltinResult.failure('INVALID_ARGUMENTS', 'Usage: net.latency <host> [port]');
+    }
+    final port = args.length == 2 ? int.tryParse(args[1]) : 443;
+    if (port == null || port < 1 || port > 65535) {
+      return ArsenalBuiltinResult.failure('INVALID_ARGUMENTS', 'Port must be between 1 and 65535.');
+    }
+    final started = DateTime.now();
+    Socket? socket;
+    try {
+      socket = await Socket.connect(args.first.trim(), port, timeout: const Duration(seconds: 3));
+      final elapsed = DateTime.now().difference(started).inMicroseconds / 1000.0;
+      return ArsenalBuiltinResult.success(jsonEncode({
+        'host': args.first.trim(),
+        'port': port,
+        'latencyMs': elapsed,
+      }));
+    } catch (e) {
+      return ArsenalBuiltinResult.failure('FAILED', 'Latency check failed: $e');
+    } finally {
+      await socket?.close();
     }
   }
 
