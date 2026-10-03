@@ -111,6 +111,30 @@ jobs:
 
           print(f"Created {out} with {len(files)} verified files")
 
+      - name: Create single bootstrap endpoint manifest
+        shell: python
+        run: |
+          import hashlib, json
+          from pathlib import Path
+
+          archive = Path("zion-userland-aarch64.zip")
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          endpoint = {
+              "format": "zion-bootstrap-endpoint-v1",
+              "release": "${{ github.sha }}"[:12],
+              "assets": {
+                  "aarch64": {
+                      "url": "https://github.com/almwld/Zion_OS_New/releases/download/zion-userland-latest/zion-userland-aarch64.zip",
+                      "sha256": digest,
+                      "size": archive.stat().st_size,
+                  }
+              },
+          }
+          Path("bootstrap.json").write_text(
+              json.dumps(endpoint, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+              encoding="utf-8",
+          )
+
       - name: Publish Userland release
         shell: bash
         env:
@@ -119,6 +143,6 @@ jobs:
           set -euo pipefail
           TAG="zion-userland-latest"
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" zion-userland-aarch64.zip \
+          gh release create "$TAG" zion-userland-aarch64.zip bootstrap.json \
             --title "Zion Userland (latest)" \
             --notes "Generated from a custom-prefix Termux bootstrap for com.zion.os. The archive is SHA-256 verified by Zion before activation."
