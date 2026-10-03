@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ZionThemeType {
-  matrix('Matrix', Color(0xFF00FF41), Color(0xFF000000)),
-  cyberpunk('Cyberpunk', Color(0xFFFF00FF), Color(0xFF0D0D0D)),
-  ocean('Ocean Deep', Color(0xFF00BFFF), Color(0xFF001F3F)),
-  goldPhoenix('Gold Phoenix', Color(0xFFFFD700), Color(0xFF1A1A00));
+  matrix('Matrix', Color(0xFF7C4DFF), Color(0xFF7C4DFF)),
+  cyberpunk('Cyberpunk', Color(0xFF7C4DFF), Color(0xFF7C4DFF)),
+  ocean('Ocean Deep', Color(0xFF7C4DFF), Color(0xFF7C4DFF)),
+  goldPhoenix('Gold Phoenix', Color(0xFF7C4DFF), Color(0xFF7C4DFF));
 
   final String name;
   final Color accent;
