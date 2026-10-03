@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'dart:io';
+import '../../zion_ota_system.dart';
 
 class UpdateCenter extends StatefulWidget {
   const UpdateCenter({super.key});
@@ -11,11 +9,10 @@ class UpdateCenter extends StatefulWidget {
 }
 
 class _UpdateCenterState extends State<UpdateCenter> {
-  bool _autoCheck = true;
+  final ZionOTASystem _ota = ZionOTASystem();
+  bool _autoCheck = false;
   bool _autoDownload = false;
-  bool _isChecking = false;
-  String _currentVersion = '4.0.0';
-  String _status = 'Up to date';
+  String _status = 'OTA unavailable: trusted signed source is not configured';
   
   List<Map<String, dynamic>> _updateHistory = [
     {'version': '4.0.0', 'date': '2025-04-15', 'changes': 'UI redesign, New tools, Performance improvements'},
@@ -24,45 +21,36 @@ class _UpdateCenterState extends State<UpdateCenter> {
     {'version': '3.1.0', 'date': '2025-01-20', 'changes': 'Initial release with core features'},
   ];
 
-  List<Map<String, dynamic>> _availableUpdates = [
-    {'name': 'Security Database', 'version': '2025.04.15', 'size': '2.5 MB', 'type': 'Database'},
-    {'name': 'Tool Signatures', 'version': '2025.04.14', 'size': '1.8 MB', 'type': 'Signatures'},
-    {'name': 'Language Pack', 'version': '2025.04.10', 'size': '3.2 MB', 'type': 'Language'},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _ota.addListener(_onOtaChanged);
+  }
+
+  @override
+  void dispose() {
+    _ota.removeListener(_onOtaChanged);
+    _ota.dispose();
+    super.dispose();
+  }
+
+  void _onOtaChanged() {
+    if (!mounted) return;
+    setState(() {
+      _status = _ota.error ?? 'OTA unavailable: no trusted signed update is configured';
+    });
+  }
 
   Future<void> _checkForUpdates() async {
-    setState(() {
-      _isChecking = true;
-      _status = 'Checking for updates...';
-    });
-    
-    await Future.delayed(const Duration(seconds: 2));
-    
-    setState(() {
-      _isChecking = false;
-      _status = 'Up to date';
-    });
-    
+    await _ota.checkForUpdates();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No new updates available'), backgroundColor: Color(0xFF00BCD4)),
+      SnackBar(content: Text(_status), backgroundColor: const Color(0xFF00BCD4)),
     );
   }
 
-  Future<void> _downloadUpdate(Map<String, dynamic> update) async {
-    setState(() {
-      _status = 'Downloading ${update['name']}...';
-    });
-    
-    await Future.delayed(const Duration(seconds: 2));
-    
-    setState(() {
-      _status = 'Download complete';
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${update['name']} downloaded successfully'), backgroundColor: Color(0xFF00BCD4)),
-    );
-  }
+  Future<void> _downloadUpdate() => _ota.downloadUpdate();
+  Future<void> _installUpdate() => _ota.installUpdate();
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +97,7 @@ class _UpdateCenterState extends State<UpdateCenter> {
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 15),
-                  if (_isChecking)
+                  if (_ota.isChecking)
                     const CircularProgressIndicator(color: Colors.white)
                   else
                     ElevatedButton.icon(
@@ -149,7 +137,7 @@ class _UpdateCenterState extends State<UpdateCenter> {
             const SizedBox(height: 20),
             
             // Available Updates
-            if (_availableUpdates.isNotEmpty) ...[
+            if (_ota.availableUpdate != null) ...[
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -160,9 +148,23 @@ class _UpdateCenterState extends State<UpdateCenter> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Available Updates', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
+                    const Text('Available Update', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
-                    ..._availableUpdates.map((update) => _buildUpdateItem(update)),
+                    Text(_ota.availableUpdate!.description, style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: _ota.isDownloading ? null : _downloadUpdate,
+                          child: const Text('Download'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _ota.isInstalling ? null : _installUpdate,
+                          child: const Text('Install'),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -202,10 +204,9 @@ class _UpdateCenterState extends State<UpdateCenter> {
                 children: [
                   const Text('System Information', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  _buildInfoRow('OS Version', 'Android 14+'),
-                  _buildInfoRow('Build Number', 'ZOS-2027.04.15'),
-                  _buildInfoRow('Security Patch', '2025-04-05'),
-                  _buildInfoRow('Last Update', '2025-04-15'),
+                  _buildInfoRow('OTA configured', _ota.isConfigured ? 'Yes' : 'No'),
+                  _buildInfoRow('Update source', _ota.isConfigured ? 'Configured' : 'Trusted source required'),
+                  _buildInfoRow('Install path', 'AOSP / Recovery required'),
                 ],
               ),
             ),
@@ -260,49 +261,6 @@ class _UpdateCenterState extends State<UpdateCenter> {
             value: value,
             onChanged: onChanged,
             activeColor: const Color(0xFF00BCD4),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUpdateItem(Map<String, dynamic> update) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFF00BCD4).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.download, color: Color(0xFF00BCD4), size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(update['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text('Version ${update['version']} • ${update['size']}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => _downloadUpdate(update),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00BCD4),
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-            ),
-            child: const Text('Update'),
           ),
         ],
       ),
