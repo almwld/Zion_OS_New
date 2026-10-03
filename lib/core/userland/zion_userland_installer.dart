@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'zion_bootstrap.dart';
@@ -163,10 +164,18 @@ class ZionUserlandInstaller {
       }
 
       String? downloadUrl;
+      String? expectedDigest;
+      int? expectedAssetSize;
       for (final item in assets) {
         if (item is Map && item['name'] == assetName) {
           final value = item['browser_download_url'];
           if (value is String) downloadUrl = value;
+          final digest = item['digest'];
+          if (digest is String && digest.startsWith('sha256:')) {
+            expectedDigest = digest.substring('sha256:'.length).trim().toLowerCase();
+          }
+          final size = item['size'];
+          if (size is num) expectedAssetSize = size.toInt();
           break;
         }
       }
@@ -192,7 +201,7 @@ class ZionUserlandInstaller {
         );
       }
 
-      final expected = response.contentLength;
+      final expected = response.contentLength ?? expectedAssetSize;
       if (expected != null && expected > _maxDownloadBytes) {
         return (
           success: false,
@@ -227,6 +236,28 @@ class ZionUserlandInstaller {
         }
       }
       await sink.close();
+
+      if (expectedAssetSize != null && received != expectedAssetSize) {
+        try { await temp.delete(); } catch (_) {}
+        return (
+          success: false,
+          path: null,
+          message: 'حجم حزمة Userland لا يطابق بيانات الإصدار المنشورة.',
+        );
+      }
+
+      if (expectedDigest != null) {
+        onProgress?.call('التحقق من SHA-256 للأرشيف المنشور...');
+        final actualDigest = (await sha256.bind(temp.openRead()).first).toString().toLowerCase();
+        if (actualDigest != expectedDigest) {
+          try { await temp.delete(); } catch (_) {}
+          return (
+            success: false,
+            path: null,
+            message: 'فشل SHA-256 للأرشيف المنشور؛ تم رفض الحزمة.',
+          );
+        }
+      }
 
       return (success: true, path: temp.path, message: null);
     } catch (e) {
