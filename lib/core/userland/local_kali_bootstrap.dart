@@ -75,7 +75,7 @@ class ZionLocalKaliBootstrap {
     return ZionKaliInstallState.error;
   }
 
-  Future<Result<Directory>> install({
+  Future<ZionKaliInstallResult> install({
     void Function(ZionKaliProgress progress)? onProgress,
   }) async {
     final filesDir = await _filesDir();
