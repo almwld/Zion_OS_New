@@ -126,6 +126,22 @@ class TerminalService {
         if (result.exitCode == 0) return candidate;
       } catch (_) {}
     }
+
+    // Compatibility shell: older Zion builds used Android's real POSIX sh
+    // and remained interactive even without a full Zion Userland. Keep that
+    // behavior as an explicit fallback while preferring Userland first.
+    const androidShell = '/system/bin/sh';
+    try {
+      final stat = await File(androidShell).stat();
+      if (stat.type == FileSystemEntityType.file) {
+        final result = await Process.run(
+          androidShell,
+          const <String>['-c', 'exit 0'],
+          runInShell: false,
+        ).timeout(const Duration(seconds: 2));
+        if (result.exitCode == 0) return androidShell;
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -322,20 +338,23 @@ class TerminalService {
     await _ensureTerminalEnvironment();
     var shell = await _findShell();
     if (shell == null) {
-      _output.add('Zion Userland غير مثبت — بدء Bootstrap آمن...\\r\\n');
+      _output.add('Zion Userland غير متوفر؛ محاولة تجهيز Userland...\\r\\n');
       final install = await const ZionUserlandInstaller().installLatest(
         onProgress: (message) => _output.add('[Userland] ' + message + '\\r\\n'),
       );
-      if (!install.success) {
-        _output.add('ERROR: ' + install.message + '\\r\\n');
-        return false;
+      if (install.success) {
+        shell = await _findShell();
+      } else {
+        _output.add('[Userland] ' + install.message + '\\r\\n');
       }
-      shell = await _findShell();
-      if (shell == null) {
-        _output.add('ERROR: تم تثبيت Userland لكن Bash لم يصبح قابلاً للتنفيذ.\\r\\n');
-        return false;
-      }
+    }
+    if (shell == null) {
+      _output.add('Zion Userland غير متوفر؛ سيتم تشغيل Android POSIX shell لضمان طرفية تفاعلية حقيقية.\\r\\n');
+      shell = '/system/bin/sh';
+    } else if (shell != '/system/bin/sh') {
       _output.add('Zion Userland جاهز: ' + shell + '\\r\\n');
+    } else {
+      _output.add('Android POSIX shell جاهز: /system/bin/sh\\r\\n');
     }
 
     // The interactive terminal must use the native PTY. A pipe-backed
