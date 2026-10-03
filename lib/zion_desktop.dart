@@ -75,6 +75,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   String _currentTime = "";
   String _currentDate = "";
   int _selectedCategory = 0;
+  bool _showStartMenu = false;
   bool _showRadar = true;
   double _radarX = 0.72;
   double _radarY = 0.16;
@@ -97,11 +98,12 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     onAltTabChanged: () { if (mounted) setState(() {}); },
   );
 
+  static const Color _neonIndigo = Color(0xFF7C4DFF);
   final List<Map<String, dynamic>> _categories = [
-    {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": const Color(0xFFFF4757), "gradient": [const Color(0xFFFF4757), const Color(0xFFD63447)]},
-    {"name": "DEFENSE", "nameAr": "دفاع", "icon": Icons.shield, "color": const Color(0xFF2ED573), "gradient": [const Color(0xFF2ED573), const Color(0xFF17A24A)]},
-    {"name": "ANALYSIS", "nameAr": "تحليل", "icon": Icons.analytics, "color": const Color(0xFF3742FA), "gradient": [const Color(0xFF3742FA), const Color(0xFF2732D9)]},
-    {"name": "TOOLS", "nameAr": "أدوات", "icon": Icons.build, "color": const Color(0xFFFFA502), "gradient": [const Color(0xFFFFA502), const Color(0xFFE68A00)]},
+    {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": _neonIndigo},
+    {"name": "DEFENSE", "nameAr": "دفاع", "icon": Icons.shield, "color": _neonIndigo},
+    {"name": "ANALYSIS", "nameAr": "تحليل", "icon": Icons.analytics, "color": _neonIndigo},
+    {"name": "TOOLS", "nameAr": "أدوات", "icon": Icons.build, "color": _neonIndigo},
   ];
 
   final List<Map<String, dynamic>> _apps = [
@@ -336,11 +338,19 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         SafeArea(child: Column(
           children: [
             _buildTopBar(theme, isDark, primaryColor),
-            Expanded(child: _buildAppsGrid(theme, isDark, primaryColor)),
+            Expanded(child: GestureDetector(
+              onHorizontalDragEnd: (details) {
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity.abs() < 250) return;
+                setState(() => _selectedCategory = (_selectedCategory + (velocity < 0 ? 1 : -1) + _categories.length) % _categories.length);
+              },
+              child: _buildAppsGrid(theme, isDark, primaryColor),
+            )),
             ZionTaskbar(
               categories: _categories,
               selectedCategory: _selectedCategory,
-              onCategorySelected: (index) => setState(() => _selectedCategory = index),
+              onCategorySelected: (index) => setState(() { _selectedCategory = index; _showStartMenu = false; }),
+              onStart: () => setState(() => _showStartMenu = !_showStartMenu),
               onOpenApp: (appKey) {
               final matches = _apps.where((item) => item['name'] == appKey);
               if (matches.isNotEmpty) _openApp(matches.first);
@@ -348,11 +358,44 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
             ),
           ],
         )),
+        if (_showStartMenu) _buildStartMenu(theme, isDark),
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
         if (_altTabManager.isActive)
           AltTabOverlay(manager:_windowManager,selectedId:_altTabManager.selectedId),
       ]),
         ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStartMenu(ThemeProvider theme, bool isDark) {
+    return Positioned(
+      left: 12,
+      bottom: 92,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: math.min(390, MediaQuery.sizeOf(context).width - 24),
+          height: math.min(610, MediaQuery.sizeOf(context).height - 130),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xF20B0B14) : const Color(0xF7FFFFFF),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _neonIndigo.withOpacity(0.65)),
+            boxShadow: [BoxShadow(color: _neonIndigo.withOpacity(0.25), blurRadius: 28)],
+          ),
+          child: ZionAppLauncher(
+            apps: _apps,
+            iconSize: theme.iconSize,
+            columns: 4,
+            showAppNames: true,
+            isDark: isDark,
+            accentColor: _neonIndigo,
+            onOpenApp: (app) {
+              setState(() => _showStartMenu = false);
+              _openApp(app);
+            },
+          ),
         ),
       ),
     );
