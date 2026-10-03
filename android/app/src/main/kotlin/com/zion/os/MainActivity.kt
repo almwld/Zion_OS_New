@@ -67,6 +67,7 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var zionPkgChannel: MethodChannel
     private var pendingTreeResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
+    private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
     private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
 
@@ -83,6 +84,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val REQUEST_OPEN_TREE = 4101
         private const val AI_CHANNEL = "zion.os/ai"
         private const val REQUEST_OPEN_MODEL = 4102
+        private const val REQUEST_OPEN_KALI = 4103
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -159,6 +161,23 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "pickKaliPackage" -> {
+                        if (pendingKaliResult != null) {
+                            result.error("BUSY", "A Kali package picker is already open.", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingKaliResult = result
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            type = "application/octet-stream"
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        try { startActivityForResult(intent, REQUEST_OPEN_KALI) }
+                        catch (t: Throwable) {
+                            pendingKaliResult = null
+                            result.success(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "Kali picker unavailable.")))
+                        }
+                    }
                     "pickTree" -> {
                         if (pendingTreeResult != null) {
                             result.error("BUSY", "A storage picker is already open.", null)
@@ -172,6 +191,14 @@ class MainActivity : FlutterFragmentActivity() {
                         catch (t: Throwable) { pendingTreeResult = null; result.success(mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "Storage picker unavailable."))) }
                     }
                     "listTree" -> result.success(listTree(call.argument<String>("uri") ?: ""))
+                    "copyDocumentToPrivate" -> {
+                        val uri = call.argument<String>("uri") ?: ""
+                        val destination = call.argument<String>("destination") ?: ""
+                        aiExecutor.execute {
+                            val ok = copyDocumentToPrivate(uri, destination)
+                            runOnUiThread { result.success(ok) }
+                        }
+                    }
                     "delete" -> result.success(deleteTreeDocument(call.argument<String>("uri") ?: ""))
                     "createDirectory" -> result.success(createTreeDirectory(call.argument<String>("parentUri") ?: "", call.argument<String>("name") ?: ""))
                     else -> result.notImplemented()
@@ -701,6 +728,21 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
 
+        if (requestCode == REQUEST_OPEN_KALI) {
+            val pending = pendingKaliResult
+            pendingKaliResult = null
+            if (resultCode != RESULT_OK || data?.data == null) {
+                pending?.success(mapOf("available" to false, "status" to "CANCELLED"))
+            } else {
+                val uri = data.data!!
+                try { contentResolver.takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
+                val name = queryDisplayName(uri)
+                pending?.success(mapOf("available" to (name == "kali-nethunter-rootfs-minimal-arm64.tar.xz"), "status" to "AVAILABLE", "uri" to uri.toString(), "name" to name))
+            }
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+
         if (requestCode == REQUEST_OPEN_TREE) {
             val pending = pendingTreeResult
             pendingTreeResult = null
@@ -717,6 +759,25 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun copyDocumentToPrivate(uriString: String, destination: String): Boolean {
+        if (uriString.isBlank() || destination.isBlank()) return false
+        return try {
+            val input = contentResolver.openInputStream(Uri.parse(uriString)) ?: return false
+            val target = File(destination)
+            target.parentFile?.mkdirs()
+            input.use { source -> FileOutputStream(target).use { output -> source.copyTo(output, 1024 * 1024) } }
+            true
+        } catch (_: Throwable) { false }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: Throwable) { null }
     }
 
     private fun listTree(uriString: String): Map<String, Any?> {
