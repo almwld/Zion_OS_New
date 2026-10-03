@@ -191,17 +191,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   String? _extractCommand(String response) {
     final fenced = RegExp(
-      r'\`\`\`(?:bash|sh|shell)?\\s*([\\s\\S]*?)\`\`\`',
+      r'```(?:bash|sh|shell)?\s*([\s\S]*?)```',
       caseSensitive: false,
     ).firstMatch(response);
     final value = (fenced?.group(1) ?? '').trim();
     if (value.isEmpty) return null;
     final lines = value
-        .split('\\n')
+        .split('\n')
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty && !line.startsWith('#'))
         .toList();
-    return lines.isEmpty ? null : lines.join('\\n');
+    return lines.isEmpty ? null : lines.join('\n');
   }
 
   bool _isSafeSuggestedCommand(String command) {
