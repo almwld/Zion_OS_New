@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm2/xterm.dart';
 
+import '../../ai/llama_service.dart';
+
 import '../../security/core/security_core.dart';
 import 'terminal_service.dart';
 
@@ -35,9 +37,11 @@ class _TerminalTab {
 
 class _TerminalScreenState extends State<TerminalScreen> {
   final List<_TerminalTab> _tabs = <_TerminalTab>[];
+  final LlamaService _ai = LlamaService();
   int _selectedIndex = 0;
   int _nextId = 1;
   bool _starting = false;
+  bool _aiLoading = false;
   double _fontSize = 13;
 
   _TerminalTab? get _selectedTab =>
@@ -165,8 +169,209 @@ class _TerminalScreenState extends State<TerminalScreen> {
     terminal.setCursor(0, 0);
   }
 
+  Future<bool> _ensureAiLoaded() async {
+    if (_ai.isLoaded) return true;
+    final models = await _ai.discoverModels();
+    if (models.isEmpty) return false;
+    final selected = models.firstWhere(
+      (model) => model.readable,
+      orElse: () => models.first,
+    );
+    return _ai.loadModel(selected.path, threads: 4);
+  }
+
+  String? _extractCommand(String response) {
+    final fenced = RegExp(r'```(?:bash|sh|shell)?\\s*([\\s\\S]*?)```', caseSensitive: false)
+        .firstMatch(response);
+    final value = (fenced?.group(1) ?? '').trim();
+    if (value.isEmpty) return null;
+    final lines = value
+        .split('\\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .toList();
+    return lines.isEmpty ? null : lines.join('\\n');
+  }
+
+  Future<void> _openAiAssistant() async {
+    if (_aiLoading) return;
+    setState(() => _aiLoading = true);
+    try {
+      final loaded = await _ensureAiLoaded();
+      if (!loaded) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('لم يتم العثور على نموذج GGUF محلي. افتح Offline AI لاستيراده أولاً.'),
+            ),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      final prompt = TextEditingController();
+      String? response;
+      String? command;
+      bool generating = false;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: const Color(0xFF101512),
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              Future<void> ask() async {
+                final request = prompt.text.trim();
+                if (request.isEmpty || generating) return;
+                setSheetState(() {
+                  generating = true;
+                  response = null;
+                  command = null;
+                });
+                final result = await _ai.generate(
+                  '''أنت مساعد طرفية محلي داخل Zion OS.
+حوّل طلب المستخدم إلى مساعدة Linux عملية وآمنة.
+لا تنفذ أي أمر بنفسك.
+إذا كان الطلب يحتاج أمراً، أعد أمراً واحداً فقط داخل fenced code block بلغة bash، ثم شرحاً قصيراً بالعربية.
+لا تستخدم rm -rf أو mkfs أو dd أو أوامر تدميرية أو تجاوز صلاحيات.
+طلب المستخدم:
+$request''',
+                  maxTokens: 300,
+                  temperature: 0.25,
+                );
+                setSheetState(() {
+                  generating = false;
+                  response = result;
+                  command = _extractCommand(result);
+                });
+              }
+
+              return SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: 16,
+                    right: 16,
+                    top: 14,
+                    bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_awesome, color: Color(0xFF19D3C5)),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Zion Local AI',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'إغلاق',
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const Text(
+                        'المعالجة محلية بالكامل عبر GGUF/llama.cpp. لا يتم إرسال النص إلى خدمة سحابية.',
+                        style: TextStyle(color: Colors.white60, fontSize: 12),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: prompt,
+                        autofocus: true,
+                        minLines: 2,
+                        maxLines: 5,
+                        onSubmitted: (_) => unawaited(ask()),
+                        decoration: const InputDecoration(
+                          labelText: 'ماذا تريد أن تفعل في الطرفية؟',
+                          hintText: 'مثال: ابحث عن ملفات APK داخل المجلد الحالي',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: generating ? null : () => unawaited(ask()),
+                        icon: generating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.bolt),
+                        label: Text(generating ? 'جاري التفكير محلياً…' : 'اسأل النموذج'),
+                      ),
+                      if (response != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 260),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF17201B),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: SingleChildScrollView(child: SelectableText(response!)),
+                        ),
+                      ],
+                      if (command != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF07110E),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF24564E)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text('الأمر المقترح', style: TextStyle(color: Color(0xFF19D3C5))),
+                              const SizedBox(height: 6),
+                              SelectableText(command!, style: const TextStyle(fontFamily: 'monospace')),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: () => Clipboard.setData(ClipboardData(text: command!)),
+                                    icon: const Icon(Icons.copy),
+                                    label: const Text('نسخ'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton.icon(
+                                    onPressed: () {
+                                      _sendRaw(command!);
+                                      Navigator.pop(context);
+                                    },
+                                    icon: const Icon(Icons.play_arrow),
+                                    label: const Text('تنفيذ'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+      prompt.dispose();
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
+    }
+  }
+
   @override
   void dispose() {
+    unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
       unawaited(tab.outputSubscription?.cancel());
       unawaited(tab.service.dispose());
@@ -184,6 +389,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
       appBar: AppBar(
         title: const Text('Zion OS Terminal'),
         actions: [
+          IconButton(
+            tooltip: 'المساعد المحلي',
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: tab == null || _aiLoading
+                ? null
+                : () => unawaited(_openAiAssistant()),
+          ),
           IconButton(
             tooltip: _tabs.length >= _maxSessions
                 ? 'الحد الأقصى 8 جلسات'
