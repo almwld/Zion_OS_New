@@ -271,7 +271,7 @@ class _TaskManagerAppState extends State<TaskManagerApp> {
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
                       value: performanceScore / 100,
-                      backgroundColor: Colors.white24,
+                      backgroundColor: Theme.of(context).scaffoldBackgroundColor24,
                       color: Colors.white,
                       
                     ),
