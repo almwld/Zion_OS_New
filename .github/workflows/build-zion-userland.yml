@@ -54,7 +54,9 @@ jobs:
               for info in zin.infolist():
                   if info.is_dir() or info.filename == "SYMLINKS.txt":
                       continue
-                  name = info.filename.replace("\\", "/").lstrip("./")
+                  name = info.filename.replace("\\", "/")
+                  while name.startswith("./"):
+                      name = name[2:]
                   if name.startswith("/") or ".." in Path(name).parts or not name:
                       raise SystemExit(f"unsafe source path: {name}")
                   target = "usr/" + name
@@ -76,7 +78,9 @@ jobs:
                       continue
                   link_target, link_name = line.split("←", 1)
                   link_target = link_target.strip().replace("\\", "/")
-                  link_name = link_name.strip().replace("\\", "/").lstrip("./")
+                  link_name = link_name.strip().replace("\\", "/")
+                  while link_name.startswith("./"):
+                      link_name = link_name[2:]
                   if (not link_name or link_name.startswith("/") or
                       ".." in Path(link_name).parts or
                       not link_target or link_target.startswith("/") or
