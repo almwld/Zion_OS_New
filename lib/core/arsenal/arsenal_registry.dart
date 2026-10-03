@@ -89,7 +89,7 @@ class ArsenalRegistry {
     ArsenalTool(id: 'net.ip', name: 'IP', category: ArsenalCategory.network, availability: ArsenalAvailability.available, command: 'ip'),
     ArsenalTool(id: 'net.ss', name: 'Socket Statistics', category: ArsenalCategory.network, availability: ArsenalAvailability.available, command: 'ss'),
     ArsenalTool(id: 'net.dns', name: 'DNS Lookup', category: ArsenalCategory.network, availability: ArsenalAvailability.notConfigured, command: 'dig', reason: 'Depends on the Zion userland DNS binary.'),
-    ArsenalTool(id: 'terminal.shell', name: 'Native Terminal', category: ArsenalCategory.tools, availability: ArsenalAvailability.available, command: '/system/bin/sh'),
+    ArsenalTool(id: 'terminal.shell', name: 'Native Terminal', category: ArsenalCategory.tools, availability: ArsenalAvailability.notConfigured, command: 'bash', reason: 'Requires the real Zion Userland shell.'),
     ArsenalTool(id: 'packages.zion-pkg', name: 'Zion Package Manager', category: ArsenalCategory.system, availability: ArsenalAvailability.notConfigured, command: 'zion-pkg', reason: 'Zion userland bootstrap is not installed.'),
     ArsenalTool(id: 'linux.proot', name: 'PRoot', category: ArsenalCategory.system, availability: ArsenalAvailability.notConfigured, command: 'proot', reason: 'Native Zion PRoot runtime is not installed.'),
     ArsenalTool(id: 'root.magiczionos', name: '#magiczionos', category: ArsenalCategory.system, availability: ArsenalAvailability.notConfigured, reason: 'Availability is determined at runtime by SU, Chroot or PRoot.'),
@@ -131,19 +131,11 @@ class ArsenalRuntimeResolver {
     final command = tool.command?.trim();
     if (command == null || command.isEmpty) return tool;
     final candidates = <String>[];
-    if (tool.id == 'terminal.shell') {
-      candidates.addAll(<String>['/system/bin/sh', '/bin/sh', 'sh']);
-    } else if (command.startsWith('/')) {
+    if (command.startsWith('/')) {
       candidates.add(command);
     } else {
       candidates.add('/data/data/com.zion.os/files/usr/bin/$command');
       candidates.add('/data/data/com.zion.os/files/usr/sbin/$command');
-      candidates.add('/system/bin/$command');
-      candidates.add('/system/xbin/$command');
-      final path = Platform.environment['PATH'] ?? '';
-      for (final dir in path.split(':').where((e) => e.isNotEmpty)) {
-        candidates.add('$dir/$command');
-      }
     }
     for (final candidate in candidates.toSet()) {
       try {
