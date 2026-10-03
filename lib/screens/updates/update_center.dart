@@ -88,7 +88,7 @@ class _UpdateCenterState extends State<UpdateCenter> {
                   const Icon(Icons.system_update, color: Colors.white, size: 50),
                   const SizedBox(height: 10),
                   Text(
-                    'Zion OS $_currentVersion',
+                    'Zion OS — OTA status',
                     style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 5),
@@ -128,8 +128,8 @@ class _UpdateCenterState extends State<UpdateCenter> {
                 children: [
                   const Text('Update Settings', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  _buildSwitchItem('Auto-check for updates', _autoCheck, (v) => setState(() => _autoCheck = v)),
-                  _buildSwitchItem('Auto-download updates', _autoDownload, (v) => setState(() => _autoDownload = v)),
+                  _buildSwitchItem('Auto-check for updates', _autoCheck, _ota.isConfigured ? (v) => setState(() => _autoCheck = v) : null),
+                  _buildSwitchItem('Auto-download updates', _autoDownload, _ota.isConfigured ? (v) => setState(() => _autoDownload = v) : null),
                 ],
               ),
             ),
@@ -250,7 +250,7 @@ class _UpdateCenterState extends State<UpdateCenter> {
     );
   }
 
-  Widget _buildSwitchItem(String title, bool value, Function(bool) onChanged) {
+  Widget _buildSwitchItem(String title, bool value, ValueChanged<bool>? onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
