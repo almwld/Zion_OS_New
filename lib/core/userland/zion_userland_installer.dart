@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 
 import 'zion_bootstrap.dart';
+import 'zion_bootstrap_endpoint.dart';
 
 class ZionUserlandInstallResult {
   const ZionUserlandInstallResult({required this.success, required this.message, this.releaseTag});

@@ -209,7 +209,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
     final q = _search.text.trim().toLowerCase();
     final filtered = _legacyApps.where((a) => q.isEmpty || a.name.toLowerCase().contains(q) || a.title.toLowerCase().contains(q)).toList();
     return Container(width: 400, height: 500, decoration: BoxDecoration(color: const Color(0xFF0A0E0A), border: Border.all(color: const Color(0xFF00FF41).withOpacity(.5)), borderRadius: BorderRadius.circular(12)), child: Column(children: [
-      Padding(padding: const EdgeInsets.all(12), child: TextField(controller: _search, onChanged: (_) => setState(() {}), style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 14), decoration: const InputDecoration(hintText: 'ابحث عن تطبيق...', hintStyle: TextStyle(color: Color(0x8000FF41)), prefixIcon: Icon(Icons.search, color: Color(0xFF00FF41)), border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))))),
+      Padding(padding: const EdgeInsets.all(12), child: TextField(controller: _search, onChanged: (_) => setState(() {}), style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 14), decoration: const InputDecoration(hintText: 'ابحث عن تطبيق...', hintStyle: TextStyle(color: Color(0x8000FF41)), prefixIcon: Icon(Icons.search, color: Color(0xFF00FF41)), border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))))),),
       Expanded(child: ListView(padding: const EdgeInsets.all(8), children: [
         if (filtered.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('لا توجد تطبيقات مطابقة', style: TextStyle(color: Colors.white54)))),
         for (final group in ['أدوات النظام','الأمان والتشخيص'])

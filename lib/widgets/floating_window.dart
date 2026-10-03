@@ -51,6 +51,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
   Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
     final safeTop = MediaQuery.paddingOf(context).top;
+    final safeTop = MediaQuery.paddingOf(context).top;
     final currentSize = size ?? _size;
     final maxX = (screen.width - currentSize.width).clamp(0.0, double.infinity).toDouble();
     final maxY = (screen.height - currentSize.height).clamp(0.0, double.infinity).toDouble();
@@ -96,6 +97,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
 
   void _snapToEdge(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
+    final safeTop = MediaQuery.paddingOf(context).top;
     final x = _position.dx;
     final y = _position.dy;
     WindowSnapVisual? target;
@@ -296,7 +298,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                 ],
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
