@@ -309,12 +309,15 @@ class MainActivity : FlutterFragmentActivity() {
             if (handle <= 0) return 0
             terminalReaders[handle] = Thread {
                 try {
+                    var idleDelayMs = 8L
                     while (!Thread.currentThread().isInterrupted) {
                         val data = nativeReadPty(handle) ?: break
                         if (data.isEmpty()) {
-                            try { Thread.sleep(8) } catch (_: InterruptedException) { break }
+                            try { Thread.sleep(idleDelayMs) } catch (_: InterruptedException) { break }
+                            idleDelayMs = (idleDelayMs * 2L).coerceAtMost(500L)
                             continue
                         }
+                        idleDelayMs = 8L
                         terminalSink?.success(
                             mapOf(
                                 "sessionId" to handle,
