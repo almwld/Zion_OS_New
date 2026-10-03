@@ -188,7 +188,7 @@ class ZionLocalKaliBootstrap {
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
             try { await Link(destination.path).delete(); } catch (_) {}
-            await Link(destination.path).create(entry.symbolicLink);
+            await Link(destination.path).create(entry.symbolicLink!);
           } else if (entry.isFile) {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
