@@ -33,6 +33,9 @@ jobs:
           s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
           p.write_text(s)
           PY
+          # The builder image can lag behind the bootstrap branch's pinned NDK.
+          # Provision the exact SDK/NDK declared by properties.sh before compiling.
+          ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
           ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64
 
       - name: Convert bootstrap to verified Zion archive
