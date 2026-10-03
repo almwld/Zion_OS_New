@@ -47,6 +47,15 @@ class ZionBootstrap {
     }
     final root = Directory(_backupRoot);
     await root.create(recursive: true);
+    final abi = Abi.current().toString();
+    final sourceRelease = await _releaseValue(File(current.path + '/etc/zion-release.json'));
+    final fingerprint = await _fingerprint(current);
+    if (await _hasMatchingBackup(root, abi: abi, release: sourceRelease, fingerprint: fingerprint)) {
+      onProgress?.call('النسخة الاحتياطية المحلية الحالية مطابقة لـ Userland؛ لن يتم إنشاء نسخة مكررة.');
+      await _config();
+      return BootstrapResult.success();
+    }
+
     final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(RegExp(r'[^0-9]'), '');
     final backup = Directory(root.path + '/usr-' + stamp);
     onProgress?.call('إنشاء نسخة احتياطية محلية من Userland الموجود على الجهاز...');
@@ -54,11 +63,12 @@ class ZionBootstrap {
     final meta = File(backup.path + '/etc/zion-backup.json');
     await meta.parent.create(recursive: true);
     await meta.writeAsString(jsonEncode({
-      'format': 'zion-userland-backup-v1',
-      'abi': Abi.current().toString(),
+      'format': 'zion-userland-backup-v2',
+      'abi': abi,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'sourcePrefix': prefix,
-      'sourceRelease': await _releaseValue(File(current.path + '/etc/zion-release.json')),
+      'sourceRelease': sourceRelease,
+      'fingerprint': fingerprint,
     }), flush: true);
     await _trimBackups();
     await _config();
@@ -86,6 +96,60 @@ class ZionBootstrap {
       return v is Map ? (v['release']?.toString() ?? 'unknown') : 'unknown';
     } catch (_) {
       return 'unknown';
+    }
+  }
+
+  static Future<String> _fingerprint(Directory root) async {
+    final entries = <String>[];
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      final relative = entity.path.substring(root.path.length + 1);
+      final stat = await entity.stat();
+      var target = '';
+      if (entity is Link) {
+        try { target = await entity.target(); } catch (_) {}
+      }
+      entries.add(
+        '${stat.type}|$relative|${stat.size}|${stat.modified.microsecondsSinceEpoch}|$target',
+      );
+    }
+    entries.sort();
+    return sha256.convert(utf8.encode(entries.join('\n'))).toString();
+  }
+
+  static Future<bool> _hasMatchingBackup(
+    Directory root, {
+    required String abi,
+    required String release,
+    required String fingerprint,
+  }) async {
+    final dirs = (await root.list(followLinks: false).where((e) => e is Directory).toList())
+        .cast<Directory>();
+    for (final backup in dirs) {
+      final meta = File(backup.path + '/etc/zion-backup.json');
+      if (!await meta.exists()) continue;
+      try {
+        final value = jsonDecode(await meta.readAsString());
+        if (value is Map &&
+            value['format'] == 'zion-userland-backup-v2' &&
+            value['abi'] == abi &&
+            value['sourceRelease'] == release &&
+            value['fingerprint'] == fingerprint &&
+            await _hasUsableShell(backup.path)) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  static Future<bool> _backupMatchesAbi(Directory backup, String abi) async {
+    final meta = File(backup.path + '/etc/zion-backup.json');
+    if (!await meta.exists()) return false;
+    try {
+      final value = jsonDecode(await meta.readAsString());
+      return value is Map && value['abi'] == abi;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -123,19 +187,29 @@ class ZionBootstrap {
     final dirs = (await root.list(followLinks: false).where((e) => e is Directory).toList())
         .cast<Directory>();
     dirs.sort((a, b) => b.path.compareTo(a.path));
+    final abi = Abi.current().toString();
     for (final backup in dirs) {
+      if (!await _backupMatchesAbi(backup, abi)) continue;
       if (!await _hasUsableShell(backup.path)) continue;
+
       final current = Directory(prefix);
       final failed = Directory(base + '/.usr-failed-' + DateTime.now().microsecondsSinceEpoch.toString());
+      final staging = Directory(base + '/.usr-restore-' + DateTime.now().microsecondsSinceEpoch.toString());
       try {
+        // Copy instead of consuming the backup so the last known-good copy
+        // remains available for a second rollback.
+        await _copyDirectory(backup, staging);
         if (await current.exists()) await current.rename(failed.path);
-        await backup.rename(current.path);
+        await staging.rename(current.path);
         if (await failed.exists()) await failed.delete(recursive: true);
         await _config();
         return await isInstalled();
       } catch (_) {
+        try {
+          if (await staging.exists()) await staging.delete(recursive: true);
+        } catch (_) {}
         if (!await current.exists() && await failed.exists()) {
-          await failed.rename(current.path);
+          try { await failed.rename(current.path); } catch (_) {}
         }
       }
     }
