@@ -25,26 +25,28 @@ void main() {
     expect(result.stdout, contains('shell-status'));
   });
 
-  test('real shell command returns process output and exit code', () async {
+  test('real shell command uses Zion Userland or reports unavailable', () async {
     final service = TerminalService(SecurityCore());
     addTearDown(service.dispose);
 
     final result = await service.execute('printf ZionTerminalTest');
 
     expect(result.command, 'printf ZionTerminalTest');
-    expect(result.shell, isNot('unavailable'));
+    expect(result.shell, isNot('/system/bin/sh'));
+    if (result.shell == 'unavailable') return;
     expect(result.exitCode, 0);
     expect(result.stdout, contains('ZionTerminalTest'));
     expect(result.duration, greaterThanOrEqualTo(Duration.zero));
   });
 
-  test('failed real command exposes a non-zero exit code', () async {
+  test('failed real command never falls back to Android shell', () async {
     final service = TerminalService(SecurityCore());
     addTearDown(service.dispose);
 
     final result = await service.execute('command_that_should_not_exist_zion');
 
-    expect(result.shell, isNot('unavailable'));
+    expect(result.shell, isNot('/system/bin/sh'));
+    if (result.shell == 'unavailable') return;
     expect(result.exitCode, isNot(0));
   });
 

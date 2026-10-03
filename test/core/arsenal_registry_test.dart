@@ -54,7 +54,7 @@ void main() {
   test('tool serialization exposes explicit availability', () {
     final tool = ArsenalRegistry().resolve('terminal.shell')!;
     final json = tool.toJson();
-    expect(json['availability'], 'AVAILABLE');
-    expect(json['command'], '/system/bin/sh');
+    expect(json['availability'], 'NOTCONFIGURED');
+    expect(json['command'], 'bash');
   });
 }

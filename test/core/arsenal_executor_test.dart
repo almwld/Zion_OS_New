@@ -31,7 +31,7 @@ void main() {
         expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)),
       ),
     );
-    expect(result.status, anyOf('SUCCESS', startsWith('EXIT_'), 'UNAVAILABLE'));
+    expect(result.status, anyOf('SUCCESS', startsWith('EXIT_'), 'UNAVAILABLE', 'NOTCONFIGURED'));
     if (result.status == 'SUCCESS') {
       expect(result.stdout, contains('zion-arsenal-test'));
     }
