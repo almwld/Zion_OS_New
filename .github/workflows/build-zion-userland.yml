@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - ".github/workflows/build-zion-userland.yml"
+      - "lib/core/userland/**"
 
 permissions:
   contents: write
@@ -146,3 +147,16 @@ jobs:
           gh release create "$TAG" zion-userland-aarch64.zip bootstrap.json \
             --title "Zion Userland (latest)" \
             --notes "Generated from a custom-prefix Termux bootstrap for com.zion.os. The archive is SHA-256 verified by Zion before activation."
+          gh release download "$TAG" --pattern bootstrap.json --output published-bootstrap.json
+          test -s published-bootstrap.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("published-bootstrap.json").read_text())
+          assert data["format"] == "zion-bootstrap-endpoint-v1"
+          asset = data["assets"]["aarch64"]
+          assert asset["url"].endswith("/zion-userland-aarch64.zip")
+          assert len(asset["sha256"]) == 64
+          assert asset["size"] > 0
+          print("Verified published single bootstrap endpoint manifest")
+          PY
