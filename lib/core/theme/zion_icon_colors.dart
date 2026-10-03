@@ -18,6 +18,6 @@ class ZionIconColors {
       default:return ZionColors.cyan;
     }
   }
-  static Color getCategoryColor(String c,{bool isDark=true})=>switch(c.toUpperCase()){ 'ATTACK'=>ZionColors.attackRed,'DEFENSE'=>ZionColors.defenseGreen,'ANALYSIS'=>ZionColors.analysisBlue,'TOOLS'=>ZionColors.toolsOrange,_=>isDark?ZionColors.cyan:ZionColors.teal};
-  static Color getStatusColor(String s)=>switch(s.toLowerCase()){ 'available'||'success'||'granted'=>ZionColors.success,'permission_required'||'warning'=>ZionColors.warning,'unavailable'||'error'||'denied'=>ZionColors.error,'not_configured'||'info'=>ZionColors.info,_=>ZionColors.cyan};
+  static Color getCategoryColor(String c,{bool isDark=true})=>switch(c.toUpperCase()){ 'ATTACK'=>ZionColors.neonIndigo,'DEFENSE'=>ZionColors.neonIndigo,'ANALYSIS'=>ZionColors.neonIndigo,'TOOLS'=>ZionColors.neonIndigo,_=>isDark?ZionColors.cyan:ZionColors.teal};
+  static Color getStatusColor(String s)=>switch(s.toLowerCase()){ 'available'||'success'||'granted'=>ZionColors.neonIndigo,'permission_required'||'warning'=>ZionColors.neonIndigo,'unavailable'||'error'||'denied'=>ZionColors.neonIndigo,'not_configured'||'info'=>ZionColors.neonIndigo,_=>ZionColors.cyan};
 }
