@@ -20,6 +20,9 @@ void main() {
           'analysis.logs',
           'utility.system-info',
           'web.inspect',
+          'net.dns.lookup',
+          'net.dns.reverse',
+          'net.latency',
         },
       );
 
@@ -72,6 +75,28 @@ void main() {
       ),
     );
     expect(denied.success, isFalse);
+  });
+
+  test('DNS lookup builtin resolves localhost', () async {
+    final result = await ArsenalBuiltinExecutor(SecurityCore()).execute(
+      toolId: 'net.dns.lookup',
+      arguments: const <String>['localhost'],
+      actor: 'test',
+      scope: scope(),
+    );
+    expect(result?.success, isTrue);
+    expect(result?.stdout, contains('addresses'));
+  });
+
+  test('TCP latency builtin rejects invalid ports', () async {
+    final result = await ArsenalBuiltinExecutor(SecurityCore()).execute(
+      toolId: 'net.latency',
+      arguments: const <String>['localhost', '70000'],
+      actor: 'test',
+      scope: scope(),
+    );
+    expect(result?.success, isFalse);
+    expect(result?.status, 'INVALID_ARGUMENTS');
   });
 
   test('system info builtin returns bounded metrics', () async {
