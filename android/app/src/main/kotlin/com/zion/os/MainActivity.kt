@@ -46,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.io.File
 import java.io.FileOutputStream
+import com.zion.os.security.ZionToken
 
 class MainActivity : FlutterFragmentActivity() {
     private external fun nativePtyAvailable(): Boolean
@@ -88,6 +89,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        ZionToken.ensure(this)
         zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
         zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
         handleZionApiIntent(intent)

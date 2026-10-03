@@ -34,6 +34,7 @@ import com.zion.os.handlers.BatteryHandler
 import com.zion.os.handlers.SensorHandler
 import com.zion.os.handlers.ClipboardHandler
 import com.zion.os.utils.PermissionHelper
+import com.zion.os.security.TrustVerifier
 
 class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val channel = MethodChannel(messenger, "zion.os/api")
@@ -45,11 +46,16 @@ class ZionApiChannel(private val activity: Activity, messenger: BinaryMessenger)
     private var recorder: MediaRecorder? = null
     private var recordingFile: File? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private val trustVerifier = TrustVerifier(activity)
 
     fun handleExternalIntent(intent: Intent) {
         if (intent.action != "com.zion.os.ZION_API") return
-        val requestId = intent.getStringExtra("requestId")?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,80}")) } ?: return
-        val method = intent.getStringExtra("method") ?: return
+        val requestId = intent.getStringExtra("requestId")?.takeIf { TrustVerifier.isValidRequestId(it) } ?: return
+        if (!trustVerifier.verify(intent)) {
+            ExternalResult(requestId).error("UNAUTHORIZED", "Zion API authentication failed.", null)
+            return
+        }
+        val method = intent.getStringExtra("method")?.takeIf { TrustVerifier.isValidMethod(it) } ?: return
         val args = mutableMapOf<String, Any?>()
         for (key in intent.extras?.keySet().orEmpty()) {
             if (key == "requestId" || key == "method") continue
