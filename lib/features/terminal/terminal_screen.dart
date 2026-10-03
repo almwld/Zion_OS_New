@@ -397,7 +397,7 @@ $request''',
                                   const SizedBox(width: 8),
                                   FilledButton.icon(
                                     onPressed: () {
-                                      _sendRaw('$command!\n');
+                                      _sendRaw('${command!}\n');
                                       Navigator.pop(context);
                                     },
                                     icon: const Icon(Icons.play_arrow),
