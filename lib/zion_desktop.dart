@@ -675,6 +675,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   }
 
 
+}
+
 class GridPatternPainter extends CustomPainter {
   final bool isDark;
   final Color primaryColor;
