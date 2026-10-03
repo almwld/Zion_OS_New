@@ -155,6 +155,7 @@ class ZionBootstrap {
 
   static Future<void> _copyDirectory(Directory source, Directory target) async {
     await target.create(recursive: true);
+    await _copyMode(source.path, target.path);
     await for (final entity in source.list(followLinks: false)) {
       final name = entity.path.substring(source.path.length + 1);
       final destination = target.path + '/' + name;
@@ -163,11 +164,22 @@ class ZionBootstrap {
       } else if (entity is File) {
         await File(destination).parent.create(recursive: true);
         await entity.copy(destination);
+        await _copyMode(entity.path, destination);
       } else if (entity is Link) {
         await Link(destination).parent.create(recursive: true);
         await Link(destination).create(await entity.target());
       }
     }
+  }
+
+  static Future<void> _copyMode(String source, String destination) async {
+    try {
+      final mode = (await FileStat.stat(source)).mode & 0x1ff;
+      await Process.run('/system/bin/chmod', <String>[
+        mode.toRadixString(8),
+        destination,
+      ], runInShell: false);
+    } catch (_) {}
   }
 
   static Future<void> _trimBackups() async {
