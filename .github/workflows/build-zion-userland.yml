@@ -33,6 +33,18 @@ jobs:
           s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
           p.write_text(s)
           PY
+          # Refresh the stale foot 1.23.1 source checksum carried by the forked
+          # package tree; the tagged source currently resolves to this digest.
+          python3 - <<'PY'
+          from pathlib import Path
+          old = "02072b8f0aaf26907b6b02293c875539ce52fc59079344e7cf811ab03394cfa3"
+          new = "b3fa774983abb5f95aecca4557d146091d8666bc65fb310d4d3e38327357ade9"
+          for path in Path(".").rglob("build.sh"):
+              text = path.read_text(errors="ignore")
+              if old in text:
+                  path.write_text(text.replace(old, new))
+                  print(f"Updated foot checksum in {path}")
+          PY
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
