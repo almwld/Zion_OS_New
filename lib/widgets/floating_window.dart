@@ -51,7 +51,6 @@ class _FloatingWindowState extends State<FloatingWindow> {
   Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
     final safeTop = MediaQuery.paddingOf(context).top;
-    final safeTop = MediaQuery.paddingOf(context).top;
     final currentSize = size ?? _size;
     final maxX = (screen.width - currentSize.width).clamp(0.0, double.infinity).toDouble();
     final maxY = (screen.height - currentSize.height).clamp(0.0, double.infinity).toDouble();
@@ -79,6 +78,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
   void _toggleMaximize(BuildContext context) {
     widget.onFocus?.call();
     final screen = MediaQuery.sizeOf(context);
+    final safeTop = MediaQuery.paddingOf(context).top;
     setState(() {
       if (_isMaximized) {
         _size = _restoreSize ?? _clampSize(context, const Size(350, 500));
@@ -298,7 +298,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                 ],
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
