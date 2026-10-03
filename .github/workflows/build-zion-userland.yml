@@ -38,11 +38,8 @@ jobs:
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
-          # Some package recipes regenerate autotools Makefiles inside the builder.
-          # Ensure automake-1.16 is present before building the bootstrap set.
-          ./scripts/run-docker.sh sudo apt-get update
-          ./scripts/run-docker.sh sudo apt-get install -y autoconf automake m4 perl
-          ./scripts/run-docker.sh bash -lc 'sudo ln -sf "$(command -v automake)" /usr/local/bin/automake-1.16 && sudo ln -sf "$(command -v aclocal)" /usr/local/bin/aclocal-1.16'
+          # Use the official package-builder image as-is; it is provisioned for the
+          # current upstream Termux build tree and avoids mutating the container.
           # Zion's package bridge does not require apt/gpgv inside the bootstrap.
           # Android-10-compatible mode keeps bash/coreutils/curl while replacing
           # the heavy apt/gpgv path with the native bootstrap tooling.
