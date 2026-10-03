@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/arsenal/arsenal_service.dart';
+import '../../core/arsenal/zion_source_arsenal_catalog.dart';
 import '../../core/arsenal/arsenal_registry.dart';
 import '../../security/core/authorization_policy.dart';
 
@@ -54,9 +55,29 @@ class _ArsenalScreenState extends State<ArsenalScreen> {
     appBar: AppBar(title: const Text('Arsenal'), actions: [IconButton(onPressed: _loading ? null : _refresh, icon: const Icon(Icons.refresh))]),
     body: _loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView(padding: const EdgeInsets.all(12), children: [_summary(), for (final category in ArsenalCategory.values) _category(category)]),
+      child: ListView(padding: const EdgeInsets.all(12), children: [_summary(), _sourceCatalog(), for (final category in ArsenalCategory.values) _category(category)]),
     ),
   );
+
+  Widget _sourceCatalog() {
+    return Card(
+      margin: const EdgeInsets.only(top: 10),
+      child: ExpansionTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: const Text('Zion Source Arsenal'),
+        subtitle: Text('${zionSourceArsenalModules.length} وحدات مصدرية • $zionSourceArsenalMethodCount واجهة/دالة مفهرسة'),
+        children: [
+          for (final module in zionSourceArsenalModules)
+            ListTile(
+              dense: true,
+              title: Text(module.className),
+              subtitle: Text('${module.category} • ${module.methodCount} واجهة • ${module.status}'),
+              trailing: const Icon(Icons.source_outlined, size: 18),
+            ),
+        ],
+      ),
+    );
+  }
 
   Widget _summary() {
     final available = _registry.tools.where((tool) => tool.availability == ArsenalAvailability.available).length;
