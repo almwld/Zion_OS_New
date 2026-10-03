@@ -21,18 +21,20 @@ object ZionToken {
     @Synchronized
     fun ensure(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val existing = prefs.getString(KEY_API_TOKEN, null)?.trim()
-        val token = if (isValidToken(existing)) {
-            existing!!
-        } else {
-            val bytes = ByteArray(TOKEN_BYTES)
-            SecureRandom().nextBytes(bytes)
-            bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
-                .also { prefs.edit().putString(KEY_API_TOKEN, it).commit() }
-        }
-
         val file = File(context.filesDir, TOKEN_FILE)
         file.parentFile?.mkdirs()
+        val storedFileToken = runCatching { file.readText().trim() }.getOrNull()
+        val existing = prefs.getString(KEY_API_TOKEN, null)?.trim()
+        val token = when {
+            isValidToken(existing) -> existing!!
+            isValidToken(storedFileToken) -> storedFileToken!!
+            else -> {
+                val bytes = ByteArray(TOKEN_BYTES)
+                SecureRandom().nextBytes(bytes)
+                bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            }
+        }
+        prefs.edit().putString(KEY_API_TOKEN, token).commit()
         if (!file.exists() || file.readText().trim() != token) {
             file.writeText(token)
         }

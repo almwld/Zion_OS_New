@@ -226,14 +226,17 @@ exit 1
 set -eu
 PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
 RESULTS="$PREFIX/tmp/zion-api-results"
+TOKEN_FILE="/data/data/com.zion.os/files/etc/zion-api.token"
 mkdir -p "$RESULTS"
+[ -r "$TOKEN_FILE" ] || { echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API token is not configured."}'; exit 1; }
+[ "$#" -le 32 ] || { echo '{"available":false,"status":"INVALID","reason":"Too many Zion API arguments."}'; exit 2; }
 method="${1:-}"
 [ -n "$method" ] || { echo '{"available":false,"status":"UNAVAILABLE","reason":"Zion API method is required."}'; exit 2; }
 shift
 id="zion-$(date +%s 2>/dev/null)-$$"
 result="$RESULTS/$id.json"
 rm -f "$result"
-am start -n com.zion.os/.MainActivity -a com.zion.os.ZION_API --es method "$method" --es requestId "$id" "$@" >/dev/null 2>&1 || {
+am start -n com.zion.os/.MainActivity -a com.zion.os.ZION_API --es method "$method" --es requestId "$id" --es token "$(cat "$TOKEN_FILE")" "$@" >/dev/null 2>&1 || {
   echo '{"available":false,"status":"UNAVAILABLE","reason":"Unable to start Zion API bridge."}'; exit 1;
 }
 i=0
@@ -367,6 +370,13 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
       final token=List<String>.generate(32,(_)=>random.nextInt(256).toRadixString(16).padLeft(2,'0')).join();
       await tokenFile.parent.create(recursive:true);
       await tokenFile.writeAsString(token,flush:true);
+    }
+    final apiTokenFile=File(base+'/etc/zion-api.token');
+    if(!await apiTokenFile.exists()){
+      final random=Random.secure();
+      final token=List<String>.generate(32,(_)=>random.nextInt(256).toRadixString(16).padLeft(2,'0')).join();
+      await apiTokenFile.parent.create(recursive:true);
+      await apiTokenFile.writeAsString(token,flush:true);
     }
     await _installZionApiScripts();
   }
