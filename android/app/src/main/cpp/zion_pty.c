@@ -104,7 +104,8 @@ static void prepare_environment(void) {
 
 static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\\0') return 0;
-    return strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
+    return strncmp(shell, "kali:", 5) == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
@@ -112,6 +113,7 @@ static int is_allowed_shell(const char *shell) {
 }
 
 static const char *select_shell(const char *configured_shell) {
+    if (configured_shell != NULL && strncmp(configured_shell, "kali:", 5) == 0) return configured_shell;
     if (is_allowed_shell(configured_shell) && access(configured_shell, X_OK) == 0) {
         return configured_shell;
     }
@@ -130,15 +132,26 @@ static const char *select_shell(const char *configured_shell) {
     return NULL;
 }
 
+static void exec_kali_proot(const char *proot, const char *rootfs) {
+    execl(proot, "proot",
+          "--link2symlink", "-0", "-r", rootfs,
+          "-b", "/dev", "-b", "/proc", "-b", "/sys",
+          "-b", "/storage/emulated/0", "-w", "/root",
+          "/usr/bin/env", "-i",
+          "HOME=/root",
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "TERM=xterm-256color", "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
+          "SHELL=/bin/bash", "ZION_KALI=1",
+          "/bin/bash", "--login", (char *)NULL);
+    _exit(127);
+}
+
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
-
     const char *name = shell_path;
     for (const char *p = shell_path; *p != '\0'; ++p) {
         if (*p == '/') name = p + 1;
     }
-    // shell_path was selected and SHELL was configured before fork().
-    // After fork(), avoid malloc/stdio/string/env helpers and exec directly.
     execl(shell_path, name, "-i", (char *)NULL);
     _exit(127);
 }
@@ -155,7 +168,11 @@ Java_com_zion_os_MainActivity_nativePtyAvailable(JNIEnv *env, jobject thiz) {
 JNIEXPORT jint JNICALL
 Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint rows, jint cols, jstring shell_arg) {
     (void)thiz;
-    char configured_shell[128] = {0};
+    char configured_shell[512] = {0};
+    char kali_proot[512] = {0};
+    char kali_rootfs[512] = {0};
+    char kali_loader[512] = {0};
+    int kali_mode = 0;
     if (shell_arg != NULL) {
         const char *raw = (*env)->GetStringUTFChars(env, shell_arg, NULL);
         if (raw != NULL) {
@@ -167,6 +184,26 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             (*env)->ReleaseStringUTFChars(env, shell_arg, raw);
         }
     }
+
+    if (strncmp(configured_shell, "kali:", 5) == 0) {
+        kali_mode = 1;
+        const char *spec = configured_shell + 5;
+        const char *sep1 = strchr(spec, '|');
+        const char *sep2 = sep1 ? strchr(sep1 + 1, '|') : NULL;
+        if (!sep1 || !sep2) return 0;
+        size_t pLen = (size_t)(sep1 - spec);
+        size_t rLen = (size_t)(sep2 - sep1 - 1);
+        size_t lLen = strlen(sep2 + 1);
+        if (pLen == 0 || pLen >= sizeof(kali_proot) ||
+            rLen == 0 || rLen >= sizeof(kali_rootfs) ||
+            lLen == 0 || lLen >= sizeof(kali_loader)) return 0;
+        memcpy(kali_proot, spec, pLen); kali_proot[pLen] = '\0';
+        memcpy(kali_rootfs, sep1 + 1, rLen); kali_rootfs[rLen] = '\0';
+        memcpy(kali_loader, sep2 + 1, lLen); kali_loader[lLen] = '\0';
+        if (access(kali_proot, X_OK) != 0 || access(kali_rootfs, R_OK) != 0 ||
+            access(kali_loader, R_OK) != 0) return 0;
+    }
+
     pthread_mutex_lock(&g_sessions_lock);
     init_sessions();
 
@@ -211,9 +248,16 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         return 0;
     }
     setenv("SHELL", selected_shell, 1);
-    setenv("ZION_SHELL_MODE",
-           strcmp(selected_shell, "/system/bin/sh") == 0 ? "android-posix" : "zion-userland",
-           1);
+    if (kali_mode) {
+        setenv("PROOT_LOADER", kali_loader, 1);
+        setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
+        mkdir_p("/data/data/com.zion.os/files/zion/tmp", 0700);
+        setenv("ZION_SHELL_MODE", "kali-proot", 1);
+    } else {
+        setenv("ZION_SHELL_MODE",
+               strcmp(selected_shell, "/system/bin/sh") == 0 ? "android-posix" : "zion-userland",
+               1);
+    }
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -247,6 +291,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         if (chdir("/data/data/com.zion.os/files/home") != 0) {
             _exit(126);
         }
+        if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
         exec_selected_shell(selected_shell);
     }
 
