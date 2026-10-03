@@ -57,8 +57,6 @@ class MainActivity : FlutterFragmentActivity() {
     private external fun nativeStopPty(handle: Int)
 
     private val terminalReaders = ConcurrentHashMap<Int, Thread>()
-    private val terminalProcesses = ConcurrentHashMap<Int, Process>()
-    private var nextProcessTerminalHandle = 1001
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
@@ -353,18 +351,11 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun resizeTerminal(handle: Int, rows: Int, cols: Int): Boolean {
         if (handle <= 0) return false
-        if (terminalProcesses.containsKey(handle)) return true
         return try { nativeResizePty(handle, rows, cols) } catch (_: Throwable) { false }
     }
 
     private fun stopTerminal(handle: Int) {
         if (handle <= 0) return
-        terminalProcesses.remove(handle)?.let { process ->
-            try { process.destroy() } catch (_: Throwable) {}
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                try { process.destroyForcibly() } catch (_: Throwable) {}
-            }
-        }
         try { nativeStopPty(handle) } catch (_: Throwable) {}
         terminalReaders.remove(handle)?.interrupt()
     }
