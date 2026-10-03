@@ -1,0 +1,90 @@
+name: Build Zion Userland
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-zion-userland.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Zion
+        uses: actions/checkout@v4
+
+      - name: Build custom Android arm64 Userland
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf termux-packages
+          git clone --depth 1 --branch infra-improvs https://github.com/agnostic-apollo/termux-packages.git termux-packages
+          cd termux-packages
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("scripts/properties.sh")
+          s = p.read_text()
+          s = s.replace('TERMUX__NAME="Termux"', 'TERMUX__NAME="Zion"')
+          s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
+          p.write_text(s)
+          PY
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64
+
+      - name: Convert bootstrap to verified Zion archive
+        shell: python
+        run: |
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+
+          source = Path("termux-packages/bootstrap-aarch64.zip")
+          out = Path("zion-userland-aarch64.zip")
+          if not source.exists():
+              raise SystemExit("bootstrap-aarch64.zip was not produced")
+
+          files = {}
+          symlink_file = "SYMLINKS.txt"
+
+          with zipfile.ZipFile(source) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+              for info in zin.infolist():
+                  if info.is_dir():
+                      continue
+                  name = info.filename.replace("\\", "/")
+                  if name.startswith("/") or ".." in Path(name).parts:
+                      raise SystemExit(f"unsafe source path: {name}")
+                  target = "usr/" + name
+                  data = zin.read(info)
+                  zi = zipfile.ZipInfo(target, info.date_time)
+                  zi.external_attr = info.external_attr
+                  zi.compress_type = zipfile.ZIP_DEFLATED
+                  zout.writestr(zi, data)
+                  files[target] = hashlib.sha256(data).hexdigest()
+
+              manifest = {
+                  "format": "zion-userland-v1",
+                  "release": os.environ.get("GITHUB_SHA", "unknown")[:12],
+                  "source": "termux-packages-custom-prefix",
+                  "abi": "aarch64",
+                  "files": files,
+              }
+              zout.writestr(
+                  "zion-manifest.json",
+                  json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(),
+              )
+
+          print(f"Created {out} with {len(files)} verified files")
+
+      - name: Publish Userland release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="zion-userland-latest"
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" zion-userland-aarch64.zip \
+            --title "Zion Userland (latest)" \
+            --notes "Generated from a custom-prefix Termux bootstrap for com.zion.os. The archive is SHA-256 verified by Zion before activation."
