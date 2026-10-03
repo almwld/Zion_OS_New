@@ -285,15 +285,11 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     final screenSize = MediaQuery.sizeOf(context);
     final windowWidth = math.min(380.0, math.max(280.0, screenSize.width - 24.0));
     final windowHeight = math.min(560.0, math.max(360.0, screenSize.height - 150.0));
-    final windowX = math.max(0.0, (screenSize.width - windowWidth) / 2);
-    final windowY = math.max(MediaQuery.paddingOf(context).top + 12, (screenSize.height - windowHeight) / 2);
     final windowId = _windowManager.open(
       title: app['nameAr'] as String,
       content: screen,
       width: windowWidth,
       height: windowHeight,
-      x: windowX,
-      y: windowY,
       appKey: name,
     );
     _windowManagerKey.currentState?.openWindow(
@@ -301,7 +297,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       screen,
       appKey: name,
       size: Size(windowWidth, windowHeight),
-      position: Offset(windowX, windowY),
       windowId: windowId,
     );
   }
