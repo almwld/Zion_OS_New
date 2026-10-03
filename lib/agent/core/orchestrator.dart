@@ -50,7 +50,12 @@ class AgentOrchestrator {
       for (var i = 0; i < plan.steps.length; i++) {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
-        final decision = policy.evaluate(tool: step.tool, params: step.params);
+        final policyDecision = policy.evaluate(tool: step.tool, params: step.params);
+        final decision = step.risk == AgentRisk.blocked
+            ? const AgentPolicyDecision(risk: AgentRisk.blocked, reason: 'الخطوة مصنفة محظورة من مخطط Zion Agent.', requiresApproval: false)
+            : (step.risk == AgentRisk.review || step.permission != AgentPermission.readOnly || step.requiresApproval)
+                ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
+                : policyDecision;
         _log('▶️ [${i + 1}/${plan.steps.length}] ${step.description}');
 
         if (decision.risk == AgentRisk.blocked) {
