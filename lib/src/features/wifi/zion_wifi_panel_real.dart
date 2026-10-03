@@ -23,6 +23,12 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   NetworkPortAssessment? _portAssessment;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshConnection());
+  }
+
+  @override
   void dispose() {
     _hostController.dispose();
     super.dispose();
@@ -98,6 +104,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _scanStatus = 'UNAVAILABLE';
         _log += 'SCAN UNAVAILABLE: $error\n';
         _scanning = false;
       });
@@ -158,12 +165,21 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Zion Wi-Fi Security Assessment')),
+    final theme = Theme.of(context);
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(title: const Text('فحص أمان Wi-Fi'),),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (_scanStatus != 'READY')
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(_scanStatus, style: TextStyle(color: theme.colorScheme.primary, fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
             if (_connection != null && _connection!.ssid.isNotEmpty && _connection!.ssid != '<unknown ssid>')
               Card(
                 child: ListTile(
@@ -180,7 +196,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
                   child: ElevatedButton.icon(
                     onPressed: _scanning ? null : _scanWiFi,
                     icon: const Icon(Icons.wifi_find),
-                    label: Text(_scanning ? 'SCANNING...' : 'SCAN WI-FI'),
+                    label: Text(_scanning ? 'جارٍ الفحص...' : 'فحص شبكات Wi-Fi'),
                   ),
                 ),
               ],
@@ -189,7 +205,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
             TextField(
               controller: _hostController,
               decoration: const InputDecoration(
-                labelText: 'Authorized host / IP for TCP assessment',
+                labelText: 'عنوان IP أو مضيف مصرح به لفحص الاتصال',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.url,
@@ -200,7 +216,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
               child: OutlinedButton.icon(
                 onPressed: _scanning ? null : _scanPorts,
                 icon: const Icon(Icons.radar),
-                label: const Text('ASSESS COMMON TCP PORTS'),
+                label: const Text('فحص منافذ TCP الشائعة'),
               ),
             ),
             const SizedBox(height: 12),
