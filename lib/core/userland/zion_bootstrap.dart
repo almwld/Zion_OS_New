@@ -243,28 +243,50 @@ class ZionBootstrap {
       final manifest=_manifest(archive); if(manifest==null)return _fail('حزمة Zion Userland غير صالحة: zion-manifest.json مفقود.');
       if(manifest['format']!='zion-userland-v1')return _fail('إصدار حزمة Userland غير مدعوم.');
       final release=manifest['release']; if(release is! String||release.trim().isEmpty)return _fail('الحزمة لا تحتوي على release صالح.');
+      final expectedAbi=_manifestAbi(manifest['abi']);
+      if(expectedAbi==null)return _fail('الحزمة لا تحتوي على ABI صالح.');
+      final actualAbi=_normalizedAbi(Abi.current());
+      if(expectedAbi!=actualAbi)return _fail('حزمة Userland غير مطابقة لمعمارية الجهاز: $expectedAbi != $actualAbi.');
       final hashes=_hashes(manifest['files']); if(hashes==null)return _fail('قائمة سلامة الملفات غير صالحة.');
       onProgress?.call(.05,'التحقق من SHA-256...');
       var checked=0;
       for(final e in archive.files){
-        if(!e.isFile||e.name=='zion-manifest.json')continue;
+        if(e.name=='zion-manifest.json')continue;
         final p=_safe(e.name); if(p==null)return _fail('مسار غير آمن داخل الأرشيف.');
         final expected=hashes[p]; if(expected==null)return _fail('الملف غير موجود في manifest: '+p);
-        final actual=sha256.convert(List<int>.from(e.content as List<int>)).toString();
+        final bytes=e.isSymbolicLink
+            ? utf8.encode(e.symbolicLink ?? '')
+            : List<int>.from(e.content as List<int>);
+        final actual=sha256.convert(bytes).toString();
         if(actual.toLowerCase()!=expected.toLowerCase())return _fail('فشل تحقق SHA-256 للملف: '+p);
         checked++;
       }
       if(checked!=hashes.length)return _fail('manifest يحتوي ملفات غير موجودة في الأرشيف.');
       final staging=Directory(base+'/.bootstrap-staging-'+DateTime.now().microsecondsSinceEpoch.toString());
-      await _dirs(staging.path); var extracted=0;
+      await _dirs(staging.path); var extracted=0; final links=<ArchiveFile>[];
       for(final e in archive.files){
-        if(!e.isFile||e.name=='zion-manifest.json')continue;
+        if(e.name=='zion-manifest.json')continue;
         final p=_safe(e.name); if(p==null)return _fail('مسار غير آمن داخل الأرشيف.');
-        final target=File(staging.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>)); extracted++;
+        if(e.isSymbolicLink){
+          if(_safeLinkTarget(e.symbolicLink ?? '', p)==null)return _fail('رابط رمزي غير آمن داخل الأرشيف: '+p);
+          links.add(e);
+          continue;
+        }
+        if(!e.isFile)continue;
+        final target=File(staging.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>));
+        final mode=e.unixPermissions & 0x1ff;
+        if(mode!=0)await _chmod(target.path,mode);
+        extracted++;
         if(extracted%100==0)onProgress?.call(.35,'استخراج: '+extracted.toString());
       }
+      for(final e in links){
+        final p=_safe(e.name)!; final target=_safeLinkTarget(e.symbolicLink ?? '',p)!;
+        final link=Link(staging.path+'/'+p); await link.parent.create(recursive:true);
+        if(await link.exists())await link.delete();
+        await link.create(target,recursive:true); extracted++;
+      }
       final rel=File(staging.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
-      await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
+      await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'abi':expectedAbi,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
       await _activate(staging); await _config();
       _audit('userland.bootstrap.install','success',{'release':release,'files':extracted,'archiveBytes':length,'durationMs':DateTime.now().difference(started).inMilliseconds,'source':'REAL_ARCHIVE'});
       onProgress?.call(1,'اكتمل تثبيت Userland.');
@@ -473,6 +495,10 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     try{await stagedPrefix.rename(current.path);if(await backup.exists())await backup.delete(recursive:true);if(await staging.exists())await staging.delete(recursive:true);}catch(_){if(await backup.exists()&&!await current.exists())await backup.rename(current.path);if(await staging.exists())await staging.delete(recursive:true);rethrow;}
   }
   static Map<String,dynamic>? _manifest(Archive a){for(final e in a.files)if(e.isFile&&e.name=='zion-manifest.json'){try{final v=jsonDecode(utf8.decode(List<int>.from(e.content as List<int>)));return v is Map<String,dynamic>?v:null;}catch(_){return null;}}return null;}
+  static String? _manifestAbi(Object? value){final v=value?.toString().trim(); if(v==null||v.isEmpty)return null; return v;}
+  static String _normalizedAbi(Abi abi){if(abi==Abi.androidArm64)return 'aarch64';if(abi==Abi.androidArm)return 'arm';if(abi==Abi.androidX64)return 'x86_64';if(abi==Abi.androidIA32)return 'i686';return abi.toString();}
+  static String? _safeLinkTarget(String target,String linkPath){if(target.isEmpty||target.startsWith('/')||target.startsWith(r'\\'))return null;final linkParts=linkPath.split('/').toList()..removeLast();final combined=<String>[...linkParts,...target.replaceAll(r'\\','/').split('/')];final normalized=<String>[];for(final part in combined){if(part.isEmpty||part=='.')continue;if(part=='..'){if(normalized.isEmpty)return null;normalized.removeLast();}else{normalized.add(part);}}final resolved=normalized.join('/');if(!resolved.startsWith('usr/'))return null;return target;}
+  static Future<void> _chmod(String path,int mode) async {try{await Process.run('/system/bin/chmod',[mode.toRadixString(8),path],runInShell:false);}catch(_){}}
   static Map<String,String>? _hashes(Object? v){if(v is! Map)return null;final out=<String,String>{};for(final x in v.entries){final p=_safe(x.key.toString()),h=x.value.toString();if(p==null||!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(h))return null;out[p]=h;}return out;}
   static String? _safe(String path){if(path.isEmpty||path.startsWith('/')||path.startsWith(r'\'))return null;final n=path.replaceAll(r'\','/'),parts=n.split('/');if(parts.any((p)=>p.isEmpty||p=='.'||p=='..'))return null;return const {'usr','home','tmp','etc'}.contains(parts.first)?n:null;}
   BootstrapResult _fail(String m){_audit('userland.bootstrap.install','failed',{'error':m,'source':'REAL_ARCHIVE'});return BootstrapResult.failure(m);}
