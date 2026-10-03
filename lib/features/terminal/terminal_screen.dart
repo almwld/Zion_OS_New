@@ -43,6 +43,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   int _nextId = 1;
   bool _starting = false;
   bool _aiLoading = false;
+  bool _aiReady = false;
   double _fontSize = 13;
 
   _TerminalTab? get _selectedTab =>
@@ -52,11 +53,26 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_createTab(autoStart: true));
+      if (mounted) {
+        unawaited(_createTab(autoStart: true));
+        // Keep the local assistant ready in the background. No command is
+        // executed automatically; the model only prepares responses.
+        unawaited(_prepareLocalAi());
+      }
     });
   }
 
   static const int _maxSessions = 8;
+
+  Future<void> _prepareLocalAi() async {
+    try {
+      final model = await _ai.autoLoadBestModel(threads: 4);
+      if (mounted) setState(() => _aiReady = model != null);
+    } catch (_) {
+      if (mounted) setState(() => _aiReady = false);
+    }
+  }
+
 
   Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
