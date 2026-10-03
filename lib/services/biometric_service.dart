@@ -32,7 +32,7 @@ class BiometricService {
   String _typeName(BiometricType type) {
     switch (type) {
       case BiometricType.fingerprint:
-        return 'فصمة الإصبع';
+        return 'بصمة الإصبع';
       case BiometricType.face:
         return 'التعرف على الوجه';
       case BiometricType.iris:
