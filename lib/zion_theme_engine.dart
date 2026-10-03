@@ -21,51 +21,51 @@ class ZionTheme {
 
   static const ZionTheme matrix = ZionTheme(
     name: 'Matrix',
-    primaryColor: Color(0xFF00FF41),
+    primaryColor: Color(0xFF7C4DFF),
     backgroundColor: Colors.black,
-    surfaceColor: Color(0xFF0A0E0A),
-    textColor: Color(0xFF00FF41),
-    accentColor: Color(0xFF00FF41),
+    surfaceColor: Color(0xFF7C4DFF),
+    textColor: Color(0xFF7C4DFF),
+    accentColor: Color(0xFF7C4DFF),
     wallpaperType: 'matrix_rain',
   );
 
   static const ZionTheme midnightBlue = ZionTheme(
     name: 'Midnight Blue',
-    primaryColor: Color(0xFF0088FF),
-    backgroundColor: Color(0xFF0A0A1A),
-    surfaceColor: Color(0xFF0D0D2B),
-    textColor: Color(0xFF00AAFF),
-    accentColor: Color(0xFF0066CC),
+    primaryColor: Color(0xFF7C4DFF),
+    backgroundColor: Color(0xFF7C4DFF),
+    surfaceColor: Color(0xFF7C4DFF),
+    textColor: Color(0xFF7C4DFF),
+    accentColor: Color(0xFF7C4DFF),
     wallpaperType: 'particles',
   );
 
   static const ZionTheme bloodRed = ZionTheme(
     name: 'Blood Red',
-    primaryColor: Color(0xFFFF0040),
-    backgroundColor: Color(0xFF1A0A0A),
-    surfaceColor: Color(0xFF2B0D0D),
-    textColor: Color(0xFFFF3355),
-    accentColor: Color(0xFFCC0033),
+    primaryColor: Color(0xFF7C4DFF),
+    backgroundColor: Color(0xFF7C4DFF),
+    surfaceColor: Color(0xFF7C4DFF),
+    textColor: Color(0xFF7C4DFF),
+    accentColor: Color(0xFF7C4DFF),
     wallpaperType: 'blood_drip',
   );
 
   static const ZionTheme goldPhoenix = ZionTheme(
     name: 'Gold Phoenix',
-    primaryColor: Color(0xFFFFD700),
-    backgroundColor: Color(0xFF1A1A0A),
-    surfaceColor: Color(0xFF2B2B0D),
-    textColor: Color(0xFFFFDD44),
-    accentColor: Color(0xFFCCAA00),
+    primaryColor: Color(0xFF7C4DFF),
+    backgroundColor: Color(0xFF7C4DFF),
+    surfaceColor: Color(0xFF7C4DFF),
+    textColor: Color(0xFF7C4DFF),
+    accentColor: Color(0xFF7C4DFF),
     wallpaperType: 'fire_embers',
   );
 
   static const ZionTheme arcticFrost = ZionTheme(
     name: 'Arctic Frost',
-    primaryColor: Color(0xFF00FFFF),
-    backgroundColor: Color(0xFF0A1A1A),
-    surfaceColor: Color(0xFF0D2B2B),
-    textColor: Color(0xFF44FFFF),
-    accentColor: Color(0xFF00CCCC),
+    primaryColor: Color(0xFF7C4DFF),
+    backgroundColor: Color(0xFF7C4DFF),
+    surfaceColor: Color(0xFF7C4DFF),
+    textColor: Color(0xFF7C4DFF),
+    accentColor: Color(0xFF7C4DFF),
     wallpaperType: 'snowflakes',
   );
 
