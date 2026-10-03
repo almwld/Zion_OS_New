@@ -34,10 +34,21 @@ class _NotesAppState extends State<NotesApp> {
   Future<void> _loadNotes() async {
     final prefs = await SharedPreferences.getInstance();
     final notesJson = prefs.getString('notes');
-    if (notesJson != null) {
+    if (notesJson != null && notesJson.trim().isNotEmpty) {
       try {
-        _notes = List<Map<String, dynamic>>.from(jsonDecode(notesJson));
-      } catch (_) {}
+        final decoded = jsonDecode(notesJson);
+        if (decoded is List) {
+          _notes = decoded
+              .whereType<Map>()
+              .map((entry) => Map<String, dynamic>.from(entry))
+              .where(_isValidNote)
+              .toList();
+        }
+      } on FormatException {
+        // Ignore corrupted legacy JSON without crashing the notes screen.
+      } on TypeError {
+        // Ignore incompatible legacy JSON shapes without clearing valid data.
+      }
     }
     setState(() => _isLoading = false);
   }
@@ -462,11 +473,10 @@ class NoteSearchDelegate extends SearchDelegate {
   }
 }
 
-// Helper function
-String jsonEncode(List<Map<String, dynamic>> data) {
-  return data.toString();
-}
-
-List<Map<String, dynamic>> jsonDecode(String data) {
-  return [];
+bool _isValidNote(Map<String, dynamic> note) {
+  return note['id'] is String &&
+      note['title'] is String &&
+      note['content'] is String &&
+      note['color'] is int &&
+      note['timestamp'] is String;
 }
