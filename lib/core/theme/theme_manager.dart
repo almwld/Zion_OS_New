@@ -70,26 +70,26 @@ class ThemeManager extends ChangeNotifier {
   
   ThemeData _buildTurquoiseTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF00BCD4),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF00BCD4)),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
       scaffoldBackgroundColor: Colors.black,
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.black,
-        foregroundColor: Color(0xFF00BCD4),
+        foregroundColor: Color(0xFF7C4DFF),
         elevation: 0,
       ),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF00BCD4)),
+          borderSide: const BorderSide(color: Color(0xFF7C4DFF)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: const Color(0xFF00BCD4).withOpacity(0.5)),
+          borderSide: BorderSide(color: const Color(0xFF7C4DFF).withOpacity(0.5)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF00BCD4), width: 2),
+          borderSide: const BorderSide(color: Color(0xFF7C4DFF), width: 2),
         ),
       ),
     );
@@ -97,12 +97,12 @@ class ThemeManager extends ChangeNotifier {
   
   ThemeData _buildCyberGreenTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF00FF41),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF00FF41)),
-      scaffoldBackgroundColor: const Color(0xFF0A0A0A),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF0A0A0A),
-        foregroundColor: Color(0xFF00FF41),
+        backgroundColor: Color(0xFF7C4DFF),
+        foregroundColor: Color(0xFF7C4DFF),
         elevation: 0,
       ),
     );
@@ -110,65 +110,65 @@ class ThemeManager extends ChangeNotifier {
   
   ThemeData _buildNeonBlueTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF2196F3),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF2196F3)),
-      scaffoldBackgroundColor: const Color(0xFF001133),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildDarkPurpleTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF9C27B0),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF9C27B0)),
-      scaffoldBackgroundColor: const Color(0xFF1A0B2E),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildSunsetTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFFFF5722),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFFFF5722)),
-      scaffoldBackgroundColor: const Color(0xFF1A0A0A),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildMatrixTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF33FF33),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF33FF33)),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
       scaffoldBackgroundColor: Colors.black,
     );
   }
   
   ThemeData _buildHolographicTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFFE040FB),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFFE040FB)),
-      scaffoldBackgroundColor: const Color(0xFF0D0D1A),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildMidnightTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF3F51B5),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF3F51B5)),
-      scaffoldBackgroundColor: const Color(0xFF0A0A20),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildAuroraTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFF4CAF50),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFF4CAF50)),
-      scaffoldBackgroundColor: const Color(0xFF0A1A0A),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
   
   ThemeData _buildEmberTheme() {
     return ThemeData.dark().copyWith(
-      primaryColor: const Color(0xFFFF6B00),
-      colorScheme: const ColorScheme.dark(primary: Color(0xFFFF6B00)),
-      scaffoldBackgroundColor: const Color(0xFF1A0A00),
+      primaryColor: const Color(0xFF7C4DFF),
+      colorScheme: const ColorScheme.dark(primary: Color(0xFF7C4DFF)),
+      scaffoldBackgroundColor: const Color(0xFF7C4DFF),
     );
   }
 }
