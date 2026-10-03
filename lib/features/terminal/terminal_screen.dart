@@ -33,6 +33,7 @@ class _TerminalTab {
   final TerminalController controller;
   StreamSubscription<String>? outputSubscription;
   bool connected = false;
+  String recentOutput = '';
 }
 
 class _TerminalScreenState extends State<TerminalScreen> {
@@ -83,7 +84,15 @@ class _TerminalScreenState extends State<TerminalScreen> {
     terminal.onResize = (width, height, _, __) {
       unawaited(service.resizeInteractive(rows: height, cols: width));
     };
-    tab.outputSubscription = service.output.listen(terminal.write);
+    tab.outputSubscription = service.output.listen((data) {
+      // Retain only recent PTY text for local AI context; xterm2 keeps the full scrollback.
+      tab.recentOutput += data;
+      if (tab.recentOutput.length > 8000) {
+        tab.recentOutput =
+            tab.recentOutput.substring(tab.recentOutput.length - 8000);
+      }
+      terminal.write(data);
+    });
 
     setState(() {
       _tabs.add(tab);
