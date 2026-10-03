@@ -1,11 +1,11 @@
-# Stubs and Placeholder Implementations
+# Stubs and Placeholder Implementations — status refreshed 2026-10-03
 
-S-01 features/terminal/cosmic_terminal.dart: six-line widget whose build method returns only static TERMINAL text.
+S-01 **RESOLVED:** features/terminal/cosmic_terminal.dart now delegates to the canonical TerminalScreen.
 
-S-02 zion_ota_system.dart: line 41 reports configuration false; line 50 returns null; download/install report unavailable.
+S-02 **INTENTIONAL:** zion_ota_system.dart reports configuration unavailable and does not fabricate update/download/install success. It remains pending a trusted signed update source.
 
-S-03 screens/apps/notes_app.dart: line 471 local jsonDecode returns an empty list unconditionally.
+S-03 **RESOLVED:** notes_app.dart no longer contains an unconditional JSON decoder returning [].
 
-S-04 android/app/src/main/cpp/llama_jni_stub.cpp is an explicit non-ARM64 fallback that reports the local AI engine is unsupported on that ABI. This is platform-specific by design, not a false success.
+S-04 **INTENTIONAL PLATFORM FALLBACK:** llama_jni_stub.cpp explicitly reports that the local AI engine is unsupported on non-ARM64; it does not claim success.
 
-Other return-null or empty-list branches found by search were not classified as stubs without direct proof that they are unconditional placeholders.
+Other return-null or empty-list branches remain unclassified unless direct evidence proves they are unconditional placeholders.

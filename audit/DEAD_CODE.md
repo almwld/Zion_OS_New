@@ -1,11 +1,11 @@
-# Dead Code Candidates
+# Dead Code Candidates — status refreshed 2026-10-03
 
-D-01 lib/services/biometric_service.dart is a second biometric implementation while the current lock screen imports lib/core/services/biometric_service.dart.
+D-01 **CONTROLLED:** lib/services/biometric_service.dart remains for compatibility and is now deprecated; it delegates to the canonical core biometric service.
 
-D-02 TerminalService._interactiveProcess is declared and consumed by fallback branches but the inspected interactive start path never assigns it.
+D-02 **RESOLVED:** TerminalService._interactiveProcess is no longer present in the current implementation.
 
-D-03 MainActivity.terminalProcesses is declared and checked by resize/stop paths but the native PTY start path populates terminalReaders instead.
+D-03 **RESOLVED:** MainActivity.terminalProcesses is no longer present; native PTY readers are the authoritative lifecycle state.
 
-D-04 features/terminal/cosmic_terminal.dart is a six-line static terminal placeholder.
+D-04 **RESOLVED:** features/terminal/cosmic_terminal.dart is now a compatibility adapter to TerminalScreen.
 
-D-05 core/wm/window_manager.dart is only an export/typedef compatibility facade. It is not called dead by itself, but it is not a second window manager implementation.
+D-05 **UNCHANGED:** core/wm/window_manager.dart is a compatibility export/typedef facade. It is not deleted because the current trace does not prove all external compatibility callers are absent.
