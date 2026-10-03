@@ -26,9 +26,7 @@ class ZionBootstrap {
 
   static bool isSupportedAndroidAbi() {
     final abi = Abi.current();
-    return abi == Abi.androidArm64 ||
-        abi == Abi.androidArm ||
-        abi == Abi.androidX64;
+    return abi == Abi.androidArm64;
   }
 
   static Future<BootstrapResult> prepareExistingUserlandBackup({
@@ -496,7 +494,7 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
   }
   static Map<String,dynamic>? _manifest(Archive a){for(final e in a.files)if(e.isFile&&e.name=='zion-manifest.json'){try{final v=jsonDecode(utf8.decode(List<int>.from(e.content as List<int>)));return v is Map<String,dynamic>?v:null;}catch(_){return null;}}return null;}
   static String? _manifestAbi(Object? value){final v=value?.toString().trim(); if(v==null||v.isEmpty)return null; return v;}
-  static String _normalizedAbi(Abi abi){if(abi==Abi.androidArm64)return 'aarch64';if(abi==Abi.androidArm)return 'arm';if(abi==Abi.androidX64)return 'x86_64';if(abi==Abi.androidIA32)return 'i686';return abi.toString();}
+  static String _normalizedAbi(Abi abi){if(abi==Abi.androidArm64)return 'aarch64';return abi.toString();}
   static String? _safeLinkTarget(String target,String linkPath){if(target.isEmpty||target.startsWith('/')||target.startsWith(r'\\'))return null;final linkParts=linkPath.split('/').toList()..removeLast();final combined=<String>[...linkParts,...target.replaceAll(r'\\','/').split('/')];final normalized=<String>[];for(final part in combined){if(part.isEmpty||part=='.')continue;if(part=='..'){if(normalized.isEmpty)return null;normalized.removeLast();}else{normalized.add(part);}}final resolved=normalized.join('/');if(!resolved.startsWith('usr/'))return null;return target;}
   static Future<void> _chmod(String path,int mode) async {try{await Process.run('/system/bin/chmod',[mode.toRadixString(8),path],runInShell:false);}catch(_){}}
   static Map<String,String>? _hashes(Object? v){if(v is! Map)return null;final out=<String,String>{};for(final x in v.entries){final p=_safe(x.key.toString()),h=x.value.toString();if(p==null||!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(h))return null;out[p]=h;}return out;}
