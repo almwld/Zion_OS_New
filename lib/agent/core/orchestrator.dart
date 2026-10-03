@@ -220,7 +220,8 @@ class AgentOrchestrator {
       final prompt='''أنت مخطط Zion Agent. المهمة: $task
 أنشئ خطوات عملية باستخدام الأدوات: ai,data,file,http,shell,python.
 لا تستخدم أدوات هجومية أو استغلال أو تجاوز حماية.
-أعد JSON فقط بالشكل {"steps":[{"id":"1","description":"...","tool":"...","params":{},"requiresEvaluation":false}]}''';
+لكل خطوة حدّد permission من: readOnly, localWrite, network, process, externalSideEffect، وrisk من: safe, review, blocked، وحدد requiresApproval عند الحاجة.
+أعد JSON فقط بالشكل {"steps":[{"id":"1","description":"...","tool":"...","params":{},"requiresEvaluation":false,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       final response=await ai.generate(prompt,maxTokens:900,temperature:0.2);
       final parsed=_parsePlan(response);if(parsed!=null&&parsed.steps.isNotEmpty)return parsed;
     }
