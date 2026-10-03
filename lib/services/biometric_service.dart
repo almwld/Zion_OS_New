@@ -1,57 +1,38 @@
-import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../core/services/biometric_service.dart' as core;
+
+/// Legacy compatibility facade for the canonical biometric service.
+///
+/// @deprecated Use core.BiometricService from lock-screen and security code.
+@Deprecated('Use core.BiometricService instead.')
 class BiometricService {
   static final BiometricService _instance = BiometricService._internal();
   factory BiometricService() => _instance;
   BiometricService._internal();
 
-  final LocalAuthentication _localAuth = LocalAuthentication();
+  final core.BiometricService _delegate = core.BiometricService();
 
-  Future<bool> isBiometricAvailable() async {
-    try {
-      final isAvailable = await _localAuth.canCheckBiometrics;
-      final isDeviceSupported = await _localAuth.isDeviceSupported();
-      return isAvailable && isDeviceSupported;
-    } catch (e) {
-      return false;
-    }
-  }
+  Future<bool> isBiometricAvailable() => _delegate.isAvailable();
 
-  Future<List<BiometricType>> getAvailableBiometrics() async {
-    try {
-      return await _localAuth.getAvailableBiometrics();
-    } catch (e) {
-      return [];
-    }
-  }
+  Future<List<BiometricType>> getAvailableBiometrics() =>
+      _delegate.getAvailableBiometrics();
 
   Future<bool> authenticateWithBiometrics({
     required String reason,
     String? title,
     String? subtitle,
   }) async {
-    try {
-      final isAvailable = await isBiometricAvailable();
-      if (!isAvailable) return false;
-      
-      final authenticated = await _localAuth.authenticate(
-        localizedReason: reason,
-        options: AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: true,
-        ),
-      );
-      return authenticated;
-    } catch (e) {
-      return false;
-    }
+    return (await _delegate.authenticateResult(reason: reason)).success;
   }
 
-  String getBiometricTypeName(BiometricType type) {
+  String getBiometricTypeName(BiometricType type) =>
+      _typeName(type);
+
+  String _typeName(BiometricType type) {
     switch (type) {
       case BiometricType.fingerprint:
-        return 'بصمة الإصبع';
+        return 'فصمة الإصبع';
       case BiometricType.face:
         return 'التعرف على الوجه';
       case BiometricType.iris:
