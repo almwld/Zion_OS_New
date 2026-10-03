@@ -32,6 +32,45 @@ class LlamaService {
     return LlamaModel.fromMap(value!);
   }
 
+  /// Discover every readable GGUF exposed by the Android bridge and choose a
+  /// practical chat/instruct model automatically. Preference is given to
+  /// instruction/chat-tuned names, then to a moderate model size.
+  Future<LlamaModel?> autoLoadBestModel({int threads = 4}) async {
+    final models = (await discoverModels())
+        .where((m) => m.readable && m.path.isNotEmpty)
+        .toList();
+    if (models.isEmpty) return null;
+
+    int score(LlamaModel m) {
+      final n = m.name.toLowerCase();
+      var s = 0;
+      if (n.contains('instruct')) s += 100;
+      if (n.contains('chat')) s += 90;
+      if (n.contains('assistant')) s += 70;
+      if (n.contains('qwen')) s += 55;
+      if (n.contains('llama')) s += 45;
+      if (n.contains('tinyllama')) s += 35;
+      if (n.contains('base')) s -= 25;
+      // Prefer models in a mobile-friendly range without making size a hard
+      // requirement; the native loader remains the final compatibility check.
+      final gb = m.sizeBytes / (1024 * 1024 * 1024);
+      if (gb >= 1.0 && gb <= 5.0) s += 25;
+      if (gb > 8.0) s -= 20;
+      return s;
+    }
+
+    models.sort((a, b) {
+      final byScore = score(b).compareTo(score(a));
+      if (byScore != 0) return byScore;
+      return a.sizeBytes.compareTo(b.sizeBytes);
+    });
+
+    for (final model in models) {
+      if (await loadModel(model.path, threads: threads)) return model;
+    }
+    return null;
+  }
+
   Future<bool> loadModel(
     String path, {
     int threads = 4,
