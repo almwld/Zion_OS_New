@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import 'zion_bootstrap.dart';
+import 'zion_bootstrap_endpoint.dart';
 
 class ZionUserlandInstallResult {
   const ZionUserlandInstallResult({required this.success, required this.message, this.releaseTag});
@@ -17,15 +18,14 @@ class ZionUserlandInstallResult {
 class ZionUserlandInstaller {
   const ZionUserlandInstaller();
 
-  static const _releaseApi =
-      'https://api.github.com/repos/almwld/Zion_OS_New/releases/tags/zion-userland-latest';
   static const _maxDownloadBytes = 256 * 1024 * 1024;
+  static const _endpoint = ZionBootstrapEndpoint();
 
   String? _assetNameForAbi() {
     final abi = Abi.current();
-    if (abi == Abi.androidArm64) return 'zion-userland-aarch64.zip';
-    if (abi == Abi.androidArm) return 'zion-userland-arm.zip';
-    if (abi == Abi.androidX64) return 'zion-userland-x86_64.zip';
+    if (abi == Abi.androidArm64) return 'aarch64';
+    if (abi == Abi.androidArm) return 'arm';
+    if (abi == Abi.androidX64) return 'x86_64';
     return null;
   }
 
@@ -116,161 +116,42 @@ class ZionUserlandInstaller {
     }
   }
 
-  Future<({bool success, String? path, String? message})> _downloadPublishedArchive(
-    String assetName, {
+  Future<({bool success, String? path, String? message})> _downloadPublishedArchive({
     void Function(String message)? onProgress,
   }) async {
     final client = http.Client();
-    final temp = File(
-      Directory.systemTemp.path + '/zion-userland-' +
-      DateTime.now().microsecondsSinceEpoch.toString() + '.zip',
-    );
-
+    final temp = File(Directory.systemTemp.path + '/zion-bootstrap-' + DateTime.now().microsecondsSinceEpoch.toString() + '.zip');
     try {
-      onProgress?.call('البحث عن حزمة Userland المنشورة: ' + assetName + '...');
-      final releaseResponse = await client.get(
-        Uri.parse(_releaseApi),
-        headers: const <String, String>{
-          'Accept': 'application/vnd.github+json',
-          'User-Agent': 'Zion-OS-Userland',
-        },
-      ).timeout(const Duration(seconds: 30));
-
-      if (releaseResponse.statusCode != 200) {
-        return (
-          success: false,
-          path: null,
-          message: 'مستودع Userland غير متاح حاليًا (HTTP ' +
-              releaseResponse.statusCode.toString() + ').',
-        );
-      }
-
-      final release = jsonDecode(releaseResponse.body);
-      if (release is! Map) {
-        return (
-          success: false,
-          path: null,
-          message: 'استجابة إصدار Userland غير صالحة.',
-        );
-      }
-
-      final assets = release['assets'];
-      if (assets is! List) {
-        return (
-          success: false,
-          path: null,
-          message: 'إصدار Userland لا يحتوي على ملفات.',
-        );
-      }
-
-      String? downloadUrl;
-      String? expectedDigest;
-      int? expectedAssetSize;
-      for (final item in assets) {
-        if (item is Map && item['name'] == assetName) {
-          final value = item['browser_download_url'];
-          if (value is String) downloadUrl = value;
-          final digest = item['digest'];
-          if (digest is String && digest.startsWith('sha256:')) {
-            expectedDigest = digest.substring('sha256:'.length).trim().toLowerCase();
-          }
-          final size = item['size'];
-          if (size is num) expectedAssetSize = size.toInt();
-          break;
-        }
-      }
-
-      if (downloadUrl == null || !downloadUrl.startsWith('https://github.com/')) {
-        return (
-          success: false,
-          path: null,
-          message: 'حزمة ' + assetName + ' غير منشورة في إصدار Userland الحالي.',
-        );
-      }
-
-      onProgress?.call('بدء تنزيل Userland الحقيقي...');
-      final request = http.Request('GET', Uri.parse(downloadUrl))
-        ..headers['User-Agent'] = 'Zion-OS-Userland';
+      final abi = _assetNameForAbi();
+      if (abi == null) return (success: false, path: null, message: 'معمارية الجهاز غير مدعومة بواسطة Zion Bootstrap Endpoint.');
+      onProgress?.call('الاتصال بـ Zion Bootstrap Endpoint...');
+      final manifest = await _endpoint.fetch();
+      final asset = manifest.assets[abi];
+      if (asset == null) return (success: false, path: null, message: 'لا توجد حزمة منشورة للمعمارية ' + abi + ' في الإصدار ' + manifest.release + '.');
+      if (asset.size > _maxDownloadBytes) return (success: false, path: null, message: 'حجم Bootstrap المنشور يتجاوز الحد المسموح.');
+      onProgress?.call('تنزيل Zion Bootstrap (' + abi + ') من المصدر الخارجي...');
+      final request = http.Request('GET', Uri.parse(asset.url))..headers['User-Agent'] = 'Zion-OS-Userland';
       final response = await client.send(request).timeout(const Duration(seconds: 60));
-      if (response.statusCode != 200) {
-        return (
-          success: false,
-          path: null,
-          message: 'فشل تنزيل Userland (HTTP ' +
-              response.statusCode.toString() + ').',
-        );
-      }
-
-      final expected = response.contentLength ?? expectedAssetSize;
-      if (expected != null && expected > _maxDownloadBytes) {
-        return (
-          success: false,
-          path: null,
-          message: 'حجم Userland المنشور يتجاوز الحد المسموح.',
-        );
-      }
-
+      if (response.statusCode != 200) return (success: false, path: null, message: 'فشل تنزيل Bootstrap (HTTP ' + response.statusCode.toString() + ').');
+      final expected = response.contentLength ?? asset.size;
+      if (expected > _maxDownloadBytes) return (success: false, path: null, message: 'حجم Bootstrap يتجاوز الحد المسموح.');
       final sink = temp.openWrite();
       var received = 0;
       await for (final chunk in response.stream) {
         received += chunk.length;
-        if (received > _maxDownloadBytes) {
-          await sink.close();
-          try { await temp.delete(); } catch (_) {}
-          return (
-            success: false,
-            path: null,
-            message: 'تم إيقاف تنزيل Userland لتجاوز الحد الأقصى للحجم.',
-          );
-        }
+        if (received > _maxDownloadBytes) { await sink.close(); try { await temp.delete(); } catch (_) {} return (success: false, path: null, message: 'تم إيقاف التنزيل لتجاوز الحد الأقصى.'); }
         sink.add(chunk);
-        if (received % (1024 * 1024 * 4) < chunk.length) {
-          onProgress?.call(
-            'تم تنزيل ' +
-            (received / (1024 * 1024)).toStringAsFixed(1) +
-            ' MB' +
-            (expected == null
-                ? ''
-                : ' من ' + (expected / (1024 * 1024)).toStringAsFixed(1) + ' MB'),
-          );
-        }
+        if (received % (1024 * 1024 * 4) < chunk.length) onProgress?.call('تم تنزيل ' + (received / (1024 * 1024)).toStringAsFixed(1) + ' MB من ' + (asset.size / (1024 * 1024)).toStringAsFixed(1) + ' MB');
       }
       await sink.close();
-
-      if (expectedAssetSize != null && received != expectedAssetSize) {
-        try { await temp.delete(); } catch (_) {}
-        return (
-          success: false,
-          path: null,
-          message: 'حجم حزمة Userland لا يطابق بيانات الإصدار المنشورة.',
-        );
-      }
-
-      if (expectedDigest != null) {
-        onProgress?.call('التحقق من SHA-256 للأرشيف المنشور...');
-        final actualDigest = (await sha256.bind(temp.openRead()).first).toString().toLowerCase();
-        if (actualDigest != expectedDigest) {
-          try { await temp.delete(); } catch (_) {}
-          return (
-            success: false,
-            path: null,
-            message: 'فشل SHA-256 للأرشيف المنشور؛ تم رفض الحزمة.',
-          );
-        }
-      }
-
+      if (received != asset.size) { try { await temp.delete(); } catch (_) {} return (success: false, path: null, message: 'حجم Bootstrap لا يطابق الـEndpoint.'); }
+      onProgress?.call('التحقق من SHA-256 للـBootstrap...');
+      final actualDigest = (await sha256.bind(temp.openRead()).first).toString().toLowerCase();
+      if (actualDigest != asset.sha256) { try { await temp.delete(); } catch (_) {} return (success: false, path: null, message: 'فشل SHA-256 للـBootstrap؛ تم رفض الحزمة.'); }
       return (success: true, path: temp.path, message: null);
     } catch (e) {
-      try {
-        if (await temp.exists()) await temp.delete();
-      } catch (_) {}
-      return (
-        success: false,
-        path: null,
-        message: 'تعذر تنزيل Zion Userland: ' + e.toString(),
-      );
-    } finally {
-      client.close();
-    }
+      try { if (await temp.exists()) await temp.delete(); } catch (_) {}
+      return (success: false, path: null, message: 'تعذر تنزيل Zion Bootstrap: ' + e.toString());
+    } finally { client.close(); }
   }
 }
