@@ -105,6 +105,14 @@ class TerminalService {
   }
 
   Future<String?> _findShell() async {
+    // Prefer the locally installed Kali rootfs. MainActivity translates the
+    // sentinel into the executable PRoot + loader paths inside nativeLibraryDir.
+    final kaliRootfs = Directory('/data/data/com.zion.os/files/zion/userland/kali-arm64');
+    final kaliState = File('/data/data/com.zion.os/files/zion/state.json');
+    if (await kaliRootfs.exists() && await kaliState.exists()) {
+      return 'zion-kali';
+    }
+
     // Zion Terminal is a real Userland terminal. Android /system/bin/sh is
     // intentionally NOT a fallback: running it would break the Termux-like
     // contract (job control, Userland paths, package environment).
