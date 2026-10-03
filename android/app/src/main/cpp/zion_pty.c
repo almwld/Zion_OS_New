@@ -107,7 +107,8 @@ static int is_allowed_shell(const char *shell) {
     return strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
+           strcmp(shell, "/system/bin/sh") == 0;
 }
 
 static const char *select_shell(const char *configured_shell) {
@@ -120,6 +121,7 @@ static const char *select_shell(const char *configured_shell) {
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
         "/data/data/com.zion.os/files/usr/bin/ash",
+        "/system/bin/sh",
         NULL
     };
     for (int i = 0; fallbacks[i] != NULL; ++i) {
@@ -209,6 +211,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         return 0;
     }
     setenv("SHELL", selected_shell, 1);
+    setenv("ZION_SHELL_MODE",
+           strcmp(selected_shell, "/system/bin/sh") == 0 ? "android-posix" : "zion-userland",
+           1);
 
     pid_t pid = fork();
     if (pid < 0) {
