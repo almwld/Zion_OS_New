@@ -3,11 +3,12 @@ import 'package:provider/provider.dart';
 import 'features/window_manager/core/window_manager.dart';
 
 class ZionTaskbar extends StatelessWidget {
-  const ZionTaskbar({super.key, this.onOpenApp, this.categories = const [], this.selectedCategory = 0, this.onCategorySelected});
+  const ZionTaskbar({super.key, this.onOpenApp, this.categories = const [], this.selectedCategory = 0, this.onCategorySelected, this.onStart});
   final void Function(String appKey)? onOpenApp;
   final List<Map<String, dynamic>> categories;
   final int selectedCategory;
   final ValueChanged<int>? onCategorySelected;
+  final VoidCallback? onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +31,18 @@ class ZionTaskbar extends StatelessWidget {
           },
         )),
         Expanded(child: Row(children: [
-          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 8, right: 4, top: 5, bottom: 2),
+            child: GestureDetector(
+              onTap: onStart,
+              child: Container(
+                width: 48,
+                height: 32,
+                decoration: BoxDecoration(color: const Color(0xFF7C4DFF).withOpacity(0.18), borderRadius: BorderRadius.circular(9), border: Border.all(color: const Color(0xFF7C4DFF).withOpacity(0.7))),
+                child: const Icon(Icons.apps_rounded, color: Color(0xFF9C7BFF), size: 19),
+              ),
+            ),
+          ),
           ...List.generate(WindowManager.workspaceCount, (i) => _TaskbarButton(icon: Icons.workspaces, label: 'W' + (i + 1).toString(), isActive: wm.activeWorkspace == i, onTap: () => wm.switchWorkspace(i))),
           const SizedBox(width: 4),
           Expanded(child: ListView(scrollDirection: Axis.horizontal, children: windows.map((window) {
