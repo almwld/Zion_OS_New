@@ -30,6 +30,7 @@ class PreferencesService extends ChangeNotifier {
   double _maxIconSize = 80.0;
   bool _showAppNames = true;
   int _iconsPerRow = 4;
+  List<String> _launcherOrder = const <String>[];
 
   // إعدادات الخلفية
   String _wallpaperPath = 'assets/images/default_wallpaper.jpg';
@@ -59,6 +60,7 @@ class PreferencesService extends ChangeNotifier {
   double get maxIconSize => _maxIconSize;
   bool get showAppNames => _showAppNames;
   int get iconsPerRow => _iconsPerRow;
+  List<String> get launcherOrder => List.unmodifiable(_launcherOrder);
   String get wallpaperPath => _wallpaperPath;
   double get wallpaperBlur => _wallpaperBlur;
   bool get useCustomWallpaper => _useCustomWallpaper;
@@ -82,6 +84,7 @@ class PreferencesService extends ChangeNotifier {
     _iconSize = _prefs.getDouble('icon_size') ?? 55.0;
     _showAppNames = _prefs.getBool('show_app_names') ?? true;
     _iconsPerRow = _prefs.getInt('icons_per_row') ?? 4;
+    _launcherOrder = _prefs.getStringList('launcher_order') ?? const <String>[];
     _wallpaperPath = _prefs.getString('wallpaper_path') ?? 'assets/images/default_wallpaper.jpg';
     _wallpaperBlur = _prefs.getDouble('wallpaper_blur') ?? 0.0;
     _useCustomWallpaper = _prefs.getBool('use_custom_wallpaper') ?? false;
@@ -138,6 +141,12 @@ class PreferencesService extends ChangeNotifier {
   Future<void> setIconsPerRow(int count) async {
     _iconsPerRow = count.clamp(3, 5);
     await _prefs.setInt('icons_per_row', _iconsPerRow);
+    notifyListeners();
+  }
+
+  Future<void> setLauncherOrder(List<String> order) async {
+    _launcherOrder = List<String>.from(order);
+    await _prefs.setStringList('launcher_order', _launcherOrder);
     notifyListeners();
   }
 

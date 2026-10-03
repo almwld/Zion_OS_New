@@ -56,6 +56,8 @@ import 'features/window_manager/core/alt_tab_manager.dart';
 import 'features/window_manager/core/global_keyboard_manager.dart';
 import 'widgets/alt_tab_overlay.dart';
 import 'zion_taskbar.dart';
+import 'zion_app_launcher.dart';
+import 'services/preferences_service.dart';
 import 'features/window_manager/providers/window_provider.dart';
 
 /// Zion OS Desktop Home — the visual system requested for the main interface.
@@ -74,7 +76,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   String _currentDate = "";
   int _selectedCategory = 0;
   bool _showRadar = true;
-  bool _showStartMenu = false;
   double _radarX = 0.72;
   double _radarY = 0.16;
   bool _radarPositionInitialized = false;
@@ -335,16 +336,19 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         SafeArea(child: Column(
           children: [
             _buildTopBar(theme, isDark, primaryColor),
-            _buildCategoriesBar(theme, isDark, primaryColor),
             Expanded(child: _buildAppsGrid(theme, isDark, primaryColor)),
-            ZionTaskbar(onOpenApp: (appKey) {
+            ZionTaskbar(
+              categories: _categories,
+              selectedCategory: _selectedCategory,
+              onCategorySelected: (index) => setState(() => _selectedCategory = index),
+              onOpenApp: (appKey) {
               final matches = _apps.where((item) => item['name'] == appKey);
               if (matches.isNotEmpty) _openApp(matches.first);
-            }),
+            },
+            ),
           ],
         )),
         if (_showRadar) _buildFloatingRadar(theme, isDark, primaryColor),
-        if (_showStartMenu) _buildStartMenu(theme, isDark, primaryColor),
         if (_altTabManager.isActive)
           AltTabOverlay(manager:_windowManager,selectedId:_altTabManager.selectedId),
       ]),
@@ -401,82 +405,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   );
 
   Widget _buildStatusIcon(IconData icon, Color color, bool isDark) => Icon(icon, color: color.withOpacity(0.7), size: 16);
-
-  Widget _buildCategoriesBar(ThemeProvider theme, bool isDark, Color primaryColor) => Container(
-    height: 50, margin: const EdgeInsets.symmetric(horizontal: 16),
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal, itemCount: _categories.length,
-      itemBuilder: (context, index) {
-        final selected = _selectedCategory == index; final cat = _categories[index];
-        return GestureDetector(
-          onTap: () => setState(() => _selectedCategory = index),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.only(right: 10), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: selected ? LinearGradient(colors: cat['gradient'], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
-              color: selected ? null : Colors.transparent, borderRadius: BorderRadius.circular(25),
-              border: Border.all(color: selected ? Colors.transparent : cat['color'].withOpacity(0.3), width: 1.5),
-              boxShadow: selected ? [BoxShadow(color: cat['color'].withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))] : null,
-            ),
-            child: Row(children: [
-              Icon(cat['icon'], color: ZionColors.cyan, size: 18),
-              const SizedBox(width: 8),
-              Text(cat['nameAr'], style: TextStyle(color: ZionColors.cyan, fontWeight: selected ? FontWeight.bold : FontWeight.w600, fontSize: 13)),
-            ]),
-          ),
-        );
-      },
-    ),
-  );
-
-  Widget _buildAppsGrid(ThemeProvider theme, bool isDark, Color primaryColor) {
-    final width = MediaQuery.of(context).size.width;
-    final columns = width < 600 ? 3 : 4;
-    final filtered = _apps.where((app) => app['category'] == _categories[_selectedCategory]['name']).toList();
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, childAspectRatio: 0.88, crossAxisSpacing: 12, mainAxisSpacing: 12),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) => _buildAppIcon(filtered[index], theme, isDark, primaryColor),
-    );
-  }
-
-  Widget _buildAppIcon(Map<String, dynamic> app, ThemeProvider theme, bool isDark, Color primaryColor) {
-    final appColor = ZionColors.cyan;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0), duration: Duration(milliseconds: 300 + (app['name'].hashCode % 200)), curve: Curves.easeOutBack,
-      builder: (context, value, child) => Transform.scale(
-        scale: value,
-        child: GestureDetector(
-          onTap: () => _openApp(app),
-          onLongPress: () => _openApp(app, fullscreen: true),
-          child: Container(
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.04) : Colors.white.withOpacity(0.8),
-              borderRadius: BorderRadius.circular(20), border: Border.all(color: appColor.withOpacity(0.2)),
-              boxShadow: [BoxShadow(color: appColor.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))],
-            ),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(
-                width: 54, height: 54,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [appColor, appColor.withOpacity(0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: appColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: Icon(app['icon'], color: Colors.white, size: 28),
-              ),
-              const SizedBox(height: 8),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(app['nameAr'], style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 11, fontWeight: FontWeight.w600), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis)),
-              const SizedBox(height: 2),
-              Text(app['name'], style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 8, letterSpacing: 0.5), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildDock(ThemeProvider theme, bool isDark, Color primaryColor) => Container(
     height: 76, margin: const EdgeInsets.all(16), padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -703,48 +631,6 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     )).toList();
   }
 
-  Widget _buildStartMenu(ThemeProvider theme, bool isDark, Color primaryColor) => GestureDetector(
-    onTap: () => setState(() => _showStartMenu = false),
-    child: Container(color: Colors.black.withOpacity(0.5), child: Center(child: GestureDetector(
-      onTap: () {},
-      child: Container(
-        width: 340, padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF0F1626) : Colors.white,
-          borderRadius: BorderRadius.circular(24), border: Border.all(color: primaryColor.withOpacity(0.3), width: 1.5),
-          boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.2), blurRadius: 30, spreadRadius: 5)],
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Container(width: 44, height: 44, decoration: BoxDecoration(gradient: LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.7)]), shape: BoxShape.circle), child: const Center(child: Text("Z", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)))),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text("Zion User", style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
-              Text("zion@os", style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 11)),
-            ])),
-            IconButton(icon: Icon(Icons.close, color: isDark ? Colors.white54 : Colors.black45), onPressed: () => setState(() => _showStartMenu = false)),
-          ]),
-          const Divider(height: 24),
-          _buildStartMenuItem(icon: Icons.dashboard_customize, title: 'مركز التحكم', subtitle: 'إدارة التوزيعة والقدرات الحقيقية', color: const Color(0xFF00BCD4), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"CONTROL","nameAr":"مركز التحكم","icon":Icons.dashboard_customize,"color":const Color(0xFF00BCD4)}); }),
-          _buildStartMenuItem(icon: Icons.terminal, title: 'الطرفية', subtitle: 'تنفيذ الأوامر', color: const Color(0xFFFFA502), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"TERMINAL","nameAr":"الطرفية","icon":Icons.terminal,"color":const Color(0xFFFFA502)}); }),
-          _buildStartMenuItem(icon: Icons.wifi, title: 'الواي فاي', subtitle: 'مسح الشبكات الحقيقية', color: const Color(0xFFFF4757), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"WIFI","nameAr":"الواي فاي","icon":Icons.wifi,"color":const Color(0xFFFF4757)}); }),
-          _buildStartMenuItem(icon: Icons.settings, title: 'الإعدادات', subtitle: 'تخصيص النظام', color: const Color(0xFF8854D0), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"SETTINGS","nameAr":"الإعدادات","icon":Icons.settings,"color":const Color(0xFF8854D0)}); }),
-          _buildStartMenuItem(icon: Icons.security, title: 'الأمان', subtitle: 'مركز الحماية', color: const Color(0xFF2ED573), isDark: isDark, onTap: () { setState(() => _showStartMenu = false); _openApp({"name":"ARSENAL","nameAr":"الترسانة","icon":Icons.security,"color":const Color(0xFF2ED573)}, fullscreen: true); }),
-        ]),
-      ),
-    ))),
-  );
-
-  Widget _buildStartMenuItem({required IconData icon, required String title, required String subtitle, required Color color, required bool isDark, VoidCallback? onTap}) => Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    child: ListTile(
-      leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
-      title: Text(title, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 14, fontWeight: FontWeight.w600)),
-      subtitle: Text(subtitle, style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 11)),
-      onTap: onTap,
-    ),
-  );
-}
 
 class GridPatternPainter extends CustomPainter {
   final bool isDark;
