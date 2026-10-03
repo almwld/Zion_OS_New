@@ -153,7 +153,7 @@ class _MapsAppState extends State<MapsApp> {
                     icon: const Icon(Icons.open_in_new, size: 16),
                     label: const Text('Open in Maps'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
+                      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                       foregroundColor: const Color(0xFF00BCD4),
                     ),
                   ),
