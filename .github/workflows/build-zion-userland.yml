@@ -48,7 +48,7 @@ jobs:
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64
+          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --no-build-unneeded-subpackages
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
