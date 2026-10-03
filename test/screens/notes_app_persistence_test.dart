@@ -1,9 +1,10 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../lib/screens/apps/notes_app.dart';
+import 'package:project_zion/screens/apps/notes_app.dart';
 
 void main() {
   testWidgets('restores persisted notes after app restart', (tester) async {
