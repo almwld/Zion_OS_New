@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import 'zion_bootstrap.dart';
 import 'zion_bootstrap_endpoint.dart';
@@ -118,7 +119,12 @@ class ZionUserlandInstaller {
     void Function(String message)? onProgress,
   }) async {
     final client = http.Client();
-    final temp = File(Directory.systemTemp.path + '/zion-bootstrap-' + DateTime.now().microsecondsSinceEpoch.toString() + '.zip');
+    final appSupport = await getApplicationSupportDirectory();
+    final downloadDir = Directory('${appSupport.path}/zion/userland/downloads');
+    await downloadDir.create(recursive: true);
+    final temp = File(
+      '${downloadDir.path}/bootstrap-${DateTime.now().microsecondsSinceEpoch}.zip',
+    );
     try {
       final abi = _assetNameForAbi();
       if (abi == null) return (success: false, path: null, message: 'معمارية الجهاز غير مدعومة بواسطة Zion Bootstrap Endpoint.');
