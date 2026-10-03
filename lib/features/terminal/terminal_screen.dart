@@ -190,8 +190,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   String? _extractCommand(String response) {
-    final fenced = RegExp(r'```(?:bash|sh|shell)?\\s*([\\s\\S]*?)```', caseSensitive: false)
-        .firstMatch(response);
+    final fenced = RegExp(
+      r'\`\`\`(?:bash|sh|shell)?\\s*([\\s\\S]*?)\`\`\`',
+      caseSensitive: false,
+    ).firstMatch(response);
     final value = (fenced?.group(1) ?? '').trim();
     if (value.isEmpty) return null;
     final lines = value
@@ -200,6 +202,21 @@ class _TerminalScreenState extends State<TerminalScreen> {
         .where((line) => line.isNotEmpty && !line.startsWith('#'))
         .toList();
     return lines.isEmpty ? null : lines.join('\\n');
+  }
+
+  bool _isSafeSuggestedCommand(String command) {
+    final normalized = command.toLowerCase();
+    const blocked = <String>[
+      'rm -rf',
+      'mkfs',
+      'dd if=',
+      'shutdown',
+      'reboot',
+      'poweroff',
+      ':(){',
+      'chmod -r 777',
+    ];
+    return !blocked.any(normalized.contains);
   }
 
   Future<void> _openAiAssistant() async {
