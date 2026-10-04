@@ -240,7 +240,7 @@ class _DataUsageAppState extends State<DataUsageApp> {
                         const SizedBox(height: 4),
                         LinearProgressIndicator(
                           value: app['usage'] / 3,
-                          backgroundColor: Theme.of(context).scaffoldBackgroundColor24,
+                          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                           color: Color(app['color']),
                           minHeight: 4,
                         ),
