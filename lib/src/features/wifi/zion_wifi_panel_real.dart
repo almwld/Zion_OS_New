@@ -277,4 +277,5 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
       ),
     );
   }
+    );
 }
