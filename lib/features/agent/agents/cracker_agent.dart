@@ -1,1 +1,3 @@
-class CrackerAgent { String plan(String target)=>'Credential testing is disabled by default; use an approved test dataset for offline auditing: $target'; }
+class CrackerAgent {
+  Map<String,dynamic> plan(Map<String,dynamic> analysis)=>{'status':'disabled','reason':'Credential brute-force automation is disabled; use offline, explicitly authorized testing plans.','actions':const <String>[],'findings':analysis['findings']??const []};
+}
