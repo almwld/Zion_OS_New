@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class P2PUI extends StatelessWidget{final List<String> peers;const P2PUI({super.key,this.peers=const []});@override Widget build(BuildContext c)=>ListView(children:[for(final p in peers)ListTile(leading:const Icon(Icons.devices),title:Text(p))]);}

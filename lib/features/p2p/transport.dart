@@ -1,0 +1,1 @@
+abstract class Transport { Future<void> connect(Uri uri); Future<void> send(List<int> data); Future<void> close(); }

@@ -1,0 +1,1 @@
+class TaskDistributor { final Map<String,String> tasks={}; void assign(String peer,String task){tasks[peer]=task;} Map<String,String> collect()=>Map.unmodifiable(tasks); }

@@ -1,0 +1,2 @@
+import 'dart:convert'; import 'package:crypto/crypto.dart';
+class P2PEncryption { List<int> key(String secret)=>sha256.convert(utf8.encode(secret)).bytes; String fingerprint(String secret)=>sha256.convert(utf8.encode(secret)).toString(); }

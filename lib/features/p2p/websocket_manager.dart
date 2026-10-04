@@ -1,0 +1,2 @@
+import 'package:web_socket_channel/web_socket_channel.dart';
+class WebSocketManager { WebSocketChannel? channel; Future<void> connect(Uri uri) async {channel=WebSocketChannel.connect(uri);await channel!.ready;} void send(Object data)=>channel?.sink.add(data); Future<void> close()=>channel?.sink.close()??Future.value(); }

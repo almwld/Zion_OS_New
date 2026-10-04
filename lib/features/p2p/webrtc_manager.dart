@@ -1,0 +1,1 @@
+class WebRTCManager { bool connected=false; Future<void> connect()=>Future.sync(()=>connected=true); Future<void> close()=>Future.sync(()=>connected=false); }
