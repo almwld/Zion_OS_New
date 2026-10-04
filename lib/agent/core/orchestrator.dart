@@ -244,9 +244,38 @@ class AgentOrchestrator {
 
   AgentPlan _heuristicPlan(String task){
     final lower=task.toLowerCase();
-    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)}) ,AgentStep(id:'2',description:'تلخيص النتائج',tool:'ai',params:{'prompt':'لخّص نتائج البحث التالية للمهمة: '+task},requiresEvaluation:true)]);
+    final command=_extractExplicitCommand(task);
+    if(command!=null){
+      return AgentPlan(steps:[
+        AgentStep(
+          id:'1',
+          description:'تنفيذ الأمر المحلي الذي طلبته: $command',
+          tool:'shell',
+          params:{'command':command},
+          permission:AgentPermission.process,
+          risk:AgentRisk.review,
+          requiresApproval:true,
+          requiresEvaluation:true,
+        ),
+        AgentStep(
+          id:'2',
+          description:'تلخيص نتيجة الأمر',
+          tool:'ai',
+          params:{'prompt':'اشرح نتيجة تنفيذ الأمر التالي باختصار وبالعربية: $command'},
+          requiresEvaluation:true,
+        ),
+      ]);
+    }
+    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)}),AgentStep(id:'2',description:'تلخيص النتائج',tool:'ai',params:{'prompt':'لخّص نتائج البحث التالية للمهمة: '+task},requiresEvaluation:true)]);
     if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
     return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
+  }
+
+  String? _extractExplicitCommand(String task){
+    final match=RegExp(r'(?:نفذ|نفّذ|شغل|شغّل|execute|run)\s+(?:الأمر\s*[:：]?\s*)?(.+)',caseSensitive:false).firstMatch(task.trim());
+    final command=match?.group(1)?.trim();
+    if(command==null||command.isEmpty)return null;
+    return command;
   }
 
   Future<bool> _nativeAiAvailable() async {
