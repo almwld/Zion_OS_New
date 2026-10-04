@@ -1,0 +1,2 @@
+class TerminalSession { final String id; final String title; const TerminalSession(this.id,{this.title='Terminal'}); }
+class SessionManager { final List<TerminalSession> sessions=[]; String? activeId; TerminalSession create([String title='Terminal']){final s=TerminalSession(DateTime.now().microsecondsSinceEpoch.toString(),title:title);sessions.add(s);activeId=s.id;return s;} void switchTo(String id){if(sessions.any((s)=>s.id==id))activeId=id;} void close(String id){sessions.removeWhere((s)=>s.id==id);if(activeId==id)activeId=sessions.isEmpty?null:sessions.last.id;} }

@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class TerminalUIV2 extends StatelessWidget { final List<String> tabs; final Widget child; const TerminalUIV2({super.key,this.tabs=const ['Terminal'],required this.child}); @override Widget build(BuildContext c)=>Column(children:[SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:[for(final t in tabs)Padding(padding:const EdgeInsets.all(8),child:Text(t))])),Expanded(child:child)]); }

@@ -1,0 +1,3 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+class SessionPersistence { static const key='zion.terminal.sessions'; Future<void> save(List<Map<String,dynamic>> data) async {(await SharedPreferences.getInstance()).setString(key,jsonEncode(data));} Future<List<Map<String,dynamic>>> restore() async {final s=(await SharedPreferences.getInstance()).getString(key);if(s==null)return [];return (jsonDecode(s) as List).map((e)=>Map<String,dynamic>.from(e)).toList();} }

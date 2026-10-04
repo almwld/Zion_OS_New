@@ -1,0 +1,2 @@
+import 'package:shared_preferences/shared_preferences.dart';
+class CommandHistory { static const key='zion.terminal.history'; Future<void> add(String command) async {final p=await SharedPreferences.getInstance();final h=p.getStringList(key)??[];h.remove(command);h.insert(0,command);await p.setStringList(key,h.take(500).toList());} Future<List<String>> search(String q) async => (await SharedPreferences.getInstance()).getStringList(key)?.where((x)=>x.contains(q)).toList()??[]; }

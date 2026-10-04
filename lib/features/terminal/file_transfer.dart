@@ -1,0 +1,2 @@
+import 'dart:io';
+class FileTransfer { Stream<double> upload(File file,Directory target) async* {final out=File('${target.path}/${file.uri.pathSegments.last}');final bytes=await file.readAsBytes();for(var i=0;i<bytes.length;i+=65536){final end=(i+65536).clamp(0,bytes.length);await out.writeAsBytes(bytes.sublist(i,end),mode:FileMode.append);yield end/bytes.length;} } Future<File> download(File source,File target)=>source.copy(target.path); }

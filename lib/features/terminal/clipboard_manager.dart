@@ -1,0 +1,2 @@
+import 'package:flutter/services.dart';
+class ClipboardManager { final List<String> history=[]; Future<void> copy(String value) async {await Clipboard.setData(ClipboardData(text:value));history.remove(value);history.insert(0,value);if(history.length>50)history.removeLast();} Future<String?> paste() async => (await Clipboard.getData('text/plain'))?.text; }
