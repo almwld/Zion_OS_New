@@ -47,7 +47,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
     _LauncherApp('أدوات النظام','مراقب النظام',Icons.monitor,'Monitor',350,400),
     _LauncherApp('أدوات النظام','الذكاء المحلي Offline AI',Icons.psychology,'Offline AI',700,600),
     _LauncherApp('أدوات النظام','مركز الوكلاء والذكاء المتقدم',Icons.hub,'Zion AI Center',760,720),
-    _LauncherApp('أدوات النظام','Zion Agent',Icons.smart_toy,'Zion Agent',820,700),
+    _LauncherApp('الذكاء والوكلاء','Super Agent',Icons.auto_awesome,'Zion Agent',900,760),
     _LauncherApp('أدوات النظام','وكلاء النظام',Icons.hub,'System Agents',760,650),
     _LauncherApp('الأمان والتشخيص','مركز الأمان',Icons.security,'Security',650,560),
   ];
