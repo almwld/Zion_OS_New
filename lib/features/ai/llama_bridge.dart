@@ -1,0 +1,2 @@
+import 'package:flutter/services.dart';
+class LlamaBridge { static const channel=MethodChannel('zion.os/ai'); Future<bool> isLoaded()=>channel.invokeMethod<bool>('isLoaded').then((v)=>v??false); Future<void> load(String path)=>channel.invokeMethod('loadModel',{'path':path}); Future<String> generate(String prompt,{double temperature=.7})=>channel.invokeMethod<String>('generate',{'prompt':prompt,'temperature':temperature}).then((v)=>v??''); Future<void> free()=>channel.invokeMethod('freeModel'); }

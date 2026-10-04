@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart'; import 'ai_playground.dart';
+class AIUI extends StatelessWidget{const AIUI({super.key});@override Widget build(BuildContext c)=>const Scaffold(appBar:AppBar(title:Text('Local AI')),body:AIPlayground());}

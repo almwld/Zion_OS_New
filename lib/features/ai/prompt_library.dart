@@ -1,0 +1,1 @@
+class PromptLibrary { final Map<String,String> prompts={'assistant':'You are a local assistant.','summarize':'Summarize the supplied text clearly.','code_review':'Review the supplied code for correctness and safety.'}; String? get(String name)=>prompts[name]; }

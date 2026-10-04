@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class AIPlayground extends StatefulWidget{const AIPlayground({super.key});@override State<AIPlayground> createState()=>_S();}class _S extends State<AIPlayground>{final c=TextEditingController();String out='';@override Widget build(BuildContext x)=>Column(children:[TextField(controller:c),FilledButton(onPressed:()=>setState(()=>out=c.text),child:const Text('Run locally')),Expanded(child:SingleChildScrollView(child:Text(out)))]);}

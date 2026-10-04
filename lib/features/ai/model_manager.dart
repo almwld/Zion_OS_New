@@ -1,0 +1,2 @@
+import 'dart:io';
+class ModelManager { final Directory directory; ModelManager({Directory? directory}):directory=directory??Directory.systemTemp; Future<List<File>> list() async=>directory.existsSync()?directory.listSync().whereType<File>().where((f)=>f.path.endsWith('.gguf')).toList():[]; Future<File> store(File source)=>source.copy('${directory.path}/${source.uri.pathSegments.last}'); Future<void> delete(File file)=>file.delete(); }
