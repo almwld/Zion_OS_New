@@ -1,2 +1,2 @@
 import 'package:flutter/material.dart';
-class AgentUI extends StatelessWidget{const AgentUI({super.key});@override Widget build(BuildContext c)=>const Scaffold(appBar:AppBar(title:Text('Security Agent')),body:Center(child:Text('Authorization-gated security workflow')));}
+class AgentUI extends StatelessWidget{const AgentUI({super.key});@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Security Agent')),body:const Center(child:Text('Authorization-gated security workflow')));}
