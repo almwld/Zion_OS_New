@@ -1,0 +1,2 @@
+import 'dart:async';
+class AutoLock { final Duration duration; Timer? _timer; AutoLock({this.duration=const Duration(minutes:5)}); void arm(void Function() lock){_timer?.cancel();_timer=Timer(duration,lock);} void cancel()=>_timer?.cancel(); void dispose()=>_timer?.cancel(); }

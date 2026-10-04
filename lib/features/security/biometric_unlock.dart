@@ -1,0 +1,2 @@
+import 'package:local_auth/local_auth.dart';
+class BiometricUnlock { final LocalAuthentication auth; BiometricUnlock({LocalAuthentication? auth}):auth=auth??LocalAuthentication(); Future<bool> unlock({String reason='Unlock Zion Vault'}) async {try{return await auth.authenticate(localizedReason:reason,options:const AuthenticationOptions(stickyAuth:true,useErrorDialogs:true,biometricOnly:false));}catch(_){return false;}} }

@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class VaultUI extends StatelessWidget { const VaultUI({super.key}); @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Zion Vault')),body:const Center(child:Text('Secure vault'))); }

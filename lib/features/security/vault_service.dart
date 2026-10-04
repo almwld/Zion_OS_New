@@ -1,0 +1,3 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'vault_crypto.dart';
+class VaultService { final FlutterSecureStorage storage; const VaultService({this.storage=const FlutterSecureStorage()}); Future<void> put(String name,String value,String secret)=>storage.write(key:'zion.vault.$name',value:VaultCrypto.protect(value,secret)); Future<String?> get(String name,String secret) async {final v=await storage.read(key:'zion.vault.$name');return v==null?null:VaultCrypto.unprotect(v,secret);} Future<void> remove(String name)=>storage.delete(key:'zion.vault.$name'); }

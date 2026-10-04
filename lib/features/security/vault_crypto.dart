@@ -1,0 +1,3 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+class VaultCrypto { static String protect(String value,String secret){final k=sha256.convert(utf8.encode(secret)).bytes;final b=utf8.encode(value);return base64UrlEncode(List<int>.generate(b.length,(i)=>b[i]^k[i%k.length]));} static String unprotect(String value,String secret){final k=sha256.convert(utf8.encode(secret)).bytes;final b=base64Url.decode(value);return utf8.decode(List<int>.generate(b.length,(i)=>b[i]^k[i%k.length]));} }
