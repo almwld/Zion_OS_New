@@ -1,0 +1,1 @@
+class ReporterAgent { String report(List<String> items)=>items.map((x)=>'- $x').join('\n'); }

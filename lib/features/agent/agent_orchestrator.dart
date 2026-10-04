@@ -1,0 +1,2 @@
+import '../../agent/core/agent_policy.dart';
+class AgentOrchestrator { final AgentPolicy policy; const AgentOrchestrator({this.policy=const AgentPolicy()}); AgentPolicyDecision plan(String tool,Map<String,dynamic> params)=>policy.evaluate(tool:tool,params:params); }

@@ -1,0 +1,1 @@
+class AttackChain { const AttackChain(); List<String> stages()=>['Recon','Scan','Analyze','Approval gate','Report']; }

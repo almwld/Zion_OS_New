@@ -1,0 +1,1 @@
+class ReconAgent { List<String> plan(String target)=>['identify $target','enumerate approved services','collect public metadata']; }

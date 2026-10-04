@@ -1,0 +1,1 @@
+class AnalyzerAgent { Map<String,dynamic> analyze(Map<String,dynamic> evidence)=>{'findings':evidence,'severity':'review-required'}; }

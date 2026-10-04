@@ -1,0 +1,2 @@
+import 'package:shared_preferences/shared_preferences.dart';
+class KnowledgeBase { static const key='zion.agent.knowledge'; Future<void> add(String item) async {final p=await SharedPreferences.getInstance();final v=p.getStringList(key)??[];v.add(item);await p.setStringList(key,v.take(1000).toList());} Future<List<String>> list() async=>(await SharedPreferences.getInstance()).getStringList(key)??[]; }

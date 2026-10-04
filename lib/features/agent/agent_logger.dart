@@ -1,0 +1,1 @@
+class AgentLogger { final List<String> entries=[]; void add(String value){entries.add('${DateTime.now().toIso8601String()} $value');if(entries.length>1000)entries.removeAt(0);} }

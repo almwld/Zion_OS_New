@@ -1,0 +1,1 @@
+class CrackerAgent { String plan(String target)=>'Credential testing is disabled by default; use an approved test dataset for offline auditing: $target'; }
