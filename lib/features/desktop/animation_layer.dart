@@ -1,0 +1,2 @@
+import 'package:flutter/widgets.dart';
+class AnimationLayer extends StatelessWidget { final Widget child; final Animation<double>? animation; const AnimationLayer({super.key,required this.child,this.animation}); @override Widget build(BuildContext c)=>animation==null?child:FadeTransition(opacity:animation!,child:child); }

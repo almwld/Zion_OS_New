@@ -1,0 +1,2 @@
+import 'package:flutter/widgets.dart';
+class WorkspaceAnimations { static Widget switchTo(Widget child,Animation<double> a)=>SlideTransition(position:Tween(begin:const Offset(.08,0),end:Offset.zero).animate(a),child:child); }

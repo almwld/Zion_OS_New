@@ -1,0 +1,2 @@
+import 'package:flutter/widgets.dart'; import 'reduced_motion.dart'; import 'animation_layer.dart';
+class Compositor extends StatelessWidget { final Widget child; final Animation<double>? animation; const Compositor({super.key,required this.child,this.animation}); @override Widget build(BuildContext c)=>ReducedMotion.of(c)?child:AnimationLayer(child:child,animation:animation); }

@@ -1,0 +1,2 @@
+import 'package:flutter/widgets.dart'; import 'motion_tokens.dart';
+class WindowAnimations { static Widget open(Widget child,Animation<double> a)=>ScaleTransition(scale:CurvedAnimation(parent:a,curve:MotionTokens.curve),child:child); static Widget fade(Widget child,Animation<double> a)=>FadeTransition(opacity:a,child:child); }
