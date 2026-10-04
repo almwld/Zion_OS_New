@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart'; import 'system_metrics.dart';
+class Dashboard extends StatelessWidget { final SystemMetrics metrics; const Dashboard({super.key,this.metrics=const SystemMetrics()}); @override Widget build(BuildContext c)=>FutureBuilder<int>(future:metrics.batteryLevel(),builder:(c,s)=>ListTile(title:const Text('System'),subtitle:Text('Battery: ${s.data??'-'}%'))); }

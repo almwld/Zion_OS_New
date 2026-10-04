@@ -1,0 +1,2 @@
+import 'package:battery_plus/battery_plus.dart'; import 'package:device_info_plus/device_info_plus.dart';
+class SystemMetrics { final Battery battery=Battery(); final DeviceInfoPlugin device=DeviceInfoPlugin(); Future<int> batteryLevel()=>battery.batteryLevel; Future<Map<String,dynamic>> info() async {final a=await device.androidInfo;return {'model':a.model,'sdk':a.version.sdkInt};} }

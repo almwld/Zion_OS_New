@@ -1,0 +1,1 @@
+class QuickActions { final List<String> actions=const ['Terminal','Files','Scan','AI']; }

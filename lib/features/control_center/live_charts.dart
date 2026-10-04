@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart'; import 'package:fl_chart/fl_chart.dart';
+class LiveCharts extends StatelessWidget { final List<double> values; const LiveCharts({super.key,this.values=const []}); @override Widget build(BuildContext c)=>SizedBox(height:180,child:LineChart(LineChartData(lineBarsData:[LineChartBarData(spots:[for(var i=0;i<values.length;i++)FlSpot(i.toDouble(),values[i])])]))); }

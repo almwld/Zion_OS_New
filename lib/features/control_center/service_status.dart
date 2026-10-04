@@ -1,0 +1,1 @@
+class ServiceStatus { bool terminal=true,userland=true,ai=true,p2p=true; Map<String,bool> all()=>{'Terminal':terminal,'Userland':userland,'AI':ai,'P2P':p2p}; }
