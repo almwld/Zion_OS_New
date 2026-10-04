@@ -1,0 +1,2 @@
+import 'dart:io';
+class PackageManager { Future<ProcessResult> apt(String root,List<String> args)=>Process.run('/system/bin/sh',['-c','apt ${args.join(' ')}'],workingDirectory:root); Future<ProcessResult> dpkg(String root,List<String> args)=>Process.run('/system/bin/sh',['-c','dpkg ${args.join(' ')}'],workingDirectory:root); }

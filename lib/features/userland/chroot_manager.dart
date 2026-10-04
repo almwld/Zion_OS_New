@@ -1,0 +1,1 @@
+class ChrootManager { bool get supported=>false; String explain()=>'Android application sandbox does not grant root privileges; use the PRoot runtime for unprivileged userland.'; }

@@ -1,0 +1,1 @@
+class DistroInstaller { static const supported=['Ubuntu','Arch','Kali','NixOS','Debian','Fedora','Alpine']; bool supports(String name)=>supported.contains(name); }

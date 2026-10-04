@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class UserlandUI extends StatelessWidget { final List<String> distros; const UserlandUI({super.key,this.distros=const []}); @override Widget build(BuildContext c)=>ListView(children:[for(final d in distros)ListTile(title:Text(d),trailing:const Icon(Icons.play_arrow))]); }
