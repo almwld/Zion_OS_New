@@ -241,7 +241,7 @@ class _DiskAnalyzerAppState extends State<DiskAnalyzerApp> {
                         const SizedBox(height: 4),
                         LinearProgressIndicator(
                           value: partition['usage'] / 100,
-                          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                          backgroundColor: Theme.of(context).scaffoldBackgroundColor24,
                           color: _getUsageColor(partition['usage']),
                         ),
                         const SizedBox(height: 2),
