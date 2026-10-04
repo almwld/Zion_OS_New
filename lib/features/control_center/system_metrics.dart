@@ -4,7 +4,7 @@ class SystemMetrics {
     if(!(Platform.isLinux||Platform.isAndroid))return 0;
     try {
       final file=File('/sys/class/power_supply/battery/capacity');
-      if(await file.exists())return int.tryParse((await file.readAsString()).trim());
+      if(await file.exists())return int.tryParse((await file.readAsString()).trim()) ?? 0;
     } catch (_) {}
     return 0;
   }
