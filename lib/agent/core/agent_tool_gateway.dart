@@ -8,7 +8,7 @@ class AgentToolGateway {
  List<AgentTool> get tools=>List.unmodifiable(_tools.values);
  String? validate(AgentStep step,{bool approved=false}) {
   final tool=_tools[step.tool]; if(tool==null)return 'الأداة غير مسجلة: '+step.tool;
-  for(final p in tool.permissions){if(!granted.contains(p))return 'صلاحية غير ممنوحة: '+p.name;}
+  for(final p in tool.requiredPermissions(step.params)){if(!granted.contains(p))return 'صلاحية غير ممنوحة: '+p.name;}
   if(requireApprovalForSideEffects&&step.permission==AgentPermission.externalSideEffect&&!approved)return 'هذه الخطوة تتطلب موافقة صريحة';
   if(step.requiresApproval&&!approved)return 'الخطوة تتطلب موافقة صريحة';
   if(!tool.supports(step.params))return 'المعاملات غير مدعومة للأداة';

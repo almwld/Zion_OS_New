@@ -5,6 +5,7 @@ import 'tool.dart';
 
 class PythonTool extends AgentTool {
   String get name=>'python';
+  Set<AgentPermission> get permissions => const {AgentPermission.process};
   String get description=>'تشغيل Python داخل مساحة عمل المهمة. هذه ليست عزلة kernel حقيقية.';
   Map<String,dynamic> get parameters=>const {'code':'string','environment':'string','timeout':'int'};
   Future<StepResult> execute(Map<String,dynamic> p) async {

@@ -4,6 +4,7 @@ import 'tool.dart';
 
 class BrowserTool extends AgentTool {
   String get name=>'browser';
+  Set<AgentPermission> get permissions => const {AgentPermission.network};
   String get description=>'جلب صفحات ويب والبحث النصي عبر HTTP؛ لا ينفذ JavaScript أو يسجل دخولاً تلقائياً.';
   Map<String,dynamic> get parameters=>const {'action':'fetch | search','url':'string','query':'string'};
   Future<StepResult> execute(Map<String,dynamic> p) async {
