@@ -75,6 +75,7 @@ class MainActivity : FlutterFragmentActivity() {
         init { System.loadLibrary("zion_pty") }
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val WIFI_CHANNEL = "zion.os/wifi"
+        private const val SECURITY_CHANNEL = "zion.os/security"
         private const val PTY_CHANNEL = "zion.os/pty"
         private const val PTY_EVENTS = "zion.os/pty/events"
         private const val RADAR_EVENTS = "zion.os/network/radar"
@@ -99,6 +100,15 @@ class MainActivity : FlutterFragmentActivity() {
                 when (call.method) {
                     "scan" -> scanWifiTelemetryAsync(result)
                     "connection" -> result.success(readCurrentWifiConnection())
+                    else -> result.notImplemented()
+                }
+            }
+
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SECURITY_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "apkPermissions" -> result.success(readApkPermissions(call.argument<String>("path") ?: ""))
                     else -> result.notImplemented()
                 }
             }
@@ -1055,6 +1065,30 @@ class MainActivity : FlutterFragmentActivity() {
         android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11N -> "Wi-Fi 4"
         android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_LEGACY -> "802.11 legacy"
         else -> "Unknown"
+    }
+
+    private fun readApkPermissions(path: String): Map<String, Any?> {
+        if (path.isBlank()) {
+            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "APK path is empty.")
+        }
+        val file = File(path)
+        if (!file.isFile) {
+            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "APK file does not exist.")
+        }
+        return try {
+            @Suppress("DEPRECATION")
+            val info = packageManager.getPackageArchiveInfo(path, android.content.pm.PackageManager.GET_PERMISSIONS)
+                ?: return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Android could not parse the APK manifest.")
+            mapOf(
+                "available" to true,
+                "status" to "AVAILABLE",
+                "packageName" to info.packageName,
+                "versionName" to info.versionName,
+                "permissions" to (info.requestedPermissions?.toList() ?: emptyList<String>())
+            )
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "APK manifest analysis failed."))
+        }
     }
 
     private fun readCurrentWifiConnection(): Map<String, Any?> {
