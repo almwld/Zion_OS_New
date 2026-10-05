@@ -8,6 +8,8 @@ class SystemMetrics {
     required this.memoryTotalBytes,
     required this.storagePercent,
     required this.uptime,
+    required this.processCount,
+    required this.temperatureCelsius,
   });
 
   final double cpuPercent;
@@ -16,11 +18,15 @@ class SystemMetrics {
   final int memoryTotalBytes;
   final double storagePercent;
   final Duration uptime;
+  final int processCount;
+  final double temperatureCelsius;
 
   static Future<SystemMetrics> read() async {
     final cpu = await _cpu();
     final memory = await _memory();
     final storage = await _storage();
+    final processes = await _processCount();
+    final temperature = await _temperatureCelsius();
     return SystemMetrics(
       cpuPercent: cpu,
       memoryPercent: memory.percent,
@@ -28,6 +34,8 @@ class SystemMetrics {
       memoryTotalBytes: memory.total,
       storagePercent: storage,
       uptime: _uptime(),
+      processCount: processes,
+      temperatureCelsius: temperature,
     );
   }
 
@@ -86,6 +94,40 @@ class SystemMetrics {
       final value = double.tryParse(p[p.length - 2].replaceAll('%', '')) ?? 0.0;
       return value.isFinite ? value.clamp(0, 100).toDouble() : 0.0;
     } catch (_) { return 0; }
+  }
+
+  static Future<int> _processCount() async {
+    try {
+      final entries = await Directory('/proc').list(followLinks: false).toList();
+      return entries.whereType<Directory>().where((d) {
+        final name = d.path.split('/').last;
+        return int.tryParse(name) != null;
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<double> _temperatureCelsius() async {
+    try {
+      final values = <double>[];
+      final root = Directory('/sys/class/thermal');
+      if (!await root.exists()) return 0;
+      await for (final entry in root.list(followLinks: false)) {
+        if (entry is! Directory || !entry.path.contains('thermal_zone')) continue;
+        final file = File('\${entry.path}/temp');
+        if (!await file.exists()) continue;
+        final raw = double.tryParse((await file.readAsString()).trim());
+        if (raw == null || !raw.isFinite) continue;
+        final celsius = raw.abs() > 1000 ? raw / 1000 : raw;
+        if (celsius >= -40 && celsius <= 150) values.add(celsius);
+      }
+      if (values.isEmpty) return 0;
+      values.sort();
+      return values[values.length ~/ 2];
+    } catch (_) {
+      return 0;
+    }
   }
 
   static Duration _uptime() {
