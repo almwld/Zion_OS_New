@@ -26,8 +26,8 @@ class LegendaryScanner {
       'status': 'scanning',
       'open_ports': <Map<String, dynamic>>[],
       'os_matches': <Map<String, dynamic>>[],
-      'vulnerabilities': <Map<String, dynamic>>{},
-      'trace_route': <Map<String, dynamic>>{},
+      'vulnerabilities': <String, dynamic>{},
+      'trace_route': <String, dynamic>{},
     };
 
     // المرحلة 1: اكتشاف إذا كان الهدف حيًا
@@ -236,7 +236,7 @@ class LegendaryScanner {
           'method': 'TTL',
           'ttl': ttl,
           'os': _guessOSByTTL(ttl),
-          'accuracy': '80%',
+          'confidence': 'low',
         });
       }
     } catch (_) {}
@@ -247,7 +247,7 @@ class LegendaryScanner {
       matches.add({
         'method': 'SMB',
         'os': 'Windows (SMB port open)',
-        'accuracy': '60%',
+        'confidence': 'medium',
       });
       socket.destroy();
     } catch (_) {}
