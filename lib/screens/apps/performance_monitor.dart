@@ -68,6 +68,8 @@ class _PerformanceMonitorAppState extends State<PerformanceMonitorApp> {
     _currentRam = metrics.memoryPercent;
     _currentDisk = metrics.storagePercent;
     _currentUptime = metrics.uptime.inSeconds;
+    _currentProcesses = metrics.processCount;
+    _currentTemp = metrics.temperatureCelsius;
   }
 
   void _updateHistory() {

@@ -8,8 +8,6 @@ class SystemMetrics {
     required this.memoryTotalBytes,
     required this.storagePercent,
     required this.uptime,
-    required this.processCount,
-    required this.temperatureCelsius,
   });
 
   final double cpuPercent;
@@ -18,15 +16,11 @@ class SystemMetrics {
   final int memoryTotalBytes;
   final double storagePercent;
   final Duration uptime;
-  final int processCount;
-  final double temperatureCelsius;
 
   static Future<SystemMetrics> read() async {
     final cpu = await _cpu();
     final memory = await _memory();
     final storage = await _storage();
-    final processCount = await _processCount();
-    final temperature = await _temperature();
     return SystemMetrics(
       cpuPercent: cpu,
       memoryPercent: memory.percent,
@@ -34,8 +28,6 @@ class SystemMetrics {
       memoryTotalBytes: memory.total,
       storagePercent: storage,
       uptime: _uptime(),
-      processCount: processCount,
-      temperatureCelsius: temperature,
     );
   }
 
@@ -94,37 +86,6 @@ class SystemMetrics {
       final value = double.tryParse(p[p.length - 2].replaceAll('%', '')) ?? 0.0;
       return value.isFinite ? value.clamp(0, 100).toDouble() : 0.0;
     } catch (_) { return 0; }
-  }
-
-  static Future<int> _processCount() async {
-    try {
-      final entries = Directory('/proc').listSync(followLinks: false);
-      return entries.whereType<Directory>().where((d) => int.tryParse(d.path.split('/').last) != null).length;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  static Future<double> _temperature() async {
-    try {
-      final root = Directory('/sys/class/thermal');
-      if (!root.existsSync()) return 0;
-      final values = <double>[];
-      for (final entry in root.listSync(followLinks: false)) {
-        if (!entry.path.contains('thermal_zone')) continue;
-        final file = File(entry.path + '/temp');
-        if (!file.existsSync()) continue;
-        final raw = double.tryParse((await file.readAsString()).trim());
-        if (raw == null) continue;
-        final celsius = raw.abs() > 1000 ? raw / 1000 : raw;
-        if (celsius > -40 && celsius < 150) values.add(celsius);
-      }
-      if (values.isEmpty) return 0;
-      values.sort();
-      return values[values.length ~/ 2];
-    } catch (_) {
-      return 0;
-    }
   }
 
   static Duration _uptime() {
