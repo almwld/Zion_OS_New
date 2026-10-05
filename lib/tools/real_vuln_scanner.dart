@@ -54,12 +54,18 @@ class RealVulnScanner {
   }
 
   /// فحص ثغرات عدة منافذ
-  static Map<String, dynamic> scanPorts(List<int> ports) {
+  static Map<String, dynamic> scanPorts(List<int> ports, {Map<int, String> versions = const {}}) {
     final allVulns = <String, List<Map<String, dynamic>>>{};
+    final candidates = <String, List<Map<String, dynamic>>>{};
     int critical = 0, high = 0, medium = 0, low = 0;
 
     for (final port in ports) {
-      final vulns = scanPort(port);
+      final version = versions[port];
+      final vulns = scanPort(port, version: version);
+      if (version == null && _fullVulnDB.containsKey(port)) {
+        candidates['$port'] = List<Map<String, dynamic>>.from(_fullVulnDB[port]!);
+        continue;
+      }
       if (vulns.isNotEmpty) {
         allVulns['$port'] = vulns;
         for (final vuln in vulns) {
@@ -74,9 +80,11 @@ class RealVulnScanner {
 
     return {
       'vulnerabilities': allVulns,
+      'candidates': candidates,
       'summary': {'critical': critical, 'high': high, 'medium': medium, 'low': low},
       'total': critical + high + medium + low,
       'risk_level': critical > 0 ? 'CRITICAL' : high > 0 ? 'HIGH' : medium > 0 ? 'MEDIUM' : 'LOW',
+      'status': candidates.isNotEmpty ? 'PARTIAL_EVIDENCE' : 'VERIFIED',
     };
   }
 
@@ -93,8 +101,11 @@ class RealVulnScanner {
     report.writeln('  Medium: ${scanResult['summary']['medium']}');
     report.writeln('  Low: ${scanResult['summary']['low']}');
     report.writeln('  Risk Level: ${scanResult['risk_level']}');
-    report.writeln('');
-
+    report.writeln('  Evidence: ${scanResult['status'] ?? 'UNKNOWN'}');
+    if ((scanResult['candidates'] as Map?)?.isNotEmpty == true) {
+      report.writeln('NOTE: Port-based candidates are not confirmed vulnerabilities without service/version evidence.');
+      report.writeln('');
+    }
     final vulns = scanResult['vulnerabilities'] as Map<String, dynamic>;
     for (final entry in vulns.entries) {
       report.writeln('Port ${entry.key}:');
