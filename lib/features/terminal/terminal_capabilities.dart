@@ -13,6 +13,7 @@ class TerminalCapabilities {
     'REAL: VT/xterm frontend with 3,000-line scrollback',
     'PRIMARY: Zion Userland Bash/Zsh/Fish/Ash',
     'BOOTSTRAP: verified Zion Userland can be downloaded and installed on first run',
+    'FALLBACK: Android /system/bin/sh is used only when Zion Userland is unavailable',
     'RUNTIME_DEPENDENT: bash/zsh/fish/ash',
     'RUNTIME_DEPENDENT: pkg/apt/dpkg',
     'RUNTIME_DEPENDENT: proot/proot-distro',
