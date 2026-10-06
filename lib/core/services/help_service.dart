@@ -33,7 +33,7 @@ class HelpService {
     },
     {
       'question': 'Is my data encrypted?',
-      'answer': 'Sensitive data is protected by the app's configured encryption/storage mechanisms. The exact cipher and coverage depend on the feature; this help entry does not claim military-grade protection.',
+      'answer': 'Sensitive data is protected by the app\'s configured encryption/storage mechanisms. The exact cipher and coverage depend on the feature; this help entry does not claim military-grade protection.',
       'category': 'Security',
       'icon': 'encryption',
     },
