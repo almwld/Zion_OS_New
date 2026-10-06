@@ -55,6 +55,7 @@ flutter:
       fonts:
         - asset: assets/fonts/Musnad.ttf
   assets:
+    - assets/icons/
     - assets/translations/
     - assets/icons/svg_colors/
     - assets/images/
