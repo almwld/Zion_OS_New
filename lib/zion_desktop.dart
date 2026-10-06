@@ -98,7 +98,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     onAltTabChanged: () { if (mounted) setState(() {}); },
   );
 
-  static const Color _neonIndigo = Color(0xFF7C4DFF);
+  static const Color _neonIndigo = ZionColors.cyan;
   final List<Map<String, dynamic>> _categories = [
     {"name": "ATTACK", "nameAr": "هجوم", "icon": Icons.flash_on, "color": _neonIndigo},
     {"name": "DEFENSE", "nameAr": "دفاع", "icon": Icons.shield, "color": _neonIndigo},
@@ -280,6 +280,21 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
         MaterialPageRoute<void>(builder: (_) => screen),
       );
       return;
+    }
+
+    // Reuse an existing window instead of creating duplicate instances.
+    // This keeps launcher/taskbar/window-manager state in sync.
+    final existingId = _windowManager.findIdByAppKey(name);
+    if (existingId != null) {
+      final existing = _windowManager.find(existingId);
+      if (existing != null) {
+        if (existing.isMinimized) {
+          _windowManager.restore(existingId);
+        } else {
+          _windowManager.focus(existingId);
+        }
+        return;
+      }
     }
 
     final screenSize = MediaQuery.sizeOf(context);
