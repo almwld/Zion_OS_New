@@ -1,5 +1,10 @@
+name: zion_proot_assets
+description: Bundled Zion PRoot runtime assets.
+publish_to: none
 
-  # أصول التطبيق
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+
+flutter:
   assets:
-    - assets/icons/
-    - assets/bin/proot
+    - proot
