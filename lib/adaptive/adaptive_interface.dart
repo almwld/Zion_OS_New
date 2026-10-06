@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/theme/zion_colors.dart';
 
 enum OperationMode { defensive, analysis, tools, stealth }
 
@@ -20,9 +21,8 @@ class ModeProvider extends ChangeNotifier {
   }
 }
 
-/// Applies a presentation theme to the supplied subtree according to the
-/// current operational mode. Modes change presentation and available UX hints;
-/// they do not grant elevated privileges or enable offensive execution.
+/// Operational mode changes semantic accents without replacing the stable
+/// Zion shell palette.
 class AdaptiveInterface extends StatelessWidget {
   final Widget child;
   const AdaptiveInterface({super.key, required this.child});
@@ -35,15 +35,16 @@ class AdaptiveInterface extends StatelessWidget {
 
   ThemeData _themeFor(OperationMode mode, ThemeData base) {
     final scheme = base.colorScheme;
-    switch (mode) {
-      case OperationMode.defensive:
-        return base.copyWith(colorScheme: scheme.copyWith(primary: Colors.blue, secondary: Colors.cyan));
-      case OperationMode.analysis:
-        return base.copyWith(colorScheme: scheme.copyWith(primary: Colors.teal, secondary: Colors.green));
-      case OperationMode.tools:
-        return base.copyWith(colorScheme: scheme.copyWith(primary: Colors.indigo, secondary: Colors.lightBlue));
-      case OperationMode.stealth:
-        return base.copyWith(colorScheme: scheme.copyWith(primary: Colors.blueGrey, secondary: Colors.grey));
-    }
+    final primary = switch (mode) {
+      OperationMode.defensive => ZionColors.cyan,
+      OperationMode.analysis => ZionColors.cyan,
+      OperationMode.tools => ZionColors.cyan,
+      OperationMode.stealth => ZionColors.cyan,
+    };
+    return base.copyWith(
+      colorScheme: scheme.copyWith(primary: primary, secondary: ZionColors.teal),
+      primaryColor: primary,
+      iconTheme: base.iconTheme.copyWith(color: primary),
+    );
   }
 }
