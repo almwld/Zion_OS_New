@@ -5,6 +5,9 @@ class IconMapper {
   static Widget getIcon(String appName, {double size = 28}) {
     final path = _getIconPath(appName);
     if (path != null) {
+      if (path.endsWith('.webp')) {
+        return Image.asset(path, width: size, height: size, fit: BoxFit.contain);
+      }
       return SvgPicture.asset(path, width: size, height: size, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn));
     }
     return Icon(_getFallbackIcon(appName), size: size, color: const Color(0xFF00BCD4));
@@ -18,6 +21,28 @@ class IconMapper {
       "WIFI": "assets/icons/svg_colors/wifi.svg",
       "CRYPTO": "assets/icons/svg_colors/crypto.svg",
       "STEALTH": "assets/icons/svg_colors/stealth.svg",
+      "EXPLOIT": "assets/icons/exploit.webp",
+      "CRACKER": "assets/icons/cracker.webp",
+      "FORENSICS": "assets/icons/forensics.webp",
+      "PROCESS": "assets/icons/process.webp",
+      "FIREWALL": "assets/icons/firewall.webp",
+      "NETWORK": "assets/icons/network.webp",
+      "TERMINAL": "assets/icons/terminal.webp",
+      "SETTINGS": "assets/icons/settings.webp",
+      "DATABASE": "assets/icons/database.webp",
+      "SECURITY": "assets/icons/security.webp",
+      "FILE MANAGER": "assets/icons/file_manager.webp",
+      "ANALYTICS": "assets/icons/analytics.webp",
+      "SYSTEM AI": "assets/icons/system_ai.webp",
+      "BROWSER": "assets/icons/browser.webp",
+      "APP STORE": "assets/icons/app_store.webp",
+      "MESSAGES": "assets/icons/messages.webp",
+      "MEDIA PLAYER": "assets/icons/media_player.webp",
+      "PROFILE": "assets/icons/profile.webp",
+      "LOGS": "assets/icons/logs.webp",
+      "STORAGE": "assets/icons/storage.webp",
+      "CAMERA": "assets/icons/camera.webp",
+      "CALENDAR": "assets/icons/calendar.webp",
     };
     return icons[appName];
   }
