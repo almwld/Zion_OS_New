@@ -35,33 +35,9 @@ class CompletePacketAnalyzer {
       'payload': '',
     };
 
-    // ServerSocket delivers TCP stream/application bytes, not device-level IP packets.
+    // تحليل IP Header
     final version = (data[0] >> 4) & 0x0F;
     final headerLength = (data[0] & 0x0F) * 4;
-    final looksLikeIpv4 = version == 4 && headerLength >= 20 && headerLength <= data.length && data.length >= 20;
-    if (!looksLikeIpv4) {
-      final payload = _safeDecode(data);
-      final packet = <String, dynamic>{
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'capture_scope': 'TCP_LISTENER',
-        'source': {'ip': srcIp, 'port': srcPort},
-        'destination': {'ip': '0.0.0.0', 'port': 0},
-        'protocol': 'TCP_STREAM',
-        'length': data.length,
-        'flags': <String>[],
-        'payload': payload,
-      };
-      final alert = _detectApplicationAttack(srcIp, payload);
-      if (alert != null) {
-        _alerts.add(alert);
-        packet['alert'] = alert;
-      }
-      _packets.add(packet);
-      if (_packets.length > 10000) _packets.removeAt(0);
-      return;
-    }
-
-    // Only a native/raw capture source can normally supply an actual IP frame here.
     final protocol = data[9];
     final srcIpBytes = data.sublist(12, 16);
     final dstIpBytes = data.sublist(16, 20);
@@ -148,16 +124,6 @@ class CompletePacketAnalyzer {
     ).length;
     if (scanCount > 50) return 'Port Scan from ${packet['source']['ip']} ($scanCount ports)';
 
-    return null;
-  }
-
-  String? _detectApplicationAttack(String srcIp, String payload) {
-    if (payload.contains(RegExp(r"(\\bUNION\\b|\\bSELECT\\b|' OR '1'='1)", caseSensitive: false))) {
-      return 'SQL Injection indicator from $srcIp';
-    }
-    if (payload.contains(RegExp(r'(<script>|<img[^>]+onerror=)', caseSensitive: false))) {
-      return 'XSS indicator from $srcIp';
-    }
     return null;
   }
 
