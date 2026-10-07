@@ -51,6 +51,7 @@ import 'widgets/floating_window_manager.dart';
 import 'screens/arsenal/arsenal_screen.dart';
 import 'core/ui/zion_toast.dart';
 import 'core/theme/zion_colors.dart';
+import 'core/theme/app_theme_boundary.dart';
 import 'features/window_manager/core/window_manager.dart';
 import 'features/window_manager/core/alt_tab_manager.dart';
 import 'features/window_manager/core/global_keyboard_manager.dart';
@@ -252,6 +253,12 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     };
   }
 
+  Widget? _themedScreenForApp(String name) {
+    final rawScreen = _screenForApp(name);
+    final screen = rawScreen == null ? null : AppThemeBoundary(child: rawScreen);
+    return screen == null ? null : AppThemeBoundary(child: screen);
+  }
+
   Future<void> _restoreWindowSession() async {
     if (_windowSessionRestored || !mounted) return;
     _windowSessionRestored = true;
@@ -259,7 +266,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     if (!mounted || snapshots.isEmpty) return;
     await _windowManagerKey.currentState?.restoreSnapshots(
       snapshots,
-      (appKey) => _screenForApp(appKey),
+      (appKey) => _themedScreenForApp(appKey),
     );
   }
 
