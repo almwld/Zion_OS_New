@@ -11,6 +11,7 @@ import 'src/features/ai/advanced_ai_center.dart';
 import 'agent/ui/agent_screen.dart';
 import 'agent/ui/system_agents_screen.dart';
 import 'services/preferences_service.dart';
+import 'core/theme/app_theme_boundary.dart';
 
 class ZionAppLauncher extends StatefulWidget {
   const ZionAppLauncher({
@@ -221,7 +222,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
     ]));
   }
 
-  void _openLegacyApp(BuildContext context, _LauncherApp app) => context.read<WindowManager>().open(title: app.title, content: _content(app.title), width: app.width, height: app.height, appKey: app.title);
+  void _openLegacyApp(BuildContext context, _LauncherApp app) => context.read<WindowManager>().open(title: app.title, content: AppThemeBoundary(child: _content(app.title)), width: app.width, height: app.height, appKey: app.title);
 
   Widget _content(String title) {
     switch (title) {
