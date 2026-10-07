@@ -104,10 +104,21 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   Future<void> restoreSnapshots(List<FloatingWindowSnapshot> snapshots, Widget? Function(String appKey) contentFactory) async {
     if (_restoring || snapshots.isEmpty) return;
     _restoring = true;
+    final restoredKeys = <String>{};
     for (final snapshot in snapshots) {
+      // A persisted session can contain duplicates from older launcher
+      // versions. Restore one visible window per stable application key.
+      if (!restoredKeys.add(snapshot.appKey)) continue;
       final content = contentFactory(snapshot.appKey);
       if (content == null) continue;
-      restoreWindow(snapshot.title, content, appKey: snapshot.appKey, size: Size(snapshot.width, snapshot.height), position: Offset(snapshot.left, snapshot.top), workspace: snapshot.workspace);
+      restoreWindow(
+        snapshot.title,
+        content,
+        appKey: snapshot.appKey,
+        size: Size(snapshot.width, snapshot.height),
+        position: Offset(snapshot.left, snapshot.top),
+        workspace: snapshot.workspace,
+      );
     }
     _restoring = false;
   }
