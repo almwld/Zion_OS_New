@@ -32,6 +32,27 @@ class WindowManager extends ChangeNotifier {
   List<AppWindow> windowsInWorkspace(int workspace)=>windows.where((w)=>w.workspace==workspace).toList(growable:false);
 
   WindowId open({required String title,required Widget content,double width=600,double height=400,double x=50,double y=50,int workspace=0,String? appKey,WindowConstraints constraints=const WindowConstraints()}){
+    // appKey is the stable identity of an application. Re-opening an app
+    // must focus/restore its existing window instead of creating duplicates.
+    if (appKey != null) {
+      final existingId = findIdByAppKey(appKey);
+      if (existingId != null) {
+        final existing = registry.get(existingId);
+        if (existing != null && !existing.isClosed) {
+          if (existing.workspace != _activeWorkspace) {
+            moveToWorkspace(existingId, _activeWorkspace, follow: true);
+          }
+          if (existing.isMinimized) {
+            restore(existingId);
+          } else {
+            focus(existingId);
+            raise(existingId);
+          }
+          return existingId;
+        }
+      }
+    }
+
     final id=WindowId('zion-window-${DateTime.now().microsecondsSinceEpoch}-$_sequence');
     _sequence++;
     final target=workspace.clamp(0,workspaceCount-1).toInt();
