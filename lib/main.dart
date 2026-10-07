@@ -9,6 +9,7 @@ import 'core/services/zion_pkg_external_bridge.dart';
 import 'core/magiczionos/magiczionos_provider.dart';
 import 'features/terminal/terminal_service.dart';
 import 'providers/theme_provider.dart';
+import 'core/theme/theme_manager.dart';
 import 'adaptive/adaptive_interface.dart';
 import 'app_router.dart';
 import 'security/core/security_core.dart';
@@ -70,6 +71,7 @@ class ZionOSApp extends StatelessWidget {
     return provider.MultiProvider(
       providers: [
         provider.ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        provider.ChangeNotifierProvider(create: (_) => ThemeManager()),
         provider.ChangeNotifierProvider(create: (_) => ModeProvider()),
         provider.ChangeNotifierProvider<PreferencesService>.value(value: preferencesService),
         provider.Provider<SecurityCore>.value(value: securityCore),
@@ -84,6 +86,8 @@ class ZionOSApp extends StatelessWidget {
       ],
       child: provider.Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
+          // MaterialApp owns the Zion system/desktop shell theme only.
+          // Individual app windows install their own Theme below.
           return MaterialApp(
             title: 'Zion OS',
             debugShowCheckedModeBanner: false,
