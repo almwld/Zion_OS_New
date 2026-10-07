@@ -69,12 +69,35 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   }
 
   void openWindow(String title, Widget content, {String? appKey, Size? size, Offset? position, WindowId? windowId}) {
+    final key = appKey ?? title;
+    // The floating layer is also idempotent. This protects callers that open
+    // an app without going through DesktopHome's duplicate-window guard.
+    final existingIndex = _windows.indexWhere((w) => w.appKey == key);
+    if (existingIndex >= 0) {
+      final existing = _windows[existingIndex];
+      if (existing.wmId != null) {
+        final manager = widget.windowManager;
+        final wmWindow = manager?.find(existing.wmId!);
+        if (wmWindow?.isMinimized == true) {
+          manager?.restore(existing.wmId!);
+        } else {
+          manager?.focus(existing.wmId!);
+        }
+      }
+      if (existing.workspace != _activeWorkspace) {
+        setState(() => _activeWorkspace = existing.workspace);
+      } else {
+        setState(() {});
+      }
+      return;
+    }
+
     setState(() {
       _windows.add(FloatingWindowInstance(
         id: _nextId++,
         title: title,
         content: content,
-        appKey: appKey ?? title,
+        appKey: key,
         workspace: _activeWorkspace,
         size: size,
         position: position,
