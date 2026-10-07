@@ -20,8 +20,8 @@ class ZionTheme {
           onError: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: ZionColors.teal,
-          foregroundColor: Colors.white,
+          backgroundColor: ZionColors.lightSurface,
+          foregroundColor: ZionColors.lightTextPrimary,
           elevation: 0,
           centerTitle: true,
         ),
@@ -31,15 +31,6 @@ class ZionTheme {
         ),
         dividerTheme: const DividerThemeData(color: ZionColors.lightDivider),
         iconTheme: const IconThemeData(color: ZionColors.lightIconPrimary),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: ZionColors.teal,
-          selectedItemColor: Colors.white,
-          unselectedItemColor: ZionColors.cyanLight,
-        ),
-        navigationBarTheme: const NavigationBarThemeData(
-          backgroundColor: ZionColors.teal,
-          indicatorColor: ZionColors.cyan,
-        ),
         elevatedButtonTheme: const ElevatedButtonThemeData(
           style: ButtonStyle(
             backgroundColor: WidgetStatePropertyAll(ZionColors.cyan),
@@ -64,8 +55,8 @@ class ZionTheme {
           onError: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: ZionColors.teal,
-          foregroundColor: Colors.white,
+          backgroundColor: ZionColors.darkSurface,
+          foregroundColor: ZionColors.darkTextPrimary,
           elevation: 0,
           centerTitle: true,
         ),
