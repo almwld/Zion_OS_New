@@ -255,8 +255,10 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
 
   Widget? _themedScreenForApp(String name) {
     final rawScreen = _screenForApp(name);
-    final screen = rawScreen == null ? null : AppThemeBoundary(child: rawScreen);
-    return screen == null ? null : AppThemeBoundary(child: screen);
+    if (rawScreen == null) return null;
+    // Exactly one application-theme boundary. The outer MaterialApp owns
+    // Zion Shell colors; this boundary owns only the opened app's palette.
+    return AppThemeBoundary(child: rawScreen);
   }
 
   Future<void> _restoreWindowSession() async {
@@ -272,7 +274,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
 
   void _openApp(Map<String, dynamic> app, {bool fullscreen = false}) {
     final name = app['name'] as String;
-    final screen = _screenForApp(name);
+    final screen = _themedScreenForApp(name);
     if (screen == null) {
       ZionToast.show(
         context,
