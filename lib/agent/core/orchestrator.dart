@@ -50,10 +50,26 @@ class AgentOrchestrator {
       for (var i = 0; i < plan.steps.length; i++) {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
+        final tool = tools.getTool(step.tool);
+        if (tool == null) {
+          final r = StepResult.failure('الأداة غير متاحة: ${step.tool}');
+          results.add(r);
+          return AgentResult(success: false, task: clean, steps: results, error: r.error);
+        }
         final policyDecision = policy.evaluate(tool: step.tool, params: step.params);
+        // Never trust the model's declared permission alone: derive the
+        // effective permission from the registered tool implementation too.
+        final requiredPermissions = tool.requiredPermissions(step.params);
+        final toolRequiresApproval = tool.requiresApproval(step.params);
+        final requiresSensitiveApproval =
+            requiredPermissions.any((permission) => permission != AgentPermission.readOnly) ||
+            toolRequiresApproval;
         final decision = step.risk == AgentRisk.blocked
             ? const AgentPolicyDecision(risk: AgentRisk.blocked, reason: 'الخطوة مصنفة محظورة من مخطط Zion Agent.', requiresApproval: false)
-            : (step.risk == AgentRisk.review || step.permission != AgentPermission.readOnly || step.requiresApproval)
+            : (step.risk == AgentRisk.review ||
+                    step.permission != AgentPermission.readOnly ||
+                    step.requiresApproval ||
+                    requiresSensitiveApproval)
                 ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
                 : policyDecision;
         _log('▶️ [${i + 1}/${plan.steps.length}] ${step.description}');
@@ -90,13 +106,6 @@ class AgentOrchestrator {
           _log('✅ تمت الموافقة على الخطوة.');
         }
 
-        final tool = tools.getTool(step.tool);
-        if (tool == null) {
-          final r = StepResult.failure('الأداة غير متاحة: ${step.tool}');
-          results.add(r);
-          return AgentResult(success: false, task: clean, steps: results, error: r.error);
-        }
-
         cancellationToken?.throwIfCancelled();
         final started = DateTime.now();
         StepResult r;
@@ -126,12 +135,21 @@ class AgentOrchestrator {
             final alt = await _alternative(step, r.error ?? 'فشل');
             if (alt == null) break;
             final d = policy.evaluate(tool: alt.tool, params: alt.params);
-            if (d.risk != AgentRisk.safe && !(approveReviewed && !d.requiresApproval)) {
+            final t = tools.getTool(alt.tool);
+            if (t == null) break;
+            final altPermissions = t.requiredPermissions(alt.params);
+            final altNeedsApproval =
+                altPermissions.any((permission) => permission != AgentPermission.readOnly) ||
+                t.requiresApproval(alt.params) ||
+                alt.permission != AgentPermission.readOnly ||
+                alt.requiresApproval ||
+                alt.risk != AgentRisk.safe;
+            // Recovery is automatic only for explicitly safe, read-only steps.
+            // A model-generated alternative must not bypass the approval gate.
+            if (d.risk != AgentRisk.safe || altNeedsApproval) {
               _log('🔐 البديل يحتاج موافقة أو محظور.');
               break;
             }
-            final t = tools.getTool(alt.tool);
-            if (t == null) break;
             cancellationToken?.throwIfCancelled();
             final alternativeStarted = DateTime.now();
             StepResult ar;
