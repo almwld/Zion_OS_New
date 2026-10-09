@@ -240,64 +240,65 @@ class _FloatingWindowState extends State<FloatingWindow> {
                     child: widget.child,
                   ),
                 ),
-                if (!_isMaximized) ...[
-                  Positioned(
-                    top: 2,
-                    left: 2,
-                    child: _ResizeHandle(
-                      alignment: Alignment.topLeft,
-                      cursor: SystemMouseCursors.resizeUpLeft,
-                      onDrag: (d) => setState(() {
-                        final old = _size;
-                        final next = _clampSize(context, Size(old.width - d.dx, old.height - d.dy));
-                        _position += Offset(old.width - next.width, old.height - next.height);
-                        _size = next;
-                        _position = _clampPosition(context, _position, size: _size);
-                      }),
-                    ),
-                  ),
-                  Positioned(
-                    top: 2,
-                    right: 2,
-                    child: _ResizeHandle(
-                      alignment: Alignment.topRight,
-                      cursor: SystemMouseCursors.resizeUpRight,
-                      onDrag: (d) => setState(() {
-                        final old = _size;
-                        final next = _clampSize(context, Size(old.width + d.dx, old.height - d.dy));
-                        _position += Offset(0, old.height - next.height);
-                        _size = next;
-                        _position = _clampPosition(context, _position, size: _size);
-                      }),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 2,
-                    left: 2,
-                    child: _ResizeHandle(
-                      alignment: Alignment.bottomLeft,
-                      cursor: SystemMouseCursors.resizeDownLeft,
-                      onDrag: (d) => setState(() {
-                        final old = _size;
-                        final next = _clampSize(context, Size(old.width - d.dx, old.height + d.dy));
-                        _position += Offset(old.width - next.width, 0);
-                        _size = next;
-                        _position = _clampPosition(context, _position, size: _size);
-                      }),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 2,
-                    right: 2,
-                    child: _ResizeHandle(
-                      alignment: Alignment.bottomRight,
-                      cursor: SystemMouseCursors.resizeDownRight,
-                      onDrag: (d) => setState(() => _resize(context, _size.width + d.dx, _size.height + d.dy)),
-                    ),
-                  ),
-                ],
+
               ],
             ),
+            if (!_isMaximized) ...[
+              Positioned(
+                top: 2,
+                left: 2,
+                child: _ResizeHandle(
+                  alignment: Alignment.topLeft,
+                  cursor: SystemMouseCursors.resizeUpLeft,
+                  onDrag: (d) => setState(() {
+                    final old = _size;
+                    final next = _clampSize(context, Size(old.width - d.dx, old.height - d.dy));
+                    _position += Offset(old.width - next.width, old.height - next.height);
+                    _size = next;
+                    _position = _clampPosition(context, _position, size: _size);
+                  }),
+                ),
+              ),
+              Positioned(
+                top: 2,
+                right: 2,
+                child: _ResizeHandle(
+                  alignment: Alignment.topRight,
+                  cursor: SystemMouseCursors.resizeUpRight,
+                  onDrag: (d) => setState(() {
+                    final old = _size;
+                    final next = _clampSize(context, Size(old.width + d.dx, old.height - d.dy));
+                    _position += Offset(0, old.height - next.height);
+                    _size = next;
+                    _position = _clampPosition(context, _position, size: _size);
+                  }),
+                ),
+              ),
+              Positioned(
+                bottom: 2,
+                left: 2,
+                child: _ResizeHandle(
+                  alignment: Alignment.bottomLeft,
+                  cursor: SystemMouseCursors.resizeDownLeft,
+                  onDrag: (d) => setState(() {
+                    final old = _size;
+                    final next = _clampSize(context, Size(old.width - d.dx, old.height + d.dy));
+                    _position += Offset(old.width - next.width, 0);
+                    _size = next;
+                    _position = _clampPosition(context, _position, size: _size);
+                  }),
+                ),
+              ),
+              Positioned(
+                bottom: 2,
+                right: 2,
+                child: _ResizeHandle(
+                  alignment: Alignment.bottomRight,
+                  cursor: SystemMouseCursors.resizeDownRight,
+                  onDrag: (d) => setState(() => _resize(context, _size.width + d.dx, _size.height + d.dy)),
+                ),
+              ),
+            ],
           ],
         ),
         ),
