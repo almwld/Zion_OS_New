@@ -75,18 +75,23 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     final existingIndex = _windows.indexWhere((w) => w.appKey == key);
     if (existingIndex >= 0) {
       final existing = _windows[existingIndex];
+      final manager = widget.windowManager;
+      // Keep the floating layer and the native window manager on the same
+      // workspace before attempting to focus the existing window.
+      if (existing.workspace != _activeWorkspace) {
+        manager?.switchWorkspace(existing.workspace);
+        setState(() => _activeWorkspace = existing.workspace);
+      }
       if (existing.wmId != null) {
-        final manager = widget.windowManager;
         final wmWindow = manager?.find(existing.wmId!);
         if (wmWindow?.isMinimized == true) {
           manager?.restore(existing.wmId!);
         } else {
           manager?.focus(existing.wmId!);
+          manager?.raise(existing.wmId!);
         }
       }
-      if (existing.workspace != _activeWorkspace) {
-        setState(() => _activeWorkspace = existing.workspace);
-      } else {
+      if (existing.workspace == _activeWorkspace) {
         setState(() {});
       }
       return;
