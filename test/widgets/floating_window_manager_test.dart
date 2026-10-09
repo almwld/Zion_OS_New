@@ -45,6 +45,17 @@ void main() {
       await tester.pump();
       expect(manager.activeWorkspace, 1);
 
+      // Reproduce the split-brain state: the native manager's idempotent
+      // open path moves the existing window to the active workspace before
+      // the floating layer gets a chance to restore its remembered workspace.
+      manager.open(
+        title: 'Notes',
+        content: const SizedBox(),
+        workspace: 1,
+        appKey: 'notes',
+      );
+      expect(manager.find(nativeId)?.workspace, 1);
+
       key.currentState!.openWindow(
         'Notes',
         const SizedBox(),
