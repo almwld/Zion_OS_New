@@ -57,6 +57,25 @@ class SlowHttpTool extends AgentTool {
   }
 }
 
+class NetworkHttpTool extends AgentTool {
+  @override
+  String get name => 'http';
+
+  @override
+  String get description => 'Deterministic network permission test tool.';
+
+  @override
+  Map<String, dynamic> get parameters => const {};
+
+  @override
+  Set<AgentPermission> requiredPermissions(Map<String, dynamic> params) =>
+      const {AgentPermission.network};
+
+  @override
+  Future<StepResult> execute(Map<String, dynamic> params) async =>
+      StepResult.success('network tool completed');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test('Orchestrator pauses for approval and resumes after approval', () async {
@@ -73,6 +92,37 @@ void main() {
     expect(result.success, isTrue);
     expect(orchestrator.state, AgentState.completed);
     orchestrator.dispose();
+  });
+
+  test('Tool-declared network permission requires approval even for a read-only plan', () async {
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [NetworkHttpTool()]),
+      policy: const AgentPolicy(),
+    );
+    final future = orchestrator.executeTask('ابحث عن معلومات');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    expect(orchestrator.isWaitingForApproval, isTrue);
+    orchestrator.denyPendingStep();
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, contains('تم رفض تنفيذ الخطوة'));
+    await orchestrator.dispose();
+  });
+
+  test('Global approval override cannot bypass per-step confirmation', () async {
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [ReviewTool()]),
+      policy: ReviewPolicy(),
+    );
+    final future = orchestrator.executeTask('حلل المهمة', approveReviewed: true);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    orchestrator.denyPendingStep();
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, contains('تم رفض تنفيذ الخطوة'));
+    await orchestrator.dispose();
   });
 
   test('Orchestrator denies a pending reviewed step', () async {
