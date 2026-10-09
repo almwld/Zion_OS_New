@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'providers/theme_provider.dart';
 import 'features/terminal/terminal_screen.dart';
+import 'ai/widgets/ai_chat_screen.dart';
+import 'agent/ui/agent_screen.dart';
 import 'src/features/control/zion_control_center.dart';
 import 'screens/magiczionos/installer_screen.dart';
 import 'screens/magiczionos/root_terminal_screen.dart';
@@ -135,6 +137,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"ARSENAL","nameAr":"ترسانة","icon":Icons.security,"category":"TOOLS","color":_neonIndigo},
     {"name":"CONTROL","nameAr":"مركز التحكم","icon":Icons.dashboard_customize,"category":"TOOLS","color":_neonIndigo},
     {"name":"TERMINAL","nameAr":"طرفية","icon":Icons.terminal,"category":"TOOLS","color":_neonIndigo},
+    {"name":"OFFLINE_AI","nameAr":"الذكاء المحلي","icon":Icons.psychology,"category":"TOOLS","color":_neonIndigo},
+    {"name":"AI_AGENT","nameAr":"وكيل الذكاء الاصطناعي","icon":Icons.auto_awesome,"category":"TOOLS","color":_neonIndigo},
     {"name":"MAGICZIONOS","nameAr":"بيئة الجذر","icon":Icons.admin_panel_settings,"category":"TOOLS","color":_neonIndigo},
     {"name":"FILES","nameAr":"ملفات","icon":Icons.folder,"category":"TOOLS","color":_neonIndigo},
     {"name":"BROWSER","nameAr":"متصفح","icon":Icons.public,"category":"TOOLS","color":_neonIndigo},
@@ -212,6 +216,8 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'WIFI' => const ZionWifiPanel(),
       'EXPLOIT' || 'CRACKER' || 'DDOS' || 'DATABASE' || 'CLOUD' => const ArsenalScreen(),
       'TERMINAL' => const TerminalScreen(),
+      'OFFLINE_AI' => const AIChatScreen(),
+      'AI_AGENT' => const AgentScreen(),
       'MAGICZIONOS' => const MagiczionosInstallerScreen(),
       'FILES' => const FileManagerApp(),
       'BROWSER' => const WebBrowserApp(),
