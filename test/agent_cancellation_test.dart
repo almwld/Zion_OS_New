@@ -122,7 +122,7 @@ void main() {
     final result = await future;
     expect(result.success, isFalse);
     expect(result.error, contains('تم رفض تنفيذ الخطوة'));
-    await orchestrator.dispose();
+    orchestrator.dispose();
   });
 
   test('Orchestrator denies a pending reviewed step', () async {
