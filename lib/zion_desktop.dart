@@ -297,10 +297,35 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     if (existingId != null) {
       final existing = _windowManager.find(existingId);
       if (existing != null) {
-        if (existing.isMinimized) {
-          _windowManager.restore(existingId);
+        // Route re-opens through the floating layer as well as the native
+        // manager. Focusing here alone fails when the app belongs to another
+        // workspace and leaves the two window layers out of sync.
+        final floatingState = _windowManagerKey.currentState;
+        if (floatingState != null) {
+          floatingState.openWindow(
+            app['nameAr'] as String,
+            screen,
+            appKey: name,
+            size: Size(
+              existing.geometry.width,
+              existing.geometry.height,
+            ),
+            position: Offset(
+              existing.geometry.x,
+              existing.geometry.y,
+            ),
+            windowId: existingId,
+          );
         } else {
-          _windowManager.focus(existingId);
+          if (existing.workspace != _windowManager.activeWorkspace) {
+            _windowManager.switchWorkspace(existing.workspace);
+          }
+          if (existing.isMinimized) {
+            _windowManager.restore(existingId);
+          } else {
+            _windowManager.focus(existingId);
+            _windowManager.raise(existingId);
+          }
         }
         return;
       }
