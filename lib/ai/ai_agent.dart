@@ -56,7 +56,7 @@ class AIAgent {
       ..writeln(_systemPrompt(_role))
       ..writeln('<|end|>');
     for (final item in _history) {
-      b..writeln('<|\${item.role}|>')..writeln(item.content)..writeln('<|end|>');
+      b..writeln('<|${item.role}|>')..writeln(item.content)..writeln('<|end|>');
     }
     b..writeln('<|user|>')..writeln(message)..writeln('<|end|>')..writeln('<|assistant|>');
     return b.toString();
