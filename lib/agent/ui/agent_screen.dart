@@ -16,7 +16,7 @@ class _AgentScreenState extends State<AgentScreen> {
   final _events=<AgentEvent>[];
   StreamSubscription<AgentEvent>? _sub;
   AgentResult? _result;
-  bool _modelLoading=true;
+  bool _modelLoading=false;
   bool _modelReady=false;
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
