@@ -45,6 +45,9 @@ class AgentOrchestrator {
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean);
       _log('📋 الخطة: ${plan.steps.length} خطوة.');
+      if (approveReviewed) {
+        _log('🔐 تم تجاهل خيار تجاوز الموافقات العام؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
+      }
       _state = AgentState.executing;
 
       for (var i = 0; i < plan.steps.length; i++) {
@@ -81,7 +84,7 @@ class AgentOrchestrator {
           return AgentResult(success: false, task: clean, steps: results, error: decision.reason);
         }
 
-        if (decision.requiresApproval && !approveReviewed) {
+        if (decision.requiresApproval) {
           _state = AgentState.waitingApproval;
           _pendingApprovalStepId = step.id;
           _log('🔐 بانتظار موافقتك: ${decision.reason}');
