@@ -22,17 +22,23 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _init() async {
     try {
-      // Try every readable model in a mobile-friendly order instead of failing
-      // on the first discovered file.
-      _selected = await _agent.llama.autoLoadBestModel(threads: 4);
+      // Initialize the agent itself for each candidate; loading the native
+      // bridge alone is not enough to enable chat/history in AIAgent.
+      final models = await _agent.llama.discoverModels();
+      final candidates = models.where((m) => m.readable && m.path.isNotEmpty).toList()
+        ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+      for (final model in candidates) {
+        if (await _agent.initialize(modelPath: model.path, role: widget.role)) {
+          _selected = model;
+          break;
+        }
+      }
       if (_selected != null) {
         _messages.add(const AgentMessage(
           role: 'assistant',
           content: 'الذكاء الاصطناعي المحلي جاهز. تتم المعالجة على الجهاز دون اتصال.',
         ));
       } else {
-        final models = await _agent.llama.discoverModels();
-        _selected = models.where((m) => m.readable).firstOrNull;
         _error = models.isEmpty
             ? 'لم يتم العثور على نموذج GGUF. استخدم زر استيراد النموذج من ذاكرة الهاتف.'
             : 'عُثر على ملفات GGUF لكن تعذّر تحميلها. جرّب نموذجاً متوافقاً أصغر حجماً.';
