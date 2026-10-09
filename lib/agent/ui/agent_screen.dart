@@ -16,11 +16,15 @@ class _AgentScreenState extends State<AgentScreen> {
   final _events=<AgentEvent>[];
   StreamSubscription<AgentEvent>? _sub;
   AgentResult? _result;
-  bool _approve=false;
+  bool _modelLoading=true;
+  bool _modelReady=false;
+  String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
+  String? _modelName;
 
   @override void initState(){
     super.initState();
     _runtime=AgentRuntime();
+    unawaited(_initializeModel());
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
@@ -29,16 +33,68 @@ class _AgentScreenState extends State<AgentScreen> {
     });
   }
 
+
+  Future<void> _initializeModel({bool pick = false}) async {
+    if (_modelLoading) return;
+    if (mounted) setState(() {
+      _modelLoading = true;
+      _modelStatus = pick ? 'اختر ملف نموذج GGUF…' : 'جارٍ تحميل النموذج المحلي…';
+    });
+    try {
+      final ai = _runtime.orchestrator.ai;
+      if (pick) {
+        final imported = await ai.pickAndImportModel();
+        if (imported == null) {
+          if (mounted) setState(() {
+            _modelReady = ai.isLoaded;
+            _modelName = ai.currentModel?.split('/').last;
+            _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'لم يتم اختيار نموذج.';
+          });
+          return;
+        }
+        final ok = await ai.loadModel(imported.path, threads: 4);
+        if (mounted) setState(() {
+          _modelReady = ok;
+          _modelName = ok ? imported.name : null;
+          _modelStatus = ok ? 'النموذج المحلي جاهز' : 'تعذر تحميل النموذج المستورد.';
+        });
+      } else {
+        final model = await ai.autoLoadBestModel(threads: 4);
+        if (mounted) setState(() {
+          _modelReady = model != null;
+          _modelName = model?.name;
+          _modelStatus = model == null
+              ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+              : 'النموذج المحلي جاهز';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() {
+        _modelReady = false;
+        _modelStatus = 'تعذر تهيئة محرك الذكاء المحلي: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
+    }
+  }
+
   Future<void> _run(){
     final task=_input.text.trim();
     if(task.isEmpty||_runtime.canCancel)return Future.value();
+    if (!_modelReady) {
+      setState(() => _messages.add({
+        'role': 'assistant',
+        'text': 'الوكيل لم ينفذ المهمة لأن نموذج GGUF غير محمّل. ' + _modelStatus + ' استخدم زر استيراد النموذج بالأعلى ثم أعد المحاولة.',
+      }));
+      return Future.value();
+    }
     _input.clear();
     setState((){
       _messages.add({'role':'user','text':task});
       _result=null;
     });
     _scrollEnd();
-    return _runtime.run(task,approveReviewed:_approve).then((r){
+    return _runtime.run(task,approveReviewed:false).then((r){
       if(!mounted)return;
       setState((){
         _result=r;
@@ -84,12 +140,18 @@ class _AgentScreenState extends State<AgentScreen> {
     width:double.infinity,padding:const EdgeInsets.symmetric(horizontal:12,vertical:8),color:const Color(0xFF0B120E),
     child:Wrap(spacing:8,runSpacing:6,children:[
       Chip(label:Text(_runtime.canApprove?'بانتظار الموافقة':_runtime.canCancel?'ينفذ الآن':'جاهز')),
-      const Chip(label:Text('Local AI')),
-      const Chip(label:Text('Tool-driven')),
-      Row(mainAxisSize:MainAxisSize.min,children:[
-        Switch.adaptive(value:_approve,onChanged:_runtime.canCancel?null:(v)=>setState(()=>_approve=v)),
-        const Text('السماح بخطوات المراجعة',style:TextStyle(fontSize:11)),
-      ]),
+      Chip(
+        avatar: Icon(_modelReady ? Icons.memory : _modelLoading ? Icons.hourglass_top : Icons.warning_amber_rounded, size: 16),
+        label: Text(_modelLoading ? 'تحميل النموذج…' : _modelReady ? (_modelName ?? 'Local AI') : 'النموذج غير جاهز'),
+      ),
+      if (_modelLoading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      if (!_modelReady && !_modelLoading)
+        TextButton.icon(
+          onPressed: _runtime.canCancel ? null : () => unawaited(_initializeModel(pick: true)),
+          icon: const Icon(Icons.file_open, size: 17),
+          label: const Text('استيراد GGUF'),
+        ),
+      const Chip(label:Text('موافقة لكل خطوة حساسة')),
       if(_runtime.canApprove)...[
         IconButton.filled(onPressed:_runtime.approve,icon:const Icon(Icons.check,size:18),tooltip:'موافقة'),
         IconButton(onPressed:_runtime.deny,icon:const Icon(Icons.close,color:Colors.orangeAccent),tooltip:'رفض'),
