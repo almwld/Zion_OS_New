@@ -107,7 +107,7 @@ void main() {
     final result = await future;
     expect(result.success, isFalse);
     expect(result.error, contains('تم رفض تنفيذ الخطوة'));
-    await orchestrator.dispose();
+    orchestrator.dispose();
   });
 
   test('Global approval override cannot bypass per-step confirmation', () async {
