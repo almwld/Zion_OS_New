@@ -22,37 +22,61 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _init() async {
     try {
-      final models = await _agent.llama.discoverModels();
-      if (models.isNotEmpty) {
-        _selected = models.firstWhere((m) => m.readable, orElse: () => models.first);
-        final ok = await _agent.initialize(modelPath: _selected!.path, role: widget.role);
-        if (ok) _messages.add(const AgentMessage(role: 'assistant', content: '🤖 الوكيل المحلي جاهز. يعمل بالكامل دون اتصال بالإنترنت.'));
-        else _error = 'تعذر تحميل نموذج GGUF المحلي.';
+      // Try every readable model in a mobile-friendly order instead of failing
+      // on the first discovered file.
+      _selected = await _agent.llama.autoLoadBestModel(threads: 4);
+      if (_selected != null) {
+        _messages.add(const AgentMessage(
+          role: 'assistant',
+          content: 'الذكاء الاصطناعي المحلي جاهز. تتم المعالجة على الجهاز دون اتصال.',
+        ));
       } else {
-        _error = 'لم يتم العثور على نموذج GGUF. اختره من ذاكرة الهاتف.';
+        final models = await _agent.llama.discoverModels();
+        _selected = models.where((m) => m.readable).firstOrNull;
+        _error = models.isEmpty
+            ? 'لم يتم العثور على نموذج GGUF. استخدم زر استيراد النموذج من ذاكرة الهاتف.'
+            : 'عُثر على ملفات GGUF لكن تعذّر تحميلها. جرّب نموذجاً متوافقاً أصغر حجماً.';
       }
-    } catch (e) { _error = e.toString(); }
+    } catch (e) {
+      _error = 'تعذر تهيئة محرك الذكاء المحلي: ' + e.toString();
+    }
     if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _pick() async {
-    final model = await _agent.llama.pickAndImportModel();
-    if (model == null) return;
-    await _agent.llama.unloadModel();
-    final ok = await _agent.initialize(modelPath: model.path, role: widget.role);
-    if (mounted) setState(() {
-      _selected = model;
-      _error = ok ? null : 'فشل تحميل النموذج.';
-      if (ok) _messages.add(AgentMessage(role: 'assistant', content: 'تم تحميل ' + model.name + ' محلياً.'));
-    });
+    try {
+      final model = await _agent.llama.pickAndImportModel();
+      if (model == null || !mounted) return;
+      await _agent.llama.unloadModel();
+      final ok = await _agent.initialize(modelPath: model.path, role: widget.role);
+      if (!mounted) return;
+      setState(() {
+        _selected = model;
+        _error = ok ? null : 'فشل تحميل النموذج. تحقق من توافق GGUF والذاكرة المتاحة.';
+        if (ok) {
+          _messages.add(AgentMessage(role: 'assistant', content: 'تم تحميل ' + model.name + ' محلياً.'));
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'تعذر استيراد النموذج: ' + e.toString());
+    }
   }
 
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _generating || !_agent.isInitialized) return;
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
-    final response = await _agent.chat(text);
-    if (mounted) setState(() { _messages.add(AgentMessage(role: 'assistant', content: response)); _generating = false; });
+    try {
+      final response = await _agent.chat(text);
+      if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: response)));
+    } catch (e) {
+      if (mounted) setState(() => _messages.add(AgentMessage(
+        role: 'assistant',
+        content: 'فشل الاستدلال المحلي: ' + e.toString(),
+      )));
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); });
   }
 
