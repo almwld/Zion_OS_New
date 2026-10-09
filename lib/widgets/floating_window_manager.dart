@@ -78,18 +78,31 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
       final manager = widget.windowManager;
       // Keep the floating layer and the native window manager on the same
       // workspace before attempting to focus the existing window.
-      if (existing.workspace != _activeWorkspace) {
-        manager?.switchWorkspace(existing.workspace);
-        setState(() => _activeWorkspace = existing.workspace);
-      }
-      if (existing.wmId != null) {
-        final wmWindow = manager?.find(existing.wmId!);
-        if (wmWindow?.isMinimized == true) {
-          manager?.restore(existing.wmId!);
-        } else {
-          manager?.focus(existing.wmId!);
-          manager?.raise(existing.wmId!);
+      if (existing.wmId != null && manager != null) {
+        // Keep the native WindowManager's workspace aligned with the
+        // floating instance before switching/focusing it. WindowManager.open
+        // may otherwise have moved the native window to the previously active
+        // workspace while the floating layer still remembers its old one.
+        manager.moveToWorkspace(
+          existing.wmId!,
+          existing.workspace,
+          follow: true,
+        );
+        if (manager.activeWorkspace != existing.workspace) {
+          manager.switchWorkspace(existing.workspace);
         }
+        final wmWindow = manager.find(existing.wmId!);
+        if (wmWindow?.isMinimized == true) {
+          manager.restore(existing.wmId!);
+        } else {
+          manager.focus(existing.wmId!);
+          manager.raise(existing.wmId!);
+        }
+      } else if (existing.workspace != _activeWorkspace) {
+        manager?.switchWorkspace(existing.workspace);
+      }
+      if (existing.workspace != _activeWorkspace) {
+        setState(() => _activeWorkspace = existing.workspace);
       }
       if (existing.workspace == _activeWorkspace) {
         setState(() {});
@@ -120,16 +133,25 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
       final existing = _windows[existingIndex];
       final manager = widget.windowManager;
       final existingId = existing.wmId;
-      if (existingId != null) {
-        if (manager?.find(existingId)?.isMinimized == true) {
-          manager?.restore(existingId);
-        } else {
-          manager?.focus(existingId);
+      // An already-open floating instance owns its workspace. Ignore a stale
+      // snapshot's workspace value and bring the native window manager back
+      // into agreement with that live instance.
+      final targetWorkspace = existing.workspace;
+      if (existingId != null && manager != null) {
+        manager.moveToWorkspace(existingId, targetWorkspace, follow: true);
+        if (manager.activeWorkspace != targetWorkspace) {
+          manager.switchWorkspace(targetWorkspace);
         }
+        if (manager.find(existingId)?.isMinimized == true) {
+          manager.restore(existingId);
+        } else {
+          manager.focus(existingId);
+          manager.raise(existingId);
+        }
+      } else if (targetWorkspace != _activeWorkspace) {
+        manager?.switchWorkspace(targetWorkspace);
       }
-      final targetWorkspace = workspace ?? existing.workspace;
       if (targetWorkspace != _activeWorkspace) {
-        widget.windowManager?.switchWorkspace(targetWorkspace);
         setState(() => _activeWorkspace = targetWorkspace);
       } else {
         setState(() {});
