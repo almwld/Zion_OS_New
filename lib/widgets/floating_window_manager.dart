@@ -108,6 +108,30 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
   }
 
   void restoreWindow(String title, Widget content, {required String appKey, Size? size, Offset? position, int? workspace}) {
+    // Restoration must be idempotent too: callers may restore snapshots after
+    // a launcher path has already opened the same app.
+    final existingIndex = _windows.indexWhere((window) => window.appKey == appKey);
+    if (existingIndex >= 0) {
+      final existing = _windows[existingIndex];
+      final manager = widget.windowManager;
+      final existingId = existing.wmId;
+      if (existingId != null) {
+        if (manager?.find(existingId)?.isMinimized == true) {
+          manager?.restore(existingId);
+        } else {
+          manager?.focus(existingId);
+        }
+      }
+      final targetWorkspace = workspace ?? existing.workspace;
+      if (targetWorkspace != _activeWorkspace) {
+        widget.windowManager?.switchWorkspace(targetWorkspace);
+        setState(() => _activeWorkspace = targetWorkspace);
+      } else {
+        setState(() {});
+      }
+      return;
+    }
+
     final restoredWorkspace = workspace ?? _activeWorkspace;
     final restoredId = widget.windowManager?.open(title: title, content: content, width: size?.width ?? 350, height: size?.height ?? 500, x: position?.dx ?? 100, y: position?.dy ?? 100, workspace: restoredWorkspace, appKey: appKey);
     setState(() {
