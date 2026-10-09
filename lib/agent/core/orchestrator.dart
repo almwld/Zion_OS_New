@@ -149,7 +149,7 @@ class AgentOrchestrator {
                 alt.risk != AgentRisk.safe;
             // Recovery is automatic only for explicitly safe, read-only steps.
             // A model-generated alternative must not bypass the approval gate.
-            if (d.risk != AgentRisk.safe || altNeedsApproval) {
+            if (d.risk != AgentRisk.safe || d.requiresApproval || altNeedsApproval) {
               _log('🔐 البديل يحتاج موافقة أو محظور.');
               break;
             }
