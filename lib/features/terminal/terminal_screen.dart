@@ -55,7 +55,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
-        unawaited(_createTab(autoStart: true));
+        unawaited(_createTab(autoStart: false));
       }
     });
   }
@@ -63,7 +63,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   static const int _maxSessions = 8;
 
 
-  Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
+  Future<_TerminalTab?> _createTab({bool autoStart = false}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -86,6 +86,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
 
     terminal.onOutput = service.write;
+    if (!autoStart) {
+      terminal.write(
+        'Zion OS Terminal جاهزة. اضغط زر التشغيل لبدء جلسة PTY حقيقية.\\r\\n',
+      );
+    }
     terminal.onResize = (width, height, _, __) {
       unawaited(service.resizeInteractive(rows: height, cols: width));
     };
