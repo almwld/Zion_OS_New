@@ -5,6 +5,7 @@ import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../../userland/zion_proot.dart';
 
 enum ZionRootfsDistro { ubuntu, debian, alpine, kali }
 
@@ -22,8 +23,8 @@ class RootfsDownloader {
   static const kaliBase = 'https://old.kali.org/nethunter-images/kali-2025.3/rootfs/';
 
   Future<Directory> _rootfsDir() async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory(support.path + '/userland/home/.zion/dists');
+    // Keep installation and interactive login on the same canonical Zion path.
+    final dir = Directory(ZionProot.distroRoot);
     await dir.create(recursive: true);
     return dir;
   }
@@ -107,8 +108,10 @@ class RootfsDownloader {
   }) async {
     final rootfs = await _rootfsDir();
     final target = Directory(rootfs.path + '/' + distro.name);
-    if (await target.exists() && !force) {
-      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: target.path);
+    final installedRoot = Directory(target.path + '/rootfs');
+    if (await installedRoot.exists() && !force &&
+        await File(target.path + '/.zion-rootfs.json').exists()) {
+      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: installedRoot.path);
     }
 
     final source = _source(distro);
@@ -141,22 +144,24 @@ class RootfsDownloader {
       final entries = staging.listSync(followLinks: false);
       final sourceDir = entries.length == 1 && entries.first is Directory ? entries.first as Directory : staging;
       try { await target.delete(recursive: true); } catch (_) {}
+      final rootfsTarget = Directory(target.path + '/rootfs');
+      await rootfsTarget.parent.create(recursive: true);
 
       if (sourceDir.path == staging.path) {
-        await Directory(target.path).create(recursive: true);
+        await rootfsTarget.create(recursive: true);
         for (final entity in staging.listSync(followLinks: false)) {
-          await entity.rename(target.path + '/' + entity.uri.pathSegments.last);
+          await entity.rename(rootfsTarget.path + '/' + entity.uri.pathSegments.last);
         }
         try { await staging.delete(recursive: true); } catch (_) {}
       } else {
-        await sourceDir.rename(target.path);
+        await sourceDir.rename(rootfsTarget.path);
       }
 
       await File(target.path + '/.zion-rootfs.json').writeAsString(
         jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
         flush: true,
       );
-      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: target.path);
+      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: rootfsTarget.path);
     } finally {
       try { await temp.delete(recursive: true); } catch (_) {}
     }
