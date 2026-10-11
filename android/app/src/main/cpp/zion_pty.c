@@ -92,7 +92,6 @@ static void prepare_environment(void) {
     }
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
-    setenv("TERMUX_HOME", home, 1);
     setenv("PATH", path, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
