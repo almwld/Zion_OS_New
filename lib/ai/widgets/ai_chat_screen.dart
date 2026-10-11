@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../ai_agent.dart';
 import '../llama_service.dart';
@@ -20,7 +21,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _generating = false;
   String? _error;
 
-  @override void initState() { super.initState(); _agent = AIAgent(); _init(); }
+  @override void initState() {
+    super.initState();
+    _agent = AIAgent();
+    // Paint the window before invoking Android model discovery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_init());
+    });
+  }
 
   Future<void> _init() async {
     try {
