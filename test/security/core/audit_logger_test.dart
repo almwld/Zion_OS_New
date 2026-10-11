@@ -50,14 +50,14 @@ void main() {
         action: 'large.record',
         actor: 'test',
         outcome: 'accepted',
-        metadata: <String, Object?>{'payload': 'x' * 700},
+        metadata: <String, Object?>{'payload': 'x' * 950},
       );
       await logger.flush();
       logger.log(
         action: 'next.record',
         actor: 'test',
         outcome: 'accepted',
-        metadata: <String, Object?>{'payload': 'y' * 700},
+        metadata: <String, Object?>{'payload': 'y' * 950},
       );
       await logger.flush();
 
