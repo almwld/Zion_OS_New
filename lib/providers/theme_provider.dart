@@ -91,7 +91,18 @@ class ThemeProvider extends ChangeNotifier {
   Color get divider =>
       _isDark ? ZionColors.darkDivider : ZionColors.lightDivider;
 
-  ThemeData get themeData => _isDark ? ZionTheme.dark : ZionTheme.light;
+  ThemeData get themeData {
+    final base = _isDark ? ZionTheme.dark : ZionTheme.light;
+    // The selected accent must be applied to the actual ThemeData, not only
+    // stored in preferences; otherwise widgets keep rendering the old cyan.
+    return base.copyWith(
+      primaryColor: _primaryColor,
+      colorScheme: base.colorScheme.copyWith(
+        primary: _primaryColor,
+      ),
+    );
+  }
+
   ThemeData getThemeData() => themeData;
 
   Future<void> _load() async {
