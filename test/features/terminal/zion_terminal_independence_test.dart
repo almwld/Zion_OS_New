@@ -23,6 +23,14 @@ void main() {
       expect(source, contains('/data/data/com.zion.os/files/usr/bin/proot'));
     });
 
+    test('device commands use the native Zion API channel', () async {
+      final api = await File('lib/features/terminal/zion_api.dart').readAsString();
+      expect(api, contains("MethodChannel('zion.os/api')"));
+      expect(api, contains("_map('tts-speak'"));
+      expect(api, isNot(contains('Termux API')));
+      expect(await File('lib/features/terminal/termux_api.dart').exists(), isFalse);
+    });
+
     test('native PTY does not export legacy Termux environment variables', () async {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(source, isNot(contains('TERMUX_HOME')));
