@@ -26,7 +26,10 @@ class _AgentScreenState extends State<AgentScreen> {
   @override void initState(){
     super.initState();
     _runtime=AgentRuntime();
-    unawaited(_discoverModel());
+    // Let the agent window render before requesting native model discovery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_discoverModel());
+    });
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
