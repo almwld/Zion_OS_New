@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
+import '../../ai/llama_service.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -20,11 +21,12 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _modelReady=false;
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
+  LlamaModel? _candidateModel;
 
   @override void initState(){
     super.initState();
     _runtime=AgentRuntime();
-    unawaited(_initializeModel());
+    unawaited(_discoverModel());
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
@@ -34,6 +36,37 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
 
+  Future<void> _discoverModel() async {
+    if (mounted) setState(() {
+      _modelLoading = true;
+      _modelStatus = 'جارٍ البحث عن ملفات GGUF في الخلفية…';
+    });
+    try {
+      final models = await _runtime.orchestrator.ai.discoverModels();
+      final candidates = models
+          .where((m) => m.readable && m.path.isNotEmpty)
+          .toList()
+        ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+      if (mounted) setState(() {
+        _candidateModel = candidates.isEmpty ? null : candidates.first;
+        _modelReady = _runtime.orchestrator.ai.isLoaded;
+        _modelName = _modelReady
+            ? _runtime.orchestrator.ai.currentModel?.split('/').last
+            : _candidateModel?.name;
+        _modelStatus = _candidateModel == null
+            ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+            : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        _modelReady = false;
+        _modelStatus = 'تعذر فحص نماذج GGUF: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
+    }
+  }
+
   Future<void> _initializeModel({bool pick = false}) async {
     if (_modelLoading) return;
     if (mounted) setState(() {
@@ -41,33 +74,27 @@ class _AgentScreenState extends State<AgentScreen> {
       _modelStatus = pick ? 'اختر ملف نموذج GGUF…' : 'جارٍ تحميل النموذج المحلي…';
     });
     try {
-      final ai = _runtime.orchestrator.ai;
+      LlamaModel? model = _candidateModel;
       if (pick) {
-        final imported = await ai.pickAndImportModel();
-        if (imported == null) {
-          if (mounted) setState(() {
-            _modelReady = ai.isLoaded;
-            _modelName = ai.currentModel?.split('/').last;
-            _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'لم يتم اختيار نموذج.';
-          });
+        model = await _runtime.orchestrator.ai.pickAndImportModel();
+        if (model == null) {
+          if (mounted) setState(() => _modelStatus = 'لم يتم اختيار نموذج.');
           return;
         }
-        final ok = await ai.loadModel(imported.path, threads: 4);
-        if (mounted) setState(() {
-          _modelReady = ok;
-          _modelName = ok ? imported.name : null;
-          _modelStatus = ok ? 'النموذج المحلي جاهز' : 'تعذر تحميل النموذج المستورد.';
-        });
-      } else {
-        final model = await ai.autoLoadBestModel(threads: 4);
-        if (mounted) setState(() {
-          _modelReady = model != null;
-          _modelName = model?.name;
-          _modelStatus = model == null
-              ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
-              : 'النموذج المحلي جاهز';
-        });
+        _candidateModel = model;
       }
+      if (model == null) {
+        if (mounted) setState(() => _modelStatus = 'لم يتم العثور على نموذج. استخدم استيراد GGUF.');
+        return;
+      }
+      final ok = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
+      if (mounted) setState(() {
+        _modelReady = ok;
+        _modelName = ok ? model!.name : null;
+        _modelStatus = ok
+            ? 'النموذج المحلي جاهز'
+            : 'تعذر تحميل النموذج. جرّب ملف GGUF أصغر ومتوافقاً مع ذاكرة الجهاز.';
+      });
     } catch (e) {
       if (mounted) setState(() {
         _modelReady = false;
@@ -145,6 +172,12 @@ class _AgentScreenState extends State<AgentScreen> {
         label: Text(_modelLoading ? 'تحميل النموذج…' : _modelReady ? (_modelName ?? 'Local AI') : 'النموذج غير جاهز'),
       ),
       if (_modelLoading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      if (!_modelReady && !_modelLoading && _candidateModel != null)
+        TextButton.icon(
+          onPressed: _runtime.canCancel ? null : () => unawaited(_initializeModel()),
+          icon: const Icon(Icons.memory, size: 17),
+          label: const Text('تحميل النموذج'),
+        ),
       if (!_modelReady && !_modelLoading)
         TextButton.icon(
           onPressed: _runtime.canCancel ? null : () => unawaited(_initializeModel(pick: true)),
