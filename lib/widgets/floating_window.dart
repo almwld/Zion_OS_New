@@ -48,6 +48,22 @@ class _FloatingWindowState extends State<FloatingWindow> {
     );
   }
 
+  @override
+  void didUpdateWidget(covariant FloatingWindow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The manager may restore or update geometry while keeping the same
+    // stable window key. Reconcile local gesture state with the new inputs.
+    if (oldWidget.initialPosition != widget.initialPosition) {
+      _position = widget.initialPosition;
+    }
+    if (oldWidget.initialSize != widget.initialSize) {
+      _size = Size(
+        widget.initialSize.width < _minWidth ? _minWidth : widget.initialSize.width,
+        widget.initialSize.height < _minHeight ? _minHeight : widget.initialSize.height,
+      );
+    }
+  }
+
   Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
     final safeTop = MediaQuery.paddingOf(context).top;
