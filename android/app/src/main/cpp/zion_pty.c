@@ -56,7 +56,7 @@ static void mkdir_p(const char *path, mode_t mode) {
     memcpy(buffer, path, length + 1);
     for (char *p = buffer + 1; *p; ++p) {
         if (*p != '/') continue;
-        *p = '\\0';
+        *p = '\0';
         (void)mkdir(buffer, mode);
         *p = '/';
     }
@@ -103,7 +103,7 @@ static void prepare_environment(void) {
 }
 
 static int is_allowed_shell(const char *shell) {
-    if (shell == NULL || shell[0] == '\\0') return 0;
+    if (shell == NULL || shell[0] == '\0') return 0;
     return strncmp(shell, "kali:", 5) == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
@@ -179,7 +179,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             size_t length = strlen(raw);
             if (length < sizeof(configured_shell)) {
                 memcpy(configured_shell, raw, length);
-                configured_shell[length] = '\\0';
+                configured_shell[length] = '\0';
             }
             (*env)->ReleaseStringUTFChars(env, shell_arg, raw);
         }
@@ -241,7 +241,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
-    const char *selected_shell = select_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
+    const char *selected_shell = select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
     if (selected_shell == NULL) {
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
