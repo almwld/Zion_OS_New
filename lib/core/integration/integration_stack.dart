@@ -66,11 +66,11 @@ class ExternalSystems {
         await _probePath('Zion Package Manager', ZionBootstrap.prefix + '/bin/zion-pkg'),
         await _probePath('Zion API', ZionBootstrap.prefix + '/bin/zion-api-battery'),
         await _probePath('Zion PRoot', ZionBootstrap.prefix + '/bin/proot'),
-        await _probePath('Zion Kali rootfs', '/data/data/com.zion.os/files/zion/userland/kali-arm64/etc/os-release'),
-        await _probePath('Zion Ubuntu rootfs', '/data/data/com.zion.os/files/zion/userland/ubuntu-arm64/etc/os-release'),
-        await _probePath('Zion Debian rootfs', '/data/data/com.zion.os/files/zion/userland/debian-arm64/etc/os-release'),
-        await _probePath('Zion Alpine rootfs', '/data/data/com.zion.os/files/zion/userland/alpine-arm64/etc/os-release'),
-        await _probePath('Zion Arch rootfs', '/data/data/com.zion.os/files/zion/userland/archlinux-arm64/etc/os-release'),
+        await _probePath('Zion Kali rootfs', '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs/etc/os-release'),
+        await _probePath('Zion Ubuntu rootfs', '/data/data/com.zion.os/files/home/.zion/dists/ubuntu/rootfs/etc/os-release'),
+        await _probePath('Zion Debian rootfs', '/data/data/com.zion.os/files/home/.zion/dists/debian/rootfs/etc/os-release'),
+        await _probePath('Zion Alpine rootfs', '/data/data/com.zion.os/files/home/.zion/dists/alpine/rootfs/etc/os-release'),
+        await _probePath('Zion Arch rootfs', '/data/data/com.zion.os/files/home/.zion/dists/arch/rootfs/etc/os-release'),
       ];
   Future<ExternalRuntimeStatus> _probePath(String name, String path) async {
     final exists = await File(path).exists();
