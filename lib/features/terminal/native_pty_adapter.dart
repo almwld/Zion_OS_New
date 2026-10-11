@@ -53,9 +53,15 @@ class NativePtyAdapter {
   Future<bool> start({int rows = 24, int cols = 80, String? shell}) async {
     if (_running) return true;
     if (_starting) return false;
-    if (!await isAvailable()) return false;
+    // Claim startup before awaiting platform availability so simultaneous
+    // callers cannot race through the same asynchronous check.
     _starting = true;
     _pendingEvents.clear();
+    if (!await isAvailable()) {
+      _starting = false;
+      _pendingEvents.clear();
+      return false;
+    }
 
     _decoderSubscription ??= _rawBytes.stream
         .transform(const Utf8Decoder(allowMalformed: true))
@@ -110,6 +116,11 @@ class NativePtyAdapter {
       await stop();
       return false;
     } on MissingPluginException {
+      _starting = false;
+      _pendingEvents.clear();
+      await stop();
+      return false;
+    } catch (_) {
       _starting = false;
       _pendingEvents.clear();
       await stop();
