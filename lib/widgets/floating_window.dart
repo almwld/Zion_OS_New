@@ -150,7 +150,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.window, color: Color(0xFF00BCD4), size: 16),
+                Icon(Icons.window, color: Theme.of(context).colorScheme.primary, size: 16),
                 Expanded(
                   child: Text(widget.title, style: const TextStyle(color: Colors.white70, fontSize: 11), overflow: TextOverflow.ellipsis),
                 ),
@@ -207,14 +207,14 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       children: [
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
+                          child: Text(widget.title, style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 12), overflow: TextOverflow.ellipsis),
                         ),
                         GestureDetector(
                           onTap: () => setState(() {
                             _isMinimized = true;
                             widget.onChanged(_size, _position);
                           }),
-                          child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18),
+                          child: Icon(Icons.horizontal_rule, color: Theme.of(context).colorScheme.primary, size: 18),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
