@@ -223,14 +223,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Future<bool> _ensureAiLoaded() async {
-    if (_ai.isLoaded) return true;
-    final selected = await _ai.autoLoadBestModel(threads: 4);
-    if (selected != null) {
-      if (mounted) setState(() => _aiReady = true);
-      return true;
-    }
-    if (mounted) setState(() => _aiReady = false);
-    return false;
+    // Never load a large native GGUF model as a side effect of opening a
+    // terminal helper. The dedicated Offline AI screen owns explicit loading.
+    final ready = _ai.isLoaded;
+    if (mounted) setState(() => _aiReady = ready);
+    return ready;
   }
 
   String? _extractCommand(String response) {
@@ -272,7 +269,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('لم يتم العثور على نموذج GGUF محلي. افتح Offline AI لاستيراده أولاً.'),
+              content: Text('النموذج المحلي غير محمّل. افتح Offline AI وحمّل نموذجاً صغيراً أولاً.'),
             ),
           );
         }
