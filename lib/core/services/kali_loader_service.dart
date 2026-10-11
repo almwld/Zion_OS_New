@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import '../magiczionos/installers/proot_installer.dart';
 import 'kali_chroot_service.dart';
