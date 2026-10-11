@@ -44,6 +44,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _starting = false;
   bool _aiLoading = false;
   bool _aiReady = false;
+  String? _startupError;
   double _fontSize = 13;
 
   _TerminalTab? get _selectedTab =>
@@ -55,13 +56,44 @@ class _TerminalScreenState extends State<TerminalScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
-        unawaited(_createTab(autoStart: false));
+        unawaited(_initializeFirstTab());
       }
     });
   }
 
   static const int _maxSessions = 8;
 
+  Future<void> _initializeFirstTab() async {
+    try {
+      await _createTab(autoStart: false);
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while initializing the first terminal tab'),
+      ));
+      if (mounted) {
+        setState(() => _startupError = 'تعذر تهيئة الطرفية بأمان: $error');
+      }
+    }
+  }
+
+  Future<void> _createTabSafely() async {
+    try {
+      await _createTab();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while creating a terminal tab'),
+      ));
+      if (mounted) {
+        setState(() => _startupError = 'تعذر إنشاء جلسة طرفية جديدة: $error');
+      }
+    }
+  }
 
   Future<_TerminalTab?> _createTab({bool autoStart = false}) async {
     if (_tabs.length >= _maxSessions) {
@@ -74,7 +106,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
     final security = context.read<SecurityCore>();
     final id = _nextId++;
-    final terminal = Terminal(maxLines: 3000);
+    final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
     final service = TerminalService(security);
     final tab = _TerminalTab(
@@ -177,12 +209,28 @@ class _TerminalScreenState extends State<TerminalScreen> {
       await tab.service.stopInteractive();
       if (mounted) setState(() => tab.connected = false);
     } else {
-      setState(() => _starting = true);
-      final connected = await tab.service.startInteractive();
-      if (mounted) {
-        setState(() {
-          tab.connected = connected;
+      if (mounted) setState(() => _starting = true);
+      try {
+        final connected = await tab.service.startInteractive();
+        if (mounted) {
+          setState(() {
+            tab.connected = connected;
+            _starting = false;
+            _startupError = connected
+                ? null
+                : 'تعذر تشغيل جلسة PTY. يمكنك إبقاء الطرفية مفتوحة ومراجعة حالة البيئة.';
+          });
+        }
+      } catch (error, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Zion terminal',
+          context: ErrorDescription('while starting an interactive shell'),
+        ));
+        if (mounted) setState(() {
           _starting = false;
+          _startupError = 'تعذر تشغيل جلسة الطرفية: $error';
         });
       }
     }
@@ -362,7 +410,7 @@ $request''',
                       const SizedBox(height: 12),
                       TextField(
                         controller: prompt,
-                        autofocus: true,
+                        autofocus: false,
                         minLines: 2,
                         maxLines: 5,
                         onSubmitted: (_) => unawaited(ask()),
@@ -482,7 +530,7 @@ $request''',
             icon: const Icon(Icons.add),
             onPressed: _starting || _tabs.length >= _maxSessions
                 ? null
-                : () => unawaited(_createTab()),
+                : () => unawaited(_createTabSafely()),
           ),
           IconButton(
             tooltip: tab?.service.isInteractiveRunning == true
@@ -539,6 +587,13 @@ $request''',
             onSelect: (index) => setState(() => _selectedIndex = index),
             onClose: _closeTab,
           ),
+          if (_startupError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              color: const Color(0xFF301515),
+              child: Text(_startupError!, style: const TextStyle(color: Colors.redAccent)),
+            ),
           if (tab != null)
             Expanded(
               child: TerminalView(
