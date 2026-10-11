@@ -359,12 +359,12 @@ class TerminalService {
     var shell = await _findShell();
     final userlandMissing = shell == null || shell == '/system/bin/sh';
     if (shell == null) {
-      _output.add('Zion Userland غير جاهز؛ سيتم تشغيل Android POSIX shell مؤقتًا بينما يجهز Userland في الخلفية.\\r\\n');
+      _output.add('Zion Userland غير جاهز؛ سيتم تشغيل Android POSIX shell مؤقتًا بينما يجهز Userland في الخلفية.\r\n');
       shell = '/system/bin/sh';
     } else if (shell != '/system/bin/sh') {
       _output.add('Zion Userland جاهز: ' + shell + '\r\n');
     } else {
-      _output.add('Android POSIX shell جاهز: /system/bin/sh\\r\\n');
+      _output.add('Android POSIX shell جاهز: /system/bin/sh\r\n');
     }
 
     // The interactive terminal must use the native PTY. A pipe-backed
@@ -374,14 +374,14 @@ class TerminalService {
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
-        _output.add('ERROR: Zion PTY is unavailable on this Android runtime.\\r\\n');
+        _output.add('ERROR: Zion PTY is unavailable on this Android runtime.\r\n');
         return false;
       }
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = _pty.output.listen(_output.add);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start Zion Userland PTY: $shell\\r\\n');
+        _output.add('ERROR: Unable to start Zion Userland PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -393,11 +393,11 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add('Connected to Zion Userland: $shell • PTY\\r\\n');
+      _output.add('Connected to Zion Userland: $shell • PTY\r\n');
       if (userlandMissing) {
         // Large bootstrap download/extraction must never execute on the UI isolate.
         unawaited(Isolate.run(_installZionUserlandInBackground).then((message) {
-          if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+          if (!_output.isClosed) _output.add('[Userland] $message\r\n');
         }));
       }
       _audit(
@@ -410,7 +410,7 @@ class TerminalService {
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start Zion Userland PTY: ${e.message}\\r\\n');
+      _output.add('ERROR: Unable to start Zion Userland PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -421,7 +421,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start Zion Userland PTY: $e\\r\\n');
+      _output.add('ERROR: Unable to start Zion Userland PTY: $e\r\n');
       return false;
     }
   }
