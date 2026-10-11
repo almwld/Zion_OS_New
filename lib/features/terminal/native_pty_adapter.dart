@@ -40,6 +40,7 @@ class NativePtyAdapter {
     if (id != _handle) return;
     if (value['closed'] == true) {
       _running = false;
+      _handle = null;
       return;
     }
     final data = value['data'];
@@ -73,7 +74,7 @@ class NativePtyAdapter {
         // The native reader may emit the shell prompt before the start method
         // result reaches Dart and assigns _handle. Buffer a small bounded number
         // of early events, then replay only events for the newly assigned handle.
-        if (_starting && _handle == null) {
+        if (_starting) {
           if (_pendingEvents.length < 128) {
             _pendingEvents.add(Map<dynamic, dynamic>.from(value));
           }
