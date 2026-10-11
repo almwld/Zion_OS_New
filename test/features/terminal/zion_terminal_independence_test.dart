@@ -64,7 +64,7 @@ void main() {
         await prefix.create(recursive: true);
         final proot = File('${prefix.path}/bin/proot');
         await proot.parent.create(recursive: true);
-        await proot.writeAsString('#!/bin/sh\nprintf "ZION_PROOT_TEST:%s\n" "$@"\n');
+        await proot.writeAsString('#!/bin/sh\nprintf "ZION_PROOT_TEST:%s\n" "\$@"\n');
         await File('${rootfsBin.path}/sh').writeAsString('#!/bin/sh\nexit 0\n');
         final chmod = await Process.run('chmod', <String>['+x', proot.path, '${rootfsBin.path}/sh']);
         expect(chmod.exitCode, 0, reason: chmod.stderr.toString());
