@@ -28,14 +28,16 @@ class _AIChatScreenState extends State<AIChatScreen> {
       // substantial RAM, so it must be an explicit user action.
       final models = await _agent.llama.discoverModels();
       _availableModels = models
-          .where((m) => m.readable && m.path.isNotEmpty)
+          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
       if (_availableModels.isNotEmpty) {
         _selected = _availableModels.first;
         _error = 'تم العثور على نموذج محلي. اضغط زر تحميل النموذج لبدء المحرك.';
       } else {
-        _error = 'لم يتم العثور على نموذج GGUF. استخدم زر الاستيراد لاختيار نموذج من الهاتف.';
+        _error = models.isEmpty
+            ? 'لم يتم العثور على نموذج GGUF. استخدم زر الاستيراد لاختيار نموذج من الهاتف.'
+            : 'النماذج المتاحة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر لتجنب إغلاق التطبيق.';
       }
     } catch (e) {
       _error = 'تعذر فحص نماذج الذكاء المحلي: $e';
@@ -46,6 +48,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
   Future<void> _loadSelected() async {
     final model = _selected;
     if (model == null || _loading || _loadingModel) return;
+    if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
+      setState(() => _error = 'حجم النموذج يتجاوز حد الذاكرة الآمن (2 GiB). اختر نموذج GGUF أصغر.');
+      return;
+    }
     setState(() {
       _loadingModel = true;
       _error = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
