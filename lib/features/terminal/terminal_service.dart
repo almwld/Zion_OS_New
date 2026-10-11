@@ -362,7 +362,7 @@ class TerminalService {
       _output.add('Zion Userland غير جاهز؛ سيتم تشغيل Android POSIX shell مؤقتًا بينما يجهز Userland في الخلفية.\\r\\n');
       shell = '/system/bin/sh';
     } else if (shell != '/system/bin/sh') {
-      _output.add('Zion Userland جاهز: ' + shell + '\\r\\n');
+      _output.add('Zion Userland جاهز: ' + shell + '\r\n');
     } else {
       _output.add('Android POSIX shell جاهز: /system/bin/sh\\r\\n');
     }
@@ -430,7 +430,7 @@ class TerminalService {
     if (input.isEmpty) return;
     if (!_pty.isRunning) return;
     unawaited(_pty.write(input));
-    final parts = (_interactiveInputBuffer + input).split('\\n');
+    final parts = (_interactiveInputBuffer + input).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
