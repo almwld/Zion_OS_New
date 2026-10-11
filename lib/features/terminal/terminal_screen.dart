@@ -121,12 +121,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
       try {
         tab.connected = await service.startInteractive();
         if (!tab.connected) {
-          const message = '\\r\\n[Zion] لم تبدأ جلسة الطرفية. تحقق من توفر PTY وصلاحيات النظام.\\r\\n';
+          const message = '\r\n[Zion] لم تبدأ جلسة الطرفية. تحقق من توفر PTY وصلاحيات النظام.\r\n';
           tab.recentOutput += message;
           terminal.write(message);
         }
       } catch (error, stackTrace) {
-        final message = '\\r\\n[Zion] تعذر بدء جلسة الطرفية: $error\\r\\n';
+        final message = '\r\n[Zion] تعذر بدء جلسة الطرفية: $error\r\n';
         tab.recentOutput += message;
         try {
           terminal.write(message);
