@@ -119,9 +119,9 @@ class TerminalService {
   Future<String?> _findShell() async {
     // Prefer the locally installed Kali rootfs. MainActivity translates the
     // sentinel into the executable PRoot + loader paths inside nativeLibraryDir.
-    final kaliRootfs = Directory('/data/data/com.zion.os/files/zion/userland/kali-arm64');
-    final kaliState = File('/data/data/com.zion.os/files/zion/state.json');
-    if (await kaliRootfs.exists() && await kaliState.exists()) {
+    // Match the canonical rootfs path used by ZionProot and proot-distro.
+    final kaliRootfs = Directory('/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs');
+    if (await File(kaliRootfs.path + '/bin/sh').exists()) {
       return 'zion-kali';
     }
 
