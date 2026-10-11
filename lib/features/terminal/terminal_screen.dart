@@ -120,7 +120,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     terminal.onOutput = service.write;
     if (!autoStart) {
       terminal.write(
-        'Zion OS Terminal جاهزة. اضغط زر التشغيل لبدء جلسة PTY حقيقية.\\r\\n',
+        'Zion OS Terminal جاهزة. اضغط زر التشغيل لبدء جلسة PTY حقيقية.\r\n',
       );
     }
     terminal.onResize = (width, height, _, __) {
