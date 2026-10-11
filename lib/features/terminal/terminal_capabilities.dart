@@ -1,4 +1,4 @@
-import 'termux_runtime_service.dart';
+import 'zion_runtime_service.dart';
 
 class TerminalCapabilities {
   static const List<String> blockedOffensive = <String>[
@@ -19,10 +19,10 @@ class TerminalCapabilities {
     'RUNTIME_DEPENDENT: proot/proot-distro',
     'RUNTIME_DEPENDENT: ssh/scp/sftp/ssh-keygen',
     'RUNTIME_DEPENDENT: curl/wget/ping/DNS/network tools',
-    'RUNTIME_DEPENDENT: termux-* Android API commands',
+    'ZION_API: Android-native device commands through Zion API',
     'RUNTIME_DEPENDENT: shared storage ~/storage/*',
     'BLOCKED: offensive automation and credential theft',
   ].join('\n');
 
-  static Future<String> describeRuntime() => const TermuxRuntimeService().describe();
+  static Future<String> describeRuntime() => const ZionRuntimeService().describe();
 }
