@@ -237,7 +237,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       bottomLeft: Radius.circular(_isMaximized ? 0 : 16),
                       bottomRight: Radius.circular(_isMaximized ? 0 : 16),
                     ),
-                    child: widget.child,
+                    child: ColoredBox(color: Theme.of(context).scaffoldBackgroundColor, child: widget.child),
                   ),
                 ),
 
