@@ -69,6 +69,8 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
+    private val aiDiscoveryExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai-discovery").apply { isDaemon = true } }
+    private val terminalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-start").apply { isDaemon = true } }
     private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
 
     companion object {
@@ -117,7 +119,14 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AI_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "discoverModels" -> result.success(discoverGgufModels())
+                    "discoverModels" -> aiDiscoveryExecutor.execute {
+                        val models = try {
+                            discoverGgufModels()
+                        } catch (_: Throwable) {
+                            emptyList<Map<String, Any?>>()
+                        }
+                        runOnUiThread { result.success(models) }
+                    }
                     "pickModel" -> {
                         if (pendingModelResult != null) {
                             result.error("BUSY", "A model picker is already open.", null)
@@ -231,10 +240,15 @@ class MainActivity : FlutterFragmentActivity() {
                 when (call.method) {
                     "available" -> result.success(nativePtyAvailable())
                     "start" -> {
-                        val rows = call.argument<Int>("rows") ?: 24
-                        val cols = call.argument<Int>("cols") ?: 80
+                        val rows = (call.argument<Int>("rows") ?: 24).coerceIn(8, 100)
+                        val cols = (call.argument<Int>("cols") ?: 80).coerceIn(20, 240)
                         val shell = call.argument<String>("shell")
-                        result.success(startTerminal(rows, cols, shell))
+                        // PTY setup touches the filesystem and forks a native process.
+                        // Keep that work off Android's main thread to avoid ANRs.
+                        terminalExecutor.execute {
+                            val handle = try { startTerminal(rows, cols, shell) } catch (_: Throwable) { 0 }
+                            runOnUiThread { result.success(handle) }
+                        }
                     }
                     "write" -> {
                         val handle = call.argument<Int>("handle") ?: 0
@@ -841,6 +855,8 @@ class MainActivity : FlutterFragmentActivity() {
         ttsEngine = null
         if (::zionApiChannel.isInitialized) zionApiChannel.dispose()
         aiExecutor.shutdownNow()
+        aiDiscoveryExecutor.shutdownNow()
+        terminalExecutor.shutdownNow()
         try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
         super.onDestroy()
     }
