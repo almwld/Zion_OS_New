@@ -135,8 +135,8 @@ class KaliLoaderService {
   }
 
   static Future<bool> _isInstalled() async =>
-      File(_installPath + '/bin/sh').exists() &&
-      File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists();
+      await File(_installPath + '/bin/sh').exists() &&
+      await File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists();
 
 
   static Future<void> _setupEnvironment() async {
