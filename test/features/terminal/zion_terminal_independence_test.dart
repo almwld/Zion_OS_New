@@ -23,6 +23,12 @@ void main() {
       expect(source, contains('/data/data/com.zion.os/files/usr/bin/proot'));
     });
 
+    test('native PTY does not export legacy Termux environment variables', () async {
+      final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      expect(source, isNot(contains('TERMUX_HOME')));
+      expect(source, contains('ZION_TERMINAL'));
+    });
+
     test('Linux rootfs installer uses the same canonical root as Zion PRoot', () async {
       final downloader = await File('lib/core/magiczionos/installers/rootfs_downloader.dart').readAsString();
       final runtime = await File('lib/core/userland/zion_proot.dart').readAsString();
