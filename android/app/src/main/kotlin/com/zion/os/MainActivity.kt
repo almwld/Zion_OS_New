@@ -57,6 +57,9 @@ class MainActivity : FlutterFragmentActivity() {
     private external fun nativeStopPty(handle: Int)
 
     private val terminalReaders = ConcurrentHashMap<Int, Thread>()
+    // Serialize native PTY allocation and teardown so a reused native slot cannot
+    // be observed by a previous reader thread.
+    private val terminalLifecycleLock = Any()
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
@@ -263,8 +266,12 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "stop" -> {
                         val handle = call.argument<Int>("handle") ?: 0
-                        stopTerminal(handle)
-                        result.success(null)
+                        // Native teardown may wait for a child shell to exit. Keep it
+                        // off Android's main thread to avoid UI stalls / ANRs.
+                        terminalExecutor.execute {
+                            stopTerminal(handle)
+                            runOnUiThread { result.success(null) }
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -350,7 +357,10 @@ class MainActivity : FlutterFragmentActivity() {
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
     }
-    private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
+    private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
+        synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
+
+    private fun startTerminalLocked(rows: Int, cols: Int, shell: String?): Int {
         ensureTerminalEnvironment()
         if (!nativePtyAvailable()) return 0
         val nativeShell = if (shell == "zion-kali") {
@@ -363,7 +373,10 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
-            terminalReaders[handle] = Thread {
+            // Publish the reader in the registry before starting it. Otherwise a
+            // very short-lived shell could finish and remove itself before this
+            // assignment, leaving a dead thread registered for the native slot.
+            val reader = Thread {
                 try {
                     var idleDelayMs = 8L
                     while (!Thread.currentThread().isInterrupted) {
@@ -374,24 +387,27 @@ class MainActivity : FlutterFragmentActivity() {
                             continue
                         }
                         idleDelayMs = 8L
-                        terminalSink?.success(
-                            mapOf(
-                                "sessionId" to handle,
-                                "data" to data,
-                            )
-                        )
+                        val event = mapOf<String, Any?>("sessionId" to handle, "data" to data)
+                        Handler(Looper.getMainLooper()).post { terminalSink?.success(event) }
                     }
                 } catch (t: Throwable) {
-                    terminalSink?.error("PTY_STREAM", t.message, mapOf("sessionId" to handle))
+                    val message = t.message
+                    Handler(Looper.getMainLooper()).post {
+                        terminalSink?.error("PTY_STREAM", message, mapOf("sessionId" to handle))
+                    }
                 } finally {
-                    terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
-                    terminalReaders.remove(handle)
+                    Handler(Looper.getMainLooper()).post {
+                        terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
+                    }
+                    // Do not remove a newer reader if this native handle was reused.
+                    terminalReaders.remove(handle, Thread.currentThread())
                 }
             }.apply {
                 name = "zion-native-pty-$handle"
                 isDaemon = true
-                start()
             }
+            terminalReaders[handle] = reader
+            reader.start()
             handle
         } catch (_: Throwable) {
             0
@@ -414,8 +430,21 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun stopTerminal(handle: Int) {
         if (handle <= 0) return
-        try { nativeStopPty(handle) } catch (_: Throwable) {}
-        terminalReaders.remove(handle)?.interrupt()
+        synchronized(terminalLifecycleLock) {
+            val reader = terminalReaders.remove(handle)
+            // Interrupt first so a reader in its idle backoff exits promptly.
+            reader?.interrupt()
+            try { nativeStopPty(handle) } catch (_: Throwable) {}
+            if (reader != null && reader !== Thread.currentThread()) {
+                try {
+                    // Native reads are non-blocking; join before releasing the
+                    // lifecycle lock so the handle cannot be reused by a stale reader.
+                    reader.join()
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+        }
     }
 
     private fun stopAllTerminals() {
