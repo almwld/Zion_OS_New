@@ -68,9 +68,9 @@ void main() {
 
       key.currentState!.openWindow(
         'Settings',
-        const Scaffold(
-          appBar: AppBar(title: Text('Settings screen')),
-          body: Center(child: Text('Settings content rendered')),
+        Scaffold(
+          appBar: AppBar(title: const Text('Settings screen')),
+          body: const Center(child: Text('Settings content rendered')),
         ),
         appKey: 'settings',
         size: const Size(380, 520),
