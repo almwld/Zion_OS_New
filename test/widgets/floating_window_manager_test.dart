@@ -12,6 +12,45 @@ void main() {
   });
 
   testWidgets(
+    'reopening an app refreshes the rendered floating content',
+    (tester) async {
+      final manager = WindowManager();
+      final key = GlobalKey<FloatingWindowManagerState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox.expand(
+            child: FloatingWindowManager(
+              key: key,
+              windowManager: manager,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      );
+
+      key.currentState!.openWindow(
+        'Notes',
+        const Text('Old app content'),
+        appKey: 'notes',
+      );
+      await tester.pump();
+      expect(find.text('Old app content'), findsOneWidget);
+
+      key.currentState!.openWindow(
+        'Notes',
+        const Text('Refreshed app content'),
+        appKey: 'notes',
+      );
+      await tester.pump();
+
+      expect(find.text('Old app content'), findsNothing);
+      expect(find.text('Refreshed app content'), findsOneWidget);
+      manager.dispose();
+    },
+  );
+
+  testWidgets(
     'reopening an app synchronizes native and floating workspaces',
     (tester) async {
       final manager = WindowManager();
