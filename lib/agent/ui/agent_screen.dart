@@ -44,7 +44,7 @@ class _AgentScreenState extends State<AgentScreen> {
     try {
       final models = await _runtime.orchestrator.ai.discoverModels();
       final candidates = models
-          .where((m) => m.readable && m.path.isNotEmpty)
+          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
       if (mounted) setState(() {
@@ -54,7 +54,9 @@ class _AgentScreenState extends State<AgentScreen> {
             ? _runtime.orchestrator.ai.currentModel?.split('/').last
             : _candidateModel?.name;
         _modelStatus = _candidateModel == null
-            ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+            ? (models.isEmpty
+                ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+                : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
             : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
       });
     } catch (e) {
@@ -85,6 +87,10 @@ class _AgentScreenState extends State<AgentScreen> {
       }
       if (model == null) {
         if (mounted) setState(() => _modelStatus = 'لم يتم العثور على نموذج. استخدم استيراد GGUF.');
+        return;
+      }
+      if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
+        if (mounted) setState(() => _modelStatus = 'حجم النموذج يتجاوز حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.');
         return;
       }
       final ok = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
