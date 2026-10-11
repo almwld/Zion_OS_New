@@ -16,6 +16,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   List<LlamaModel> _availableModels = <LlamaModel>[];
   LlamaModel? _selected;
   bool _loading = true;
+  bool _loadingModel = false;
   bool _generating = false;
   String? _error;
 
@@ -44,9 +45,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _loadSelected() async {
     final model = _selected;
-    if (model == null || _loading) return;
+    if (model == null || _loading || _loadingModel) return;
     setState(() {
-      _loading = true;
+      _loadingModel = true;
       _error = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
     });
     try {
@@ -70,7 +71,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = 'تعذر تحميل النموذج: $e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loadingModel = false);
     }
   }
 
@@ -115,8 +116,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _loading || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
+        if (_loadingModel) const LinearProgressIndicator(),
         if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
