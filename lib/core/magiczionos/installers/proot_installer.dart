@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
+import '../../userland/zion_bootstrap.dart';
 
 class ProotInstallResult {
   const ProotInstallResult({required this.success, required this.message, this.path});
@@ -14,7 +14,7 @@ class ProotInstallResult {
 
 class ProotInstaller {
   static const _owner = 'proot-me'; static const _repo = 'proot-rs'; static const _version = 'v0.1.0';
-  Future<Directory> _prefix() async { final dir = await getApplicationSupportDirectory(); final prefix = Directory(dir.path + '/userland/usr'); await prefix.create(recursive: true); return prefix; }
+  Future<Directory> _prefix() async { final prefix = Directory(ZionBootstrap.prefix); await Directory(prefix.path + '/bin').create(recursive: true); return prefix; }
   String _assetName() { final abi = Abi.current(); if (abi == Abi.androidArm64) return 'proot-rs-v0.1.0-aarch64-linux-android.tar.gz'; if (abi == Abi.androidArm) return 'proot-rs-v0.1.0-arm-linux-androideabi.tar.gz'; if (abi == Abi.androidX64) return 'proot-rs-v0.1.0-x86_64-linux-android.tar.gz'; if (abi == Abi.androidIA32) return 'proot-rs-v0.1.0-i686-linux-android.tar.gz'; throw UnsupportedError('Android ABI غير مدعوم: ' + abi.toString()); }
   Future<String?> _releaseDigest(String assetName) async { final uri = Uri.parse('https://api.github.com/repos/' + _owner + '/' + _repo + '/releases/tags/' + _version); final response = await http.get(uri, headers: {'Accept': 'application/vnd.github+json'}); if (response.statusCode != 200) return null; final json = jsonDecode(response.body) as Map<String, dynamic>; for (final raw in (json['assets'] as List<dynamic>? ?? const [])) { final asset = raw as Map<String, dynamic>; if (asset['name'] == assetName) { final digest = asset['digest'] as String?; if (digest == null || !digest.startsWith('sha256:')) return null; return digest.substring(7); } } return null; }
   Future<ProotInstallResult> install({bool force = false}) async {
