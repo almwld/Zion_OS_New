@@ -51,6 +51,40 @@ void main() {
   );
 
   testWidgets(
+    'floating window lays out a real scaffold app without blank content',
+    (tester) async {
+      final key = GlobalKey<FloatingWindowManagerState>();
+      await tester.binding.setSurfaceSize(const Size(800, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FloatingWindowManager(
+            key: key,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+      key.currentState!.openWindow(
+        'Settings',
+        const Scaffold(
+          appBar: AppBar(title: Text('Settings screen')),
+          body: Center(child: Text('Settings content rendered')),
+        ),
+        appKey: 'settings',
+        size: const Size(380, 520),
+        position: const Offset(20, 80),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings screen'), findsOneWidget);
+      expect(find.text('Settings content rendered'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'reopening an app synchronizes native and floating workspaces',
     (tester) async {
       final manager = WindowManager();
