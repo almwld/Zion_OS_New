@@ -146,7 +146,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.9),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF00BCD4)),
+              border: Border.all(color: Theme.of(context).colorScheme.primary),
             ),
             child: Row(
               children: [
@@ -174,8 +174,8 @@ class _FloatingWindowState extends State<FloatingWindow> {
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.98),
               borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
-              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
-              boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
+              border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.6), width: 1.5),
+              boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.primary.withOpacity(0.3), blurRadius: 12)],
             ),
             child: Stack(
               children: [
