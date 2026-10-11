@@ -447,6 +447,52 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wake-lo
     'zion-api-job-scheduler': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" job-scheduler --ei jobId "${1:-1}" --el delayMs "${2:-1000}"
 ''',
+    'proot-distro': r'''#!/data/data/com.zion.os/files/usr/bin/bash
+set -eu
+PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
+HOME="${HOME:-/data/data/com.zion.os/files/home}"
+PROOT="$PREFIX/bin/proot"
+DISTROOT="$HOME/.zion/dists"
+command="${1:-help}"
+case "$command" in
+  list)
+    for distro in ubuntu debian alpine kali; do
+      if [ -x "$DISTROOT/$distro/rootfs/bin/sh" ]; then
+        printf "%s\tinstalled\n" "$distro"
+      else
+        printf "%s\tnot-installed\n" "$distro"
+      fi
+    done
+    ;;
+  login)
+    distro="${2:-}"
+    case "$distro" in ubuntu|debian|alpine|kali) ;; *) echo "Usage: proot-distro login <ubuntu|debian|alpine|kali> [-- command]"; exit 2 ;; esac
+    rootfs="$DISTROOT/$distro/rootfs"
+    [ -x "$PROOT" ] || { echo "UNAVAILABLE: Zion PRoot is not installed at $PROOT"; exit 127; }
+    [ -x "$rootfs/bin/sh" ] || { echo "UNAVAILABLE: $distro rootfs is not installed. Install it from Zion OS > Linux Distributions."; exit 127; }
+    shift 2
+    [ "${1:-}" != "--" ] || shift
+    if [ "$#" -gt 0 ]; then
+      exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/sh -lc "$*"
+    fi
+    if [ -x "$rootfs/bin/bash" ]; then
+      exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/bash -l
+    fi
+    exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/sh -l
+    ;;
+  install)
+    echo "Install supported Linux root filesystems through Zion OS > Linux Distributions; this command never downloads an unverified archive."
+    exit 2
+    ;;
+  *)
+    echo "Zion proot-distro: list | login <ubuntu|debian|alpine|kali> [-- command] | install <distro>"
+    exit 2
+    ;;
+esac
+''',
+    'zion-api-tts': r'''#!/data/data/com.zion.os/files/usr/bin/bash
+exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" tts-speak --es text "$*"
+''',
     'zion-api-brightness': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightness --ei value "${1:?value 0..255 required}"
 ''',
