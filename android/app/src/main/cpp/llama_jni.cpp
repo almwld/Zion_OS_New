@@ -43,12 +43,15 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     if (!g_model) return JNI_FALSE;
 
     auto ctxParams = llama_context_default_params();
-    ctxParams.n_ctx = 4096;
-    ctxParams.n_batch = 512;
-    ctxParams.n_ubatch = 512;
+    // Mobile-safe defaults: large KV caches and 512-token batches can exhaust
+    // memory on mid/low-RAM Android devices even when the GGUF file is modest.
+    ctxParams.n_ctx = 2048;
+    ctxParams.n_batch = 128;
+    ctxParams.n_ubatch = 128;
     ctxParams.n_seq_max = 1;
-    ctxParams.n_threads = std::max(1, static_cast<int>(threads));
-    ctxParams.n_threads_batch = std::max(1, static_cast<int>(threads));
+    const int safeThreads = std::clamp(static_cast<int>(threads), 1, 4);
+    ctxParams.n_threads = safeThreads;
+    ctxParams.n_threads_batch = safeThreads;
     g_ctx = llama_init_from_model(g_model, ctxParams);
     if (!g_ctx) { freeLocked(); return JNI_FALSE; }
 
@@ -122,7 +125,8 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     if (llama_decode(g_ctx, batch) != 0) return env->NewStringUTF("ERROR: Prompt decode failed");
 
     std::string output;
-    const int limit = std::clamp(static_cast<int>(maxTokens), 1, 2048);
+    // Keep one response from monopolizing CPU/RAM on a phone.
+    const int limit = std::clamp(static_cast<int>(maxTokens), 1, 512);
 
     for (int i = 0; i < limit; ++i) {
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
