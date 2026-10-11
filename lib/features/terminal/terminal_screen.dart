@@ -90,13 +90,25 @@ class _TerminalScreenState extends State<TerminalScreen> {
       unawaited(service.resizeInteractive(rows: height, cols: width));
     };
     tab.outputSubscription = service.output.listen((data) {
+      // A tab can be closed while native PTY output is still in flight.
+      // Do not write to a disposed terminal or let late output crash the UI.
+      if (!mounted || !_tabs.contains(tab)) return;
       // Retain only recent PTY text for local AI context; xterm2 keeps the full scrollback.
       tab.recentOutput += data;
       if (tab.recentOutput.length > 8000) {
         tab.recentOutput =
             tab.recentOutput.substring(tab.recentOutput.length - 8000);
       }
-      terminal.write(data);
+      try {
+        terminal.write(data);
+      } catch (error, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Zion terminal',
+          context: ErrorDescription('while rendering terminal output'),
+        ));
+      }
     });
 
     setState(() {
@@ -105,9 +117,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
 
     if (autoStart) {
-      setState(() => _starting = true);
-      tab.connected = await service.startInteractive();
-      if (mounted) setState(() => _starting = false);
+      if (mounted) setState(() => _starting = true);
+      try {
+        tab.connected = await service.startInteractive();
+        if (!tab.connected) {
+          const message = '\\r\\n[Zion] لم تبدأ جلسة الطرفية. تحقق من توفر PTY وصلاحيات النظام.\\r\\n';
+          tab.recentOutput += message;
+          terminal.write(message);
+        }
+      } catch (error, stackTrace) {
+        final message = '\\r\\n[Zion] تعذر بدء جلسة الطرفية: $error\\r\\n';
+        tab.recentOutput += message;
+        try {
+          terminal.write(message);
+        } catch (_) {
+          // Keep the visible app alive even if the terminal renderer failed.
+        }
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Zion terminal',
+          context: ErrorDescription('while starting an interactive PTY session'),
+        ));
+      } finally {
+        if (mounted) setState(() => _starting = false);
+      }
     }
     return tab;
   }
