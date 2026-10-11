@@ -45,6 +45,42 @@ void main() {
       expect(runtime, contains("distroRoot + '/' + distro.name + '/rootfs'"));
     });
 
+    test('proot-distro shell wrapper passes syntax and runs through a Zion PRoot path', () async {
+      final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      final match = RegExp(r"""'proot-distro': r'''([\\s\\S]*?)''',""")
+          .firstMatch(bootstrap);
+      expect(match, isNotNull);
+      final temp = await Directory.systemTemp.createTemp('zion-proot-cli-test-');
+      try {
+        final script = File('${temp.path}/proot-distro');
+        await script.writeAsString(match!.group(1)!);
+        final syntax = await Process.run('bash', <String>['-n', script.path]);
+        expect(syntax.exitCode, 0, reason: syntax.stderr.toString());
+
+        final home = Directory('${temp.path}/home');
+        final prefix = Directory('${temp.path}/usr');
+        final rootfsBin = Directory('${home.path}/.zion/dists/ubuntu/rootfs/bin');
+        await rootfsBin.create(recursive: true);
+        await prefix.create(recursive: true);
+        final proot = File('${prefix.path}/bin/proot');
+        await proot.parent.create(recursive: true);
+        await proot.writeAsString('#!/bin/sh\\nprintf "ZION_PROOT_TEST:%s\\n" "$@"\\n');
+        await File('${rootfsBin.path}/sh').writeAsString('#!/bin/sh\\nexit 0\\n');
+        final chmod = await Process.run('chmod', <String>['+x', proot.path, '${rootfsBin.path}/sh']);
+        expect(chmod.exitCode, 0, reason: chmod.stderr.toString());
+
+        final result = await Process.run(
+          'bash',
+          <String>[script.path, 'login', 'ubuntu', '--', 'echo', 'zion-standalone'],
+          environment: <String, String>{...Platform.environment, 'HOME': home.path, 'PREFIX': prefix.path},
+        );
+        expect(result.exitCode, 0, reason: result.stderr.toString());
+        expect(result.stdout.toString(), contains('ZION_PROOT_TEST:zion-standalone'));
+      } finally {
+        await temp.delete(recursive: true);
+      }
+    });
+
     test('interactive Kali session and installer share the canonical rootfs path', () async {
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
       final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
