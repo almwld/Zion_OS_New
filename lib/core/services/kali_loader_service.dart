@@ -9,7 +9,7 @@ import 'kali_chroot_service.dart';
 /// filesystem are detected. High-risk offensive wrappers are deliberately not
 /// exposed here; defensive discovery can use the safe Nmap adapter below.
 class KaliLoaderService {
-  static const String _installPath = '/data/local/kali';
+  static const String _installPath = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
   static const String _zionFolder = '/storage/emulated/0/Zion Universal';
 
   static String? _prootPath;
@@ -145,7 +145,9 @@ class KaliLoaderService {
     return result['stdout']?.toString() ?? result['stderr']?.toString() ?? result['error']?.toString() ?? 'FAILED';
   }
 
-  static Future<bool> _isInstalled() async => Directory(_installPath).exists();
+  static Future<bool> _isInstalled() async =>
+      File(_installPath + '/bin/sh').exists() &&
+      File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists();
 
   static Future<bool> _extract(String archivePath, String type) async {
     try {
