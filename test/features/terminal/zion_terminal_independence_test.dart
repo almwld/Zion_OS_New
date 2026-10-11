@@ -37,6 +37,16 @@ void main() {
       expect(runtime, contains("distroRoot + '/' + distro.name + '/rootfs'"));
     });
 
+    test('interactive Kali session and installer share the canonical rootfs path', () async {
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
+      final loader = await File('lib/core/services/kali_loader_service.dart').readAsString();
+      expect(service, contains('/home/.zion/dists/kali/rootfs'));
+      expect(activity, contains('home/.zion/dists/kali/rootfs'));
+      expect(loader, contains('/home/.zion/dists/kali/rootfs'));
+      expect(loader, isNot(contains('/data/local/kali')));
+    });
+
     test('bootstrap exposes native Zion proot-distro and documented TTS command', () async {
       final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(source, contains("'proot-distro': r'''"));
