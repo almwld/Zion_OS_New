@@ -69,8 +69,9 @@ class ZionRuntimeService {
     const executables = <String, List<String>>{
       'sh': <String>[prefix + '/bin/sh'],
       'bash': <String>[prefix + '/bin/bash'], 'zsh': <String>[prefix + '/bin/zsh'], 'fish': <String>[prefix + '/bin/fish'],
-      'pkg': <String>[prefix + '/bin/pkg'], 'apt': <String>[prefix + '/bin/apt'], 'dpkg': <String>[prefix + '/bin/dpkg'],
+      'zion-pkg': <String>[prefix + '/bin/zion-pkg'], 'apt': <String>[prefix + '/bin/apt'], 'dpkg': <String>[prefix + '/bin/dpkg'],
       'proot': <String>[prefix + '/bin/proot'], 'proot-distro': <String>[prefix + '/bin/proot-distro'],
+      'zion-api-tts': <String>[prefix + '/bin/zion-api-tts'],
       'ssh': <String>[prefix + '/bin/ssh'], 'scp': <String>[prefix + '/bin/scp'], 'sftp': <String>[prefix + '/bin/sftp'], 'ssh-keygen': <String>[prefix + '/bin/ssh-keygen'],
       'curl': <String>[prefix + '/bin/curl'], 'wget': <String>[prefix + '/bin/wget'], 'ping': <String>[prefix + '/bin/ping'], 'traceroute': <String>[prefix + '/bin/traceroute'],
       'dig': <String>[prefix + '/bin/dig'], 'nslookup': <String>[prefix + '/bin/nslookup'], 'host': <String>[prefix + '/bin/host'], 'whois': <String>[prefix + '/bin/whois'],
