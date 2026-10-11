@@ -346,33 +346,42 @@ Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint hand
 JNIEXPORT jint JNICALL
 Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint handle, jbyteArray data) {
     (void)thiz;
+    if (data == NULL) return -1;
+
+    // Duplicate the master descriptor while the session table is locked, then
+    // release the global lock before polling/writing. A slow paste must never
+    // stall PTY readers, resize, or teardown for every terminal session.
     pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session || !data) {
+    if (!session) {
         pthread_mutex_unlock(&g_sessions_lock);
         return -1;
     }
+    int fd = dup(session->master_fd);
+    pthread_mutex_unlock(&g_sessions_lock);
+    if (fd < 0) return -1;
 
     jsize len = (*env)->GetArrayLength(env, data);
     jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
     if (!bytes) {
-        pthread_mutex_unlock(&g_sessions_lock);
+        close(fd);
         return -1;
     }
 
     jsize written = 0;
     while (written < len) {
-        struct pollfd pfd = {session->master_fd, POLLOUT, 0};
+        struct pollfd pfd = {fd, POLLOUT, 0};
         int ready = poll(&pfd, 1, 1000);
-        if (ready <= 0) break;
-        ssize_t n = write(session->master_fd, bytes + written, (size_t)(len - written));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0 || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
+        ssize_t n = write(fd, bytes + written, (size_t)(len - written));
         if (n > 0) written += (jsize)n;
-        else if (n < 0 && errno == EINTR) continue;
+        else if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         else break;
     }
 
     (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
-    pthread_mutex_unlock(&g_sessions_lock);
+    close(fd);
     return written;
 }
 
