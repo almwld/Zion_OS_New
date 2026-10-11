@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import '../magiczionos/installers/proot_installer.dart';
 import 'kali_chroot_service.dart';
 
 /// Real Kali/PRoot lifecycle manager.
@@ -23,25 +22,12 @@ class KaliLoaderService {
   ];
 
   static Future<bool> extractEmbeddedProot() async {
+    // Install only the verified Zion PRoot build into the canonical Zion Userland prefix.
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final prootDir = Directory('${appDir.path}/bin');
-      if (!await prootDir.exists()) await prootDir.create(recursive: true);
-      final prootPath = '${prootDir.path}/proot';
-      final prootFile = File(prootPath);
-      if (await prootFile.exists()) {
-        if (await _testProot(prootPath)) {
-          _prootPath = prootPath;
-          return true;
-        }
-        await prootFile.delete();
-      }
-      final byteData = await rootBundle.load('assets/bin/proot');
-      await prootFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      final chmod = await Process.run('chmod', ['755', prootPath], runInShell: true);
-      if (chmod.exitCode != 0) return false;
-      if (!await _testProot(prootPath)) return false;
-      _prootPath = prootPath;
+      final installed = await ProotInstaller().install();
+      final path = installed.path;
+      if (!installed.success || path == null || !await _testProot(path)) return false;
+      _prootPath = path;
       return true;
     } catch (_) {
       return false;
@@ -62,12 +48,9 @@ class KaliLoaderService {
       return _prootPath;
     }
     if (await extractEmbeddedProot()) return _prootPath;
-    // Zion PRoot must be bundled with the app or installed in Zion Userland.
-    // Never discover or execute binaries from another terminal app or host PATH.
+    // Resolve PRoot exclusively from the canonical Zion Userland prefix.
     const candidates = [
       '/data/data/com.zion.os/files/usr/bin/proot',
-      '/data/data/com.zion.os/files/usr/bin/proot-aarch64',
-      '/data/data/com.zion.os/files/zion/bin/proot',
     ];
     for (final path in candidates) {
       if (await File(path).exists() && await _testProot(path)) return path;
