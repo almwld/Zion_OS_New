@@ -73,7 +73,8 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
     private val aiDiscoveryExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai-discovery").apply { isDaemon = true } }
-    private val terminalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-start").apply { isDaemon = true } }
+    private val terminalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-lifecycle").apply { isDaemon = true } }
+    private val terminalWriteExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-write").apply { isDaemon = true } }
     private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
 
     companion object {
@@ -256,7 +257,12 @@ class MainActivity : FlutterFragmentActivity() {
                     "write" -> {
                         val handle = call.argument<Int>("handle") ?: 0
                         val input = call.argument<ByteArray>("input") ?: byteArrayOf()
-                        result.success(writeTerminal(handle, input))
+                        // Preserve keystroke order while moving potentially blocking
+                        // PTY writes (including large pastes) off the UI thread.
+                        terminalWriteExecutor.execute {
+                            val written = writeTerminal(handle, input)
+                            runOnUiThread { result.success(written) }
+                        }
                     }
                     "resize" -> {
                         val handle = call.argument<Int>("handle") ?: 0
@@ -887,6 +893,7 @@ class MainActivity : FlutterFragmentActivity() {
         aiExecutor.shutdownNow()
         aiDiscoveryExecutor.shutdownNow()
         terminalExecutor.shutdownNow()
+        terminalWriteExecutor.shutdownNow()
         try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
         super.onDestroy()
     }
