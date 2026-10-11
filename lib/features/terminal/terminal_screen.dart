@@ -599,7 +599,7 @@ $request''',
               child: TerminalView(
                 tab.terminal,
                 controller: tab.controller,
-                autofocus: true,
+                autofocus: false,
                 backgroundOpacity: 1,
                 cursorType: TerminalCursorType.block,
                 textStyle: TerminalStyle(
@@ -610,9 +610,27 @@ $request''',
               ),
             )
           else
-            const Expanded(
+            Expanded(
               child: Center(
-                child: CircularProgressIndicator(),
+                child: _startupError == null
+                    ? const CircularProgressIndicator()
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.terminal, size: 36, color: Colors.redAccent),
+                          const SizedBox(height: 10),
+                          const Text('لم تبدأ الطرفية', style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: () {
+                              setState(() => _startupError = null);
+                              unawaited(_initializeFirstTab());
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
               ),
             ),
           _StatusBar(tab: tab),
