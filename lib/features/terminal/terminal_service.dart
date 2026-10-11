@@ -126,7 +126,7 @@ class TerminalService {
     }
 
     // Zion Terminal is a real Userland terminal. Android /system/bin/sh is
-    // intentionally NOT a fallback: running it would break the Termux-like
+    // intentionally NOT a fallback: running it would break the Zion Userland
     // contract (job control, Userland paths, package environment).
     const candidates = <String>[
       '/data/data/com.zion.os/files/usr/bin/bash',
