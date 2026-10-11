@@ -696,17 +696,18 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun discoverGgufModels(): List<Map<String, Any?>> {
         val roots = linkedSetOf<File>()
+        // Keep launch-time discovery inside app-owned directories. Walking the
+        // shared Downloads tree can traverse thousands of unrelated files on
+        // older phones and makes both Offline AI and Agent appear frozen.
         roots.add(File(filesDir, "models"))
         getExternalFilesDir(null)?.let { roots.add(File(it, "models")) }
-        roots.add(File("/storage/emulated/0/Download"))
-        roots.add(File("/storage/emulated/0/Models"))
-        roots.add(File("/sdcard/Download"))
         val out = mutableListOf<Map<String, Any?>>()
         val seen = HashSet<String>()
         fun visit(dir: File, depth: Int) {
-            if (depth > 3 || !dir.exists() || !dir.isDirectory) return
+            if (depth > 2 || out.size >= 24 || !dir.exists() || !dir.isDirectory) return
             val children = try { dir.listFiles() ?: return } catch (_: Throwable) { return }
             for (f in children) {
+                if (out.size >= 24) break
                 if (f.isFile && f.name.lowercase().endsWith(".gguf") && seen.add(f.absolutePath)) {
                     val size = try { f.length() } catch (_: Throwable) { 0L }
                     out.add(mapOf("name" to f.name, "path" to f.absolutePath, "sizeBytes" to size, "readable" to f.canRead()))
