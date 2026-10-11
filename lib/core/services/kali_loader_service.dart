@@ -62,10 +62,12 @@ class KaliLoaderService {
       return _prootPath;
     }
     if (await extractEmbeddedProot()) return _prootPath;
+    // Zion PRoot must be bundled with the app or installed in Zion Userland.
+    // Never discover or execute binaries from another terminal app or host PATH.
     const candidates = [
-      '/data/data/com.termux/files/usr/bin/proot',
-      '/usr/bin/proot',
-      '/usr/local/bin/proot',
+      '/data/data/com.zion.os/files/usr/bin/proot',
+      '/data/data/com.zion.os/files/usr/bin/proot-aarch64',
+      '/data/data/com.zion.os/files/zion/bin/proot',
     ];
     for (final path in candidates) {
       if (await File(path).exists() && await _testProot(path)) return path;
