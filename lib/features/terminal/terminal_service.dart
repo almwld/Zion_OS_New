@@ -289,11 +289,11 @@ class TerminalService {
     final value = command.trim();
     if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     if (value == 'help' || value == 'zion-help') {
-      return _builtinResult(value, 'Built-in: help, capabilities, termux-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a real child shell process; no shell success is simulated.');
+      return _builtinResult(value, 'Built-in: help, capabilities, zion-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a real child shell process; no shell success is simulated.');
     }
     if (value == 'wifi' || value == 'wifi scan' || value == 'wifi-scan') return _scanWifiBuiltin(value);
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
-    if (value == 'termux-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
+    if (value == 'zion-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
       _output.add('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
