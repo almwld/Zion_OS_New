@@ -228,7 +228,8 @@ class TerminalService {
           <String>[
             '--link2symlink', '-0', '-r', rootfs,
             '-b', '/dev', '-b', '/proc', '-b', '/sys',
-            '-b', '/storage/emulated/0', '-w', '/root',
+            '-b', '/storage/emulated/0',
+            '-b', '/data/data/com.zion.os/files/home:/root', '-w', '/root',
             '/bin/sh', '-lc', command,
           ],
           runInShell: false,
@@ -282,7 +283,7 @@ class TerminalService {
         command: command,
         stdout: '',
         stderr: e.message,
-        exitCode: 126,
+        exitCode: e.errorCode ?? 126,
         duration: DateTime.now().difference(started),
         shell: shell,
       );
