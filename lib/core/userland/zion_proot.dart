@@ -64,9 +64,9 @@ class ZionProot {
       ).timeout(const Duration(seconds: 5));
       final usage = '${help.stdout}\\n${help.stderr}'.toLowerCase();
       final rootId = usage.contains('--root-id') ||
-          RegExp(r'(^|\\s)-0([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-0([,\s]|$)').hasMatch(usage);
       final link2symlink = usage.contains('--link2symlink') ||
-          RegExp(r'(^|\\s)-l([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-l([,\s]|$)').hasMatch(usage);
       if (!rootId || !link2symlink) {
         return const ProotRuntimeInfo(
           status: ProotStatus.unavailable,
