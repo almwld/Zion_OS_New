@@ -22,6 +22,9 @@ class RootfsDownloader {
   static const debianBase = 'https://cloud.debian.org/images/cloud/bookworm/latest/';
   static const alpineBase = 'https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/';
   static const kaliBase = 'https://old.kali.org/nethunter-images/kali-2025.3/rootfs/';
+  static const _checksumTimeout = Duration(seconds: 20);
+  static const _downloadHeaderTimeout = Duration(seconds: 30);
+  static const _downloadIdleTimeout = Duration(seconds: 45);
 
   Future<Directory> _rootfsDir() async {
     // Keep installation and interactive login on the same canonical Zion path.
@@ -58,7 +61,12 @@ class RootfsDownloader {
     Uri checksumUri,
     String fileName,
   ) async {
-    final response = await http.get(checksumUri);
+    late final http.Response response;
+    try {
+      response = await http.get(checksumUri).timeout(_checksumTimeout);
+    } catch (_) {
+      return null;
+    }
     if (response.statusCode != 200) return null;
     final text = utf8.decode(response.bodyBytes);
     for (final line in text.split(RegExp(r'\r?\n'))) {
@@ -91,11 +99,12 @@ class RootfsDownloader {
     try {
       final request = http.Request('GET', uri);
       request.headers['Accept'] = 'application/octet-stream';
-      final response = await client.send(request);
+      final response =
+          await client.send(request).timeout(_downloadHeaderTimeout);
       if (response.statusCode != 200) return false;
       final sink = destination.openWrite();
       try {
-        await response.stream.pipe(sink);
+        await response.stream.timeout(_downloadIdleTimeout).pipe(sink);
       } catch (_) {
         await sink.close();
         rethrow;
