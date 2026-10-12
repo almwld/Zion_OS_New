@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../userland/zion_bootstrap.dart';
 import '../../userland/zion_userland_installer.dart';
 import '../magiczionos_config.dart';
 import 'proot_installer.dart';
