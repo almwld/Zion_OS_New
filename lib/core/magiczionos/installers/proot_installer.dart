@@ -16,8 +16,8 @@ class ProotInstallResult {
 
 /// Validates the standard Termux PRoot shipped inside Zion Userland.
 ///
-/// Do not replace it with proot-rs: that legacy binary does not implement
-/// PRoot's -0/--root-id or --link2symlink flags used by Zion's runtime.
+/// Keep this runtime aligned with the PRoot implementation shipped in
+/// Zion Userland; Zion depends on -0/--root-id and --link2symlink support.
 class ProotInstaller {
   Future<ProotInstallResult> install({bool force = false}) async {
     if (!await ZionBootstrap.isInstalled()) {
