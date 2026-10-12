@@ -22,7 +22,7 @@ class AIAgent {
     _role = role; _initialized = true; return true;
   }
 
-  Future<String> chat(String message, {int maxTokens = 512}) async {
+  Future<String> chat(String message, {int maxTokens = 128}) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
     final response = await llama.generate(_buildPrompt(message), maxTokens: maxTokens);
     if (!response.startsWith('ERROR:')) {
@@ -55,10 +55,21 @@ class AIAgent {
       ..writeln('<|system|>')
       ..writeln(_systemPrompt(_role))
       ..writeln('<|end|>');
-    for (final item in _history) {
-      b..writeln('<|${item.role}|>')..writeln(item.content)..writeln('<|end|>');
+    // Bound prompt size to fit the conservative 1024-token mobile context.
+    // Long chat histories should never make native inference exhaust device RAM.
+    final recent = _history.length > 4
+        ? _history.sublist(_history.length - 4)
+        : _history;
+    for (final item in recent) {
+      final content = item.content.length > 500
+          ? item.content.substring(0, 500)
+          : item.content;
+      b..writeln('<|${item.role}|>')..writeln(content)..writeln('<|end|>');
     }
-    b..writeln('<|user|>')..writeln(message)..writeln('<|end|>')..writeln('<|assistant|>');
+    final boundedMessage = message.length > 1200
+        ? message.substring(0, 1200)
+        : message;
+    b..writeln('<|user|>')..writeln(boundedMessage)..writeln('<|end|>')..writeln('<|assistant|>');
     return b.toString();
   }
 
