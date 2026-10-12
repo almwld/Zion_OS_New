@@ -40,7 +40,22 @@ jobs:
           old = 'PACKAGES+=("bzip2")'
           if old not in bootstrap_source:
               raise SystemExit("Expected upstream bootstrap bzip2 entry was not found")
-          bootstrap.write_text(bootstrap_source.replace(old, 'PACKAGES+=("libbz2")', 1))
+          bootstrap_source = bootstrap_source.replace(old, 'PACKAGES+=("libbz2")', 1)
+
+          # The archive is created in a disposable /tmp directory inside the
+          # builder. The upstream final move into the bind-mounted checkout fails
+          # under the CI container UID, and the script then removes its temp dir.
+          # Move the finished archive to the writable container home instead so
+          # CI can copy it out after the build command exits.
+          archive_move = 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"'
+          if archive_move not in bootstrap_source:
+              raise SystemExit("Expected upstream bootstrap archive move was not found")
+          bootstrap_source = bootstrap_source.replace(
+              archive_move,
+              'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/home/builder/bootstrap-${1}.zip"',
+              1,
+          )
+          bootstrap.write_text(bootstrap_source)
           PY
           # Keep the bootstrap based on the current upstream Termux package tree;
           # apply only the package-name migration needed by the current bootstrap script.
