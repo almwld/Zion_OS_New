@@ -32,9 +32,39 @@ jobs:
           s = s.replace('TERMUX__NAME="Termux"', 'TERMUX__NAME="Zion"')
           s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
           p.write_text(s)
+
+          # Upstream now ships the bzip2 command as a subpackage of libbz2.
+          # The bootstrap script's old top-level package name fails on current master.
+          bootstrap = Path("scripts/build-bootstraps.sh")
+          bootstrap_source = bootstrap.read_text()
+          old = 'PACKAGES+=("bzip2")'
+          if old not in bootstrap_source:
+              raise SystemExit("Expected upstream bootstrap bzip2 entry was not found")
+          bootstrap_source = bootstrap_source.replace(old, 'PACKAGES+=("libbz2")', 1)
+
+          # The archive is created in a disposable /tmp directory inside the
+          # builder. The upstream final move into the bind-mounted checkout fails
+          # under the CI container UID, and the script then removes its temp dir.
+          # Move the finished archive to the writable container home instead so
+          # CI can copy it out after the build command exits.
+          archive_move = 'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "$TERMUX_PACKAGES_DIRECTORY/"'
+          if archive_move not in bootstrap_source:
+              raise SystemExit("Expected upstream bootstrap archive move was not found")
+          bootstrap_source = bootstrap_source.replace(
+              archive_move,
+              'mv -f "${BOOTSTRAP_TMPDIR}/bootstrap-${1}.zip" "/home/builder/bootstrap-${1}.zip"',
+              1,
+          )
+          bootstrap.write_text(bootstrap_source)
           PY
           # Keep the bootstrap based on the current upstream Termux package tree;
-          # no fork-specific source checksum patches are required.
+          # apply only the package-name migration needed by the current bootstrap script.
+          # The container's builder UID differs from the GitHub runner UID.
+          # build-bootstraps.sh writes bootstrap-aarch64.zip into this mounted
+          # directory after compilation, so make only this disposable CI checkout
+          # writable to the container user; otherwise the build succeeds but the
+          # final archive move fails with Permission denied.
+          chmod 777 "$PWD"
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
@@ -43,12 +73,30 @@ jobs:
           # Zion's package bridge does not require apt/gpgv inside the bootstrap.
           # Android-10-compatible mode keeps bash/coreutils/curl while replacing
           # the heavy apt/gpgv path with the native bootstrap tooling.
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10
+          # The wrapper can return non-zero after the in-container build succeeds
+          # because its optional output-copy directory is absent. Do not abort before
+          # recovering the archive; the explicit archive checks below remain fatal.
+          if ! ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10; then
+            echo "Builder wrapper reported an output-copy error; checking the container archive."
+          fi
+          # Some Docker runner setups keep generated files inside the builder container
+          # even though the package tree is mounted. Recover the verified archive explicitly.
+          # build-bootstraps.sh attempts to move the archive into the mounted
+          # package tree, but the builder UID cannot write there. The archive is
+          # left at the builder home; copy it to the exact path consumed below.
+          # This shell is still inside the cloned termux-packages directory;
+          # ./bootstrap-aarch64.zip here becomes termux-packages/bootstrap-aarch64.zip
+          # at repository root, which is the converter's input path.
+          if [[ ! -s bootstrap-aarch64.zip ]]; then
+            rm -f bootstrap-aarch64.zip
+            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/bootstrap-aarch64.zip" ./bootstrap-aarch64.zip
+          fi
+          test -s bootstrap-aarch64.zip
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
         run: |
-          import hashlib, json, os, zipfile
+          import hashlib, json, os, posixpath, zipfile
           from pathlib import Path
 
           source = Path("termux-packages/bootstrap-aarch64.zip")
@@ -84,6 +132,7 @@ jobs:
               except KeyError:
                   raw_links = ""
 
+              zion_prefix = "/data/data/com.zion.os/files/usr/"
               for line in raw_links.splitlines():
                   if "←" not in line:
                       continue
@@ -93,12 +142,32 @@ jobs:
                   while link_name.startswith("./"):
                       link_name = link_name[2:]
                   if (not link_name or link_name.startswith("/") or
-                      ".." in Path(link_name).parts or
-                      not link_target or link_target.startswith("/") or
-                      ".." in Path(link_target).parts):
-                      raise SystemExit(f"unsafe symlink: {link_target} -> {link_name}")
+                      ".." in Path(link_name).parts or not link_target):
+                      raise SystemExit(f"unsafe symlink path: {link_target} -> {link_name}")
+
                   archive_link = "usr/" + link_name
-                  # The installer validates the target stays inside usr/.
+                  # Termux's bootstrap may encode absolute targets under the
+                  # configured prefix. Convert those to relative links so the
+                  # installed tree remains relocatable and the installer can
+                  # enforce that every link resolves inside usr/.
+                  if link_target.startswith(zion_prefix):
+                      target_rel = link_target[len(zion_prefix):]
+                      if (not target_rel or target_rel.startswith("/") or
+                          ".." in Path(target_rel).parts):
+                          raise SystemExit(f"unsafe absolute symlink target: {link_target}")
+                      target_archive = "usr/" + target_rel
+                      link_target = posixpath.relpath(
+                          target_archive, posixpath.dirname(archive_link)
+                      )
+                  elif link_target.startswith("/"):
+                      raise SystemExit(f"symlink target is outside Zion prefix: {link_target}")
+
+                  resolved_target = posixpath.normpath(
+                      posixpath.join(posixpath.dirname(archive_link), link_target)
+                  )
+                  if not resolved_target.startswith("usr/") or resolved_target == "usr":
+                      raise SystemExit(f"unsafe symlink target: {link_target} -> {archive_link}")
+
                   zi = zipfile.ZipInfo(archive_link)
                   zi.create_system = 3
                   zi.external_attr = (0o120777 << 16) | 0x80000000
@@ -147,6 +216,7 @@ jobs:
           )
 
       - name: Publish Userland release
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

@@ -57,6 +57,8 @@ class MainActivity : FlutterFragmentActivity() {
     private external fun nativeStopPty(handle: Int)
 
     private val terminalReaders = ConcurrentHashMap<Int, Thread>()
+    // Serialize native PTY lifecycle calls so handles cannot be reused while an old reader is alive.
+    private val terminalLifecycleLock = Any()
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
     @Volatile private var radarRunning = false
@@ -350,72 +352,112 @@ class MainActivity : FlutterFragmentActivity() {
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
     }
-    private fun startTerminal(rows: Int, cols: Int, shell: String?): Int {
-        ensureTerminalEnvironment()
-        if (!nativePtyAvailable()) return 0
-        val nativeShell = if (shell == "zion-kali") {
-            val rootfs = File(filesDir, "zion/userland/kali-arm64")
-            val proot = File(applicationInfo.nativeLibraryDir, "libproot.so")
-            val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
-            if (!rootfs.exists() || !proot.exists() || !loader.exists()) return 0
-            "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
-        } else shell
+    private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
+        synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
+
+    private fun startTerminalLocked(rows: Int, cols: Int, shell: String?): Int {
         return try {
+            ensureTerminalEnvironment()
+            if (!nativePtyAvailable()) return 0
+            val nativeShell = if (shell == "zion-kali") {
+                val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
+                // PRoot and its loader are shipped by the verified Zion Userland
+                // package, not as JNI libraries in nativeLibraryDir.
+                val proot = File(filesDir, "usr/bin/proot")
+                val loader = File(filesDir, "usr/libexec/proot")
+                if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
+                "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+            } else shell
+
             val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
-            terminalReaders[handle] = Thread {
+
+            // Register the reader before starting it. A short-lived shell may
+            // exit immediately; registering after start could leave a stale entry.
+            val reader = Thread {
                 try {
                     var idleDelayMs = 8L
                     while (!Thread.currentThread().isInterrupted) {
                         val data = nativeReadPty(handle) ?: break
                         if (data.isEmpty()) {
-                            try { Thread.sleep(idleDelayMs) } catch (_: InterruptedException) { break }
+                            try {
+                                Thread.sleep(idleDelayMs)
+                            } catch (_: InterruptedException) {
+                                break
+                            }
                             idleDelayMs = (idleDelayMs * 2L).coerceAtMost(500L)
                             continue
                         }
                         idleDelayMs = 8L
-                        terminalSink?.success(
-                            mapOf(
-                                "sessionId" to handle,
-                                "data" to data,
-                            )
-                        )
+                        val event = mapOf<String, Any?>("sessionId" to handle, "data" to data)
+                        Handler(Looper.getMainLooper()).post { terminalSink?.success(event) }
                     }
                 } catch (t: Throwable) {
-                    terminalSink?.error("PTY_STREAM", t.message, mapOf("sessionId" to handle))
+                    val message = t.message
+                    Handler(Looper.getMainLooper()).post {
+                        terminalSink?.error("PTY_STREAM", message, mapOf("sessionId" to handle))
+                    }
                 } finally {
-                    terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
-                    terminalReaders.remove(handle)
+                    Handler(Looper.getMainLooper()).post {
+                        terminalSink?.success(mapOf("sessionId" to handle, "closed" to true))
+                    }
+                    // A stale reader must never remove a newer reader for a reused handle.
+                    terminalReaders.remove(handle, Thread.currentThread())
                 }
             }.apply {
                 name = "zion-native-pty-$handle"
                 isDaemon = true
-                start()
             }
-            handle
+
+            terminalReaders[handle] = reader
+            try {
+                reader.start()
+                handle
+            } catch (_: Throwable) {
+                terminalReaders.remove(handle, reader)
+                try { nativeStopPty(handle) } catch (_: Throwable) {}
+                0
+            }
         } catch (_: Throwable) {
             0
         }
     }
 
-    private fun writeTerminal(handle: Int, input: ByteArray): Boolean {
-        if (handle <= 0 || input.isEmpty()) return false
-        return try {
-            nativeWritePty(handle, input) == input.size
-        } catch (_: Throwable) {
-            false
+    private fun writeTerminal(handle: Int, input: ByteArray): Boolean =
+        synchronized(terminalLifecycleLock) {
+            if (handle <= 0 || input.isEmpty()) return@synchronized false
+            try {
+                nativeWritePty(handle, input) == input.size
+            } catch (_: Throwable) {
+                false
+            }
         }
-    }
 
-    private fun resizeTerminal(handle: Int, rows: Int, cols: Int): Boolean {
-        if (handle <= 0) return false
-        return try { nativeResizePty(handle, rows, cols) } catch (_: Throwable) { false }
-    }
+    private fun resizeTerminal(handle: Int, rows: Int, cols: Int): Boolean =
+        synchronized(terminalLifecycleLock) {
+            if (handle <= 0) return@synchronized false
+            try {
+                nativeResizePty(handle, rows, cols)
+            } catch (_: Throwable) {
+                false
+            }
+        }
 
     private fun stopTerminal(handle: Int) {
         if (handle <= 0) return
-        try { nativeStopPty(handle) } catch (_: Throwable) {}
-        terminalReaders.remove(handle)?.interrupt()
+        synchronized(terminalLifecycleLock) {
+            val reader = terminalReaders.remove(handle)
+            reader?.interrupt()
+            try { nativeStopPty(handle) } catch (_: Throwable) {}
+            if (reader != null && reader !== Thread.currentThread()) {
+                try {
+                    // The native read loop is non-blocking; wait for it to exit before the handle can be reused.
+                    reader.join()
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+        }
     }
 
     private fun stopAllTerminals() {

@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../../userland/zion_proot.dart';
 
 enum ZionRootfsDistro { ubuntu, debian, alpine, kali }
 
@@ -20,19 +22,18 @@ class RootfsDownloader {
   static const debianBase = 'https://cloud.debian.org/images/cloud/bookworm/latest/';
   static const alpineBase = 'https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/';
   static const kaliBase = 'https://old.kali.org/nethunter-images/kali-2025.3/rootfs/';
+  static const _checksumTimeout = Duration(seconds: 20);
+  static const _downloadHeaderTimeout = Duration(seconds: 30);
+  static const _downloadIdleTimeout = Duration(seconds: 45);
 
   Future<Directory> _rootfsDir() async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory(support.path + '/userland/home/.zion/dists');
+    // Keep installation and interactive login on the same canonical Zion path.
+    final dir = Directory(ZionProot.distroRoot);
     await dir.create(recursive: true);
     return dir;
   }
 
-  String _arch() {
-    final value = Platform.environment['ZION_ROOTFS_ARCH'];
-    if (value == 'arm64' || value == 'armhf' || value == 'amd64') return value!;
-    return 'arm64';
-  }
+  String _arch() => 'arm64';
 
   (String, String) _source(ZionRootfsDistro distro) {
     final arch = _arch();
@@ -60,15 +61,33 @@ class RootfsDownloader {
     Uri checksumUri,
     String fileName,
   ) async {
-    final response = await http.get(checksumUri);
+    late final http.Response response;
+    try {
+      response = await http.get(checksumUri).timeout(_checksumTimeout);
+    } catch (_) {
+      return null;
+    }
     if (response.statusCode != 200) return null;
     final text = utf8.decode(response.bodyBytes);
-    final line = text
-        .split(RegExp(r'\r?\n'))
-        .firstWhere((line) => line.contains(fileName), orElse: () => '');
-    if (line.isEmpty) return null;
-    final match = RegExp(r'([a-fA-F0-9]{64}|[a-fA-F0-9]{128})').firstMatch(line);
+    for (final line in text.split(RegExp(r'\r?\n'))) {
+      final parsed = parseChecksumLine(line, fileName);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  static (String algorithm, String digest)? parseChecksumLine(
+    String line,
+    String fileName,
+  ) {
+    // Accept standard sha256sum/sha512sum rows only, and match the complete
+    // filename. A substring check can accidentally select e.g. archive.tar.gz.sig.
+    final match = RegExp(
+      r'^\s*([a-fA-F0-9]{128}|[a-fA-F0-9]{64})\s+[*]?(.+?)\s*$',
+    ).firstMatch(line);
     if (match == null) return null;
+    final listedName = match.group(2)!.trim();
+    if (listedName != fileName && listedName != './' + fileName) return null;
     final digest = match.group(1)!.toLowerCase();
     return digest.length == 128 ? ('sha512', digest) : ('sha256', digest);
   }
@@ -86,11 +105,12 @@ class RootfsDownloader {
     try {
       final request = http.Request('GET', uri);
       request.headers['Accept'] = 'application/octet-stream';
-      final response = await client.send(request);
+      final response =
+          await client.send(request).timeout(_downloadHeaderTimeout);
       if (response.statusCode != 200) return false;
       final sink = destination.openWrite();
       try {
-        await response.stream.pipe(sink);
+        await response.stream.timeout(_downloadIdleTimeout).pipe(sink);
       } catch (_) {
         await sink.close();
         rethrow;
@@ -105,10 +125,18 @@ class RootfsDownloader {
     ZionRootfsDistro distro, {
     bool force = false,
   }) async {
+    if (Abi.current() != Abi.androidArm64) {
+      return const RootfsInstallResult(
+        success: false,
+        message: 'تثبيت توزيعات Linux في Zion Userland متاح حاليًا لأجهزة ARM64 فقط.',
+      );
+    }
     final rootfs = await _rootfsDir();
     final target = Directory(rootfs.path + '/' + distro.name);
-    if (await target.exists() && !force) {
-      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: target.path);
+    final installedRoot = Directory(target.path + '/rootfs');
+    if (await File(installedRoot.path + '/bin/sh').exists() && !force &&
+        await File(target.path + '/.zion-rootfs.json').exists()) {
+      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: installedRoot.path);
     }
 
     final source = _source(distro);
@@ -140,23 +168,48 @@ class RootfsDownloader {
       await extractFileToDisk(archiveFile.path, staging.path);
       final entries = staging.listSync(followLinks: false);
       final sourceDir = entries.length == 1 && entries.first is Directory ? entries.first as Directory : staging;
-      try { await target.delete(recursive: true); } catch (_) {}
-
-      if (sourceDir.path == staging.path) {
-        await Directory(target.path).create(recursive: true);
-        for (final entity in staging.listSync(followLinks: false)) {
-          await entity.rename(target.path + '/' + entity.uri.pathSegments.last);
-        }
-        try { await staging.delete(recursive: true); } catch (_) {}
-      } else {
-        await sourceDir.rename(target.path);
+      if (!await File(sourceDir.path + '/bin/sh').exists()) {
+        return RootfsInstallResult(
+          success: false,
+          message: 'الأرشيف الذي تم التحقق منه لا يحتوي على /bin/sh؛ تم الحفاظ على النظام المثبت سابقاً.',
+        );
       }
 
-      await File(target.path + '/.zion-rootfs.json').writeAsString(
-        jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
-        flush: true,
+      final backup = Directory(
+        rootfs.path + '/.' + distro.name + '.backup-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
       );
-      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: target.path);
+      var movedPrevious = false;
+      var newTargetCreated = false;
+      final rootfsTarget = Directory(target.path + '/rootfs');
+      try {
+        if (await target.exists()) {
+          await target.rename(backup.path);
+          movedPrevious = true;
+        }
+        newTargetCreated = true;
+        await target.create(recursive: true);
+        await sourceDir.rename(rootfsTarget.path);
+        await File(target.path + '/.zion-rootfs.json').writeAsString(
+          jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
+          flush: true,
+        );
+      } catch (error) {
+        if (newTargetCreated && await target.exists()) {
+          try { await target.delete(recursive: true); } catch (_) {}
+        }
+        if (movedPrevious && await backup.exists()) {
+          try { await backup.rename(target.path); } catch (_) {}
+        }
+        return RootfsInstallResult(
+          success: false,
+          message: 'تعذر تفعيل rootfs الجديد؛ تمت محاولة استعادة النسخة السابقة: ' + error.toString(),
+        );
+      }
+      if (movedPrevious && await backup.exists()) {
+        try { await backup.delete(recursive: true); } catch (_) {}
+      }
+      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: rootfsTarget.path);
     } finally {
       try { await temp.delete(recursive: true); } catch (_) {}
     }

@@ -16,16 +16,18 @@ class RuntimeCapability {
   Map<String, Object?> toJson() => <String, Object?>{'id': id, 'status': status.name.toUpperCase(), 'detail': detail, 'path': path};
 }
 
-class TermuxRuntimeService {
+class ZionRuntimeService {
   static const home = '/data/data/com.zion.os/files/home';
   static const prefix = '/data/data/com.zion.os/files/usr';
-  const TermuxRuntimeService();
+  const ZionRuntimeService();
 
   Future<RuntimeCapability> probeExecutable(String id, List<String> candidates) async {
     for (final candidate in candidates) {
       try {
         final stat = await File(candidate).stat();
-        if (stat.type == FileSystemEntityType.file) return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable detected.', path: candidate);
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable file detected.', path: candidate);
+        }
       } catch (_) {}
     }
     return RuntimeCapability(id: id, status: RuntimeStatus.notConfigured, detail: 'No executable is installed in the Zion userland.');
@@ -34,7 +36,10 @@ class TermuxRuntimeService {
   Future<RuntimeCapability> storageStatus() async {
     final shared = Directory('/storage/emulated/0');
     if (!await shared.exists()) return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.unavailable, detail: '/storage/emulated/0 is not present on this device.');
-    try { await shared.list(followLinks: false).first; return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.available, detail: 'Shared storage is readable by the terminal UID.', path: '/storage/emulated/0'); }
+    try {
+      await shared.list(followLinks: false).isEmpty;
+      return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.available, detail: 'Shared storage is readable by the terminal UID.', path: '/storage/emulated/0');
+    }
     catch (_) { return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.permissionRequired, detail: 'Android denied shared-storage access; grant storage access before setup.', path: '/storage/emulated/0'); }
   }
 
@@ -59,9 +64,9 @@ class TermuxRuntimeService {
         if (await link.exists()) await link.delete();
         await link.create(entry.value, recursive: false);
       }
-      return RuntimeCapability(id: 'termux-setup-storage', status: RuntimeStatus.available, detail: 'REAL storage links created under ~/storage.', path: storageHome.path);
+      return RuntimeCapability(id: 'zion-setup-storage', status: RuntimeStatus.available, detail: 'Zion storage links created under ~/storage.', path: storageHome.path);
     } on FileSystemException catch (e) {
-      return RuntimeCapability(id: 'termux-setup-storage', status: RuntimeStatus.permissionRequired, detail: e.message, path: storageHome.path);
+      return RuntimeCapability(id: 'zion-setup-storage', status: RuntimeStatus.permissionRequired, detail: e.message, path: storageHome.path);
     }
   }
 
@@ -69,16 +74,15 @@ class TermuxRuntimeService {
     const executables = <String, List<String>>{
       'sh': <String>[prefix + '/bin/sh'],
       'bash': <String>[prefix + '/bin/bash'], 'zsh': <String>[prefix + '/bin/zsh'], 'fish': <String>[prefix + '/bin/fish'],
-      'pkg': <String>[prefix + '/bin/pkg'], 'apt': <String>[prefix + '/bin/apt'], 'dpkg': <String>[prefix + '/bin/dpkg'],
+      'zion-pkg': <String>[prefix + '/bin/zion-pkg'], 'apt': <String>[prefix + '/bin/apt'], 'dpkg': <String>[prefix + '/bin/dpkg'],
       'proot': <String>[prefix + '/bin/proot'], 'proot-distro': <String>[prefix + '/bin/proot-distro'],
+      'zion-api-tts': <String>[prefix + '/bin/zion-api-tts'],
       'ssh': <String>[prefix + '/bin/ssh'], 'scp': <String>[prefix + '/bin/scp'], 'sftp': <String>[prefix + '/bin/sftp'], 'ssh-keygen': <String>[prefix + '/bin/ssh-keygen'],
       'curl': <String>[prefix + '/bin/curl'], 'wget': <String>[prefix + '/bin/wget'], 'ping': <String>[prefix + '/bin/ping'], 'traceroute': <String>[prefix + '/bin/traceroute'],
       'dig': <String>[prefix + '/bin/dig'], 'nslookup': <String>[prefix + '/bin/nslookup'], 'host': <String>[prefix + '/bin/host'], 'whois': <String>[prefix + '/bin/whois'],
       'netstat': <String>[prefix + '/bin/netstat'], 'ss': <String>[prefix + '/bin/ss'], 'ifconfig': <String>[prefix + '/bin/ifconfig'], 'ip': <String>[prefix + '/bin/ip'],
       'nc': <String>[prefix + '/bin/nc'], 'socat': <String>[prefix + '/bin/socat'],
-      'termux-battery-status': <String>[prefix + '/bin/termux-battery-status'], 'termux-clipboard-get': <String>[prefix + '/bin/termux-clipboard-get'],
-      'termux-clipboard-set': <String>[prefix + '/bin/termux-clipboard-set'], 'termux-notification': <String>[prefix + '/bin/termux-notification'],
-      'termux-toast': <String>[prefix + '/bin/termux-toast'], 'termux-vibrate': <String>[prefix + '/bin/termux-vibrate'], 'termux-tts-speak': <String>[prefix + '/bin/termux-tts-speak'],
+
     };
     final results = <String, RuntimeCapability>{};
     results['shared-storage'] = await storageStatus();
@@ -90,7 +94,7 @@ class TermuxRuntimeService {
 
   Future<String> describe() async {
     final results = await probeCore();
-    final buffer = StringBuffer('ZION TERMUX RUNTIME\n');
+    final buffer = StringBuffer('ZION USERLAND RUNTIME\n');
     buffer.writeln('HOME=' + home); buffer.writeln('PREFIX=' + prefix);
     for (final result in results.values) buffer.writeln('[' + result.status.name.toUpperCase() + '] ' + result.id + ': ' + result.detail);
     return buffer.toString().trimRight();
