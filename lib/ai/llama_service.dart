@@ -77,30 +77,75 @@ class LlamaService {
     String? loraPath,
     double loraScale = 1.0,
   }) async {
-    final ok = await _channel.invokeMethod<bool>('loadModel', {
-      'path': path,
-      'threads': threads,
-      if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
-      'loraScale': loraScale > 0 ? loraScale : 1.0,
-    }) ?? false;
-    _loaded = ok;
-    _modelPath = ok ? path : null;
-    return ok;
+    if (path.trim().isEmpty) return false;
+    try {
+      final ok = await _channel.invokeMethod<bool>('loadModel', {
+        'path': path,
+        'threads': threads.clamp(1, 4),
+        if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
+        'loraScale': loraScale > 0 ? loraScale : 1.0,
+      }) ?? false;
+      _loaded = ok;
+      _modelPath = ok ? path : null;
+      return ok;
+    } on PlatformException {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    } on MissingPluginException {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    }
   }
 
   Future<String> generate(String prompt, {int maxTokens = 512, double temperature = 0.7}) async {
     if (!_loaded) return 'ERROR: النموذج المحلي غير محمل.';
-    return (await _channel.invokeMethod<String>('generate', {
-      'prompt': prompt, 'maxTokens': maxTokens, 'temperature': temperature,
-    })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
+    final input = prompt.length > 6000 ? prompt.substring(0, 6000) : prompt;
+    final tokenLimit = maxTokens.clamp(1, 256);
+    try {
+      return (await _channel.invokeMethod<String>('generate', {
+        'prompt': input,
+        'maxTokens': tokenLimit,
+        'temperature': temperature.clamp(0.0, 1.0),
+      })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
+    } on PlatformException catch (error) {
+      return 'ERROR: تعذرت المعالجة المحلية: ${error.message ?? error.code}';
+    } on MissingPluginException {
+      return 'ERROR: محرك الذكاء الاصطناعي المحلي غير متاح في هذا البناء.';
+    }
   }
 
   Future<void> unloadModel() async {
-    await _channel.invokeMethod('freeModel');
-    _loaded = false;
-    _modelPath = null;
+    try {
+      await _channel.invokeMethod('freeModel');
+    } on PlatformException {
+      // The engine may already have been released during activity teardown.
+    } on MissingPluginException {
+      // Unit tests and unsupported runtimes have no native AI bridge.
+    } finally {
+      _loaded = false;
+      _modelPath = null;
+    }
   }
 
-  Future<bool> get nativeLoaded async => await _channel.invokeMethod<bool>('isLoaded') ?? false;
-  Future<String> get engineVersion async => await _channel.invokeMethod<String>('version') ?? 'unknown';
+  Future<bool> get nativeLoaded async {
+    try {
+      return await _channel.invokeMethod<bool>('isLoaded') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<String> get engineVersion async {
+    try {
+      return await _channel.invokeMethod<String>('version') ?? 'unknown';
+    } on PlatformException {
+      return 'unavailable';
+    } on MissingPluginException {
+      return 'unavailable';
+    }
+  }
 }
