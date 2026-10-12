@@ -17,8 +17,31 @@ class ProotInstaller {
   Future<Directory> _prefix() async { final prefix = Directory(ZionBootstrap.prefix); await Directory(prefix.path + '/bin').create(recursive: true); return prefix; }
   String _assetName() { final abi = Abi.current(); if (abi == Abi.androidArm64) return 'proot-rs-v0.1.0-aarch64-linux-android.tar.gz'; if (abi == Abi.androidArm) return 'proot-rs-v0.1.0-arm-linux-androideabi.tar.gz'; if (abi == Abi.androidX64) return 'proot-rs-v0.1.0-x86_64-linux-android.tar.gz'; if (abi == Abi.androidIA32) return 'proot-rs-v0.1.0-i686-linux-android.tar.gz'; throw UnsupportedError('Android ABI غير مدعوم: ' + abi.toString()); }
   Future<String?> _releaseDigest(String assetName) async { final uri = Uri.parse('https://api.github.com/repos/' + _owner + '/' + _repo + '/releases/tags/' + _version); final response = await http.get(uri, headers: {'Accept': 'application/vnd.github+json'}); if (response.statusCode != 200) return null; final json = jsonDecode(response.body) as Map<String, dynamic>; for (final raw in (json['assets'] as List<dynamic>? ?? const [])) { final asset = raw as Map<String, dynamic>; if (asset['name'] == assetName) { final digest = asset['digest'] as String?; if (digest == null || !digest.startsWith('sha256:')) return null; return digest.substring(7); } } return null; }
+  Future<bool> _isRunnable(File executable) async {
+    try {
+      final stat = await executable.stat();
+      if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) return false;
+      final result = await Process.run(executable.path, const ['--version'], runInShell: false)
+          .timeout(const Duration(seconds: 5));
+      return result.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<ProotInstallResult> install({bool force = false}) async {
-    final prefix = await _prefix(); final target = File(prefix.path + '/bin/proot'); if (await target.exists() && !force) return ProotInstallResult(success: true, message: 'PRoot موجود فعلاً.', path: target.path);
+    final prefix = await _prefix();
+    final target = File(prefix.path + '/bin/proot');
+    if (await target.exists() && !force) {
+      if (await _isRunnable(target)) {
+        return ProotInstallResult(success: true, message: 'PRoot موجود وتم التحقق من تشغيله.', path: target.path);
+      }
+      try {
+        await target.delete();
+      } catch (error) {
+        return ProotInstallResult(success: false, message: 'ملف PRoot الموجود غير صالح وتعذر استبداله: $error');
+      }
+    }
     final assetName = _assetName(); final digest = await _releaseDigest(assetName); if (digest == null) return const ProotInstallResult(success: false, message: 'تعذر الحصول على SHA-256 من GitHub Release؛ لم يتم تثبيت أي ملف.');
     final temp = Directory(prefix.path + '/.proot-install-' + DateTime.now().microsecondsSinceEpoch.toString()); await temp.create(recursive: true);
     try {
