@@ -44,6 +44,12 @@ jobs:
           PY
           # Keep the bootstrap based on the current upstream Termux package tree;
           # apply only the package-name migration needed by the current bootstrap script.
+          # The container's builder UID differs from the GitHub runner UID.
+          # build-bootstraps.sh writes bootstrap-aarch64.zip into this mounted
+          # directory after compilation, so make only this disposable CI checkout
+          # writable to the container user; otherwise the build succeeds but the
+          # final archive move fails with Permission denied.
+          chmod 777 "$PWD"
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
