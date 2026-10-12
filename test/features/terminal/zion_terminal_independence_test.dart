@@ -43,6 +43,8 @@ void main() {
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
       final capabilities = await File('lib/features/terminal/terminal_capabilities.dart').readAsString();
       expect(service, isNot(contains("const androidShell = '/system/bin/sh'")));
+      expect(service, isNot(contains("shell = '/system/bin/sh'")));
+      expect(service, contains('_scheduleUserlandInstall()'));
       expect(capabilities, contains('NO HOST-SHELL FALLBACK'));
       expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
     });
