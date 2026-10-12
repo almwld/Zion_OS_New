@@ -250,6 +250,9 @@ class TerminalService {
             'TERM': 'xterm-256color',
             'LANG': 'C.UTF-8',
             'LC_ALL': 'C.UTF-8',
+            // PRoot is a Zion Userland executable; make its shared libraries
+            // discoverable when launching bounded commands in the guest.
+            'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
           },
         );
       } else {
