@@ -69,6 +69,16 @@ class TerminalService {
   static const _commandTimeout = Duration(seconds: 30);
   static bool _userlandInstallInProgress = false;
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
+  static const Map<String, String> _userlandEnvironment = <String, String>{
+    'HOME': '/data/data/com.zion.os/files/home',
+    'PREFIX': '/data/data/com.zion.os/files/usr',
+    'TMPDIR': '/data/data/com.zion.os/files/tmp',
+    'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin',
+    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+    'TERM': 'xterm-256color',
+    'LANG': 'C.UTF-8',
+    'LC_ALL': 'C.UTF-8',
+  };
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
@@ -143,6 +153,7 @@ class TerminalService {
           candidate,
           const <String>['-c', 'exit 0'],
           runInShell: false,
+          environment: _userlandEnvironment,
         ).timeout(const Duration(seconds: 2));
         if (result.exitCode == 0) return candidate;
       } catch (_) {}
@@ -242,7 +253,12 @@ class TerminalService {
           },
         );
       } else {
-        process = await Process.start(shell, <String>['-c', command], runInShell: false);
+        process = await Process.start(
+          shell,
+          <String>['-c', command],
+          runInShell: false,
+          environment: _userlandEnvironment,
+        );
       }
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
