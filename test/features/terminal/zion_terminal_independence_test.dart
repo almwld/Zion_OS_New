@@ -99,9 +99,12 @@ void main() {
 
     test('existing PRoot binaries are checked before being accepted', () async {
       final installer = await File('lib/core/magiczionos/installers/proot_installer.dart').readAsString();
-      expect(installer, contains('if (await _isRunnable(target))'));
-      expect(installer, contains("const ['--version']"));
-      expect(installer, contains('تعذر استبداله'));
+      expect(installer, contains('await target.exists() && !force && await _isRunnable(target)'));
+      expect(installer, contains("const <String>['--version']"));
+      expect(installer, contains('_releaseDigest(assetName)'));
+      expect(installer, contains('SHA-256'));
+      expect(installer, contains("File(prefix.path + '/bin/.proot.new')"));
+      expect(installer, contains('if (movedPrevious && await backup.exists())'));
     });
 
     test('Linux rootfs installer uses the same canonical root as Zion PRoot', () async {
