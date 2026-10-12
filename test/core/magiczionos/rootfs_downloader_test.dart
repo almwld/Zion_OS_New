@@ -26,10 +26,11 @@ void main() {
       );
     });
 
-    test('rejects checksum lines for another archive', () {
+    test('rejects a valid checksum for a different archive', () {
+      final digest = 'a' * 64;
       expect(
         RootfsDownloader.parseChecksumLine(
-          'NaN  unrelated.tar.gz',
+          '$digest  unrelated.tar.gz',
           'requested.tar.gz',
         ),
         isNull,
