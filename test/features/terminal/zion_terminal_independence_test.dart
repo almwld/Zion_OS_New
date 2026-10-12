@@ -110,6 +110,9 @@ void main() {
       expect(activity, contains('home/.zion/dists/kali/rootfs'));
       expect(loader, contains('/home/.zion/dists/kali/rootfs'));
       expect(loader, isNot(contains('/data/local/kali')));
+      expect(service, contains("if (shell == 'zion-kali')"));
+      expect(service, contains("'--link2symlink', '-0', '-r', rootfs"));
+      expect(service, contains("'/bin/sh', '-lc', command"));
     });
 
     test('bootstrap exposes native Zion proot-distro and documented TTS command', () async {
