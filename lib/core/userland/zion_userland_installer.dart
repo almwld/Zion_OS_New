@@ -211,7 +211,7 @@ class ZionUserlandInstaller {
       }
 
       onProgress?.call('التحقق من SHA-256 للحزمة...');
-      final digest = sha256.convert(await temp.readAsBytes()).toString();
+      final digest = (await sha256.bind(temp.openRead()).first).toString();
       if (digest.toLowerCase() != asset.sha256.toLowerCase()) {
         return (
           success: false,
