@@ -354,7 +354,7 @@ class MainActivity : FlutterFragmentActivity() {
         ensureTerminalEnvironment()
         if (!nativePtyAvailable()) return 0
         val nativeShell = if (shell == "zion-kali") {
-            val rootfs = File(filesDir, "zion/userland/kali-arm64")
+            val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
             val proot = File(applicationInfo.nativeLibraryDir, "libproot.so")
             val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
             if (!rootfs.exists() || !proot.exists() || !loader.exists()) return 0
