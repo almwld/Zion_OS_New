@@ -25,7 +25,7 @@ class ZionProot {
     final info = await inspect(); if (info.status != ProotStatus.available || info.executable == null) throw StateError(info.reason);
     final rootfs = rootfsPath(distro); if (!await Directory(rootfs).exists()) throw StateError('Rootfs for ' + distro.name + ' is not installed.');
     if (command.isEmpty || command.any(_unsafeArgument)) throw ArgumentError('Invalid PRoot command arguments.');
-    final args = <String>['-0','-r',rootfs,'-b','/dev','-b','/proc','-b','/sys','-b',home + ':' + home,'-w','/root',...command];
+    final args = <String>['-0','-r',rootfs,'--link2symlink','-b','/dev','-b','/proc','-b','/sys','-b',home + ':/root','-w','/root',...command];
     final environment = <String,String>{'HOME':'/root','PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','TERM':Platform.environment['TERM'] ?? 'xterm-256color','LANG':Platform.environment['LANG'] ?? 'C.UTF-8'};
     return Process.start(info.executable!, args, environment: environment, runInShell: false);
   }
