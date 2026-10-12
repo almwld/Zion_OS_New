@@ -154,7 +154,18 @@ class ZionPkg {
 
   Future<String?> _which(String n) async {
     final safe = n.trim();
-    if (!RegExp(r'^[A-Za-z0-9_.+-]+
+    if (!RegExp(r'^[A-Za-z0-9_.+-]+$').hasMatch(safe)) return null;
+    for (final directory in const <String>['/system/bin', '/system/xbin']) {
+      final path = directory + '/' + safe;
+      try {
+        final stat = await File(path).stat();
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return path;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
 
   Future<bool> _file(String p) async {
     try { return (await File(p).stat()).type == FileSystemEntityType.file; } catch (_) { return false; }
