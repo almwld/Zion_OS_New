@@ -343,16 +343,23 @@ class TerminalService {
     final started = DateTime.now();
     // Create app-local terminal directories before Process.start().
     await _ensureTerminalEnvironment();
-    var shell = await _findShell();
-    final userlandMissing = shell == null || shell == '/system/bin/sh';
+    final shell = await _findShell();
     if (shell == null) {
-      _output.add('Zion Userland غير جاهز؛ سيتم تشغيل Android POSIX shell مؤقتًا بينما يجهز Userland في الخلفية.\r\n');
-      shell = '/system/bin/sh';
-    } else if (shell != '/system/bin/sh') {
-      _output.add('Zion Userland جاهز: ' + shell + '\r\n');
-    } else {
-      _output.add('Android POSIX shell جاهز: /system/bin/sh\r\n');
+      _output.add('Zion Userland غير جاهز؛ لن يتم تشغيل صدفة Android بديلة. يبدأ تجهيز Userland الموثوق في الخلفية؛ أعد فتح الطرفية بعد اكتماله.\r\n');
+      unawaited(Isolate.run(_installZionUserlandInBackground).then((message) {
+        if (!_output.isClosed) _output.add('[Userland] $message\r\n');
+      }));
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'unavailable',
+        exitCode: 127,
+        shell: 'unavailable',
+        duration: DateTime.now().difference(started),
+        interactive: false,
+      );
+      return false;
     }
+    _output.add('Zion runtime جاهز: ' + shell + '\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -381,12 +388,6 @@ class TerminalService {
       }
       _interactiveInputBuffer = '';
       _output.add('Connected to Zion Userland: $shell • PTY\r\n');
-      if (userlandMissing) {
-        // Large bootstrap download/extraction must never execute on the UI isolate.
-        unawaited(Isolate.run(_installZionUserlandInBackground).then((message) {
-          if (!_output.isClosed) _output.add('[Userland] $message\r\n');
-        }));
-      }
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
