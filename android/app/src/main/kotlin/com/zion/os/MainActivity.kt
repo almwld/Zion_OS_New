@@ -364,7 +364,7 @@ class MainActivity : FlutterFragmentActivity() {
                 // PRoot and its loader are shipped by the verified Zion Userland
                 // package, not as JNI libraries in nativeLibraryDir.
                 val proot = File(filesDir, "usr/bin/proot")
-                val loader = File(filesDir, "usr/libexec/proot-loader")
+                val loader = File(filesDir, "usr/libexec/proot")
                 if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
                 "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
             } else shell
