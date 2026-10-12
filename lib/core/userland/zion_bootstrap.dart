@@ -232,6 +232,7 @@ class ZionBootstrap {
   }
   Future<BootstrapResult> installFromArchive(String archivePath,{void Function(double,String)? onProgress}) async {
     final started=DateTime.now();
+    Directory? staging;
     try{
       onProgress?.call(0,'بدء التحقق من حزمة Zion Userland...');
       final source=File(archivePath); if(!await source.exists())return _fail('الأرشيف غير موجود.');
@@ -260,8 +261,9 @@ class ZionBootstrap {
         checked++;
       }
       if(checked!=hashes.length)return _fail('manifest يحتوي ملفات غير موجودة في الأرشيف.');
-      final staging=Directory(base+'/.bootstrap-staging-'+DateTime.now().microsecondsSinceEpoch.toString());
-      await _dirs(staging.path); var extracted=0; final links=<ArchiveFile>[];
+      final stagingDir=Directory(base+'/.bootstrap-staging-'+DateTime.now().microsecondsSinceEpoch.toString());
+      staging = stagingDir;
+      await _dirs(stagingDir.path); var extracted=0; final links=<ArchiveFile>[];
       for(final e in archive.files){
         if(e.name=='zion-manifest.json')continue;
         final p=_safe(e.name); if(p==null)return _fail('مسار غير آمن داخل الأرشيف.');
@@ -271,7 +273,7 @@ class ZionBootstrap {
           continue;
         }
         if(!e.isFile)continue;
-        final target=File(staging.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>));
+        final target=File(stagingDir.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>));
         final mode=e.unixPermissions & 0x1ff;
         if(mode!=0)await _chmod(target.path,mode);
         extracted++;
@@ -279,13 +281,13 @@ class ZionBootstrap {
       }
       for(final e in links){
         final p=_safe(e.name)!; final target=_safeLinkTarget(e.symbolicLink ?? '',p)!;
-        final link=Link(staging.path+'/'+p); await link.parent.create(recursive:true);
+        final link=Link(stagingDir.path+'/'+p); await link.parent.create(recursive:true);
         if(await link.exists())await link.delete();
         await link.create(target,recursive:true); extracted++;
       }
-      final rel=File(staging.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
+      final rel=File(stagingDir.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
       await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'abi':expectedAbi,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
-      final previousPrefix = await _activate(staging);
+      final previousPrefix = await _activate(stagingDir);
       try {
         await _config();
       } catch (_) {
@@ -304,7 +306,16 @@ class ZionBootstrap {
       _audit('userland.bootstrap.install','success',{'release':release,'files':extracted,'archiveBytes':length,'durationMs':DateTime.now().difference(started).inMilliseconds,'source':'REAL_ARCHIVE'});
       onProgress?.call(1,'اكتمل تثبيت Userland.');
       return BootstrapResult.success(installedFiles:extracted);
-    }catch(e){return _fail('فشل تثبيت Userland: '+e.toString());}
+    }catch(e){
+      return _fail('فشل تثبيت Userland: '+e.toString());
+    } finally {
+      final staged = staging;
+      if (staged != null) {
+        try {
+          if (await staged.exists()) await staged.delete(recursive: true);
+        } catch (_) {}
+      }
+    }
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','tmp','etc','usr','usr/bin','usr/sbin','usr/etc','usr/include','usr/lib','usr/libexec','usr/share','usr/tmp','usr/var','usr/var/lib','usr/var/lib/zion-pkg','usr/var/cache','usr/var/log'])await Directory(root+'/'+p).create(recursive:true);}
   static final Map<String, String> _zionApiScripts = {
