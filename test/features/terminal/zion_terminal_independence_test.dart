@@ -53,6 +53,20 @@ void main() {
       expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
     });
 
+    test('PRoot strategy drains both pipes and enforces command timeouts', () async {
+      final strategy = await File('lib/core/magiczionos/strategies/proot_strategy.dart').readAsString();
+      expect(strategy, contains('stdoutFuture'));
+      expect(strategy, contains('stderrFuture'));
+      expect(strategy, contains('timeout ?? const Duration(seconds: 30)'));
+      expect(strategy, contains('workingDirectory: workingDirectory'));
+    });
+
+    test('Linux rootfs downloads reject unsupported app architectures', () async {
+      final downloader = await File('lib/core/magiczionos/installers/rootfs_downloader.dart').readAsString();
+      expect(downloader, contains('Abi.current() != Abi.androidArm64'));
+      expect(downloader, contains('ARM64 فقط'));
+    });
+
     test('Kali PTY binds Zion home into the Linux root home', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('"-b", "/storage/emulated/0"'));

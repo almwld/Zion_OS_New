@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -29,11 +30,7 @@ class RootfsDownloader {
     return dir;
   }
 
-  String _arch() {
-    final value = Platform.environment['ZION_ROOTFS_ARCH'];
-    if (value == 'arm64' || value == 'armhf' || value == 'amd64') return value!;
-    return 'arm64';
-  }
+  String _arch() => 'arm64';
 
   (String, String) _source(ZionRootfsDistro distro) {
     final arch = _arch();
@@ -115,6 +112,12 @@ class RootfsDownloader {
     ZionRootfsDistro distro, {
     bool force = false,
   }) async {
+    if (Abi.current() != Abi.androidArm64) {
+      return const RootfsInstallResult(
+        success: false,
+        message: 'تثبيت توزيعات Linux في Zion Userland متاح حاليًا لأجهزة ARM64 فقط.',
+      );
+    }
     final rootfs = await _rootfsDir();
     final target = Directory(rootfs.path + '/' + distro.name);
     final installedRoot = Directory(target.path + '/rootfs');
