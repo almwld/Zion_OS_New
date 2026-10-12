@@ -194,7 +194,9 @@ class ProotInstaller {
       File? binary;
       await for (final entity
           in extractDir.list(recursive: true, followLinks: false)) {
-        if (entity is File && entity.uri.pathSegments.last == 'proot') {
+        if (entity is File &&
+            (entity.uri.pathSegments.last == 'proot' ||
+                entity.uri.pathSegments.last == 'proot-rs')) {
           binary = entity;
           break;
         }
