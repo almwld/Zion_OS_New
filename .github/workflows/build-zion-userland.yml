@@ -91,7 +91,7 @@ jobs:
       - name: Convert bootstrap to verified Zion archive
         shell: python
         run: |
-          import hashlib, json, os, zipfile
+          import hashlib, json, os, posixpath, zipfile
           from pathlib import Path
 
           source = Path("termux-packages/bootstrap-aarch64.zip")
@@ -127,6 +127,7 @@ jobs:
               except KeyError:
                   raw_links = ""
 
+              zion_prefix = "/data/data/com.zion.os/files/usr/"
               for line in raw_links.splitlines():
                   if "←" not in line:
                       continue
@@ -136,12 +137,32 @@ jobs:
                   while link_name.startswith("./"):
                       link_name = link_name[2:]
                   if (not link_name or link_name.startswith("/") or
-                      ".." in Path(link_name).parts or
-                      not link_target or link_target.startswith("/") or
-                      ".." in Path(link_target).parts):
-                      raise SystemExit(f"unsafe symlink: {link_target} -> {link_name}")
+                      ".." in Path(link_name).parts or not link_target):
+                      raise SystemExit(f"unsafe symlink path: {link_target} -> {link_name}")
+
                   archive_link = "usr/" + link_name
-                  # The installer validates the target stays inside usr/.
+                  # Termux's bootstrap may encode absolute targets under the
+                  # configured prefix. Convert those to relative links so the
+                  # installed tree remains relocatable and the installer can
+                  # enforce that every link resolves inside usr/.
+                  if link_target.startswith(zion_prefix):
+                      target_rel = link_target[len(zion_prefix):]
+                      if (not target_rel or target_rel.startswith("/") or
+                          ".." in Path(target_rel).parts):
+                          raise SystemExit(f"unsafe absolute symlink target: {link_target}")
+                      target_archive = "usr/" + target_rel
+                      link_target = posixpath.relpath(
+                          target_archive, posixpath.dirname(archive_link)
+                      )
+                  elif link_target.startswith("/"):
+                      raise SystemExit(f"symlink target is outside Zion prefix: {link_target}")
+
+                  resolved_target = posixpath.normpath(
+                      posixpath.join(posixpath.dirname(archive_link), link_target)
+                  )
+                  if not resolved_target.startswith("usr/") or resolved_target == "usr":
+                      raise SystemExit(f"unsafe symlink target: {link_target} -> {archive_link}")
+
                   zi = zipfile.ZipInfo(archive_link)
                   zi.create_system = 3
                   zi.external_attr = (0o120777 << 16) | 0x80000000
