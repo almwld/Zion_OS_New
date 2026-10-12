@@ -449,8 +449,8 @@ class MainActivity : FlutterFragmentActivity() {
             try { nativeStopPty(handle) } catch (_: Throwable) {}
             if (reader != null && reader !== Thread.currentThread()) {
                 try {
-                    // The native read loop is non-blocking; interruption wakes its idle backoff.
-                    reader.join(600)
+                    // The native read loop is non-blocking; wait for it to exit before the handle can be reused.
+                    reader.join()
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                 }
