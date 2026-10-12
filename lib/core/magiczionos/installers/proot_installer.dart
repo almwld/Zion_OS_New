@@ -77,9 +77,9 @@ class ProotInstaller {
       ).timeout(const Duration(seconds: 5));
       final usage = '${help.stdout}\n${help.stderr}'.toLowerCase();
       final supportsRootId = usage.contains('--root-id') ||
-          RegExp(r'(^|\\s)-0([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-0([,\s]|$)').hasMatch(usage);
       final supportsLink2Symlink = usage.contains('--link2symlink') ||
-          RegExp(r'(^|\\s)-l([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-l([,\s]|$)').hasMatch(usage);
       if (!supportsRootId || !supportsLink2Symlink) {
         return ProotInstallResult(
           success: false,

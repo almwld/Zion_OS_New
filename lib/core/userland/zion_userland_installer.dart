@@ -102,7 +102,7 @@ class ZionUserlandInstaller {
         environment: environment,
       ).timeout(const Duration(seconds: 5));
       if (version.exitCode != 0 ||
-          !('${version.stdout}\\n${version.stderr}')
+          !('${version.stdout}\n${version.stderr}')
               .toLowerCase()
               .contains('proot')) {
         return false;
@@ -113,11 +113,11 @@ class ZionUserlandInstaller {
         runInShell: false,
         environment: environment,
       ).timeout(const Duration(seconds: 5));
-      final usage = '${help.stdout}\\n${help.stderr}'.toLowerCase();
+      final usage = '${help.stdout}\n${help.stderr}'.toLowerCase();
       final rootId = usage.contains('--root-id') ||
-          RegExp(r'(^|\\s)-0([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-0([,\s]|$)').hasMatch(usage);
       final link2symlink = usage.contains('--link2symlink') ||
-          RegExp(r'(^|\\s)-l([,\\s]|$)').hasMatch(usage);
+          RegExp(r'(^|\s)-l([,\s]|$)').hasMatch(usage);
       return rootId && link2symlink;
     } catch (_) {
       return false;
