@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 
 import 'zion_bootstrap.dart';
@@ -104,8 +103,7 @@ class ZionUserlandInstaller {
         );
       }
 
-      final support = await getApplicationSupportDirectory();
-      final downloadDir = Directory('${support.path}/zion/bootstrap-downloads');
+      final downloadDir = Directory('${ZionBootstrap.base}/zion/bootstrap-downloads');
       await downloadDir.create(recursive: true);
       temp = File('${downloadDir.path}/bootstrap-$abi.download');
 

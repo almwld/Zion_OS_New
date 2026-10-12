@@ -53,6 +53,22 @@ void main() {
       expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
     });
 
+    test('Kali PTY binds Zion home into the Linux root home', () async {
+      final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      expect(native, contains('"-b", "/storage/emulated/0"'));
+      expect(native, contains('"/data/data/com.zion.os/files/home:/root"'));
+    });
+
+    test('background Userland bootstrap avoids platform-only path provider calls', () async {
+      final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      expect(installer, isNot(contains('path_provider')));
+      expect(installer, contains("Directory('${ZionBootstrap.base}/zion/bootstrap-downloads')"));
+      expect(bootstrap, contains("'/system/bin/chmod'"));
+      expect(bootstrap, contains('static Future<Directory?> _activate'));
+      expect(bootstrap, contains('previousPrefix'));
+    });
+
     test('runtime probes reject non-executable files and handle empty shared storage', () async {
       final runtime = await File('lib/features/terminal/zion_runtime_service.dart').readAsString();
       expect(runtime, contains('(stat.mode & 0x49) != 0'));

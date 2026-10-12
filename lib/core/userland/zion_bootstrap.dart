@@ -285,7 +285,22 @@ class ZionBootstrap {
       }
       final rel=File(staging.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
       await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'abi':expectedAbi,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
-      await _activate(staging); await _config();
+      final previousPrefix = await _activate(staging);
+      try {
+        await _config();
+      } catch (_) {
+        final current = Directory(prefix);
+        if (await current.exists()) {
+          try { await current.delete(recursive: true); } catch (_) {}
+        }
+        if (previousPrefix != null && await previousPrefix.exists()) {
+          try { await previousPrefix.rename(current.path); } catch (_) {}
+        }
+        rethrow;
+      }
+      if (previousPrefix != null && await previousPrefix.exists()) {
+        try { await previousPrefix.delete(recursive: true); } catch (_) {}
+      }
       _audit('userland.bootstrap.install','success',{'release':release,'files':extracted,'archiveBytes':length,'durationMs':DateTime.now().difference(started).inMilliseconds,'source':'REAL_ARCHIVE'});
       onProgress?.call(1,'اكتمل تثبيت Userland.');
       return BootstrapResult.success(installedFiles:extracted);
@@ -506,7 +521,14 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     for (final e in _zionApiScripts.entries) {
       final file = File(bin.path + '/' + e.key);
       await file.writeAsString(e.value);
-      try { await Process.run('chmod', <String>['700', file.path], runInShell: false); } catch (_) {}
+      final chmod = await Process.run(
+        '/system/bin/chmod',
+        <String>['700', file.path],
+        runInShell: false,
+      );
+      if (chmod.exitCode != 0) {
+        throw StateError('تعذر ضبط صلاحيات سكربت Zion API: ' + file.path + ': ' + chmod.stderr.toString());
+      }
     }
   }
 
@@ -533,12 +555,31 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     }
     await _installZionApiScripts();
   }
-  static Future<void> _activate(Directory staging) async {
-    final stagedPrefix=Directory(staging.path+'/usr');
-    if(!await stagedPrefix.exists())throw StateError('حزمة Userland لا تحتوي على usr صالح.');
-    final current=Directory(prefix),backup=Directory(base+'/.usr-previous-'+DateTime.now().microsecondsSinceEpoch.toString());
-    if(await current.exists())await current.rename(backup.path);
-    try{await stagedPrefix.rename(current.path);if(await backup.exists())await backup.delete(recursive:true);if(await staging.exists())await staging.delete(recursive:true);}catch(_){if(await backup.exists()&&!await current.exists())await backup.rename(current.path);if(await staging.exists())await staging.delete(recursive:true);rethrow;}
+  static Future<Directory?> _activate(Directory staging) async {
+    final stagedPrefix = Directory(staging.path + '/usr');
+    if (!await stagedPrefix.exists()) {
+      throw StateError('حزمة Userland لا تحتوي على usr صالح.');
+    }
+    final current = Directory(prefix);
+    final backup = Directory(
+      base + '/.usr-previous-' + DateTime.now().microsecondsSinceEpoch.toString(),
+    );
+    var movedPrevious = false;
+    if (await current.exists()) {
+      await current.rename(backup.path);
+      movedPrevious = true;
+    }
+    try {
+      await stagedPrefix.rename(current.path);
+    } catch (_) {
+      if (movedPrevious && await backup.exists() && !await current.exists()) {
+        await backup.rename(current.path);
+      }
+      try { if (await staging.exists()) await staging.delete(recursive: true); } catch (_) {}
+      rethrow;
+    }
+    try { if (await staging.exists()) await staging.delete(recursive: true); } catch (_) {}
+    return movedPrevious ? backup : null;
   }
   static Map<String,dynamic>? _manifest(Archive a){for(final e in a.files)if(e.isFile&&e.name=='zion-manifest.json'){try{final v=jsonDecode(utf8.decode(List<int>.from(e.content as List<int>)));return v is Map<String,dynamic>?v:null;}catch(_){return null;}}return null;}
   static String? _manifestAbi(Object? value){final v=value?.toString().trim(); if(v==null||v.isEmpty)return null; return v;}
