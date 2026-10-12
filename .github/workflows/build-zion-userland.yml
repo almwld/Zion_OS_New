@@ -73,7 +73,12 @@ jobs:
           # Zion's package bridge does not require apt/gpgv inside the bootstrap.
           # Android-10-compatible mode keeps bash/coreutils/curl while replacing
           # the heavy apt/gpgv path with the native bootstrap tooling.
-          ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10
+          # The wrapper can return non-zero after the in-container build succeeds
+          # because its optional output-copy directory is absent. Do not abort before
+          # recovering the archive; the explicit archive checks below remain fatal.
+          if ! ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10; then
+            echo "Builder wrapper reported an output-copy error; checking the container archive."
+          fi
           # Some Docker runner setups keep generated files inside the builder container
           # even though the package tree is mounted. Recover the verified archive explicitly.
           # build-bootstraps.sh attempts to move the archive into the mounted
