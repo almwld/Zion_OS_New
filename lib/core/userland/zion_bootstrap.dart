@@ -303,7 +303,7 @@ mkdir -p "$RESULTS"
 [ "$#" -le 2 ] || { echo 'Usage: zion-pkg <command> [argument]'; exit 2; }
 command="${1:-help}"
 value="${2:-}"
-id="zion-pkg-$(date +%s 2>/dev/null)-$"
+id="zion-pkg-$(date +%s 2>/dev/null)-$$"
 out="$RESULTS/$id.out"
 status="$RESULTS/$id.status"
 rm -f "$out" "$status"
