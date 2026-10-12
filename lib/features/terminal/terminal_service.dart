@@ -217,7 +217,32 @@ class TerminalService {
     final started = DateTime.now();
     Process? process;
     try {
-      process = await Process.start(shell, <String>['-c', command], runInShell: false);
+      if (shell == 'zion-kali') {
+        const proot = '/data/data/com.zion.os/files/usr/bin/proot';
+        const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+        if (!await File(proot).exists() || !await File(rootfs + '/bin/sh').exists()) {
+          throw ProcessException(proot, const <String>[], 'Kali PRoot runtime or rootfs is unavailable.', 127);
+        }
+        process = await Process.start(
+          proot,
+          <String>[
+            '--link2symlink', '-0', '-r', rootfs,
+            '-b', '/dev', '-b', '/proc', '-b', '/sys',
+            '-b', '/storage/emulated/0', '-w', '/root',
+            '/bin/sh', '-lc', command,
+          ],
+          runInShell: false,
+          environment: <String, String>{
+            'HOME': '/root',
+            'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            'TERM': 'xterm-256color',
+            'LANG': 'C.UTF-8',
+            'LC_ALL': 'C.UTF-8',
+          },
+        );
+      } else {
+        process = await Process.start(shell, <String>['-c', command], runInShell: false);
+      }
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
       final exitCode = await process.exitCode.timeout(
