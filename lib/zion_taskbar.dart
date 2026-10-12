@@ -47,7 +47,6 @@ class ZionTaskbar extends StatelessWidget {
               ),
             ),
           ),
-          ...List.generate(WindowManager.workspaceCount, (i) => _TaskbarButton(icon: Icons.workspaces, label: 'W' + (i + 1).toString(), isActive: wm.activeWorkspace == i, onTap: () => wm.switchWorkspace(i))),
           const SizedBox(width: 4),
           Expanded(child: ListView(scrollDirection: Axis.horizontal, children: windows.map((window) {
             final active = wm.activeWindowId == window.id;
