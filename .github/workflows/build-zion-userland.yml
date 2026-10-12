@@ -61,11 +61,14 @@ jobs:
           ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10
           # Some Docker runner setups keep generated files inside the builder container
           # even though the package tree is mounted. Recover the verified archive explicitly.
-          if [[ ! -s bootstrap-aarch64.zip ]]; then
-            rm -f bootstrap-aarch64.zip
-            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/termux-packages/bootstrap-aarch64.zip" ./bootstrap-aarch64.zip
+          # build-bootstraps.sh attempts to move the archive into the mounted
+          # package tree, but the builder UID cannot write there. The archive is
+          # left at the builder home; copy it to the exact path consumed below.
+          if [[ ! -s termux-packages/bootstrap-aarch64.zip ]]; then
+            mkdir -p termux-packages
+            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/bootstrap-aarch64.zip" termux-packages/bootstrap-aarch64.zip
           fi
-          test -s bootstrap-aarch64.zip
+          test -s termux-packages/bootstrap-aarch64.zip
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
