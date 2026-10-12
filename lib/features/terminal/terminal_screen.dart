@@ -350,8 +350,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     ? 'لا توجد مخرجات حديثة من الطرفية.'
                     : terminalContext;
 
-                final result = await _ai.generate(
-                  '''أنت مساعد طرفية محلي داخل Zion OS.
+                try {
+                  final result = await _ai.generate(
+                    '''أنت مساعد طرفية محلي داخل Zion OS.
 حوّل طلب المستخدم إلى مساعدة Linux عملية وآمنة.
 لا تنفذ أي أمر بنفسك.
 إذا كان الطلب يحتاج أمراً، أعد أمراً واحداً فقط داخل fenced code block بلغة bash، ثم شرحاً قصيراً بالعربية.
@@ -361,17 +362,46 @@ $contextBlock
 
 طلب المستخدم:
 $request''',
-                  maxTokens: 300,
-                  temperature: 0.25,
-                );
-                final extracted = _extractCommand(result);
-                setSheetState(() {
-                  generating = false;
-                  response = result;
-                  command = extracted != null && _isSafeSuggestedCommand(extracted)
-                      ? extracted
-                      : null;
-                });
+                    maxTokens: 300,
+                    temperature: 0.25,
+                  );
+                  if (!sheetContext.mounted) return;
+                  final extracted = _extractCommand(result);
+                  setSheetState(() {
+                    response = result;
+                    command = extracted != null && _isSafeSuggestedCommand(extracted)
+                        ? extracted
+                        : null;
+                  });
+                } on PlatformException catch (error, stackTrace) {
+                  FlutterError.reportError(FlutterErrorDetails(
+                    exception: error,
+                    stack: stackTrace,
+                    library: 'Zion local AI',
+                    context: ErrorDescription('while generating a terminal assistant response'),
+                  ));
+                  if (!sheetContext.mounted) return;
+                  setSheetState(() {
+                    response = 'تعذر تشغيل النموذج المحلي: ${error.message ?? error.code}';
+                    command = null;
+                  });
+                } catch (error, stackTrace) {
+                  FlutterError.reportError(FlutterErrorDetails(
+                    exception: error,
+                    stack: stackTrace,
+                    library: 'Zion local AI',
+                    context: ErrorDescription('while generating a terminal assistant response'),
+                  ));
+                  if (!sheetContext.mounted) return;
+                  setSheetState(() {
+                    response = 'حدث خطأ أثناء توليد الرد المحلي. تحقق من تحميل النموذج وذاكرة الجهاز.';
+                    command = null;
+                  });
+                } finally {
+                  if (sheetContext.mounted) {
+                    setSheetState(() => generating = false);
+                  }
+                }
               }
 
               return SafeArea(
