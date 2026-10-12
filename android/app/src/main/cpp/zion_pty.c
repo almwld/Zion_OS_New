@@ -67,6 +67,7 @@ static void prepare_environment(void) {
     const char *home = "/data/data/com.zion.os/files/home";
     const char *prefix = "/data/data/com.zion.os/files/usr";
     const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin";
+    const char *library_path = "/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64";
     const char *directories[] = {
         "/data/data/com.zion.os/files/home",
         "/data/data/com.zion.os/files/tmp",
@@ -93,6 +94,7 @@ static void prepare_environment(void) {
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
+    setenv("LD_LIBRARY_PATH", library_path, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     setenv("LANG", "C.UTF-8", 1);
@@ -199,7 +201,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         memcpy(kali_rootfs, sep1 + 1, rLen); kali_rootfs[rLen] = '\0';
         memcpy(kali_loader, sep2 + 1, lLen); kali_loader[lLen] = '\0';
         if (access(kali_proot, X_OK) != 0 || access(kali_rootfs, R_OK) != 0 ||
-            access(kali_loader, R_OK) != 0) return 0;
+            access(kali_loader, X_OK) != 0) return 0;
     }
 
     pthread_mutex_lock(&g_sessions_lock);
