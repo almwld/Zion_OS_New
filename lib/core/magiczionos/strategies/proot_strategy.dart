@@ -60,30 +60,31 @@ class ProotStrategy extends RootStrategyBase {
 
     Process? process;
     try {
-      process = await _proot.start(
+      final running = await _proot.start(
         _distro,
         command: <String>['/bin/bash', '-lc', command],
         workingDirectory: workingDirectory,
         environment: environment,
       );
+      process = running;
 
       // Start draining both pipes before waiting for the process. Reading one
       // pipe to completion first can deadlock when the other pipe fills.
-      final stdoutFuture = process.stdout.transform(utf8.decoder).join();
-      final stderrFuture = process.stderr.transform(utf8.decoder).join();
+      final stdoutFuture = running.stdout.transform(utf8.decoder).join();
+      final stderrFuture = running.stderr.transform(utf8.decoder).join();
       var timedOut = false;
-      final code = await process.exitCode.timeout(
+      final code = await running.exitCode.timeout(
         timeout ?? const Duration(seconds: 30),
         onTimeout: () {
           timedOut = true;
-          process?.kill(ProcessSignal.sigterm);
+          running.kill(ProcessSignal.sigterm);
           return 124;
         },
       );
 
       if (timedOut) {
         await Future<void>.delayed(const Duration(milliseconds: 250));
-        process.kill(ProcessSignal.sigkill);
+        running.kill(ProcessSignal.sigkill);
       }
 
       final out = await stdoutFuture.timeout(
