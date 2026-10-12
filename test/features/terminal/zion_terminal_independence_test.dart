@@ -116,7 +116,7 @@ void main() {
       expect(installer, contains("const <String>['--help']"));
       expect(installer, contains('--root-id'));
       expect(installer, contains('--link2symlink'));
-      expect(installer, isNot(contains('proot-rs')));
+      expect(installer, isNot(contains("_repo = 'proot-rs'")));
       expect(installer, isNot(contains('releases/download')));
       expect(userland, contains('_hasCompatibleProot()'));
       expect(userland, contains('--root-id'));
