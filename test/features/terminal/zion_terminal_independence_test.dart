@@ -172,6 +172,13 @@ void main() {
       expect(service, contains("'/bin/sh', '-lc', command"));
     });
 
+    test('bootstrap fails closed when extracted file permissions cannot be applied', () async {
+      final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      expect(source, contains("if (result.exitCode != 0)"));
+      expect(source, contains("throw FileSystemException("));
+      expect(source, isNot(contains("static Future<void> _chmod(String path,int mode) async {try{")));
+    });
+
     test('bootstrap exposes native Zion proot-distro and documented TTS command', () async {
       final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(source, contains("'proot-distro': r'''"));
