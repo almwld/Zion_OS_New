@@ -61,21 +61,150 @@ class RootfsDownloader {
     final response = await http.get(checksumUri);
     if (response.statusCode != 200) return null;
     final text = utf8.decode(response.bodyBytes);
-    final line = text
-        .split(RegExp(r'\r?\n'))
-        .firstWhere((line) => line.contains(fileName), orElse: () => '');
-    return parseChecksumLine(line, fileName);
+    for (final line in text.split(RegExp(r'\r?\n'))) {
+      final parsed = parseChecksumLine(line, fileName);
+      if (parsed != null) return parsed;
+    }
+    return null;
   }
 
   static (String algorithm, String digest)? parseChecksumLine(
     String line,
     String fileName,
   ) {
-    if (!line.contains(fileName)) return null;
-    // Match SHA-512 first: otherwise the 64-character alternative consumes
-    // the prefix of a 128-character digest and misclassifies it as SHA-256.
-    final match = RegExp(r'([a-fA-F0-9]{128}|[a-fA-F0-9]{64})').firstMatch(line);
+    // Accept standard sha256sum/sha512sum rows only, and match the complete
+    // filename. A substring check can accidentally select e.g. archive.tar.gz.sig.
+    final match = RegExp(
+      r'^\\s*([a-fA-F0-9]{128}|[a-fA-F0-9]{64})\\s+[*]?(.+?)\\s*
+  }
+
+  Future<String> _hashFile(File file, String algorithm) async {
+    final stream = file.openRead();
+    final digest = algorithm == 'sha512'
+        ? await sha512.bind(stream).first
+        : await sha256.bind(stream).first;
+    return digest.toString();
+  }
+
+  Future<bool> _downloadToFile(Uri uri, File destination) async {
+    final client = http.Client();
+    try {
+      final request = http.Request('GET', uri);
+      request.headers['Accept'] = 'application/octet-stream';
+      final response = await client.send(request);
+      if (response.statusCode != 200) return false;
+      final sink = destination.openWrite();
+      try {
+        await response.stream.pipe(sink);
+      } catch (_) {
+        await sink.close();
+        rethrow;
+      }
+      return true;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<RootfsInstallResult> install(
+    ZionRootfsDistro distro, {
+    bool force = false,
+  }) async {
+    if (Abi.current() != Abi.androidArm64) {
+      return const RootfsInstallResult(
+        success: false,
+        message: 'تثبيت توزيعات Linux في Zion Userland متاح حاليًا لأجهزة ARM64 فقط.',
+      );
+    }
+    final rootfs = await _rootfsDir();
+    final target = Directory(rootfs.path + '/' + distro.name);
+    final installedRoot = Directory(target.path + '/rootfs');
+    if (await File(installedRoot.path + '/bin/sh').exists() && !force &&
+        await File(target.path + '/.zion-rootfs.json').exists()) {
+      return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: installedRoot.path);
+    }
+
+    final source = _source(distro);
+    final uri = Uri.parse(source.$1);
+    final fileName = uri.pathSegments.last;
+    final checksum = await _expectedChecksum(Uri.parse(source.$2), fileName);
+    if (checksum == null) {
+      return RootfsInstallResult(
+        success: false,
+        message: 'تعذر الحصول على checksum الرسمي لـ ' + fileName + '؛ لم يتم التثبيت.',
+      );
+    }
+
+    final support = await getApplicationSupportDirectory();
+    final temp = Directory(support.path + '/.rootfs-' + distro.name + '-' + DateTime.now().microsecondsSinceEpoch.toString());
+    await temp.create(recursive: true);
+    try {
+      final archiveFile = File(temp.path + '/' + fileName);
+      if (!await _downloadToFile(uri, archiveFile)) {
+        return RootfsInstallResult(success: false, message: 'فشل تنزيل ' + fileName + '.');
+      }
+      final actual = await _hashFile(archiveFile, checksum.$1);
+      if (actual != checksum.$2) {
+        return const RootfsInstallResult(success: false, message: 'فشل تحقق checksum الرسمي للـ rootfs.');
+      }
+
+      final staging = Directory(temp.path + '/staging');
+      await staging.create(recursive: true);
+      await extractFileToDisk(archiveFile.path, staging.path);
+      final entries = staging.listSync(followLinks: false);
+      final sourceDir = entries.length == 1 && entries.first is Directory ? entries.first as Directory : staging;
+      if (!await File(sourceDir.path + '/bin/sh').exists()) {
+        return RootfsInstallResult(
+          success: false,
+          message: 'الأرشيف الذي تم التحقق منه لا يحتوي على /bin/sh؛ تم الحفاظ على النظام المثبت سابقاً.',
+        );
+      }
+
+      final backup = Directory(
+        rootfs.path + '/.' + distro.name + '.backup-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
+      );
+      var movedPrevious = false;
+      var newTargetCreated = false;
+      final rootfsTarget = Directory(target.path + '/rootfs');
+      try {
+        if (await target.exists()) {
+          await target.rename(backup.path);
+          movedPrevious = true;
+        }
+        newTargetCreated = true;
+        await target.create(recursive: true);
+        await sourceDir.rename(rootfsTarget.path);
+        await File(target.path + '/.zion-rootfs.json').writeAsString(
+          jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
+          flush: true,
+        );
+      } catch (error) {
+        if (newTargetCreated && await target.exists()) {
+          try { await target.delete(recursive: true); } catch (_) {}
+        }
+        if (movedPrevious && await backup.exists()) {
+          try { await backup.rename(target.path); } catch (_) {}
+        }
+        return RootfsInstallResult(
+          success: false,
+          message: 'تعذر تفعيل rootfs الجديد؛ تمت محاولة استعادة النسخة السابقة: ' + error.toString(),
+        );
+      }
+      if (movedPrevious && await backup.exists()) {
+        try { await backup.delete(recursive: true); } catch (_) {}
+      }
+      return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: rootfsTarget.path);
+    } finally {
+      try { await temp.delete(recursive: true); } catch (_) {}
+    }
+  }
+}
+,
+    ).firstMatch(line);
     if (match == null) return null;
+    final listedName = match.group(2)!.trim();
+    if (listedName != fileName && listedName != './' + fileName) return null;
     final digest = match.group(1)!.toLowerCase();
     return digest.length == 128 ? ('sha512', digest) : ('sha256', digest);
   }
