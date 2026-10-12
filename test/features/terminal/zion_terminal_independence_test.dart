@@ -20,8 +20,7 @@ void main() {
     test('PRoot resolver has no external terminal-app or host install paths', () async {
       final source = await File('lib/core/services/kali_loader_service.dart').readAsString();
       expect(source, isNot(contains('/data/data/com.termux')));
-      expect(source, contains('PREFIX="\${PREFIX:-/data/data/com.zion.os/files/usr}"'));
-      expect(source, contains('PROOT="\$PREFIX/bin/proot"'));
+      expect(source, contains('/data/data/com.zion.os/files/usr/bin/proot'));
     });
 
     test('device commands use the native Zion API channel', () async {
@@ -98,7 +97,8 @@ void main() {
       final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(source, contains("'proot-distro': r'''"));
       expect(source, contains("'zion-api-tts': r'''"));
-      expect(source, contains('/data/data/com.zion.os/files/usr/bin/proot'));
+      expect(source, contains('PREFIX="\${PREFIX:-/data/data/com.zion.os/files/usr}"'));
+      expect(source, contains('PROOT="\$PREFIX/bin/proot"'));
       expect(source, isNot(contains('/data/data/com.termux')));
     });
   });
