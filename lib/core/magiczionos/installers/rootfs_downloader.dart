@@ -121,7 +121,7 @@ class RootfsDownloader {
     final rootfs = await _rootfsDir();
     final target = Directory(rootfs.path + '/' + distro.name);
     final installedRoot = Directory(target.path + '/rootfs');
-    if (await installedRoot.exists() && !force &&
+    if (await File(installedRoot.path + '/bin/sh').exists() && !force &&
         await File(target.path + '/.zion-rootfs.json').exists()) {
       return RootfsInstallResult(success: true, message: distro.name + ' موجودة فعلاً.', path: installedRoot.path);
     }
