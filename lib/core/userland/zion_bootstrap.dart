@@ -585,7 +585,19 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
   static String? _manifestAbi(Object? value){final v=value?.toString().trim(); if(v==null||v.isEmpty)return null; return v;}
   static String _normalizedAbi(Abi abi){if(abi==Abi.androidArm64)return 'aarch64';return abi.toString();}
   static String? _safeLinkTarget(String target,String linkPath){if(target.isEmpty||target.startsWith('/')||target.startsWith(r'\\'))return null;final linkParts=linkPath.split('/').toList()..removeLast();final combined=<String>[...linkParts,...target.replaceAll(r'\\','/').split('/')];final normalized=<String>[];for(final part in combined){if(part.isEmpty||part=='.')continue;if(part=='..'){if(normalized.isEmpty)return null;normalized.removeLast();}else{normalized.add(part);}}final resolved=normalized.join('/');if(!resolved.startsWith('usr/'))return null;return target;}
-  static Future<void> _chmod(String path,int mode) async {try{await Process.run('/system/bin/chmod',[mode.toRadixString(8),path],runInShell:false);}catch(_){}}
+  static Future<void> _chmod(String path, int mode) async {
+    final result = await Process.run(
+      '/system/bin/chmod',
+      <String>[mode.toRadixString(8), path],
+      runInShell: false,
+    );
+    if (result.exitCode != 0) {
+      throw FileSystemException(
+        'تعذر ضبط صلاحيات ملف Userland: ${result.stderr}',
+        path,
+      );
+    }
+  }
   static Map<String,String>? _hashes(Object? v){if(v is! Map)return null;final out=<String,String>{};for(final x in v.entries){final p=_safe(x.key.toString()),h=x.value.toString();if(p==null||!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(h))return null;out[p]=h;}return out;}
   static String? _safe(String path){if(path.isEmpty||path.startsWith('/')||path.startsWith(r'\'))return null;final n=path.replaceAll(r'\','/'),parts=n.split('/');if(parts.any((p)=>p.isEmpty||p=='.'||p=='..'))return null;return const {'usr','home','tmp','etc'}.contains(parts.first)?n:null;}
   BootstrapResult _fail(String m){_audit('userland.bootstrap.install','failed',{'error':m,'source':'REAL_ARCHIVE'});return BootstrapResult.failure(m);}
