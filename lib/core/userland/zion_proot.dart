@@ -134,6 +134,9 @@ class ZionProot {
       'LC_ALL': Platform.environment['LC_ALL'] ?? 'C.UTF-8',
       'TMPDIR': '/tmp',
       'SHELL': '/bin/bash',
+      // The host-side PRoot executable may load shared libraries from Zion
+      // Userland; PRoot's guest can still fall back to its own system paths.
+      'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
     };
     if (environment != null) processEnvironment.addAll(environment);
 
