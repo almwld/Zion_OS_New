@@ -361,9 +361,11 @@ class MainActivity : FlutterFragmentActivity() {
             if (!nativePtyAvailable()) return 0
             val nativeShell = if (shell == "zion-kali") {
                 val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
-                val proot = File(applicationInfo.nativeLibraryDir, "libproot.so")
-                val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
-                if (!rootfs.exists() || !proot.exists() || !loader.exists()) return 0
+                // PRoot and its loader are shipped by the verified Zion Userland
+                // package, not as JNI libraries in nativeLibraryDir.
+                val proot = File(filesDir, "usr/bin/proot")
+                val loader = File(filesDir, "usr/libexec/proot-loader")
+                if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
                 "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
             } else shell
 
