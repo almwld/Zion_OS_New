@@ -162,8 +162,8 @@ class RootfsDownloader {
           await target.rename(backup.path);
           movedPrevious = true;
         }
-        await target.create(recursive: true);
         newTargetCreated = true;
+        await target.create(recursive: true);
         await sourceDir.rename(rootfsTarget.path);
         await File(target.path + '/.zion-rootfs.json').writeAsString(
           jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),

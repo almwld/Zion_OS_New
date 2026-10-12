@@ -153,14 +153,63 @@ class ZionPkg {
   Future<String> _sha256(File file) async => (await sha256.bind(file.openRead()).first).toString();
 
   Future<String?> _which(String n) async {
-    try {
-      final safe = n.replaceAll(RegExp(r'[^A-Za-z0-9_.+-]'), '');
-      if (safe.isEmpty) return null;
-      final r = await Process.run('/system/bin/sh', ['-c', 'command -v ' + safe], runInShell: false);
-      if (r.exitCode != 0) return null;
-      final v = r.stdout.toString().trim();
-      return v.isEmpty ? null : v;
-    } catch (_) { return null; }
+    final safe = n.trim();
+    if (!RegExp(r'^[A-Za-z0-9_.+-]+
+
+  Future<bool> _file(String p) async {
+    try { return (await File(p).stat()).type == FileSystemEntityType.file; } catch (_) { return false; }
+  }
+
+  Map<String, String> _env() => {
+    'PREFIX': prefix,
+    'HOME': home,
+    'PATH': prefix + '/bin:' + prefix + '/sbin',
+    'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
+    'TMPDIR': prefix + '/tmp',
+    'LANG': 'C.UTF-8',
+    'LC_ALL': 'C.UTF-8',
+    'DEBIAN_FRONTEND': 'noninteractive',
+  };
+
+  Future<void> _record(PackageInfo i) async {
+    final p = (await getInstalledPackages()).toList()..removeWhere((x) => x.name == i.name)..add(i);
+    final f = File(dbPath);
+    await f.parent.create(recursive: true);
+    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(p.map((x) => x.toJson()).toList()));
+  }
+
+  Future<void> _remove(String n) async {
+    final p = (await getInstalledPackages()).where((x) => x.name != n).toList();
+    final f = File(dbPath);
+    await f.parent.create(recursive: true);
+    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(p.map((x) => x.toJson()).toList()));
+  }
+
+  PkgResult _notConfigured(String m) {
+    _audit('userland.pkg.operation', 'not-configured', {'reason': m});
+    return PkgResult.failure('NOT_CONFIGURED: ' + m);
+  }
+
+  PkgResult _fail(String m) {
+    _audit('userland.pkg.operation', 'failed', {'error': m});
+    return PkgResult.failure(m);
+  }
+
+  void _audit(String a, String o, Map<String, Object?> m) {
+    _securityCore?.auditLogger.log(action: a, actor: 'zion-pkg', outcome: o, target: 'local-userland', metadata: m);
+  }
+}
+).hasMatch(safe)) return null;
+    for (final directory in const <String>['/system/bin', '/system/xbin']) {
+      final path = directory + '/' + safe;
+      try {
+        final stat = await File(path).stat();
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return path;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   Future<bool> _file(String p) async {
@@ -170,8 +219,12 @@ class ZionPkg {
   Map<String, String> _env() => {
     'PREFIX': prefix,
     'HOME': home,
-    'PATH': prefix + '/bin:'+prefix+'/sbin',
+    'PATH': prefix + '/bin:' + prefix + '/sbin',
+    'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
     'TMPDIR': prefix + '/tmp',
+    'LANG': 'C.UTF-8',
+    'LC_ALL': 'C.UTF-8',
+    'DEBIAN_FRONTEND': 'noninteractive',
   };
 
   Future<void> _record(PackageInfo i) async {

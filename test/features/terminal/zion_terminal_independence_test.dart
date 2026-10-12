@@ -63,10 +63,18 @@ void main() {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(installer, isNot(contains('path_provider')));
-      expect(installer, contains("Directory('${ZionBootstrap.base}/zion/bootstrap-downloads')"));
+      expect(installer, contains(r"Directory('${ZionBootstrap.base}/zion/bootstrap-downloads')"));
       expect(bootstrap, contains("'/system/bin/chmod'"));
       expect(bootstrap, contains('static Future<Directory?> _activate'));
       expect(bootstrap, contains('previousPrefix'));
+    });
+
+    test('Zion Pkg uses Userland libraries and never shells out for host command lookup', () async {
+      final pkg = await File('lib/core/userland/zion_pkg.dart').readAsString();
+      expect(pkg, contains("'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64'"));
+      expect(pkg, contains("'DEBIAN_FRONTEND': 'noninteractive'"));
+      expect(pkg, isNot(contains("Process.run('/system/bin/sh'")));
+      expect(pkg, contains("const <String>['/system/bin', '/system/xbin']"));
     });
 
     test('runtime probes reject non-executable files and handle empty shared storage', () async {
