@@ -62,6 +62,8 @@ void main() {
       expect(downloader, contains('ZionProot.distroRoot'));
       expect(downloader, contains("'/rootfs'"));
       expect(runtime, contains("distroRoot + '/' + distro.name + '/rootfs'"));
+      expect(runtime, contains("home + ':/root'"));
+      expect(runtime, contains("'--link2symlink'"));
     });
 
     test('proot-distro shell wrapper passes syntax and runs through a Zion PRoot path', () async {
