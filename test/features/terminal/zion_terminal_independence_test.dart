@@ -35,6 +35,23 @@ void main() {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(source, isNot(contains('TERMUX_HOME')));
       expect(source, contains('ZION_TERMINAL'));
+      expect(source, isNot(contains('/system/bin/sh')));
+      expect(source, isNot(contains('android-posix')));
+    });
+
+    test('terminal never silently falls back to Android host shell', () async {
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      final capabilities = await File('lib/features/terminal/terminal_capabilities.dart').readAsString();
+      expect(service, isNot(contains("const androidShell = '/system/bin/sh'")));
+      expect(capabilities, contains('NO HOST-SHELL FALLBACK'));
+      expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
+    });
+
+    test('existing PRoot binaries are checked before being accepted', () async {
+      final installer = await File('lib/core/magiczionos/installers/proot_installer.dart').readAsString();
+      expect(installer, contains('if (await _isRunnable(target))'));
+      expect(installer, contains("const ['--version']"));
+      expect(installer, contains('تعذر استبداله'));
     });
 
     test('Linux rootfs installer uses the same canonical root as Zion PRoot', () async {
