@@ -203,7 +203,11 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // TabBar requires a controller. Without DefaultTabController this screen
+    // can fail during its first build, which appears as a blank white window.
+    return DefaultTabController(
+      length: _tools.length,
+      child: Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: const Text('Network Tools', style: TextStyle(color: Color(0xFF00BCD4))),
@@ -252,6 +256,7 @@ class _NetworkToolsAppState extends State<NetworkToolsApp> {
           ),
           ),
         ],
+      ),
       ),
     );
   }
