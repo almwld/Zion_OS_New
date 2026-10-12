@@ -32,9 +32,24 @@ jobs:
           s = s.replace('TERMUX__NAME="Termux"', 'TERMUX__NAME="Zion"')
           s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
           p.write_text(s)
+
+          # Upstream now ships the bzip2 command as a subpackage of libbz2.
+          # The bootstrap script's old top-level package name fails on current master.
+          bootstrap = Path("scripts/build-bootstraps.sh")
+          bootstrap_source = bootstrap.read_text()
+          old = 'PACKAGES+=("bzip2")'
+          if old not in bootstrap_source:
+              raise SystemExit("Expected upstream bootstrap bzip2 entry was not found")
+          bootstrap.write_text(bootstrap_source.replace(old, 'PACKAGES+=("libbz2")', 1))
           PY
           # Keep the bootstrap based on the current upstream Termux package tree;
-          # no fork-specific source checksum patches are required.
+          # apply only the package-name migration needed by the current bootstrap script.
+          # The container's builder UID differs from the GitHub runner UID.
+          # build-bootstraps.sh writes bootstrap-aarch64.zip into this mounted
+          # directory after compilation, so make only this disposable CI checkout
+          # writable to the container user; otherwise the build succeeds but the
+          # final archive move fails with Permission denied.
+          chmod 777 "$PWD"
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
@@ -44,6 +59,16 @@ jobs:
           # Android-10-compatible mode keeps bash/coreutils/curl while replacing
           # the heavy apt/gpgv path with the native bootstrap tooling.
           ./scripts/run-docker.sh ./scripts/build-bootstraps.sh --architectures aarch64 --android10
+          # Some Docker runner setups keep generated files inside the builder container
+          # even though the package tree is mounted. Recover the verified archive explicitly.
+          # build-bootstraps.sh attempts to move the archive into the mounted
+          # package tree, but the builder UID cannot write there. The archive is
+          # left at the builder home; copy it to the exact path consumed below.
+          if [[ ! -s termux-packages/bootstrap-aarch64.zip ]]; then
+            mkdir -p termux-packages
+            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/bootstrap-aarch64.zip" termux-packages/bootstrap-aarch64.zip
+          fi
+          test -s termux-packages/bootstrap-aarch64.zip
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
@@ -147,6 +172,7 @@ jobs:
           )
 
       - name: Publish Userland release
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

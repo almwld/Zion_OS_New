@@ -63,21 +63,15 @@ class ExternalRuntimeStatus {
 class ExternalSystems {
   Future<List<ExternalRuntimeStatus>> probe() async => [
         await _probePath('Zion Userland', ZionBootstrap.prefix + '/etc/zion-release.json'),
-        await _probePath('Zion zion-pkg', ZionBootstrap.prefix + '/bin/zion-pkg'),
+        await _probePath('Zion Package Manager', ZionBootstrap.prefix + '/bin/zion-pkg'),
         await _probePath('Zion API', ZionBootstrap.prefix + '/bin/zion-api-battery'),
         await _probePath('Zion PRoot', ZionBootstrap.prefix + '/bin/proot'),
-        await _probeCommand('Termux', '/data/data/com.termux/files/usr/bin/sh', const ['-c', 'printf ok']),
-        await _probeCommand('Kali filesystem', '/bin/sh', const ['-c', 'test -f /etc/os-release && grep -qi kali /etc/os-release']),
-        await _probePath('Ubuntu', '/etc/ubuntu-release'),
-        await _probePath('Debian', '/etc/debian_version'),
-        await _probePath('Alpine', '/etc/alpine-release'),
-        await _probePath('Arch Linux', '/etc/arch-release'),
+        await _probePath('Zion Kali rootfs', '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs/etc/os-release'),
+        await _probePath('Zion Ubuntu rootfs', '/data/data/com.zion.os/files/home/.zion/dists/ubuntu/rootfs/etc/os-release'),
+        await _probePath('Zion Debian rootfs', '/data/data/com.zion.os/files/home/.zion/dists/debian/rootfs/etc/os-release'),
+        await _probePath('Zion Alpine rootfs', '/data/data/com.zion.os/files/home/.zion/dists/alpine/rootfs/etc/os-release'),
+        await _probePath('Zion Arch rootfs', '/data/data/com.zion.os/files/home/.zion/dists/arch/rootfs/etc/os-release'),
       ];
-
-  Future<ExternalRuntimeStatus> _probeCommand(String name, String executable, List<String> args) async {
-    try { final r = await Process.run(executable, args); return ExternalRuntimeStatus(name, r.exitCode == 0, 'exit=${r.exitCode}'); }
-    catch (e) { return ExternalRuntimeStatus(name, false, 'UNAVAILABLE: $e'); }
-  }
   Future<ExternalRuntimeStatus> _probePath(String name, String path) async {
     final exists = await File(path).exists();
     return ExternalRuntimeStatus(name, exists, exists ? path : 'UNAVAILABLE: marker not found');

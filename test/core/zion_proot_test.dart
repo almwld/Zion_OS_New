@@ -7,7 +7,7 @@ void main() {
     expect(proot.validateDistro('ubuntu'), 'ubuntu');
     expect(proot.validateDistro('Debian'), 'debian');
     expect(proot.validateDistro('kali'), 'kali');
-    expect(proot.validateDistro('arch'), 'arch');
+    expect(proot.validateDistro('arch'), isNull);
     expect(proot.validateDistro('alpine'), 'alpine');
     expect(proot.validateDistro('fedora'), isNull);
   });

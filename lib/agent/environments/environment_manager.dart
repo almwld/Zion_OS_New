@@ -19,7 +19,7 @@ class AgentEnvironment {
 
   Future<ProcessResult> runProcess(String executable,List<String> args,{Duration timeout=const Duration(seconds:60)}) async {
     final p=await Process.start(executable,args,workingDirectory:root.path,environment:{
-      'HOME':root.path,'TMPDIR':cacheDir.path,'PYTHONUSERBASE':root.path,'PATH':'/system/bin:/system/xbin:/data/data/com.termux/files/usr/bin',
+      'HOME':root.path,'TMPDIR':cacheDir.path,'PYTHONUSERBASE':root.path,'PATH':'/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin',
     });
     final out=StringBuffer(),err=StringBuffer();
     p.stdout.transform(SystemEncoding().decoder).listen(out.write);

@@ -232,6 +232,7 @@ class ZionBootstrap {
   }
   Future<BootstrapResult> installFromArchive(String archivePath,{void Function(double,String)? onProgress}) async {
     final started=DateTime.now();
+    Directory? staging;
     try{
       onProgress?.call(0,'بدء التحقق من حزمة Zion Userland...');
       final source=File(archivePath); if(!await source.exists())return _fail('الأرشيف غير موجود.');
@@ -260,8 +261,9 @@ class ZionBootstrap {
         checked++;
       }
       if(checked!=hashes.length)return _fail('manifest يحتوي ملفات غير موجودة في الأرشيف.');
-      final staging=Directory(base+'/.bootstrap-staging-'+DateTime.now().microsecondsSinceEpoch.toString());
-      await _dirs(staging.path); var extracted=0; final links=<ArchiveFile>[];
+      final stagingDir=Directory(base+'/.bootstrap-staging-'+DateTime.now().microsecondsSinceEpoch.toString());
+      staging = stagingDir;
+      await _dirs(stagingDir.path); var extracted=0; final links=<ArchiveFile>[];
       for(final e in archive.files){
         if(e.name=='zion-manifest.json')continue;
         final p=_safe(e.name); if(p==null)return _fail('مسار غير آمن داخل الأرشيف.');
@@ -271,7 +273,7 @@ class ZionBootstrap {
           continue;
         }
         if(!e.isFile)continue;
-        final target=File(staging.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>));
+        final target=File(stagingDir.path+'/'+p); await target.parent.create(recursive:true); await target.writeAsBytes(List<int>.from(e.content as List<int>));
         final mode=e.unixPermissions & 0x1ff;
         if(mode!=0)await _chmod(target.path,mode);
         extracted++;
@@ -279,17 +281,41 @@ class ZionBootstrap {
       }
       for(final e in links){
         final p=_safe(e.name)!; final target=_safeLinkTarget(e.symbolicLink ?? '',p)!;
-        final link=Link(staging.path+'/'+p); await link.parent.create(recursive:true);
+        final link=Link(stagingDir.path+'/'+p); await link.parent.create(recursive:true);
         if(await link.exists())await link.delete();
         await link.create(target,recursive:true); extracted++;
       }
-      final rel=File(staging.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
+      final rel=File(stagingDir.path+'/usr/etc/zion-release.json'); await rel.parent.create(recursive:true);
       await rel.writeAsString(jsonEncode({'format':'zion-userland-v1','release':release,'abi':expectedAbi,'installedAt':DateTime.now().toUtc().toIso8601String(),'manifestSha256':sha256.convert(utf8.encode(jsonEncode(manifest))).toString()}));
-      await _activate(staging); await _config();
+      final previousPrefix = await _activate(stagingDir);
+      try {
+        await _config();
+      } catch (_) {
+        final current = Directory(prefix);
+        if (await current.exists()) {
+          try { await current.delete(recursive: true); } catch (_) {}
+        }
+        if (previousPrefix != null && await previousPrefix.exists()) {
+          try { await previousPrefix.rename(current.path); } catch (_) {}
+        }
+        rethrow;
+      }
+      if (previousPrefix != null && await previousPrefix.exists()) {
+        try { await previousPrefix.delete(recursive: true); } catch (_) {}
+      }
       _audit('userland.bootstrap.install','success',{'release':release,'files':extracted,'archiveBytes':length,'durationMs':DateTime.now().difference(started).inMilliseconds,'source':'REAL_ARCHIVE'});
       onProgress?.call(1,'اكتمل تثبيت Userland.');
       return BootstrapResult.success(installedFiles:extracted);
-    }catch(e){return _fail('فشل تثبيت Userland: '+e.toString());}
+    }catch(e){
+      return _fail('فشل تثبيت Userland: '+e.toString());
+    } finally {
+      final staged = staging;
+      if (staged != null) {
+        try {
+          if (await staged.exists()) await staged.delete(recursive: true);
+        } catch (_) {}
+      }
+    }
   }
   static Future<void> _dirs(String root) async {for(final p in ['home','tmp','etc','usr','usr/bin','usr/sbin','usr/etc','usr/include','usr/lib','usr/libexec','usr/share','usr/tmp','usr/var','usr/var/lib','usr/var/lib/zion-pkg','usr/var/cache','usr/var/log'])await Directory(root+'/'+p).create(recursive:true);}
   static final Map<String, String> _zionApiScripts = {
@@ -303,7 +329,7 @@ mkdir -p "$RESULTS"
 [ "$#" -le 2 ] || { echo 'Usage: zion-pkg <command> [argument]'; exit 2; }
 command="${1:-help}"
 value="${2:-}"
-id="zion-pkg-$(date +%s 2>/dev/null)-$"
+id="zion-pkg-$(date +%s 2>/dev/null)-$$"
 out="$RESULTS/$id.out"
 status="$RESULTS/$id.status"
 rm -f "$out" "$status"
@@ -447,6 +473,54 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" wake-lo
     'zion-api-job-scheduler': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" job-scheduler --ei jobId "${1:-1}" --el delayMs "${2:-1000}"
 ''',
+    'proot-distro': r'''#!/data/data/com.zion.os/files/usr/bin/bash
+set -eu
+PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"
+HOME="${HOME:-/data/data/com.zion.os/files/home}"
+PROOT="$PREFIX/bin/proot"
+DISTROOT="$HOME/.zion/dists"
+command="${1:-help}"
+case "$command" in
+  list)
+    for distro in ubuntu debian alpine kali; do
+      if [ -x "$DISTROOT/$distro/rootfs/bin/sh" ]; then
+        printf "%s\tinstalled\n" "$distro"
+      else
+        printf "%s\tnot-installed\n" "$distro"
+      fi
+    done
+    ;;
+  login)
+    distro="${2:-}"
+    case "$distro" in ubuntu|debian|alpine|kali) ;; *) echo "Usage: proot-distro login <ubuntu|debian|alpine|kali> [-- command]"; exit 2 ;; esac
+    rootfs="$DISTROOT/$distro/rootfs"
+    [ -x "$PROOT" ] || { echo "UNAVAILABLE: Zion PRoot is not installed at $PROOT"; exit 127; }
+    [ -x "$rootfs/bin/sh" ] || { echo "UNAVAILABLE: $distro rootfs is not installed. Install it from Zion OS > Linux Distributions."; exit 127; }
+    shift 2
+    [ "${1:-}" != "--" ] || shift
+    if [ "$#" -gt 0 ]; then
+      exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/sh -lc "$*"
+    fi
+    if [ -x "$rootfs/bin/bash" ]; then
+      exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/bash -l
+    fi
+    exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/sh -l
+    ;;
+  install)
+    distro="${2:-}"
+    case "$distro" in ubuntu|debian|alpine|kali) ;; *) echo "Usage: proot-distro install <ubuntu|debian|alpine|kali>"; exit 2 ;; esac
+    echo "UNAVAILABLE: install $distro from Zion OS > Linux Distributions; the CLI will not download an unverified archive."
+    exit 127
+    ;;
+  *)
+    echo "Zion proot-distro: list | login <ubuntu|debian|alpine|kali> [-- command] | install <distro>"
+    exit 2
+    ;;
+esac
+''',
+    'zion-api-tts': r'''#!/data/data/com.zion.os/files/usr/bin/bash
+exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" tts-speak --es text "$*"
+''',
     'zion-api-brightness': r'''#!/data/data/com.zion.os/files/usr/bin/bash
 exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightness --ei value "${1:?value 0..255 required}"
 ''',
@@ -458,7 +532,14 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     for (final e in _zionApiScripts.entries) {
       final file = File(bin.path + '/' + e.key);
       await file.writeAsString(e.value);
-      try { await Process.run('chmod', <String>['700', file.path], runInShell: false); } catch (_) {}
+      final chmod = await Process.run(
+        '/system/bin/chmod',
+        <String>['700', file.path],
+        runInShell: false,
+      );
+      if (chmod.exitCode != 0) {
+        throw StateError('تعذر ضبط صلاحيات سكربت Zion API: ' + file.path + ': ' + chmod.stderr.toString());
+      }
     }
   }
 
@@ -485,18 +566,49 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
     }
     await _installZionApiScripts();
   }
-  static Future<void> _activate(Directory staging) async {
-    final stagedPrefix=Directory(staging.path+'/usr');
-    if(!await stagedPrefix.exists())throw StateError('حزمة Userland لا تحتوي على usr صالح.');
-    final current=Directory(prefix),backup=Directory(base+'/.usr-previous-'+DateTime.now().microsecondsSinceEpoch.toString());
-    if(await current.exists())await current.rename(backup.path);
-    try{await stagedPrefix.rename(current.path);if(await backup.exists())await backup.delete(recursive:true);if(await staging.exists())await staging.delete(recursive:true);}catch(_){if(await backup.exists()&&!await current.exists())await backup.rename(current.path);if(await staging.exists())await staging.delete(recursive:true);rethrow;}
+  static Future<Directory?> _activate(Directory staging) async {
+    final stagedPrefix = Directory(staging.path + '/usr');
+    if (!await stagedPrefix.exists()) {
+      throw StateError('حزمة Userland لا تحتوي على usr صالح.');
+    }
+    final current = Directory(prefix);
+    final backup = Directory(
+      base + '/.usr-previous-' + DateTime.now().microsecondsSinceEpoch.toString(),
+    );
+    var movedPrevious = false;
+    if (await current.exists()) {
+      await current.rename(backup.path);
+      movedPrevious = true;
+    }
+    try {
+      await stagedPrefix.rename(current.path);
+    } catch (_) {
+      if (movedPrevious && await backup.exists() && !await current.exists()) {
+        await backup.rename(current.path);
+      }
+      try { if (await staging.exists()) await staging.delete(recursive: true); } catch (_) {}
+      rethrow;
+    }
+    try { if (await staging.exists()) await staging.delete(recursive: true); } catch (_) {}
+    return movedPrevious ? backup : null;
   }
   static Map<String,dynamic>? _manifest(Archive a){for(final e in a.files)if(e.isFile&&e.name=='zion-manifest.json'){try{final v=jsonDecode(utf8.decode(List<int>.from(e.content as List<int>)));return v is Map<String,dynamic>?v:null;}catch(_){return null;}}return null;}
   static String? _manifestAbi(Object? value){final v=value?.toString().trim(); if(v==null||v.isEmpty)return null; return v;}
   static String _normalizedAbi(Abi abi){if(abi==Abi.androidArm64)return 'aarch64';return abi.toString();}
   static String? _safeLinkTarget(String target,String linkPath){if(target.isEmpty||target.startsWith('/')||target.startsWith(r'\\'))return null;final linkParts=linkPath.split('/').toList()..removeLast();final combined=<String>[...linkParts,...target.replaceAll(r'\\','/').split('/')];final normalized=<String>[];for(final part in combined){if(part.isEmpty||part=='.')continue;if(part=='..'){if(normalized.isEmpty)return null;normalized.removeLast();}else{normalized.add(part);}}final resolved=normalized.join('/');if(!resolved.startsWith('usr/'))return null;return target;}
-  static Future<void> _chmod(String path,int mode) async {try{await Process.run('/system/bin/chmod',[mode.toRadixString(8),path],runInShell:false);}catch(_){}}
+  static Future<void> _chmod(String path, int mode) async {
+    final result = await Process.run(
+      '/system/bin/chmod',
+      <String>[mode.toRadixString(8), path],
+      runInShell: false,
+    );
+    if (result.exitCode != 0) {
+      throw FileSystemException(
+        'تعذر ضبط صلاحيات ملف Userland: ${result.stderr}',
+        path,
+      );
+    }
+  }
   static Map<String,String>? _hashes(Object? v){if(v is! Map)return null;final out=<String,String>{};for(final x in v.entries){final p=_safe(x.key.toString()),h=x.value.toString();if(p==null||!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(h))return null;out[p]=h;}return out;}
   static String? _safe(String path){if(path.isEmpty||path.startsWith('/')||path.startsWith(r'\'))return null;final n=path.replaceAll(r'\','/'),parts=n.split('/');if(parts.any((p)=>p.isEmpty||p=='.'||p=='..'))return null;return const {'usr','home','tmp','etc'}.contains(parts.first)?n:null;}
   BootstrapResult _fail(String m){_audit('userland.bootstrap.install','failed',{'error':m,'source':'REAL_ARCHIVE'});return BootstrapResult.failure(m);}

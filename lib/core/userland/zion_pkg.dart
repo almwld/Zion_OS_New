@@ -153,14 +153,18 @@ class ZionPkg {
   Future<String> _sha256(File file) async => (await sha256.bind(file.openRead()).first).toString();
 
   Future<String?> _which(String n) async {
-    try {
-      final safe = n.replaceAll(RegExp(r'[^A-Za-z0-9_.+-]'), '');
-      if (safe.isEmpty) return null;
-      final r = await Process.run('/system/bin/sh', ['-c', 'command -v ' + safe], runInShell: false);
-      if (r.exitCode != 0) return null;
-      final v = r.stdout.toString().trim();
-      return v.isEmpty ? null : v;
-    } catch (_) { return null; }
+    final safe = n.trim();
+    if (!RegExp(r'^[A-Za-z0-9_.+-]+$').hasMatch(safe)) return null;
+    for (final directory in const <String>['/system/bin', '/system/xbin']) {
+      final path = directory + '/' + safe;
+      try {
+        final stat = await File(path).stat();
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return path;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   Future<bool> _file(String p) async {
@@ -170,8 +174,12 @@ class ZionPkg {
   Map<String, String> _env() => {
     'PREFIX': prefix,
     'HOME': home,
-    'PATH': prefix + '/bin:'+prefix+'/sbin',
+    'PATH': prefix + '/bin:' + prefix + '/sbin',
+    'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
     'TMPDIR': prefix + '/tmp',
+    'LANG': 'C.UTF-8',
+    'LC_ALL': 'C.UTF-8',
+    'DEBIAN_FRONTEND': 'noninteractive',
   };
 
   Future<void> _record(PackageInfo i) async {

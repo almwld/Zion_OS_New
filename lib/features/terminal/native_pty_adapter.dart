@@ -18,6 +18,8 @@ class NativePtyAdapter {
   StreamSubscription<String>? _decoderSubscription;
   int? _handle;
   bool _running = false;
+  bool _starting = false;
+  final List<Map<dynamic, dynamic>> _pendingEvents = <Map<dynamic, dynamic>>[];
 
   Stream<String> get output => _output.stream;
   bool get isRunning => _running;
@@ -33,9 +35,34 @@ class NativePtyAdapter {
     }
   }
 
+  void _handleEvent(Map<dynamic, dynamic> value) {
+    final id = value['sessionId'];
+    if (id != _handle) return;
+    if (value['closed'] == true) {
+      _running = false;
+      _handle = null;
+      return;
+    }
+    final data = value['data'];
+    if (data is Uint8List) {
+      _rawBytes.add(data);
+    } else if (data is List<int>) {
+      _rawBytes.add(data);
+    }
+  }
+
   Future<bool> start({int rows = 24, int cols = 80, String? shell}) async {
     if (_running) return true;
-    if (!await isAvailable()) return false;
+    if (_starting) return false;
+    // Claim startup before awaiting platform availability so simultaneous
+    // callers cannot race through the same asynchronous check.
+    _starting = true;
+    _pendingEvents.clear();
+    if (!await isAvailable()) {
+      _starting = false;
+      _pendingEvents.clear();
+      return false;
+    }
 
     _decoderSubscription ??= _rawBytes.stream
         .transform(const Utf8Decoder(allowMalformed: true))
@@ -44,18 +71,16 @@ class NativePtyAdapter {
     _subscription ??= _sharedEvents.listen(
       (dynamic value) {
         if (value is! Map) return;
-        final id = value['sessionId'];
-        if (id != _handle) return;
-        if (value['closed'] == true) {
-          _running = false;
+        // The native reader may emit the shell prompt before the start method
+        // result reaches Dart and assigns _handle. Buffer a small bounded number
+        // of early events, then replay only events for the newly assigned handle.
+        if (_starting) {
+          if (_pendingEvents.length < 128) {
+            _pendingEvents.add(Map<dynamic, dynamic>.from(value));
+          }
           return;
         }
-        final data = value['data'];
-        if (data is Uint8List) {
-          _rawBytes.add(data);
-        } else if (data is List<int>) {
-          _rawBytes.add(data);
-        }
+        _handleEvent(value);
       },
       onError: (Object error, StackTrace stack) {
         _output.add('[ZION] PTY event error: $error');
@@ -72,16 +97,33 @@ class NativePtyAdapter {
         },
       );
       if (handle == null || handle <= 0) {
+        _starting = false;
+        _pendingEvents.clear();
         await stop();
         return false;
       }
       _handle = handle;
       _running = true;
+      _starting = false;
+      final earlyEvents = List<Map<dynamic, dynamic>>.from(_pendingEvents);
+      _pendingEvents.clear();
+      for (final event in earlyEvents) {
+        _handleEvent(event);
+      }
       return true;
     } on PlatformException {
+      _starting = false;
+      _pendingEvents.clear();
       await stop();
       return false;
     } on MissingPluginException {
+      _starting = false;
+      _pendingEvents.clear();
+      await stop();
+      return false;
+    } catch (_) {
+      _starting = false;
+      _pendingEvents.clear();
       await stop();
       return false;
     }

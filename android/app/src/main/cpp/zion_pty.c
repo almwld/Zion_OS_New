@@ -56,7 +56,7 @@ static void mkdir_p(const char *path, mode_t mode) {
     memcpy(buffer, path, length + 1);
     for (char *p = buffer + 1; *p; ++p) {
         if (*p != '/') continue;
-        *p = '\\0';
+        *p = '\0';
         (void)mkdir(buffer, mode);
         *p = '/';
     }
@@ -92,7 +92,6 @@ static void prepare_environment(void) {
     }
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
-    setenv("TERMUX_HOME", home, 1);
     setenv("PATH", path, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
@@ -103,13 +102,12 @@ static void prepare_environment(void) {
 }
 
 static int is_allowed_shell(const char *shell) {
-    if (shell == NULL || shell[0] == '\\0') return 0;
+    if (shell == NULL || shell[0] == '\0') return 0;
     return strncmp(shell, "kali:", 5) == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
-           strcmp(shell, "/system/bin/sh") == 0;
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
 }
 
 static const char *select_shell(const char *configured_shell) {
@@ -123,7 +121,6 @@ static const char *select_shell(const char *configured_shell) {
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
         "/data/data/com.zion.os/files/usr/bin/ash",
-        "/system/bin/sh",
         NULL
     };
     for (int i = 0; fallbacks[i] != NULL; ++i) {
@@ -136,7 +133,8 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
     execl(proot, "proot",
           "--link2symlink", "-0", "-r", rootfs,
           "-b", "/dev", "-b", "/proc", "-b", "/sys",
-          "-b", "/storage/emulated/0", "-w", "/root",
+          "-b", "/storage/emulated/0",
+          "-b", "/data/data/com.zion.os/files/home:/root", "-w", "/root",
           "/usr/bin/env", "-i",
           "HOME=/root",
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -179,7 +177,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             size_t length = strlen(raw);
             if (length < sizeof(configured_shell)) {
                 memcpy(configured_shell, raw, length);
-                configured_shell[length] = '\\0';
+                configured_shell[length] = '\0';
             }
             (*env)->ReleaseStringUTFChars(env, shell_arg, raw);
         }
@@ -241,7 +239,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
-    const char *selected_shell = select_shell(configured_shell[0] == '\\0' ? NULL : configured_shell);
+    const char *selected_shell = select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
     if (selected_shell == NULL) {
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
@@ -255,7 +253,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("ZION_SHELL_MODE", "kali-proot", 1);
     } else {
         setenv("ZION_SHELL_MODE",
-               strcmp(selected_shell, "/system/bin/sh") == 0 ? "android-posix" : "zion-userland",
+               "zion-userland",
                1);
     }
 
@@ -346,33 +344,42 @@ Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint hand
 JNIEXPORT jint JNICALL
 Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint handle, jbyteArray data) {
     (void)thiz;
+    if (data == NULL) return -1;
+
+    // Duplicate the master descriptor while the session table is locked, then
+    // release the global lock before polling/writing. A slow paste must never
+    // stall PTY readers, resize, or teardown for every terminal session.
     pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
-    if (!session || !data) {
+    if (!session) {
         pthread_mutex_unlock(&g_sessions_lock);
         return -1;
     }
+    int fd = dup(session->master_fd);
+    pthread_mutex_unlock(&g_sessions_lock);
+    if (fd < 0) return -1;
 
     jsize len = (*env)->GetArrayLength(env, data);
     jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
     if (!bytes) {
-        pthread_mutex_unlock(&g_sessions_lock);
+        close(fd);
         return -1;
     }
 
     jsize written = 0;
     while (written < len) {
-        struct pollfd pfd = {session->master_fd, POLLOUT, 0};
+        struct pollfd pfd = {fd, POLLOUT, 0};
         int ready = poll(&pfd, 1, 1000);
-        if (ready <= 0) break;
-        ssize_t n = write(session->master_fd, bytes + written, (size_t)(len - written));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0 || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
+        ssize_t n = write(fd, bytes + written, (size_t)(len - written));
         if (n > 0) written += (jsize)n;
-        else if (n < 0 && errno == EINTR) continue;
+        else if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) continue;
         else break;
     }
 
     (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
-    pthread_mutex_unlock(&g_sessions_lock);
+    close(fd);
     return written;
 }
 

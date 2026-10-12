@@ -1,33 +1,111 @@
-import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 
-import 'package:archive/archive_io.dart';
-import 'package:crypto/crypto.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
+import '../../userland/zion_bootstrap.dart';
 
 class ProotInstallResult {
-  const ProotInstallResult({required this.success, required this.message, this.path});
-  final bool success; final String message; final String? path;
+  const ProotInstallResult({
+    required this.success,
+    required this.message,
+    this.path,
+  });
+
+  final bool success;
+  final String message;
+  final String? path;
 }
 
+/// Validates the standard Termux PRoot shipped inside Zion Userland.
+///
+/// Keep this runtime aligned with the PRoot implementation shipped in
+/// Zion Userland; Zion depends on -0/--root-id and --link2symlink support.
 class ProotInstaller {
-  static const _owner = 'proot-me'; static const _repo = 'proot-rs'; static const _version = 'v0.1.0';
-  Future<Directory> _prefix() async { final dir = await getApplicationSupportDirectory(); final prefix = Directory(dir.path + '/userland/usr'); await prefix.create(recursive: true); return prefix; }
-  String _assetName() { final abi = Abi.current(); if (abi == Abi.androidArm64) return 'proot-rs-v0.1.0-aarch64-linux-android.tar.gz'; if (abi == Abi.androidArm) return 'proot-rs-v0.1.0-arm-linux-androideabi.tar.gz'; if (abi == Abi.androidX64) return 'proot-rs-v0.1.0-x86_64-linux-android.tar.gz'; if (abi == Abi.androidIA32) return 'proot-rs-v0.1.0-i686-linux-android.tar.gz'; throw UnsupportedError('Android ABI غير مدعوم: ' + abi.toString()); }
-  Future<String?> _releaseDigest(String assetName) async { final uri = Uri.parse('https://api.github.com/repos/' + _owner + '/' + _repo + '/releases/tags/' + _version); final response = await http.get(uri, headers: {'Accept': 'application/vnd.github+json'}); if (response.statusCode != 200) return null; final json = jsonDecode(response.body) as Map<String, dynamic>; for (final raw in (json['assets'] as List<dynamic>? ?? const [])) { final asset = raw as Map<String, dynamic>; if (asset['name'] == assetName) { final digest = asset['digest'] as String?; if (digest == null || !digest.startsWith('sha256:')) return null; return digest.substring(7); } } return null; }
   Future<ProotInstallResult> install({bool force = false}) async {
-    final prefix = await _prefix(); final target = File(prefix.path + '/bin/proot'); if (await target.exists() && !force) return ProotInstallResult(success: true, message: 'PRoot موجود فعلاً.', path: target.path);
-    final assetName = _assetName(); final digest = await _releaseDigest(assetName); if (digest == null) return const ProotInstallResult(success: false, message: 'تعذر الحصول على SHA-256 من GitHub Release؛ لم يتم تثبيت أي ملف.');
-    final temp = Directory(prefix.path + '/.proot-install-' + DateTime.now().microsecondsSinceEpoch.toString()); await temp.create(recursive: true);
+    if (!await ZionBootstrap.isInstalled()) {
+      return const ProotInstallResult(
+        success: false,
+        message: 'ثبّت Zion Userland أولاً؛ PRoot الرسمي يأتي ضمن الحزمة.',
+      );
+    }
+
+    final target = File(ZionBootstrap.prefix + '/bin/proot');
     try {
-      final response = await http.get(Uri.parse('https://github.com/' + _owner + '/' + _repo + '/releases/download/' + _version + '/' + assetName), headers: {'Accept': 'application/octet-stream'}); if (response.statusCode != 200) return ProotInstallResult(success: false, message: 'فشل تنزيل PRoot: HTTP ' + response.statusCode.toString() + '.');
-      final archiveFile = File(temp.path + '/' + assetName); await archiveFile.writeAsBytes(response.bodyBytes, flush: true); final actual = sha256.convert(await archiveFile.readAsBytes()).toString(); if (actual != digest) return const ProotInstallResult(success: false, message: 'فشل تحقق SHA-256 لـ PRoot.');
-      final extractDir = Directory(temp.path + '/extract'); await extractFileToDisk(archiveFile.path, extractDir.path); File? binary; await for (final entity in extractDir.list(recursive: true, followLinks: false)) { if (entity is File && entity.uri.pathSegments.last == 'proot') { binary = entity; break; } }
-      if (binary == null) return const ProotInstallResult(success: false, message: 'لم يُعثر على executable proot داخل الإصدار.'); await Directory(prefix.path + '/bin').create(recursive: true); final staged = File(prefix.path + '/bin/.proot.new'); await binary.copy(staged.path); final chmod = await Process.run('chmod', ['700', staged.path]); if (chmod.exitCode != 0) return ProotInstallResult(success: false, message: 'تعذر جعل PRoot قابلاً للتنفيذ: ' + chmod.stderr.toString()); await staged.rename(target.path);
-      final version = await Process.run(target.path, ['--version']); if (version.exitCode != 0) { try { await target.delete(); } catch (_) {} return ProotInstallResult(success: false, message: 'تم تنزيل PRoot لكن اختبار --version فشل: ' + version.stderr.toString()); }
-      return ProotInstallResult(success: true, message: 'تم تثبيت PRoot والتحقق منه.', path: target.path);
-    } finally { try { await temp.delete(recursive: true); } catch (_) {} }
+      final stat = await target.stat();
+      if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
+        return ProotInstallResult(
+          success: false,
+          message: 'PRoot الرسمي غير قابل للتنفيذ: ${target.path}. أعد تثبيت Zion Userland.',
+          path: target.path,
+        );
+      }
+
+      final environment = <String, String>{
+        ...Platform.environment,
+        'HOME': ZionBootstrap.home,
+        'PREFIX': ZionBootstrap.prefix,
+        'PATH': ZionBootstrap.prefix +
+            '/bin:' +
+            ZionBootstrap.prefix +
+            '/sbin:/system/bin:/system/xbin',
+        'LD_LIBRARY_PATH': ZionBootstrap.prefix +
+            '/lib:' +
+            ZionBootstrap.prefix +
+            '/lib64',
+      };
+
+      final version = await Process.run(
+        target.path,
+        const <String>['--version'],
+        runInShell: false,
+        environment: environment,
+      ).timeout(const Duration(seconds: 5));
+      if (version.exitCode != 0 ||
+          !('${version.stdout}\n${version.stderr}')
+              .toLowerCase()
+              .contains('proot')) {
+        return ProotInstallResult(
+          success: false,
+          message: 'PRoot الموجود لم يجتز اختبار --version؛ لن يتم استبداله بملف غير متوافق.',
+          path: target.path,
+        );
+      }
+
+      final help = await Process.run(
+        target.path,
+        const <String>['--help'],
+        runInShell: false,
+        environment: environment,
+      ).timeout(const Duration(seconds: 5));
+      final usage = '${help.stdout}\n${help.stderr}'.toLowerCase();
+      final supportsRootId = usage.contains('--root-id') ||
+          RegExp(r'(^|\s)-0([,\s]|$)').hasMatch(usage);
+      final supportsLink2Symlink = usage.contains('--link2symlink') ||
+          RegExp(r'(^|\s)-l([,\s]|$)').hasMatch(usage);
+      if (!supportsRootId || !supportsLink2Symlink) {
+        return ProotInstallResult(
+          success: false,
+          message: 'نسخة PRoot لا تدعم خيارات -0 و--link2symlink المطلوبة. أعد تثبيت Zion Userland لتحديث PRoot الرسمي.',
+          path: target.path,
+        );
+      }
+
+      return ProotInstallResult(
+        success: true,
+        message: force
+            ? 'تم التحقق من PRoot الرسمي؛ تتم إدارته ضمن Zion Userland ولا يُستبدل بتنزيل خارجي.'
+            : 'تم التحقق من PRoot الرسمي وخياراته المطلوبة.',
+        path: target.path,
+      );
+    } on FileSystemException {
+      return const ProotInstallResult(
+        success: false,
+        message: 'PRoot غير موجود داخل Zion Userland. أعد تثبيت أو تحديث الحزمة.',
+      );
+    } catch (error) {
+      return ProotInstallResult(
+        success: false,
+        message: 'تعذر التحقق من PRoot داخل Zion Userland: $error',
+        path: target.path,
+      );
+    }
   }
 }

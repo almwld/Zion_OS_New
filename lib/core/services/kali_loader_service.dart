@@ -1,8 +1,7 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import '../magiczionos/installers/proot_installer.dart';
 import 'kali_chroot_service.dart';
+import '../magiczionos/installers/rootfs_downloader.dart';
 
 /// Real Kali/PRoot lifecycle manager.
 ///
@@ -10,38 +9,19 @@ import 'kali_chroot_service.dart';
 /// filesystem are detected. High-risk offensive wrappers are deliberately not
 /// exposed here; defensive discovery can use the safe Nmap adapter below.
 class KaliLoaderService {
-  static const String _installPath = '/data/local/kali';
-  static const String _zionFolder = '/storage/emulated/0/Zion Universal';
+  static const String _installPath = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
 
   static String? _prootPath;
   static bool _hasRootCache = false;
   static bool _rootChecked = false;
 
-  static final List<Map<String, String>> _sources = [
-    {'name': 'bootstrap-aarch64.zip', 'path': '$_zionFolder/bootstrap-aarch64.zip', 'type': 'zip'},
-    {'name': 'kali-bootstrap.tar.gz', 'path': '$_zionFolder/kali-bootstrap.tar.gz', 'type': 'tar'},
-  ];
-
   static Future<bool> extractEmbeddedProot() async {
+    // Install only the verified Zion PRoot build into the canonical Zion Userland prefix.
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final prootDir = Directory('${appDir.path}/bin');
-      if (!await prootDir.exists()) await prootDir.create(recursive: true);
-      final prootPath = '${prootDir.path}/proot';
-      final prootFile = File(prootPath);
-      if (await prootFile.exists()) {
-        if (await _testProot(prootPath)) {
-          _prootPath = prootPath;
-          return true;
-        }
-        await prootFile.delete();
-      }
-      final byteData = await rootBundle.load('assets/bin/proot');
-      await prootFile.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      final chmod = await Process.run('chmod', ['755', prootPath], runInShell: true);
-      if (chmod.exitCode != 0) return false;
-      if (!await _testProot(prootPath)) return false;
-      _prootPath = prootPath;
+      final installed = await ProotInstaller().install();
+      final path = installed.path;
+      if (!installed.success || path == null || !await _testProot(path)) return false;
+      _prootPath = path;
       return true;
     } catch (_) {
       return false;
@@ -62,10 +42,9 @@ class KaliLoaderService {
       return _prootPath;
     }
     if (await extractEmbeddedProot()) return _prootPath;
+    // Resolve PRoot exclusively from the canonical Zion Userland prefix.
     const candidates = [
-      '/data/data/com.termux/files/usr/bin/proot',
-      '/usr/bin/proot',
-      '/usr/local/bin/proot',
+      '/data/data/com.zion.os/files/usr/bin/proot',
     ];
     for (final path in candidates) {
       if (await File(path).exists() && await _testProot(path)) return path;
@@ -91,19 +70,14 @@ class KaliLoaderService {
 
   static Future<String> install() async {
     if (await _isInstalled()) return 'REAL: Kali filesystem is already installed.';
-    String? archive;
-    String? type;
-    for (final source in _sources) {
-      if (await File(source['path']!).exists()) {
-        archive = source['path'];
-        type = source['type'];
-        break;
-      }
+    try {
+      final result = await RootfsDownloader().install(ZionRootfsDistro.kali);
+      if (!result.success) return 'FAILED: ' + result.message;
+      await _setupEnvironment();
+      return 'COMPLETED: Kali rootfs downloaded, checksum-verified and installed in Zion storage.';
+    } catch (error) {
+      return 'FAILED: Zion Kali rootfs installation failed: $error';
     }
-    if (archive == null) return 'UNAVAILABLE: no local Kali bootstrap archive was found.';
-    if (!await _extract(archive, type!)) return 'FAILED: Kali archive extraction failed.';
-    await _setupEnvironment();
-    return 'COMPLETED: Kali filesystem installed; runtime still requires a working PRoot adapter.';
   }
 
   /// Generic command execution is intentionally restricted to harmless
@@ -160,19 +134,10 @@ class KaliLoaderService {
     return result['stdout']?.toString() ?? result['stderr']?.toString() ?? result['error']?.toString() ?? 'FAILED';
   }
 
-  static Future<bool> _isInstalled() async => Directory(_installPath).exists();
+  static Future<bool> _isInstalled() async =>
+      await File(_installPath + '/bin/sh').exists() &&
+      await File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists();
 
-  static Future<bool> _extract(String archivePath, String type) async {
-    try {
-      await Directory(_installPath).create(recursive: true);
-      final result = type == 'zip'
-          ? await Process.run('unzip', ['-o', archivePath, '-d', _installPath], runInShell: true)
-          : await Process.run('tar', ['-xzf', archivePath, '-C', _installPath], runInShell: true);
-      return result.exitCode == 0;
-    } catch (_) {
-      return false;
-    }
-  }
 
   static Future<void> _setupEnvironment() async {
     for (final dir in ['dev', 'proc', 'sys', 'tmp']) {
