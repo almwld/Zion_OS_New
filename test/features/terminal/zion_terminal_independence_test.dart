@@ -121,9 +121,9 @@ void main() {
       final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(source, contains("'proot-distro': r'''"));
       expect(source, contains("'zion-api-tts': r'''"));
-      expect(source, contains('id="zion-pkg-$(date +%s 2>/dev/null)-$"'));
-      expect(source, contains('PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"'));
-      expect(source, contains('PROOT="$PREFIX/bin/proot"'));
+      expect(source, contains(r'id="zion-pkg-$(date +%s 2>/dev/null)-$"'));
+      expect(source, contains(r'PREFIX="${PREFIX:-/data/data/com.zion.os/files/usr}"'));
+      expect(source, contains(r'PROOT="$PREFIX/bin/proot"'));
       expect(source, isNot(contains('/data/data/com.termux')));
     });
   });
