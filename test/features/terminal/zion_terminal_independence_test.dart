@@ -104,14 +104,26 @@ void main() {
       expect(runtime, contains('await shared.list(followLinks: false).isEmpty'));
     });
 
-    test('existing PRoot binaries are checked before being accepted', () async {
+    test('PRoot installer validates the standard Userland binary and required flags', () async {
       final installer = await File('lib/core/magiczionos/installers/proot_installer.dart').readAsString();
-      expect(installer, contains('await target.exists() && !force && await _isRunnable(target)'));
+      final userland = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      expect(installer, contains("ZionBootstrap.prefix + '/bin/proot'"));
       expect(installer, contains("const <String>['--version']"));
-      expect(installer, contains('_releaseDigest(assetName)'));
-      expect(installer, contains('SHA-256'));
-      expect(installer, contains("File(prefix.path + '/bin/.proot.new')"));
-      expect(installer, contains('if (movedPrevious && await backup.exists())'));
+      expect(installer, contains("const <String>['--help']"));
+      expect(installer, contains('--root-id'));
+      expect(installer, contains('--link2symlink'));
+      expect(installer, isNot(contains('proot-rs')));
+      expect(installer, isNot(contains('releases/download')));
+      expect(userland, contains('_hasCompatibleProot()'));
+      expect(userland, contains('--root-id'));
+      expect(userland, contains('--link2symlink'));
+    });
+
+    test('unified Linux installer prepares Zion Userland before checking PRoot', () async {
+      final installer = await File('lib/core/magiczionos/installers/unified_installer.dart').readAsString();
+      expect(installer, contains('ZionUserlandInstaller().installLatest'));
+      expect(installer.indexOf('ZionUserlandInstaller().installLatest'),
+          lessThan(installer.indexOf('_prootInstaller.install')));
     });
 
     test('Linux rootfs installer uses the same canonical root as Zion PRoot', () async {

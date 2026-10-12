@@ -29,7 +29,7 @@ class ZionUserlandInstaller {
       );
     }
 
-    if (await ZionBootstrap.isInstalled()) {
+    if (await ZionBootstrap.isInstalled() && await _hasCompatibleProot()) {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
         success: true,
@@ -72,6 +72,55 @@ class ZionUserlandInstaller {
       try {
         await File(remote.path!).delete();
       } catch (_) {}
+    }
+  }
+
+  Future<bool> _hasCompatibleProot() async {
+    final target = File(ZionBootstrap.prefix + '/bin/proot');
+    try {
+      final stat = await target.stat();
+      if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
+        return false;
+      }
+      final environment = <String, String>{
+        ...Platform.environment,
+        'HOME': ZionBootstrap.home,
+        'PREFIX': ZionBootstrap.prefix,
+        'PATH': ZionBootstrap.prefix +
+            '/bin:' +
+            ZionBootstrap.prefix +
+            '/sbin:/system/bin:/system/xbin',
+        'LD_LIBRARY_PATH': ZionBootstrap.prefix +
+            '/lib:' +
+            ZionBootstrap.prefix +
+            '/lib64',
+      };
+      final version = await Process.run(
+        target.path,
+        const <String>['--version'],
+        runInShell: false,
+        environment: environment,
+      ).timeout(const Duration(seconds: 5));
+      if (version.exitCode != 0 ||
+          !('${version.stdout}\\n${version.stderr}')
+              .toLowerCase()
+              .contains('proot')) {
+        return false;
+      }
+      final help = await Process.run(
+        target.path,
+        const <String>['--help'],
+        runInShell: false,
+        environment: environment,
+      ).timeout(const Duration(seconds: 5));
+      final usage = '${help.stdout}\\n${help.stderr}'.toLowerCase();
+      final rootId = usage.contains('--root-id') ||
+          RegExp(r'(^|\\s)-0([,\\s]|$)').hasMatch(usage);
+      final link2symlink = usage.contains('--link2symlink') ||
+          RegExp(r'(^|\\s)-l([,\\s]|$)').hasMatch(usage);
+      return rootId && link2symlink;
+    } catch (_) {
+      return false;
     }
   }
 
