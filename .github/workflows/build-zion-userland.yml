@@ -223,11 +223,18 @@ jobs:
         run: |
           set -euo pipefail
           TAG="zion-userland-latest"
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" zion-userland-aarch64.zip bootstrap.json \
-            --title "Zion Userland (latest)" \
-            --notes "Generated from a custom-prefix Termux bootstrap for com.zion.os. The archive is SHA-256 verified by Zion before activation."
+          # Never delete the live release first: clients may request the manifest
+          # during publication, and deleting/recreating the tag creates a real 404 window.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" zion-userland-aarch64.zip bootstrap.json --clobber
+          else
+            gh release create "$TAG" zion-userland-aarch64.zip bootstrap.json \
+              --title "Zion Userland (latest)" \
+              --notes "Generated from a custom-prefix bootstrap for com.zion.os. SHA-256 is verified before activation."
+          fi
           gh release download "$TAG" --pattern bootstrap.json --output published-bootstrap.json
+          gh release download "$TAG" --pattern zion-userland-aarch64.zip --output published-userland.zip
+          cmp --silent zion-userland-aarch64.zip published-userland.zip
           test -s published-bootstrap.json
           python3 - <<'PY'
           import json
