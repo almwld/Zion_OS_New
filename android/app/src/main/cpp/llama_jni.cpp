@@ -43,13 +43,14 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     if (!g_model) return JNI_FALSE;
 
     auto ctxParams = llama_context_default_params();
-    // Mobile-safe defaults: large KV caches and 512-token batches can exhaust
-    // memory on mid/low-RAM Android devices even when the GGUF file is modest.
-    ctxParams.n_ctx = 2048;
-    ctxParams.n_batch = 128;
-    ctxParams.n_ubatch = 128;
+    // Conservative Android defaults: loading a GGUF may succeed while the
+    // first decode still triggers LMK/process death due to KV-cache/batch RAM.
+    // Keep inference bounded for low-memory devices.
+    ctxParams.n_ctx = 1024;
+    ctxParams.n_batch = 32;
+    ctxParams.n_ubatch = 32;
     ctxParams.n_seq_max = 1;
-    const int safeThreads = std::clamp(static_cast<int>(threads), 1, 4);
+    const int safeThreads = std::clamp(static_cast<int>(threads), 1, 2);
     ctxParams.n_threads = safeThreads;
     ctxParams.n_threads_batch = safeThreads;
     g_ctx = llama_init_from_model(g_model, ctxParams);
@@ -126,7 +127,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
 
     std::string output;
     // Keep one response from monopolizing CPU/RAM on a phone.
-    const int limit = std::clamp(static_cast<int>(maxTokens), 1, 512);
+    const int limit = std::clamp(static_cast<int>(maxTokens), 1, 128);
 
     for (int i = 0; i < limit; ++i) {
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
