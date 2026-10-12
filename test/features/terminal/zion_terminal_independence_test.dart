@@ -114,6 +114,7 @@ void main() {
       expect(loader, isNot(contains('/data/local/kali')));
       expect(service, contains("if (shell == 'zion-kali')"));
       expect(service, contains("'--link2symlink', '-0', '-r', rootfs"));
+      expect(service, contains("'-b', '/data/data/com.zion.os/files/home:/root'"));
       expect(service, contains("'/bin/sh', '-lc', command"));
     });
 
