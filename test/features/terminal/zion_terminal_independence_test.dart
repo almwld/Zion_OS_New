@@ -44,6 +44,9 @@ void main() {
       final capabilities = await File('lib/features/terminal/terminal_capabilities.dart').readAsString();
       expect(service, isNot(contains("const androidShell = '/system/bin/sh'")));
       expect(service, isNot(contains("shell = '/system/bin/sh'")));
+      expect(service, contains("'PREFIX': '/data/data/com.zion.os/files/usr'"));
+      expect(service, contains("'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64'"));
+      expect(service, contains('environment: _userlandEnvironment'));
       expect(service, contains('_scheduleUserlandInstall()'));
       expect(capabilities, contains('NO HOST-SHELL FALLBACK'));
       expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
