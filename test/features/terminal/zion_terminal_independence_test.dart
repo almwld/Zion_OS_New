@@ -186,6 +186,16 @@ void main() {
       expect(source, isNot(contains("static Future<void> _chmod(String path,int mode) async {try{")));
     });
 
+    test('bootstrap removes partial staging data after failed installation', () async {
+      final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      final method = source.substring(
+        source.indexOf('Future<BootstrapResult> installFromArchive'),
+        source.indexOf('static Future<void> _dirs'),
+      );
+      expect(method, contains('finally {'));
+      expect(method, contains('await staged.delete(recursive: true)'));
+    });
+
     test('bootstrap exposes native Zion proot-distro and documented TTS command', () async {
       final source = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(source, contains("'proot-distro': r'''"));
