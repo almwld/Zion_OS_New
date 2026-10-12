@@ -156,6 +156,7 @@ jobs:
           )
 
       - name: Publish Userland release
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
