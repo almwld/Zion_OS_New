@@ -32,9 +32,18 @@ jobs:
           s = s.replace('TERMUX__NAME="Termux"', 'TERMUX__NAME="Zion"')
           s = s.replace('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.zion.os"')
           p.write_text(s)
+
+          # Upstream now ships the bzip2 command as a subpackage of libbz2.
+          # The bootstrap script's old top-level package name fails on current master.
+          bootstrap = Path("scripts/build-bootstraps.sh")
+          bootstrap_source = bootstrap.read_text()
+          old = 'PACKAGES+=("bzip2")'
+          if old not in bootstrap_source:
+              raise SystemExit("Expected upstream bootstrap bzip2 entry was not found")
+          bootstrap.write_text(bootstrap_source.replace(old, 'PACKAGES+=("libbz2")', 1))
           PY
           # Keep the bootstrap based on the current upstream Termux package tree;
-          # no fork-specific source checksum patches are required.
+          # apply only the package-name migration needed by the current bootstrap script.
           # The builder image can lag behind the bootstrap branch's pinned NDK.
           # Provision the exact SDK/NDK declared by properties.sh before compiling.
           ./scripts/run-docker.sh ./scripts/setup-android-sdk.sh
