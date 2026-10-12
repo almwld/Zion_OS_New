@@ -244,7 +244,6 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     return Stack(
       children: [
         widget.child,
-        Positioned(top: 10, left: 0, right: 0, child: Center(child: Material(color: Colors.transparent, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black.withOpacity(.55), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white24)), child: Row(mainAxisSize: MainAxisSize.min, children: List.generate(workspaceCount, (i) => Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: ChoiceChip(label: Text('W${i + 1}'), selected: _activeWorkspace == i, onSelected: (_) => switchWorkspace(i))))))))),
         ..._windows.where((w) => w.workspace == _activeWorkspace && (w.wmId == null || !(widget.windowManager?.find(w.wmId!)?.isMinimized ?? false))).map((w) => FloatingWindow(
           key: ValueKey(w.id),
           title: w.title,
