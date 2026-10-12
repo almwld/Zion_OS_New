@@ -67,6 +67,7 @@ class TerminalService {
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
+  static bool _userlandInstallInProgress = false;
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
 
   final SecurityCore _securityCore;
@@ -334,6 +335,22 @@ class TerminalService {
     }
   }
 
+  Future<void> _scheduleUserlandInstall() async {
+    if (_userlandInstallInProgress) {
+      if (!_output.isClosed) _output.add('[Userland] التثبيت جارٍ بالفعل؛ لن يبدأ تنزيل مكرر.\r\n');
+      return;
+    }
+    _userlandInstallInProgress = true;
+    try {
+      final message = await Isolate.run(_installZionUserlandInBackground);
+      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
+    } catch (error) {
+      if (!_output.isClosed) _output.add('[Userland] تعذر إكمال التثبيت: $error\r\n');
+    } finally {
+      _userlandInstallInProgress = false;
+    }
+  }
+
   Future<bool> startInteractive() async {
     if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
@@ -341,14 +358,12 @@ class TerminalService {
       return false;
     }
     final started = DateTime.now();
-    // Create app-local terminal directories before Process.start().
+    // Create app-local terminal directories before starting the native PTY.
     await _ensureTerminalEnvironment();
     final shell = await _findShell();
     if (shell == null) {
       _output.add('Zion Userland غير جاهز؛ لن يتم تشغيل صدفة Android بديلة. يبدأ تجهيز Userland الموثوق في الخلفية؛ أعد فتح الطرفية بعد اكتماله.\r\n');
-      unawaited(Isolate.run(_installZionUserlandInBackground).then((message) {
-        if (!_output.isClosed) _output.add('[Userland] $message\r\n');
-      }));
+      unawaited(_scheduleUserlandInstall());
       _audit(
         command: '<interactive-start>',
         outcome: 'unavailable',
