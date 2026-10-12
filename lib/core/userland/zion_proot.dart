@@ -32,30 +32,52 @@ class ZionProot {
       );
     }
 
+    final environment = <String, String>{
+      ...Platform.environment,
+      'HOME': home,
+      'PREFIX': prefix,
+      'PATH': prefix + '/bin:' + prefix + '/sbin:/system/bin:/system/xbin',
+      'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
+    };
     try {
       final result = await Process.run(
         executable,
         const <String>['--version'],
         runInShell: false,
-        environment: <String, String>{
-          ...Platform.environment,
-          'HOME': home,
-          'PREFIX': prefix,
-          'PATH': prefix + '/bin:' + prefix + '/sbin:/system/bin:/system/xbin',
-          'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
-        },
+        environment: environment,
       ).timeout(const Duration(seconds: 5));
-      if (result.exitCode != 0) {
+      if (result.exitCode != 0 ||
+          !('${result.stdout}\\n${result.stderr}')
+              .toLowerCase()
+              .contains('proot')) {
         return ProotRuntimeInfo(
           status: ProotStatus.unavailable,
           executable: executable,
-          reason: 'PRoot exists but failed --version with exit code ${result.exitCode}.',
+          reason: 'PRoot exists but failed its version check.',
+        );
+      }
+      final help = await Process.run(
+        executable,
+        const <String>['--help'],
+        runInShell: false,
+        environment: environment,
+      ).timeout(const Duration(seconds: 5));
+      final usage = '${help.stdout}\\n${help.stderr}'.toLowerCase();
+      final rootId = usage.contains('--root-id') ||
+          RegExp(r'(^|\\s)-0([,\\s]|$)').hasMatch(usage);
+      final link2symlink = usage.contains('--link2symlink') ||
+          RegExp(r'(^|\\s)-l([,\\s]|$)').hasMatch(usage);
+      if (!rootId || !link2symlink) {
+        return const ProotRuntimeInfo(
+          status: ProotStatus.unavailable,
+          executable: prefix + '/bin/proot',
+          reason: 'PRoot is incompatible: required -0/--root-id and --link2symlink flags are missing.',
         );
       }
       return ProotRuntimeInfo(
         status: ProotStatus.available,
         executable: executable,
-        reason: 'PRoot passed the executable and --version checks.',
+        reason: 'PRoot passed executable, version, root-id, and link2symlink checks.',
       );
     } catch (error) {
       return ProotRuntimeInfo(

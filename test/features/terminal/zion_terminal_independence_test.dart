@@ -100,8 +100,12 @@ void main() {
 
     test('runtime probes reject non-executable files and handle empty shared storage', () async {
       final runtime = await File('lib/features/terminal/zion_runtime_service.dart').readAsString();
+      final proot = await File('lib/core/userland/zion_proot.dart').readAsString();
       expect(runtime, contains('(stat.mode & 0x49) != 0'));
       expect(runtime, contains('await shared.list(followLinks: false).isEmpty'));
+      expect(proot, contains('--root-id'));
+      expect(proot, contains('--link2symlink'));
+      expect(proot, contains('ProotStatus.unavailable'));
     });
 
     test('PRoot installer validates the standard Userland binary and required flags', () async {
