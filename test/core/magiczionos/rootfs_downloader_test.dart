@@ -26,6 +26,17 @@ void main() {
       );
     });
 
+    test('rejects checksum rows whose filename only contains the requested name', () {
+      final digest = 'c' * 64;
+      expect(
+        RootfsDownloader.parseChecksumLine(
+          '$digest  requested.tar.gz.sig',
+          'requested.tar.gz',
+        ),
+        isNull,
+      );
+    });
+
     test('rejects a valid checksum for a different archive', () {
       final digest = 'a' * 64;
       expect(
