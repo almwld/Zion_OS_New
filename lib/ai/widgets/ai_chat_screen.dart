@@ -115,7 +115,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
     try {
-      final response = await _agent.chat(text);
+      final response = await _agent.chat(text, maxTokens: 128);
       if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: response)));
     } catch (e) {
       if (mounted) setState(() => _messages.add(AgentMessage(
@@ -140,7 +140,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
           return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Text(m.content)));
         })),
         if (_generating) const LinearProgressIndicator(),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder()))), const SizedBox(width: 8), IconButton.filled(onPressed: _generating ? null : _send, icon: const Icon(Icons.send))])))
+        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, maxLength: 2000, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder(), counterText: ''))), const SizedBox(width: 8), IconButton.filled(onPressed: _generating || _loadingModel ? null : _send, icon: const Icon(Icons.send))])))
       ]),
     );
   }
