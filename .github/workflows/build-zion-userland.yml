@@ -79,11 +79,14 @@ jobs:
           # build-bootstraps.sh attempts to move the archive into the mounted
           # package tree, but the builder UID cannot write there. The archive is
           # left at the builder home; copy it to the exact path consumed below.
+          # This shell is still inside the cloned termux-packages directory;
+          # ./bootstrap-aarch64.zip here becomes termux-packages/bootstrap-aarch64.zip
+          # at repository root, which is the converter's input path.
           if [[ ! -s bootstrap-aarch64.zip ]]; then
             rm -f bootstrap-aarch64.zip
-            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/bootstrap-aarch64.zip" termux-packages/bootstrap-aarch64.zip
+            docker cp "${CONTAINER_NAME:-termux-package-builder}:/home/builder/bootstrap-aarch64.zip" ./bootstrap-aarch64.zip
           fi
-          test -s termux-packages/bootstrap-aarch64.zip
+          test -s bootstrap-aarch64.zip
 
       - name: Convert bootstrap to verified Zion archive
         shell: python
