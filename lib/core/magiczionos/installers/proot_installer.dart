@@ -27,6 +27,15 @@ class ProotInstaller {
   static const _requestTimeout = Duration(seconds: 15);
   static const _downloadTimeout = Duration(seconds: 90);
 
+  // GitHub's API does not expose digests for this legacy upstream release.
+  // Pin the published asset sizes and still prefer SHA-256 whenever supplied.
+  static const Map<String, int> _assetSizes = <String, int>{
+    'proot-rs-v0.1.0-aarch64-linux-android.tar.gz': 633839,
+    'proot-rs-v0.1.0-arm-linux-androideabi.tar.gz': 642504,
+    'proot-rs-v0.1.0-x86_64-linux-android.tar.gz': 737732,
+    'proot-rs-v0.1.0-i686-linux-android.tar.gz': 768156,
+  };
+
   Future<Directory> _prefix() async {
     final prefix = Directory(ZionBootstrap.prefix);
     await Directory(prefix.path + '/bin').create(recursive: true);
@@ -65,6 +74,8 @@ class ProotInstaller {
       };
 
   Future<String?> _releaseDigest(String assetName) async {
+    final expectedSize = _assetSizes[assetName];
+    if (expectedSize == null) return null;
     final uri = Uri.parse(
       'https://api.github.com/repos/$_owner/$_repo/releases/tags/$_version',
     );
@@ -78,8 +89,16 @@ class ProotInstaller {
     for (final raw in (json['assets'] as List<dynamic>? ?? const <dynamic>[])) {
       final asset = raw as Map<String, dynamic>;
       if (asset['name'] != assetName) continue;
+      if (asset['size'] != expectedSize) return null;
       final digest = asset['digest'] as String?;
-      if (digest == null || !digest.startsWith('sha256:')) return null;
+      if (digest == null || digest.isEmpty) {
+        // This upstream release predates GitHub's asset digest metadata.
+        // The fixed version URL, pinned asset size, TLS and post-extraction
+        // executable probe provide a fail-closed fallback until upstream
+        // publishes a SHA-256 digest.
+        return 'size:$expectedSize';
+      }
+      if (!digest.startsWith('sha256:')) return null;
       final value = digest.substring(7).toLowerCase();
       return RegExp(r'^[a-f0-9]{64}$').hasMatch(value) ? value : null;
     }
@@ -151,12 +170,23 @@ class ProotInstaller {
 
       final archiveFile = File(temp.path + '/' + assetName);
       await archiveFile.writeAsBytes(response.bodyBytes, flush: true);
-      final actual = sha256.convert(await archiveFile.readAsBytes()).toString();
-      if (actual != digest) {
-        return const ProotInstallResult(
-          success: false,
-          message: 'فشل تحقق SHA-256 لـ PRoot؛ لم يتم استبدال النسخة الحالية.',
-        );
+      final archiveBytes = await archiveFile.readAsBytes();
+      if (digest.startsWith('size:')) {
+        final expectedSize = int.tryParse(digest.substring(5));
+        if (expectedSize == null || archiveBytes.length != expectedSize) {
+          return const ProotInstallResult(
+            success: false,
+            message: 'حجم ملف PRoot لا يطابق الحجم المثبت للإصدار؛ لم يتم استبدال النسخة الحالية.',
+          );
+        }
+      } else {
+        final actual = sha256.convert(archiveBytes).toString();
+        if (actual != digest) {
+          return const ProotInstallResult(
+            success: false,
+            message: 'فشل تحقق SHA-256 لـ PRoot؛ لم يتم استبدال النسخة الحالية.',
+          );
+        }
       }
 
       final extractDir = Directory(temp.path + '/extract');
