@@ -147,21 +147,8 @@ class TerminalService {
       } catch (_) {}
     }
 
-    // Compatibility shell: older Zion builds used Android's real POSIX sh
-    // and remained interactive even without a full Zion Userland. Keep that
-    // behavior as an explicit fallback while preferring Userland first.
-    const androidShell = '/system/bin/sh';
-    try {
-      final stat = await File(androidShell).stat();
-      if (stat.type == FileSystemEntityType.file) {
-        final result = await Process.run(
-          androidShell,
-          const <String>['-c', 'exit 0'],
-          runInShell: false,
-        ).timeout(const Duration(seconds: 2));
-        if (result.exitCode == 0) return androidShell;
-      }
-    } catch (_) {}
+    // Never fall back to Android's host shell: an unavailable Zion runtime
+    // must be reported clearly rather than pretending to be a standalone terminal.
     return null;
   }
 
