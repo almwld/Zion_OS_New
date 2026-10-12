@@ -143,24 +143,47 @@ class RootfsDownloader {
       await extractFileToDisk(archiveFile.path, staging.path);
       final entries = staging.listSync(followLinks: false);
       final sourceDir = entries.length == 1 && entries.first is Directory ? entries.first as Directory : staging;
-      try { await target.delete(recursive: true); } catch (_) {}
-      final rootfsTarget = Directory(target.path + '/rootfs');
-      await rootfsTarget.parent.create(recursive: true);
-
-      if (sourceDir.path == staging.path) {
-        await rootfsTarget.create(recursive: true);
-        for (final entity in staging.listSync(followLinks: false)) {
-          await entity.rename(rootfsTarget.path + '/' + entity.uri.pathSegments.last);
-        }
-        try { await staging.delete(recursive: true); } catch (_) {}
-      } else {
-        await sourceDir.rename(rootfsTarget.path);
+      if (!await File(sourceDir.path + '/bin/sh').exists()) {
+        return RootfsInstallResult(
+          success: false,
+          message: 'الأرشيف الذي تم التحقق منه لا يحتوي على /bin/sh؛ تم الحفاظ على النظام المثبت سابقاً.',
+        );
       }
 
-      await File(target.path + '/.zion-rootfs.json').writeAsString(
-        jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
-        flush: true,
+      final backup = Directory(
+        rootfs.path + '/.' + distro.name + '.backup-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
       );
+      var movedPrevious = false;
+      var newTargetCreated = false;
+      final rootfsTarget = Directory(target.path + '/rootfs');
+      try {
+        if (await target.exists()) {
+          await target.rename(backup.path);
+          movedPrevious = true;
+        }
+        await target.create(recursive: true);
+        newTargetCreated = true;
+        await sourceDir.rename(rootfsTarget.path);
+        await File(target.path + '/.zion-rootfs.json').writeAsString(
+          jsonEncode({'distro': distro.name, 'archive': fileName, checksum.$1: checksum.$2}),
+          flush: true,
+        );
+      } catch (error) {
+        if (newTargetCreated && await target.exists()) {
+          try { await target.delete(recursive: true); } catch (_) {}
+        }
+        if (movedPrevious && await backup.exists()) {
+          try { await backup.rename(target.path); } catch (_) {}
+        }
+        return RootfsInstallResult(
+          success: false,
+          message: 'تعذر تفعيل rootfs الجديد؛ تمت محاولة استعادة النسخة السابقة: ' + error.toString(),
+        );
+      }
+      if (movedPrevious && await backup.exists()) {
+        try { await backup.delete(recursive: true); } catch (_) {}
+      }
       return RootfsInstallResult(success: true, message: 'تم تنزيل واستخراج ' + distro.name + ' والتحقق منه.', path: rootfsTarget.path);
     } finally {
       try { await temp.delete(recursive: true); } catch (_) {}

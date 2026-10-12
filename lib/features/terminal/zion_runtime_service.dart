@@ -25,7 +25,9 @@ class ZionRuntimeService {
     for (final candidate in candidates) {
       try {
         final stat = await File(candidate).stat();
-        if (stat.type == FileSystemEntityType.file) return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable detected.', path: candidate);
+        if (stat.type == FileSystemEntityType.file && (stat.mode & 0x49) != 0) {
+          return RuntimeCapability(id: id, status: RuntimeStatus.available, detail: 'REAL executable file detected.', path: candidate);
+        }
       } catch (_) {}
     }
     return RuntimeCapability(id: id, status: RuntimeStatus.notConfigured, detail: 'No executable is installed in the Zion userland.');
@@ -34,7 +36,10 @@ class ZionRuntimeService {
   Future<RuntimeCapability> storageStatus() async {
     final shared = Directory('/storage/emulated/0');
     if (!await shared.exists()) return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.unavailable, detail: '/storage/emulated/0 is not present on this device.');
-    try { await shared.list(followLinks: false).first; return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.available, detail: 'Shared storage is readable by the terminal UID.', path: '/storage/emulated/0'); }
+    try {
+      await shared.list(followLinks: false).isEmpty;
+      return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.available, detail: 'Shared storage is readable by the terminal UID.', path: '/storage/emulated/0');
+    }
     catch (_) { return const RuntimeCapability(id: 'shared-storage', status: RuntimeStatus.permissionRequired, detail: 'Android denied shared-storage access; grant storage access before setup.', path: '/storage/emulated/0'); }
   }
 

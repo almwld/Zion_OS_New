@@ -481,8 +481,10 @@ case "$command" in
     exec "$PROOT" -0 -r "$rootfs" -b /dev -b /proc -b /sys -b "$HOME:/root" -w /root /bin/sh -l
     ;;
   install)
-    echo "Install supported Linux root filesystems through Zion OS > Linux Distributions; this command never downloads an unverified archive."
-    exit 2
+    distro="${2:-}"
+    case "$distro" in ubuntu|debian|alpine|kali) ;; *) echo "Usage: proot-distro install <ubuntu|debian|alpine|kali>"; exit 2 ;; esac
+    echo "UNAVAILABLE: install $distro from Zion OS > Linux Distributions; the CLI will not download an unverified archive."
+    exit 127
     ;;
   *)
     echo "Zion proot-distro: list | login <ubuntu|debian|alpine|kali> [-- command] | install <distro>"

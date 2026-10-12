@@ -37,6 +37,7 @@ void main() {
       expect(source, contains('ZION_TERMINAL'));
       expect(source, isNot(contains('/system/bin/sh')));
       expect(source, isNot(contains('android-posix')));
+      expect(source, contains('"-b", "/data/data/com.zion.os/files/home:/root"'));
     });
 
     test('terminal never silently falls back to Android host shell', () async {
@@ -50,6 +51,12 @@ void main() {
       expect(service, contains('_scheduleUserlandInstall()'));
       expect(capabilities, contains('NO HOST-SHELL FALLBACK'));
       expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
+    });
+
+    test('runtime probes reject non-executable files and handle empty shared storage', () async {
+      final runtime = await File('lib/features/terminal/zion_runtime_service.dart').readAsString();
+      expect(runtime, contains('(stat.mode & 0x49) != 0'));
+      expect(runtime, contains('await shared.list(followLinks: false).isEmpty'));
     });
 
     test('existing PRoot binaries are checked before being accepted', () async {
@@ -67,6 +74,9 @@ void main() {
       expect(runtime, contains("distroRoot + '/' + distro.name + '/rootfs'"));
       expect(runtime, contains("home + ':/root'"));
       expect(runtime, contains("'--link2symlink'"));
+      expect(downloader, contains("File(sourceDir.path + '/bin/sh')"));
+      expect(downloader, contains('var movedPrevious = false;'));
+      expect(downloader, contains('if (movedPrevious && await backup.exists())'));
     });
 
     test('proot-distro shell wrapper passes syntax and runs through a Zion PRoot path', () async {
