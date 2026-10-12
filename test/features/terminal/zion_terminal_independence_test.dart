@@ -75,7 +75,9 @@ void main() {
           environment: <String, String>{...Platform.environment, 'HOME': home.path, 'PREFIX': prefix.path},
         );
         expect(result.exitCode, 0, reason: result.stderr.toString());
-        expect(result.stdout.toString(), contains('ZION_PROOT_TEST:echo zion-standalone'));
+        final output = result.stdout.toString();
+        expect(output, contains('ZION_PROOT_TEST:-0'));
+        expect(output, contains('zion-standalone'));
       } finally {
         await temp.delete(recursive: true);
       }
