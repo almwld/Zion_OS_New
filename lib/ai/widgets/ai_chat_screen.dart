@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../ai_agent.dart';
 import '../llama_service.dart';
@@ -13,64 +14,105 @@ class _AIChatScreenState extends State<AIChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _messages = <AgentMessage>[];
+  List<LlamaModel> _availableModels = <LlamaModel>[];
   LlamaModel? _selected;
   bool _loading = true;
+  bool _loadingModel = false;
   bool _generating = false;
   String? _error;
 
-  @override void initState() { super.initState(); _agent = AIAgent(); _init(); }
+  @override void initState() {
+    super.initState();
+    _agent = AIAgent();
+    // Paint the window before invoking Android model discovery.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_init());
+    });
+  }
 
   Future<void> _init() async {
     try {
-      // Initialize the agent itself for each candidate; loading the native
-      // bridge alone is not enough to enable chat/history in AIAgent.
+      // Opening the app only discovers models. Native GGUF loading can consume
+      // substantial RAM, so it must be an explicit user action.
       final models = await _agent.llama.discoverModels();
-      final candidates = models.where((m) => m.readable && m.path.isNotEmpty).toList()
+      _availableModels = models
+          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
+          .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
-      for (final model in candidates) {
-        if (await _agent.initialize(modelPath: model.path, role: widget.role)) {
-          _selected = model;
-          break;
-        }
-      }
-      if (_selected != null) {
-        _messages.add(const AgentMessage(
-          role: 'assistant',
-          content: 'الذكاء الاصطناعي المحلي جاهز. تتم المعالجة على الجهاز دون اتصال.',
-        ));
+      if (_availableModels.isNotEmpty) {
+        _selected = _availableModels.first;
+        _error = 'تم العثور على نموذج محلي. اضغط زر تحميل النموذج لبدء المحرك.';
       } else {
         _error = models.isEmpty
-            ? 'لم يتم العثور على نموذج GGUF. استخدم زر استيراد النموذج من ذاكرة الهاتف.'
-            : 'عُثر على ملفات GGUF لكن تعذّر تحميلها. جرّب نموذجاً متوافقاً أصغر حجماً.';
+            ? 'لم يتم العثور على نموذج GGUF. استخدم زر الاستيراد لاختيار نموذج من الهاتف.'
+            : 'النماذج المتاحة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر لتجنب إغلاق التطبيق.';
       }
     } catch (e) {
-      _error = 'تعذر تهيئة محرك الذكاء المحلي: ' + e.toString();
+      _error = 'تعذر فحص نماذج الذكاء المحلي: $e';
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadSelected() async {
+    final model = _selected;
+    if (model == null || _loading || _loadingModel) return;
+    if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
+      setState(() => _error = 'حجم النموذج يتجاوز حد الذاكرة الآمن (2 GiB). اختر نموذج GGUF أصغر.');
+      return;
+    }
+    setState(() {
+      _loadingModel = true;
+      _error = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
+    });
+    try {
+      final ok = await _agent.initialize(
+        modelPath: model.path,
+        role: widget.role,
+        nThreads: 2,
+      );
+      if (!mounted) return;
+      setState(() {
+        _error = ok
+            ? null
+            : 'تعذر تحميل النموذج. اختر نموذج GGUF أصغر أو متوافقاً مع الجهاز.';
+        if (ok) {
+          _messages.add(AgentMessage(
+            role: 'assistant',
+            content: 'تم تحميل ${model.name}. المعالجة محلية دون اتصال.',
+          ));
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'تعذر تحميل النموذج: $e');
+    } finally {
+      if (mounted) setState(() => _loadingModel = false);
+    }
   }
 
   Future<void> _pick() async {
     try {
       final model = await _agent.llama.pickAndImportModel();
       if (model == null || !mounted) return;
-      await _agent.llama.unloadModel();
-      final ok = await _agent.initialize(modelPath: model.path, role: widget.role);
-      if (!mounted) return;
       setState(() {
+        _availableModels = [model, ..._availableModels.where((m) => m.path != model.path)];
         _selected = model;
-        _error = ok ? null : 'فشل تحميل النموذج. تحقق من توافق GGUF والذاكرة المتاحة.';
-        if (ok) {
-          _messages.add(AgentMessage(role: 'assistant', content: 'تم تحميل ' + model.name + ' محلياً.'));
-        }
+        _error = 'تم استيراد النموذج. اضغط زر تحميل النموذج لبدء المحرك.';
       });
     } catch (e) {
-      if (mounted) setState(() => _error = 'تعذر استيراد النموذج: ' + e.toString());
+      if (mounted) setState(() => _error = 'تعذر استيراد النموذج: $e');
     }
   }
 
   Future<void> _send() async {
     final text = _input.text.trim();
-    if (text.isEmpty || _generating || !_agent.isInitialized) return;
+    if (text.isEmpty || _generating) return;
+    if (!_agent.isInitialized) {
+      setState(() => _messages.add(const AgentMessage(
+        role: 'assistant',
+        content: 'حمّل نموذج GGUF أولاً باستخدام زر الذاكرة بالأعلى.',
+      )));
+      return;
+    }
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
     try {
       final response = await _agent.chat(text);
@@ -88,9 +130,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _pick, icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
-        if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: const Chip(label: Text('OFFLINE'))),
+        if (_loadingModel) const LinearProgressIndicator(),
+        if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
           final m = _messages[i]; final user = m.role == 'user';

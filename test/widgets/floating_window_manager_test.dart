@@ -12,6 +12,79 @@ void main() {
   });
 
   testWidgets(
+    'reopening an app refreshes the rendered floating content',
+    (tester) async {
+      final manager = WindowManager();
+      final key = GlobalKey<FloatingWindowManagerState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SizedBox.expand(
+            child: FloatingWindowManager(
+              key: key,
+              windowManager: manager,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      );
+
+      key.currentState!.openWindow(
+        'Notes',
+        const Text('Old app content'),
+        appKey: 'notes',
+      );
+      await tester.pump();
+      expect(find.text('Old app content'), findsOneWidget);
+
+      key.currentState!.openWindow(
+        'Notes',
+        const Text('Refreshed app content'),
+        appKey: 'notes',
+      );
+      await tester.pump();
+
+      expect(find.text('Old app content'), findsNothing);
+      expect(find.text('Refreshed app content'), findsOneWidget);
+      manager.dispose();
+    },
+  );
+
+  testWidgets(
+    'floating window lays out a real scaffold app without blank content',
+    (tester) async {
+      final key = GlobalKey<FloatingWindowManagerState>();
+      await tester.binding.setSurfaceSize(const Size(800, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FloatingWindowManager(
+            key: key,
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+      key.currentState!.openWindow(
+        'Settings',
+        Scaffold(
+          appBar: AppBar(title: const Text('Settings screen')),
+          body: const Center(child: Text('Settings content rendered')),
+        ),
+        appKey: 'settings',
+        size: const Size(380, 520),
+        position: const Offset(20, 80),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings screen'), findsOneWidget);
+      expect(find.text('Settings content rendered'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'reopening an app synchronizes native and floating workspaces',
     (tester) async {
       final manager = WindowManager();

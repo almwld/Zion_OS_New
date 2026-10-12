@@ -30,14 +30,14 @@ jobs:
         run: |
           chmod +x deps/build_proot.sh
           ./deps/build_proot.sh
-          test -f assets/proot-aarch64
+          test -s src/android/app/src/main/assets/proot-aarch64
           test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
           test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
 
       - name: Import runtime artifacts
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/assets
-          cp .ci/openminis/assets/proot-aarch64 android/app/src/main/assets/proot-aarch64
+          cp .ci/openminis/src/android/app/src/main/assets/proot-aarch64 android/app/src/main/assets/proot-aarch64
           cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so android/app/src/main/jniLibs/arm64-v8a/
           cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so android/app/src/main/jniLibs/arm64-v8a/
 

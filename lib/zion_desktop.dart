@@ -262,9 +262,17 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
   Widget? _themedScreenForApp(String name) {
     final rawScreen = _screenForApp(name);
     if (rawScreen == null) return null;
-    // Exactly one application-theme boundary. The outer MaterialApp owns
-    // Zion Shell colors; this boundary owns only the opened app's palette.
-    return AppThemeBoundary(child: rawScreen);
+    // Exactly one application-theme boundary. Keep the app surface inside
+    // that boundary so its background follows the selected app palette rather
+    // than inheriting the desktop shell's scaffold color.
+    return AppThemeBoundary(
+      child: Builder(
+        builder: (appContext) => ColoredBox(
+          color: Theme.of(appContext).scaffoldBackgroundColor,
+          child: rawScreen,
+        ),
+      ),
+    );
   }
 
   Future<void> _restoreWindowSession() async {

@@ -75,6 +75,14 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     final existingIndex = _windows.indexWhere((w) => w.appKey == key);
     if (existingIndex >= 0) {
       final existing = _windows[existingIndex];
+      // Reopening an app can produce a fresh widget tree (for example after
+      // returning from a full-screen route). Keep the live floating instance
+      // in sync instead of silently retaining its stale child.
+      existing.title = title;
+      existing.content = content;
+      if (windowId != null) existing.wmId = windowId;
+      if (size != null) existing.size = size;
+      if (position != null) existing.position = position;
       final manager = widget.windowManager;
       // Keep the floating layer and the native window manager on the same
       // workspace before attempting to focus the existing window.
@@ -131,6 +139,10 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
     final existingIndex = _windows.indexWhere((window) => window.appKey == appKey);
     if (existingIndex >= 0) {
       final existing = _windows[existingIndex];
+      // A restored app key may already be live; refresh its child, but keep
+      // the live window's placement/workspace instead of applying stale data.
+      existing.title = title;
+      existing.content = content;
       final manager = widget.windowManager;
       final existingId = existing.wmId;
       // An already-open floating instance owns its workspace. Ignore a stale
@@ -284,11 +296,11 @@ class FloatingWindowManagerState extends State<FloatingWindowManager> {
 
 class FloatingWindowInstance {
   final int id;
-  final String title;
-  final Widget content;
+  String title;
+  Widget content;
   final String appKey;
-  final int workspace;
-  final WindowId? wmId;
+  int workspace;
+  WindowId? wmId;
   Size? size;
   Offset? position;
   FloatingWindowInstance({required this.id, required this.title, required this.content, required this.appKey, required this.workspace, this.wmId, this.size, this.position});

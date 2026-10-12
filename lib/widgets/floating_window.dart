@@ -48,6 +48,22 @@ class _FloatingWindowState extends State<FloatingWindow> {
     );
   }
 
+  @override
+  void didUpdateWidget(covariant FloatingWindow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The manager may restore or update geometry while keeping the same
+    // stable window key. Reconcile local gesture state with the new inputs.
+    if (oldWidget.initialPosition != widget.initialPosition) {
+      _position = widget.initialPosition;
+    }
+    if (oldWidget.initialSize != widget.initialSize) {
+      _size = Size(
+        widget.initialSize.width < _minWidth ? _minWidth : widget.initialSize.width,
+        widget.initialSize.height < _minHeight ? _minHeight : widget.initialSize.height,
+      );
+    }
+  }
+
   Offset _clampPosition(BuildContext context, Offset position, {Size? size}) {
     final screen = MediaQuery.sizeOf(context);
     final safeTop = MediaQuery.paddingOf(context).top;
@@ -146,11 +162,11 @@ class _FloatingWindowState extends State<FloatingWindow> {
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.9),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF00BCD4)),
+              border: Border.all(color: Theme.of(context).colorScheme.primary),
             ),
             child: Row(
               children: [
-                const Icon(Icons.window, color: Color(0xFF00BCD4), size: 16),
+                Icon(Icons.window, color: Theme.of(context).colorScheme.primary, size: 16),
                 Expanded(
                   child: Text(widget.title, style: const TextStyle(color: Colors.white70, fontSize: 11), overflow: TextOverflow.ellipsis),
                 ),
@@ -174,8 +190,8 @@ class _FloatingWindowState extends State<FloatingWindow> {
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.98),
               borderRadius: BorderRadius.circular(_isMaximized ? 0 : 16),
-              border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.6), width: 1.5),
-              boxShadow: [BoxShadow(color: const Color(0xFF00BCD4).withOpacity(0.3), blurRadius: 12)],
+              border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.6), width: 1.5),
+              boxShadow: [BoxShadow(color: Theme.of(context).colorScheme.primary.withOpacity(0.3), blurRadius: 12)],
             ),
             child: Stack(
               children: [
@@ -207,14 +223,14 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       children: [
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text(widget.title, style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 12), overflow: TextOverflow.ellipsis),
+                          child: Text(widget.title, style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 12), overflow: TextOverflow.ellipsis),
                         ),
                         GestureDetector(
                           onTap: () => setState(() {
                             _isMinimized = true;
                             widget.onChanged(_size, _position);
                           }),
-                          child: const Icon(Icons.horizontal_rule, color: Color(0xFF00BCD4), size: 18),
+                          child: Icon(Icons.horizontal_rule, color: Theme.of(context).colorScheme.primary, size: 18),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
@@ -237,7 +253,7 @@ class _FloatingWindowState extends State<FloatingWindow> {
                       bottomLeft: Radius.circular(_isMaximized ? 0 : 16),
                       bottomRight: Radius.circular(_isMaximized ? 0 : 16),
                     ),
-                    child: widget.child,
+                    child: ColoredBox(color: Theme.of(context).scaffoldBackgroundColor, child: widget.child),
                   ),
                 ),
 
