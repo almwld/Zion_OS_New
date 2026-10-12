@@ -67,8 +67,17 @@ class RootfsDownloader {
     final line = text
         .split(RegExp(r'\r?\n'))
         .firstWhere((line) => line.contains(fileName), orElse: () => '');
-    if (line.isEmpty) return null;
-    final match = RegExp(r'([a-fA-F0-9]{64}|[a-fA-F0-9]{128})').firstMatch(line);
+    return parseChecksumLine(line, fileName);
+  }
+
+  static (String algorithm, String digest)? parseChecksumLine(
+    String line,
+    String fileName,
+  ) {
+    if (!line.contains(fileName)) return null;
+    // Match SHA-512 first: otherwise the 64-character alternative consumes
+    // the prefix of a 128-character digest and misclassifies it as SHA-256.
+    final match = RegExp(r'([a-fA-F0-9]{128}|[a-fA-F0-9]{64})').firstMatch(line);
     if (match == null) return null;
     final digest = match.group(1)!.toLowerCase();
     return digest.length == 128 ? ('sha512', digest) : ('sha256', digest);
