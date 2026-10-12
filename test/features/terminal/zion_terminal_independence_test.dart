@@ -61,6 +61,13 @@ void main() {
       expect(strategy, contains('workingDirectory: workingDirectory'));
     });
 
+    test('rootfs network requests have bounded checksum and download waits', () async {
+      final source = await File('lib/core/magiczionos/installers/rootfs_downloader.dart').readAsString();
+      expect(source, contains('http.get(checksumUri).timeout(_checksumTimeout)'));
+      expect(source, contains('client.send(request).timeout(_downloadHeaderTimeout)'));
+      expect(source, contains('response.stream.timeout(_downloadIdleTimeout).pipe(sink)'));
+    });
+
     test('Linux rootfs downloads reject unsupported app architectures', () async {
       final downloader = await File('lib/core/magiczionos/installers/rootfs_downloader.dart').readAsString();
       expect(downloader, contains('Abi.current() != Abi.androidArm64'));
