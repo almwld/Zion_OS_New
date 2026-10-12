@@ -41,6 +41,35 @@ static ZionPtySession *get_session(jint handle) {
     return session->master_fd >= 0 ? session : NULL;
 }
 
+static void configure_terminal(int fd) {
+    struct termios settings;
+    if (tcgetattr(fd, &settings) != 0) return;
+
+    // Do not rely on the PTY driver's inherited defaults: some Android builds
+    // expose a slave with ECHO/ICANON disabled. In that state characters appear
+    // to vanish when Enter submits a line, and shells can receive CR without
+    // the expected line discipline processing.
+    settings.c_iflag |= (ICRNL | IXON);
+#ifdef IMAXBEL
+    settings.c_iflag |= IMAXBEL;
+#endif
+    settings.c_oflag |= (OPOST | ONLCR);
+    settings.c_lflag |= (ISIG | ICANON | ECHO | ECHOE | ECHOK);
+#ifdef ECHOCTL
+    settings.c_lflag |= ECHOCTL;
+#endif
+#ifdef IUTF8
+    settings.c_iflag |= IUTF8;
+#endif
+    settings.c_cc[VERASE] = 0x7f;
+    settings.c_cc[VKILL] = 0x15;
+    settings.c_cc[VEOF] = 0x04;
+    settings.c_cc[VINTR] = 0x03;
+    settings.c_cc[VQUIT] = 0x1c;
+    settings.c_cc[VSUSP] = 0x1a;
+    (void)tcsetattr(fd, TCSANOW, &settings);
+}
+
 static int set_winsize(int fd, int rows, int cols) {
     struct winsize ws;
     memset(&ws, 0, sizeof(ws));
@@ -276,6 +305,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         close(master);
         int slave = open(slave_name, O_RDWR | O_NOCTTY);
         if (slave < 0) _exit(127);
+        configure_terminal(slave);
 
         prctl(PR_SET_PDEATHSIG, SIGHUP);
         setsid();
