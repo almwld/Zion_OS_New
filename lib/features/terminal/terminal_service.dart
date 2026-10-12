@@ -132,7 +132,11 @@ class TerminalService {
     // sentinel into the executable PRoot + loader paths inside nativeLibraryDir.
     // Match the canonical rootfs path used by ZionProot and proot-distro.
     final kaliRootfs = Directory('/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs');
-    if (await File(kaliRootfs.path + '/bin/sh').exists()) {
+    final kaliProot = File('/data/data/com.zion.os/files/usr/bin/proot');
+    final kaliLoader = File('/data/data/com.zion.os/files/usr/libexec/proot-loader');
+    if (await File(kaliRootfs.path + '/bin/sh').exists() &&
+        await kaliProot.exists() &&
+        await kaliLoader.exists()) {
       return 'zion-kali';
     }
 
