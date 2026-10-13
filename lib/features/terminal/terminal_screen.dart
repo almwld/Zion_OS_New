@@ -990,7 +990,7 @@ class _StatusBar extends StatelessWidget {
           Expanded(
             child: Text(
               connected
-                  ? 'REAL SHELL • xterm-256color • Ctrl-C • 3,000 scrollback'
+                  ? 'REAL SHELL • xterm-256color • Ctrl-C • 1,200 scrollback'
                   : 'Shell unavailable / stopped',
               style: TextStyle(fontSize: 11, color: palette.foreground),
             ),
@@ -998,7 +998,7 @@ class _StatusBar extends StatelessWidget {
           if (tab != null)
             Text(
               tab!.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 fontFamily: 'monospace',
                 color: palette.accent,
@@ -1054,7 +1054,7 @@ class _ExtraKeys extends StatelessWidget {
                   child: Center(
                     child: Text(
                       item.key,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
                         color: palette.foreground,
