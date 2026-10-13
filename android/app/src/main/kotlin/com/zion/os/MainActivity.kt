@@ -26,6 +26,7 @@ import android.os.Vibrator
 import android.speech.tts.TextToSpeech
 import android.telephony.SmsManager
 import android.widget.Toast
+import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -151,10 +152,26 @@ class MainActivity : FlutterFragmentActivity() {
                         val threads = call.argument<Int>("threads") ?: 4
                         val loraPath = call.argument<String>("loraPath")
                         val loraScale = (call.argument<Double>("loraScale") ?: 1.0).toFloat()
+                        // mmap reduces copies but does not make a model free:
+                        // reject clearly unsafe loads before entering native code.
+                        val modelBytes = try { File(path).length().coerceAtLeast(0L) } catch (_: Throwable) { 0L }
+                        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                        val memoryInfo = ActivityManager.MemoryInfo()
+                        activityManager?.getMemoryInfo(memoryInfo)
+                        val requiredBytes = maxOf(768L * 1024L * 1024L, modelBytes * 3L / 2L + 512L * 1024L * 1024L)
+                        if (activityManager != null && memoryInfo.availMem < requiredBytes) {
+                            android.util.Log.w("ZionLLM", "Model load deferred: available=${memoryInfo.availMem / (1024 * 1024)}MiB, estimatedRequired=${requiredBytes / (1024 * 1024)}MiB")
+                            Toast.makeText(this, "الذاكرة المتاحة غير كافية لتحميل هذا النموذج بأمان. أغلق التطبيقات الأخرى أو اختر نموذجاً أصغر.", Toast.LENGTH_LONG).show()
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
                         aiExecutor.execute {
                             val ok = try {
                                 llamaBridge.nativeLoadModel(path, threads, loraPath, loraScale)
-                            } catch (_: Throwable) { false }
+                            } catch (t: Throwable) {
+                                android.util.Log.e("ZionLLM", "Native model loading failed", t)
+                                false
+                            }
                             runOnUiThread { result.success(ok) }
                         }
                     }
