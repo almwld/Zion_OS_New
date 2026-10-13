@@ -23,7 +23,7 @@ class ZionUserlandInstaller {
 
   /// A valid Bash executable is authoritative; the state file prevents repeat
   /// copies, but a stale/missing marker never forces a 1.4 GB recopy by itself.
-  Future<bool> isInstalled() async {
+  Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
     if (_installCompleted) {
       try {
@@ -66,6 +66,16 @@ class ZionUserlandInstaller {
         }
       }
       if (!stateIsValid) {
+        // A Bash that predates the marker may be a partially repaired restore.
+        // Repair it in place and restore command links; never recopy 1.4 GB just
+        // because the marker is absent or corrupt.
+        onProgress?.call('[Userland] Existing Bash found; repairing permissions without recopy...');
+        await _repairPermissions(Directory(ZionBootstrap.prefix));
+        onProgress?.call('[Userland] Creating symlinks...');
+        await _recreateCoreutilsSymlinks('${ZionBootstrap.prefix}/bin');
+        await _createOtherSymlinks('${ZionBootstrap.prefix}/bin');
+        await ZionBootstrap.initializeRuntime();
+        if (!await _hasCompatibleShell()) return false;
         await _writeState(source: 'existing-userland', sizeBytes: 0);
       }
       _installCompleted = true;
@@ -123,7 +133,7 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
-    if (await isInstalled()) {
+    if (await isInstalled(onProgress: onProgress)) {
       onProgress?.call('[Userland] Already installed; skipping copy.');
       return const ZionUserlandInstallResult(success: true, message: 'Userland already installed; no copy needed.');
     }
