@@ -9,6 +9,7 @@ import '../../ai/llama_service.dart';
 
 import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
+import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
 
@@ -759,6 +760,21 @@ $request''',
             onPressed: tab == null || _aiLoading
                 ? null
                 : () => unawaited(_openAiAssistant()),
+          ),
+          IconButton(
+            tooltip: 'Zion Agent Loop — Qwen + Kali',
+            icon: const Icon(Icons.psychology_alt),
+            onPressed: tab == null
+                ? null
+                : () => unawaited(
+                      AgentLoopSheet.show(
+                        context: context,
+                        ai: _ai,
+                        terminal: tab.service,
+                        palette: _palette,
+                        recentOutput: () => tab.recentOutput,
+                      ),
+                    ),
           ),
           IconButton(
             tooltip: _tabs.length >= _maxSessions
