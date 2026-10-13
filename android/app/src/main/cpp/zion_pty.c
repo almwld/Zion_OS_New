@@ -268,7 +268,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         return 0;
     }
 
-    // Prepare the fixed Zion environment before fork(). Android/Flutter is
+    // Prepare the base process environment before fork(). Android/Flutter is
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
