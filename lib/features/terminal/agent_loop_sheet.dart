@@ -101,7 +101,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
     if (target.isEmpty || target.length > 253 || target.contains('/') ||
         target.contains(' ') || target.contains('@')) return false;
     final ipv4 = RegExp(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$');
-    final hostname = RegExp(r'^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\\.?$');
+    final hostname = RegExp(r'^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.?$');
     if (ipv4.hasMatch(target)) {
       return target.split('.').every((part) => int.tryParse(part) != null && int.parse(part) <= 255);
     }
