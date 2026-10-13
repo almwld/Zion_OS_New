@@ -169,7 +169,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
       _showMessage('أدخل نطاقاً صحيحاً: اسم نطاق أو عنوان IPv4.');
       return;
     }
-    if (!widget.ai.isLoaded) {
+    if (!await widget.ai.refreshLoadedState()) {
       _showMessage('حمّل نموذج Qwen من شاشة Offline AI أولاً.');
       return;
     }
