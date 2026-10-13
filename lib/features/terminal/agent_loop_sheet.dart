@@ -222,11 +222,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
         // Qwen2.5-Instruct expects ChatML; keep the prompt compact for the
         // phone's 512-token native context window.
         final prompt = '''<|im_start|>system
-You are Zion OS Agent Loop. Return exactly three fields:
-ACTION: RUN, THINK, or DONE
-COMMAND: one command line only for RUN
-REASONING: one short sentence
-Use only the listed tools and the exact target. One command per step. Do not invent results. Stop and summarize when enough evidence is available.
+You are Zion OS Agent Loop. Return ONLY a JSON object with keys action, command, reasoning. action must be RUN, THINK, or DONE. command is a single command line only for RUN, otherwise null. reasoning is one short sentence. Use only the listed tools and exact target. Do not invent results. Stop when enough evidence is available.
 Available tools: nmap, whois, dig, nslookup, ping, traceroute, curl, whatweb, nikto.
 <|im_end|>
 <|im_start|>user
