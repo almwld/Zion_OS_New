@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -10,19 +9,7 @@ import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
-import '../../core/userland/zion_userland_installer.dart';
 
-Future<String> _installZionUserlandInBackground() async {
-  try {
-    const installer = ZionUserlandInstaller();
-    final result = await installer.installLatest();
-    return result.success
-        ? 'تم تجهيز Zion Userland في الخلفية بنجاح.'
-        : 'تعذر تجهيز Zion Userland في الخلفية: ' + result.message;
-  } catch (e) {
-    return 'تعذر تجهيز Zion Userland في الخلفية: ' + e.toString();
-  }
-}
 class _TerminalEnvironment {
   const _TerminalEnvironment({required this.home, required this.prefix, required this.tmp});
   final String home;
@@ -67,15 +54,13 @@ class TerminalService {
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
-  static Future<String>? _userlandInstallFuture;
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
-  static const Map<String, String> _userlandEnvironment = <String, String>{
+  static const Map<String, String> _androidEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
-    'PREFIX': '/data/data/com.zion.os/files/usr',
     'TMPDIR': '/data/data/com.zion.os/files/tmp',
-    'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin',
-    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+    'PATH': '/system/bin:/system/xbin:/vendor/bin',
     'TERM': 'xterm-256color',
+    'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
   };
@@ -128,44 +113,21 @@ class TerminalService {
   }
 
   Future<String?> _findShell() async {
-    // Prefer the locally installed Kali rootfs. MainActivity translates the
-    // sentinel into the executable PRoot + loader paths inside nativeLibraryDir.
-    // Match the canonical rootfs path used by ZionProot and proot-distro.
-    final kaliRootfs = Directory('/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs');
-    final kaliProot = File('/data/data/com.zion.os/files/usr/bin/proot');
-    final kaliLoader = File('/data/data/com.zion.os/files/usr/libexec/proot');
-    if (await File(kaliRootfs.path + '/bin/sh').exists() &&
-        await kaliProot.exists() &&
-        await kaliLoader.exists()) {
-      return 'zion-kali';
+    // Use Android's built-in POSIX shell. Zion Userland, PRoot and a local
+    // Linux rootfs are deliberately not prerequisites for the terminal.
+    const shell = '/system/bin/sh';
+    try {
+      if (!await File(shell).exists()) return null;
+      final result = await Process.run(
+        shell,
+        const <String>['-c', 'exit 0'],
+        runInShell: false,
+        environment: _androidEnvironment,
+      ).timeout(const Duration(seconds: 2));
+      return result.exitCode == 0 ? shell : null;
+    } catch (_) {
+      return null;
     }
-
-    // Zion Terminal is a real Userland terminal. Android /system/bin/sh is
-    // intentionally NOT a fallback: running it would break the Zion Userland
-    // contract (job control, Userland paths, package environment).
-    const candidates = <String>[
-      '/data/data/com.zion.os/files/usr/bin/bash',
-      '/data/data/com.zion.os/files/usr/bin/zsh',
-      '/data/data/com.zion.os/files/usr/bin/fish',
-      '/data/data/com.zion.os/files/usr/bin/ash',
-    ];
-    for (final candidate in candidates) {
-      try {
-        final stat = await File(candidate).stat();
-        if (stat.type != FileSystemEntityType.file) continue;
-        final result = await Process.run(
-          candidate,
-          const <String>['-c', 'exit 0'],
-          runInShell: false,
-          environment: _userlandEnvironment,
-        ).timeout(const Duration(seconds: 2));
-        if (result.exitCode == 0) return candidate;
-      } catch (_) {}
-    }
-
-    // Never fall back to Android's host shell: an unavailable Zion runtime
-    // must be reported clearly rather than pretending to be a standalone terminal.
-    return null;
   }
 
   Future<_TerminalEnvironment> _ensureTerminalEnvironment() async {
@@ -264,7 +226,7 @@ class TerminalService {
           shell,
           <String>['-c', command],
           runInShell: false,
-          environment: _userlandEnvironment,
+          environment: _androidEnvironment,
         );
       }
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
@@ -326,7 +288,7 @@ class TerminalService {
     final value = command.trim();
     if (value.isEmpty) return const TerminalResult(command: '', stdout: '', stderr: '', exitCode: 0, duration: Duration.zero, shell: 'none');
     if (value == 'help' || value == 'zion-help') {
-      return _builtinResult(value, 'Built-in: help, capabilities, zion-status, history, clear, exit, shell-status\nReal shell examples: pwd, ls, id, uname -a, getprop, ip addr, ip route, ps, df -h\nNetwork diagnostics: ping, ip, ss/netstat, DNS lookup when installed.\nInteractive Android terminal uses a real child shell process; no shell success is simulated.');
+      return _builtinResult(value, 'Built-in: help, capabilities, zion-status, history, clear, exit, shell-status\nAndroid shell commands: pwd, ls, cat, id, uname -a, getprop, ip, ps, df, settings (permissions vary).\nCommands available depend on Android version and vendor image; common applets are provided by toybox.\nShell: /system/bin/sh with native PTY; no Zion Userland or root access is implied.');
     }
     if (value == 'wifi' || value == 'wifi scan' || value == 'wifi-scan') return _scanWifiBuiltin(value);
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
@@ -384,27 +346,6 @@ class TerminalService {
     }
   }
 
-  Future<String> _scheduleUserlandInstall() async {
-    final inFlight = _userlandInstallFuture;
-    if (inFlight != null) return inFlight;
-
-    final task = Isolate.run(_installZionUserlandInBackground);
-    _userlandInstallFuture = task;
-    try {
-      final message = await task;
-      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
-      return message;
-    } catch (error) {
-      final message = 'تعذر إكمال التثبيت: $error';
-      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
-      return message;
-    } finally {
-      if (identical(_userlandInstallFuture, task)) {
-        _userlandInstallFuture = null;
-      }
-    }
-  }
-
   Future<bool> startInteractive() async {
     if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
@@ -414,28 +355,20 @@ class TerminalService {
     final started = DateTime.now();
     // Create app-local terminal directories before starting the native PTY.
     await _ensureTerminalEnvironment();
-    var shell = await _findShell();
+    final shell = await _findShell();
     if (shell == null) {
-      _output.add('Zion Userland غير جاهز؛ يبدأ التثبيت أو الإصلاح الآن. لن يتم تشغيل صدفة Android بديلة.\r\n');
-      final installMessage = await _scheduleUserlandInstall();
-      // If installation repaired the runtime, rediscover and continue in this
-      // same Start action rather than requiring a close/reopen/retry cycle.
-      shell = await _findShell();
-      if (shell == null) {
-        _output.add('Zion Userland ما زال غير جاهز بعد محاولة الإصلاح. $installMessage\r\n');
-        _audit(
-          command: '<interactive-start>',
-          outcome: 'unavailable',
-          exitCode: 127,
-          shell: 'unavailable',
-          duration: DateTime.now().difference(started),
-          interactive: false,
-        );
-        return false;
-      }
-      _output.add('تم تجهيز Zion Userland؛ متابعة تشغيل PTY تلقائيًا.\r\n');
+      _output.add('Android system shell /system/bin/sh is unavailable on this device.\\r\\n');
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'unavailable',
+        exitCode: 127,
+        shell: 'unavailable',
+        duration: DateTime.now().difference(started),
+        interactive: false,
+      );
+      return false;
     }
-    _output.add('Zion runtime جاهز: ' + shell + '\r\n');
+    _output.add('Android shell ready: $shell\\r\\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -444,14 +377,14 @@ class TerminalService {
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
-        _output.add('ERROR: Zion PTY is unavailable on this Android runtime.\r\n');
+        _output.add('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
         return false;
       }
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = _pty.output.listen(_output.add);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start Zion Userland PTY: $shell\r\n');
+        _output.add('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -463,7 +396,7 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add('Connected to Zion Userland: $shell • PTY\r\n');
+      _output.add('Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -510,7 +443,7 @@ class TerminalService {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       _remember(command);
-      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'process-shell', duration: Duration.zero, interactive: true);
+      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'android-system-shell', duration: Duration.zero, interactive: true);
     }
   }
 
