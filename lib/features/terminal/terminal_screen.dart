@@ -314,7 +314,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       title: Text(history[index], style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 12)),
                       onTap: () {
                         Navigator.pop(dialogContext);
-                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index]); }
+                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index] + '\n'); }
                         else { _showTerminalNotice('شغّل جلسة PTY أولاً.'); }
                       },
                     ))),
