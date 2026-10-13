@@ -126,7 +126,9 @@ class TerminalService {
 
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
-      if (await _userlandInstaller.isInstalled()) return _userlandBash;
+      if (await _userlandInstaller.isInstalled(
+        onProgress: (message) => _output.add('$message\r\n'),
+      )) return _userlandBash;
       if (installIfMissing) {
         _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
