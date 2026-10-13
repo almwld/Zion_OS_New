@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -291,8 +292,8 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Copying files... (source is about 1.4 GB; this runs asynchronously)');
-      final result = await Process.run('/system/bin/cp', <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'], runInShell: false).timeout(const Duration(minutes: 10));
+      onProgress?.call('[Userland] Copying files...');
+      final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
       if (result.exitCode != 0) {
         onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
         try {
@@ -320,6 +321,70 @@ class ZionUserlandInstaller {
     } catch (e) {
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
+  }
+
+  Future<({int exitCode, String stderr})> _copyDirectoryWithProgress(
+    String sourcePath,
+    String targetPath, {
+    void Function(String message)? onProgress,
+  }) async {
+    var totalEntries = 0;
+    try {
+      final count = await Process.run(
+        '/system/bin/sh',
+        <String>['-c', 'find "$1" -mindepth 1 -print 2>/dev/null | wc -l', 'zion-copy-count', sourcePath],
+        runInShell: false,
+      ).timeout(const Duration(minutes: 2));
+      totalEntries = int.tryParse(count.stdout.toString().trim()) ?? 0;
+    } catch (_) {
+      // Copy still proceeds if the platform find implementation is limited.
+    }
+
+    final process = await Process.start(
+      '/system/bin/cp',
+      <String>['-av', '$sourcePath/.', '$targetPath/'],
+      runInShell: false,
+    );
+    final stderr = StringBuffer();
+    var copiedEntries = 0;
+    var lastPercent = -1;
+    final watch = Stopwatch()..start();
+    final stdoutSubscription = process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+      copiedEntries++;
+      if (totalEntries > 0) {
+        final percent = ((copiedEntries * 100) ~/ totalEntries).clamp(0, 99);
+        if (percent >= lastPercent + 5) {
+          lastPercent = percent;
+          onProgress?.call('[Userland] Copying files... $percent%');
+        }
+      }
+    });
+    final stderrSubscription = process.stderr
+        .transform(utf8.decoder)
+        .listen(stderr.write);
+    final ticker = Timer.periodic(const Duration(seconds: 10), (_) {
+      onProgress?.call('[Userland] Copying files... still running (${watch.elapsed.inSeconds}s)');
+    });
+    var exitCode = 124;
+    try {
+      exitCode = await process.exitCode.timeout(
+        const Duration(minutes: 10),
+        onTimeout: () {
+          process.kill(ProcessSignal.sigkill);
+          return 124;
+        },
+      );
+    } finally {
+      ticker.cancel();
+      await stdoutSubscription.cancel();
+      await stderrSubscription.cancel();
+      watch.stop();
+    }
+    if (exitCode == 0) onProgress?.call('[Userland] Copying files... 100%');
+    return (exitCode: exitCode, stderr: stderr.toString());
   }
 
   /// Repair permissions without allowing a few root-owned shared libraries to
