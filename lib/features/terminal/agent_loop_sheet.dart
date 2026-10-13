@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../ai/llama_service.dart';
+import 'agent_loop_validator.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
 
@@ -60,10 +61,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
   String _status = 'جاهز';
   String? _sessionPath;
 
-  static const _allowedTools = <String>{
-    'nmap', 'whois', 'dig', 'nslookup', 'ping', 'traceroute',
-    'curl', 'whatweb', 'nikto',
-  };
+  static const _validator = AgentLoopValidator();
 
   @override
   void dispose() {
@@ -96,17 +94,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
     unawaited(_saveSession());
   }
 
-  bool _validTarget(String value) {
-    final target = value.trim();
-    if (target.isEmpty || target.length > 253 || target.contains('/') ||
-        target.contains(' ') || target.contains('@')) return false;
-    final ipv4 = RegExp(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$');
-    final hostname = RegExp(r'^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.?$');
-    if (ipv4.hasMatch(target)) {
-      return target.split('.').every((part) => int.tryParse(part) != null && int.parse(part) <= 255);
-    }
-    return hostname.hasMatch(target);
-  }
+  bool _validTarget(String value) => _validator.validTarget(value);
 
   ({String? action, String? command, String? reasoning}) _parse(String response) {
     final action = RegExp(r'ACTION\s*:\s*(RUN|THINK|DONE)', caseSensitive: false)
@@ -118,37 +106,8 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
     return (action: action, command: command, reasoning: reasoning);
   }
 
-  String? _validateCommand(String command, String target) {
-    final value = command.trim();
-    if (value.isEmpty || value.length > 500) return 'الأمر فارغ أو طويل أكثر من اللازم.';
-    if (RegExp(r'[;|&\x60\$<>\n\r]').hasMatch(value)) {
-      return 'الأمر يحتوي على تركيب shell مركب وغير مدعوم في Agent Loop.';
-    }
-    final parts = value.split(RegExp(r'\s+'));
-    final base = parts.first.split('/').last;
-    if (!_allowedTools.contains(base)) return 'الأداة غير مفعّلة في قائمة أدوات Agent Loop: $base';
-    if (!value.toLowerCase().contains(target.toLowerCase())) {
-      final uriTarget = 'https://$target';
-      if (!value.toLowerCase().contains(uriTarget.toLowerCase())) {
-        return 'الأمر لا يشير إلى الهدف المحدد ($target).';
-      }
-    }
-    final lower = value.toLowerCase();
-    if (RegExp(r'(^|\s)(--script|-o[a-z]*|--output|--data|--upload-file|--request|--config|--proxy|--connect-to|--resolve)(\s|=|$)').hasMatch(lower)) {
-      return 'خيارات السكربت/الإخراج/الإرسال غير مفعّلة في Agent Loop.';
-    }
-    if (RegExp(r'(^|\s)(-a|-sc|-su|-p-|-x|-d|-t|-o|-k)(\s|$)').hasMatch(lower) ||
-        RegExp(r'\b(--insecure|--force-ssl|--auth|--password|--user)\b').hasMatch(lower)) {
-      return 'الخيار غير مدعوم في وضع الاستطلاع المحدود.';
-    }
-    if (base == 'nmap' && RegExp(r'(^|\s)-p\s*(?:1-65535|0-65535|-)(\s|$)').hasMatch(lower)) {
-      return 'يجب تحديد مجموعة منافذ محدودة بدلاً من فحص جميع المنافذ.';
-    }
-    if (base == 'curl' && !RegExp(r'^curl\s+(?:-sS\s+)?-I\s+https?://').hasMatch(value)) {
-      return 'curl متاح لطلبات HEAD فقط في Agent Loop.';
-    }
-    return null;
-  }
+  String? _validateCommand(String command, String target) =>
+      _validator.validateCommand(command, target);
 
   Future<bool> _confirm(String command, String reasoning) async {
     if (_autoExecute) return true;
