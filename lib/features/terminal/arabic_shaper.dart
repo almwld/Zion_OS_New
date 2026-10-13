@@ -44,19 +44,62 @@ class ArabicShaper {
   static bool _joinsPrevious(int cp) => _forms[cp] != null;
   static bool _joinsNext(int cp) => (_forms[cp]?.length ?? 0) == 4;
 
+  static bool _isArabicMark(int cp) =>
+      (cp >= 0x064B && cp <= 0x065F) ||
+      cp == 0x0670 ||
+      (cp >= 0x06D6 && cp <= 0x06ED);
+
+  static int _previousBaseIndex(List<int> runes, int index) {
+    while (index >= 0 && _isArabicMark(runes[index])) {
+      index--;
+    }
+    return index;
+  }
+
+  static int _nextBaseIndex(List<int> runes, int index) {
+    while (index < runes.length && _isArabicMark(runes[index])) {
+      index++;
+    }
+    return index < runes.length ? index : -1;
+  }
+
   /// Shapes ordinary text previews only; live PTY ANSI data stays untouched.
+  /// Combining marks are retained and ignored while determining letter joins.
+  /// Lam-alef pairs use their Unicode presentation ligatures where supported.
   static String shape(String text) {
     final runes = text.runes.toList(growable: false);
     final out = StringBuffer();
+    const lamAlefLigatures = <int, List<int>>{
+      0x0622: [0xFEF5, 0xFEF6], // lam + alef madda
+      0x0623: [0xFEF7, 0xFEF8], // lam + alef hamza above
+      0x0625: [0xFEF9, 0xFEFA], // lam + alef hamza below
+      0x0627: [0xFEFB, 0xFEFC], // lam + plain alef
+    };
+
     for (var i = 0; i < runes.length; i++) {
       final cp = runes[i];
+      if (cp == 0x0644 && i + 1 < runes.length) {
+        final ligatureForms = lamAlefLigatures[runes[i + 1]];
+        if (ligatureForms != null) {
+          final previousIndex = _previousBaseIndex(runes, i - 1);
+          final previous = previousIndex >= 0 ? runes[previousIndex] : -1;
+          final joinsPrevious =
+              _joinsNext(previous) && _joinsPrevious(cp);
+          out.writeCharCode(ligatureForms[joinsPrevious ? 1 : 0]);
+          i++;
+          continue;
+        }
+      }
+
       final forms = _forms[cp];
       if (forms == null) {
         out.writeCharCode(cp);
         continue;
       }
-      final previous = i > 0 ? runes[i - 1] : -1;
-      final next = i + 1 < runes.length ? runes[i + 1] : -1;
+      final previousIndex = _previousBaseIndex(runes, i - 1);
+      final nextIndex = _nextBaseIndex(runes, i + 1);
+      final previous = previousIndex >= 0 ? runes[previousIndex] : -1;
+      final next = nextIndex >= 0 ? runes[nextIndex] : -1;
       final joinsPrevious = _joinsNext(previous) && _joinsPrevious(cp);
       final joinsNext = _joinsNext(cp) && _joinsPrevious(next);
       final index = joinsPrevious && joinsNext ? 3 : joinsPrevious ? 1 : joinsNext ? 2 : 0;
