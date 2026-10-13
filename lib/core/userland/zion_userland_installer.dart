@@ -42,6 +42,15 @@ class ZionUserlandInstaller {
       );
     }
 
+    // A locally restored Termux prefix may be runnable without Zion's release
+    // marker. Do not reinstall it on every terminal launch.
+    if (await _hasCompatibleProot() && await _hasCompatibleShell()) {
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'بيئة الطرفية المحلية جاهزة بالفعل؛ لا حاجة إلى تنزيلات.',
+      );
+    }
+
     if (await _hasKaliRootfs() && await _hasCompatibleProot()) {
       return const ZionUserlandInstallResult(
         success: true,
@@ -109,48 +118,14 @@ class ZionUserlandInstaller {
       );
     }
 
-    onProgress?.call('[Userland] No local files found, trying network...');
-    final remote = await _downloadFromSingleEndpoint(abi, onProgress: onProgress);
-    if (!remote.success || remote.path == null) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: remote.message ?? 'تعذر تنزيل Zion Userland.',
-      );
-    }
-
-    try {
-      onProgress?.call('تم تنزيل Bootstrap والتحقق من SHA-256؛ يبدأ التثبيت...');
-      final result = await ZionBootstrap().installFromArchive(
-        remote.path!,
-        onProgress: (progress, message) => onProgress?.call(
-          '[' + (progress * 100).round().toString() + '%] ' + message,
-        ),
-      );
-      if (!result.success) {
-        return ZionUserlandInstallResult(
-          success: false,
-          message: result.error ?? 'فشل تثبيت Userland.',
-        );
-      }
-      if (!await ZionBootstrap.isInstalled() ||
-          !await _hasCompatibleProot() ||
-          !await _hasCompatibleShell()) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message:
-              'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
-        );
-      }
-      return ZionUserlandInstallResult(
-        success: true,
-        message: 'تم تنزيل وتثبيت Zion Userland والتحقق من تشغيل الصدفة بنجاح.',
-        releaseTag: await ZionBootstrap.currentRelease(),
-      );
-    } finally {
-      try {
-        await File(remote.path!).delete();
-      } catch (_) {}
-    }
+    // This repair is intentionally offline-only: never contact the endpoint or
+    // trigger DNS when local storage is empty or inaccessible.
+    return ZionUserlandInstallResult(
+      success: false,
+      message: foundLocalFile
+          ? (localFailure ?? 'تعذر تجهيز Userland من الملفات المحلية.')
+          : 'لم أتمكن من قراءة أي حزمة محلية. تحقق من صلاحية الوصول إلى Download ثم أعد المحاولة؛ لم يتم الاتصال بالإنترنت.',
+    );
   }
 
   Future<ZionUserlandInstallResult> _installFromFile(
