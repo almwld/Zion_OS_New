@@ -88,7 +88,7 @@ class ZionUserlandInstaller {
           !await _hasCompatibleShell()) {
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
+          message: 'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة؛ لم يتم اعتماد Userland كجاهز.',
         );
       }
       return ZionUserlandInstallResult(
