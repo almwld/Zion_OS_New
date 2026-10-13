@@ -314,6 +314,12 @@ class ZionUserlandInstaller {
 
       onProgress?.call('[Userland] Copying files...');
       final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
+      if (result.exitCode == 124) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'انتهت مهلة نسخ Userland؛ تُركت الملفات المنسوخة لاستكمال التشخيص دون بدء نسخة ثانية تلقائيًا.',
+        );
+      }
       if (result.exitCode != 0) {
         onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
         try {
