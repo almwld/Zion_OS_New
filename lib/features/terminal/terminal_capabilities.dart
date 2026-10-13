@@ -9,12 +9,12 @@ class TerminalCapabilities {
   ];
 
   static String describe() => [
-    'REAL: native PTY for Zion Userland sessions',
+    'REAL: native PTY for Android /system/bin/sh',
     'REAL: VT/xterm frontend with bounded 1,200-line scrollback',
-    'PRIMARY: Zion Userland Bash/Zsh/Fish/Ash',
-    'BOOTSTRAP: verified Zion Userland installer is available; setup is explicit and reports failures',
-    'NO HOST-SHELL FALLBACK: terminal requires a usable Zion Userland shell or installed Kali rootfs',
-    'RUNTIME_DEPENDENT: bash/zsh/fish/ash',
+    'PRIMARY: Android system POSIX shell (/system/bin/sh)',
+    'NO BOOTSTRAP REQUIRED: terminal commands use the Android OS image directly',
+    'HOST SHELL IS PRIMARY: no Zion Userland or Kali rootfs required for basic commands',
+    'ANDROID-IMAGE-DEPENDENT: toybox applets and vendor-provided commands',
     'RUNTIME_DEPENDENT: zion-pkg in Userland; apt/dpkg only inside an installed Linux rootfs',
     'RUNTIME_DEPENDENT: proot/proot-distro',
     'RUNTIME_DEPENDENT: ssh/scp/sftp/ssh-keygen',
