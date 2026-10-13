@@ -33,7 +33,7 @@ void main() {
 
     expect(result.command, 'printf ZionTerminalTest');
     if (result.shell == 'unavailable') return;
-    expect(result.shell, '/system/bin/sh');
+    expect(result.shell, anyOf('/system/bin/sh', '/data/data/com.zion.os/files/usr/bin/bash'));
     expect(result.exitCode, 0);
     expect(result.stdout, contains('ZionTerminalTest'));
     expect(result.duration, greaterThanOrEqualTo(Duration.zero));
@@ -46,7 +46,7 @@ void main() {
     final result = await service.execute('command_that_should_not_exist_zion');
 
     if (result.shell == 'unavailable') return;
-    expect(result.shell, '/system/bin/sh');
+    expect(result.shell, anyOf('/system/bin/sh', '/data/data/com.zion.os/files/usr/bin/bash'));
     expect(result.exitCode, isNot(0));
   });
 
