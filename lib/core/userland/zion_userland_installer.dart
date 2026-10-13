@@ -29,6 +29,54 @@ class ZionUserlandInstaller {
       );
     }
 
+    // Offline-first: inspect local package locations before considering any
+    // network endpoint. Only verified Zion bootstrap ZIPs are accepted here;
+    // a Kali rootfs tarball must not be unpacked into the Zion prefix.
+    const localCandidates = <String>[
+      '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
+      '/storage/emulated/0/Download/bootstrap-aarch64.zip',
+      '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
+    ];
+    var localArchiveSeen = false;
+    for (final localPath in localCandidates) {
+      final file = File(localPath);
+      try {
+        if (!await file.exists()) continue;
+        localArchiveSeen = true;
+        onProgress?.call('[Userland] Found local package: $localPath');
+        if (!localPath.toLowerCase().endsWith('.zip')) {
+          onProgress?.call('Kali rootfs موجود محليًا، لكنه ليس حزمة Zion Bootstrap؛ لن يُفك داخل usr حتى لا يتلف بيئة Zion.');
+          continue;
+        }
+        final result = await ZionBootstrap().installFromArchive(
+          localPath,
+          onProgress: (progress, message) => onProgress?.call(
+            '[${(progress * 100).round()}%] $message',
+          ),
+        );
+        if (result.success &&
+            await ZionBootstrap.isInstalled() &&
+            await _hasCompatibleProot() &&
+            await _hasCompatibleShell()) {
+          await ZionBootstrap.initializeRuntime();
+          return ZionUserlandInstallResult(
+            success: true,
+            message: 'تم تثبيت Zion Userland من الملف المحلي: ${file.uri.pathSegments.last}',
+            releaseTag: await ZionBootstrap.currentRelease(),
+          );
+        }
+        onProgress?.call('تعذر اعتماد الحزمة المحلية: ${result.error ?? 'فشل التحقق النهائي من Userland.'}');
+      } catch (e) {
+        onProgress?.call('تعذر استخدام الملف المحلي $localPath: $e');
+      }
+    }
+    if (localArchiveSeen) {
+      return const ZionUserlandInstallResult(
+        success: false,
+        message: 'عُثر على ملفات محلية، لكن لم توجد حزمة Zion ZIP صالحة تحتوي manifest وملفات متوافقة. لم تتم محاولة التنزيل عبر الإنترنت.',
+      );
+    }
+
     // A release marker and a working PRoot do not prove that the shell
     // executable is present. This was allowing a damaged/incomplete prefix
     // to be reported as "already installed", after which PTY startup failed.
