@@ -30,9 +30,11 @@ void main() {
     expect(find.text('النظام'), findsOneWidget);
     expect(find.text('الأدوات'), findsOneWidget);
     expect(find.text('مساحة 1'), findsOneWidget);
-    expect(find.text('مساحة 4'), findsOneWidget);
     expect(find.text('W1'), findsNothing);
     expect(find.text('W4'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(-1000, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('مساحة 4'), findsOneWidget);
 
     final taskbar = tester.widget<ZionTaskbar>(find.byType(ZionTaskbar));
     expect(taskbar.categories, hasLength(2));
