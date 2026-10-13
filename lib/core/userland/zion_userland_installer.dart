@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 
@@ -320,24 +322,31 @@ class ZionUserlandInstaller {
             '[' + (progress * 100).round().toString() + '%] ' + message,
           ),
         );
-        if (!result.success) {
+        if (result.success) {
+          if (!await ZionBootstrap.isInstalled() ||
+              !await _hasCompatibleProot() ||
+              !await _hasCompatibleShell()) {
+            return const ZionUserlandInstallResult(
+              success: false,
+              message: 'تم فك ZIP لكن فشل التحقق من Bash أو PRoot.',
+            );
+          }
           return ZionUserlandInstallResult(
-            success: false,
-            message: result.error ?? 'ملف ZIP ليس حزمة Zion Userland صالحة.',
+            success: true,
+            message: 'تم تثبيت Zion Userland من الملف المحلي: ' + fileName,
+            releaseTag: await ZionBootstrap.currentRelease(),
           );
         }
-        if (!await ZionBootstrap.isInstalled() ||
-            !await _hasCompatibleProot() ||
-            !await _hasCompatibleShell()) {
-          return const ZionUserlandInstallResult(
-            success: false,
-            message: 'تم فك ZIP لكن فشل التحقق من Bash أو PRoot.',
-          );
-        }
+
+        // The Download ZIP may be a standard Termux bootstrap rather than a
+        // Zion release archive. Support it offline after the signed/manifest
+        // format has been rejected by the Zion-specific installer.
+        final generic = await _installGenericZip(sourcePath, onProgress: onProgress);
+        if (generic.success) return generic;
         return ZionUserlandInstallResult(
-          success: true,
-          message: 'تم تثبيت Zion Userland من الملف المحلي: ' + fileName,
-          releaseTag: await ZionBootstrap.currentRelease(),
+          success: false,
+          message: (result.error ?? 'ZIP ليس حزمة Zion Userland.') +
+              '؛ وفشل تثبيت Bootstrap المحلي أيضًا: ' + generic.message,
         );
       }
 
@@ -434,6 +443,198 @@ class ZionUserlandInstaller {
     final root = Directory(ZionBootstrap.home + '/.zion/dists/kali/rootfs');
     return await File(root.path + '/bin/sh').exists() &&
         await File(root.path + '/etc/os-release').exists();
+  }
+
+  Future<ZionUserlandInstallResult> _installGenericZip(
+    String sourcePath, {
+    void Function(String message)? onProgress,
+  }) async {
+    Directory? staging;
+    Directory? oldPrefix;
+    try {
+      final source = File(sourcePath);
+      final length = await source.length();
+      if (length <= 0 || length > 512 * 1024 * 1024) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'حجم Bootstrap ZIP غير مسموح به.',
+        );
+      }
+      final archive = ZipDecoder().decodeBytes(await source.readAsBytes(), verify: true);
+      if (archive.files.isEmpty || archive.files.length > 50000) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'أرشيف Bootstrap فارغ أو يتجاوز حد الملفات.',
+        );
+      }
+
+      final base = Directory(ZionBootstrap.base);
+      staging = Directory(base.path + '/.usr-local-stage-' +
+          DateTime.now().microsecondsSinceEpoch.toString());
+      await staging.create(recursive: true);
+      final links = <ArchiveFile>[];
+      var extracted = 0;
+
+      for (final entry in archive.files) {
+        final normalized = _normalizeLocalArchivePath(entry.name);
+        if (normalized == null) {
+          if (entry.name.endsWith('/')) continue;
+          return const ZionUserlandInstallResult(
+            success: false,
+            message: 'مسار غير آمن داخل Bootstrap ZIP.',
+          );
+        }
+        if (normalized.isEmpty) continue;
+        final targetPath = staging.path + '/' + normalized;
+        if (entry.isSymbolicLink) {
+          links.add(entry);
+          continue;
+        }
+        if (!entry.isFile) {
+          await Directory(targetPath).create(recursive: true);
+          continue;
+        }
+        final target = File(targetPath);
+        await target.parent.create(recursive: true);
+        await target.writeAsBytes(List<int>.from(entry.content as List<int>), flush: false);
+        final mode = entry.unixPermissions & 0x1ff;
+        if (mode != 0) {
+          try {
+            await Process.run('/system/bin/chmod',
+                <String>[mode.toRadixString(8), target.path],
+                runInShell: false);
+          } catch (_) {}
+        }
+        extracted++;
+        if (extracted % 300 == 0) {
+          onProgress?.call('استخراج Bootstrap محليًا: ' + extracted.toString() + ' ملفًا');
+        }
+      }
+
+      for (final entry in links) {
+        final normalized = _normalizeLocalArchivePath(entry.name);
+        if (normalized == null || normalized.isEmpty) {
+          return const ZionUserlandInstallResult(
+            success: false,
+            message: 'رابط رمزي غير آمن داخل Bootstrap ZIP.',
+          );
+        }
+        final targetValue = entry.symbolicLink ?? '';
+        if (!_isSafeLocalLink(normalized, targetValue)) {
+          return const ZionUserlandInstallResult(
+            success: false,
+            message: 'رابط رمزي خارج Bootstrap prefix مرفوض.',
+          );
+        }
+        final link = Link(staging.path + '/' + normalized);
+        await link.parent.create(recursive: true);
+        if (await link.exists()) await link.delete();
+        await link.create(targetValue);
+      }
+
+      // Standard bootstrap archives commonly wrap files in a usr/ directory.
+      var stagedPrefix = staging;
+      if (!await File(staging.path + '/bin/bash').exists()) {
+        final usr = Directory(staging.path + '/usr');
+        if (await File(usr.path + '/bin/bash').exists()) {
+          stagedPrefix = usr;
+        }
+      }
+      if (!await File(stagedPrefix.path + '/bin/bash').exists()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'Bootstrap ZIP لا يحتوي bin/bash بعد استخراج المسارات.',
+        );
+      }
+
+      for (final directory in <String>['bin', 'sbin', 'lib', 'lib64', 'libexec']) {
+        final path = stagedPrefix.path + '/' + directory;
+        if (await Directory(path).exists() &&
+            (directory == 'bin' || directory == 'sbin' || directory == 'libexec')) {
+          try {
+            await Process.run('/system/bin/chmod',
+                <String>['-R', '755', path], runInShell: false);
+          } catch (_) {}
+        }
+      }
+
+      final prefix = Directory(ZionBootstrap.prefix);
+      oldPrefix = Directory(base.path + '/.usr-local-old-' +
+          DateTime.now().microsecondsSinceEpoch.toString());
+      if (await prefix.exists()) await prefix.rename(oldPrefix.path);
+      try {
+        await stagedPrefix.rename(prefix.path);
+        if (!await _hasCompatibleShell()) {
+          throw StateError('الصدفة المستخرجة لا تعمل على هذا الجهاز.');
+        }
+        if (await oldPrefix.exists()) await oldPrefix.delete(recursive: true);
+      } catch (_) {
+        if (await prefix.exists()) await prefix.delete(recursive: true);
+        if (await oldPrefix.exists()) await oldPrefix.rename(prefix.path);
+        rethrow;
+      }
+      await Directory(ZionBootstrap.home).create(recursive: true);
+      await Directory(ZionBootstrap.tmp).create(recursive: true);
+      return ZionUserlandInstallResult(
+        success: true,
+        message: 'تم تجهيز Bootstrap ZIP محليًا دون اتصال: ' +
+            sourcePath.split('/').last,
+      );
+    } catch (error) {
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'تعذر استخراج Bootstrap ZIP المحلي: ' + error.toString(),
+      );
+    } finally {
+      try {
+        if (staging != null && await staging.exists()) {
+          await staging.delete(recursive: true);
+        }
+      } catch (_) {}
+    }
+  }
+
+  String? _normalizeLocalArchivePath(String rawPath) {
+    var value = rawPath.replaceAll(r'\', '/');
+    while (value.startsWith('./')) {
+      value = value.substring(2);
+    }
+    if (value.startsWith('/') || value.contains('\u0000')) return null;
+    final termuxMarker = '/data/data/com.termux/files/usr/';
+    final zionMarker = '/data/data/com.zion.os/files/usr/';
+    final termuxIndex = value.indexOf(termuxMarker);
+    final zionIndex = value.indexOf(zionMarker);
+    if (termuxIndex >= 0) {
+      value = value.substring(termuxIndex + termuxMarker.length);
+    } else if (zionIndex >= 0) {
+      value = value.substring(zionIndex + zionMarker.length);
+    } else if (value.startsWith('usr/')) {
+      value = value.substring(4);
+    } else if (value == 'usr') {
+      return '';
+    }
+    final parts = value.split('/');
+    if (parts.any((part) => part == '..' || part == '.')) return null;
+    return parts.where((part) => part.isNotEmpty).join('/');
+  }
+
+  bool _isSafeLocalLink(String linkPath, String target) {
+    if (target.isEmpty || target.startsWith('/') || target.contains(r'\')) return false;
+    final parts = <String>[
+      ...linkPath.split('/')..removeLast(),
+      ...target.split('/'),
+    ];
+    var depth = 0;
+    for (final part in parts) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        depth--;
+        if (depth < 0) return false;
+      } else {
+        depth++;
+      }
+    }
+    return true;
   }
 
   Future<bool> _hasCompatibleShell() async {
