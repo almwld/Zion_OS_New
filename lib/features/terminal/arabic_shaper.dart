@@ -10,7 +10,7 @@ class ArabicShaper {
     r'\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))',
   );
   static final RegExp _arabic =
-      RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]');
+      RegExp(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
   static final RegExp _unsupportedControls =
       RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]');
 
