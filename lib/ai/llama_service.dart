@@ -88,8 +88,21 @@ class LlamaService {
     return ok;
   }
 
+  /// Synchronize this service instance with the native singleton. The model may
+  /// have been loaded from the Offline AI screen using another Dart service instance.
+  Future<bool> refreshLoadedState() async {
+    try {
+      final loaded = await nativeLoaded;
+      _loaded = loaded;
+      if (!loaded) _modelPath = null;
+      return loaded;
+    } catch (_) {
+      return _loaded;
+    }
+  }
+
   Future<String> generate(String prompt, {int maxTokens = 512, double temperature = 0.7}) async {
-    if (!_loaded) return 'ERROR: النموذج المحلي غير محمل.';
+    if (!await refreshLoadedState()) return 'ERROR: النموذج المحلي غير محمل.';
     return (await _channel.invokeMethod<String>('generate', {
       'prompt': prompt, 'maxTokens': maxTokens, 'temperature': temperature,
     })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
