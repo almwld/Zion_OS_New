@@ -157,27 +157,27 @@ class TerminalService {
 
   Future<void> _installLocalUserlandIfNeeded() async {
     if (await _isUserlandBashUsable()) {
-      _output.add('[Terminal] Using Userland bash\\r\\n');
+      _output.add('[Terminal] Using Userland bash\r\n');
       return;
     }
     if (!await Directory(_localUserlandBackup).exists()) {
-      _output.add('[Terminal] Local Userland backup not found; using Android shell.\\r\\n');
+      _output.add('[Terminal] Local Userland backup not found; using Android shell.\r\n');
       return;
     }
-    _output.add('[Terminal] First run: installing Userland...\\r\\n');
-    _output.add('[Userland] Installing from local storage...\\r\\n');
+    _output.add('[Terminal] First run: installing Userland...\r\n');
+    _output.add('[Userland] Installing from local storage...\r\n');
     final result = await const ZionUserlandInstaller().installLocalBackup(
-      onProgress: (message) => _output.add('$message\\r\\n'),
+      onProgress: (message) => _output.add('$message\r\n'),
     );
     if (!result.success) {
-      _output.add('[Userland] ✗ ${result.message}\\r\\n');
-      _output.add('[Terminal] Falling back to Android shell.\\r\\n');
+      _output.add('[Userland] ✗ ${result.message}\r\n');
+      _output.add('[Terminal] Falling back to Android shell.\r\n');
       return;
     }
     if (await _isUserlandBashUsable()) {
-      _output.add('[Userland] ✓ Ready\\r\\n');
+      _output.add('[Userland] ✓ Ready\r\n');
     } else {
-      _output.add('[Userland] ✗ Bash failed the runtime check.\\r\\n');
+      _output.add('[Userland] ✗ Bash failed the runtime check.\r\n');
     }
   }
 
@@ -383,7 +383,7 @@ class TerminalService {
       );
       return false;
     }
-    _output.add('Android shell ready: $shell\r\n');
+    _output.add(shell == _userlandBash ? '[Terminal] Connected to Userland: bash • PTY\r\n' : 'Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -411,7 +411,7 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add('Connected to Android system shell: $shell • native PTY\r\n');
+      _output.add(shell == _userlandBash ? 'Connected to Userland: bash • PTY\r\n' : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
