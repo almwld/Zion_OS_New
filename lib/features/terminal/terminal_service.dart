@@ -50,6 +50,7 @@ class TerminalService {
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
+  static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
   static const String _userlandPrefix = '/data/data/com.zion.os/files/usr';
   static const String _userlandBash = '$_userlandPrefix/bin/bash';
   static const String _localUserlandBackup = '/storage/emulated/0/Download/termux_usr_backup';
@@ -156,6 +157,47 @@ class TerminalService {
     }
   }
 
+  Future<bool> _ensureLocalBackupStorageAccess() async {
+    try {
+      final alreadyAllowed =
+          await _storageChannel.invokeMethod<bool>('hasAllFilesAccess') ?? false;
+      if (alreadyAllowed) return true;
+
+      _output.add(
+        '[Userland] Android requires one-time access to read the Download backup. Opening system permission settings…\r\n',
+      );
+      await _storageChannel.invokeMethod<bool>('requestAllFilesAccess');
+
+      // Android intentionally requires the user to grant this special access;
+      // the app cannot silently bypass scoped-storage protections. Once granted,
+      // installation resumes automatically without a separate terminal button.
+      final deadline = DateTime.now().add(const Duration(minutes: 2));
+      while (DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        final allowed =
+            await _storageChannel.invokeMethod<bool>('hasAllFilesAccess') ?? false;
+        if (allowed) {
+          _output.add('[Userland] Download storage access granted.\r\n');
+          return true;
+        }
+      }
+      _output.add(
+        '[Userland] Storage access was not granted; keeping Android shell available.\r\n',
+      );
+      return false;
+    } on PlatformException catch (error) {
+      _output.add(
+        '[Userland] Cannot check Android storage access: ${error.message ?? error.code}\r\n',
+      );
+      return false;
+    } on MissingPluginException {
+      _output.add(
+        '[Userland] Storage permission bridge is unavailable; cannot read the local backup safely.\r\n',
+      );
+      return false;
+    }
+  }
+
   Future<void> _installLocalUserlandIfNeeded() async {
     if (await _isUserlandBashUsable()) {
       _output.add('[Terminal] Using Userland bash\r\n');
@@ -184,10 +226,14 @@ class TerminalService {
         return;
       }
       if (!await Directory(_localUserlandBackup).exists()) {
-        _output.add(
-          '[Terminal] Local Userland backup is missing or blocked by Android storage access; using Android shell.\r\n',
-        );
-        return;
+        final accessGranted = await _ensureLocalBackupStorageAccess();
+        if (!accessGranted ||
+            !await Directory(_localUserlandBackup).exists()) {
+          _output.add(
+            '[Terminal] Local Userland backup is missing or still inaccessible; using Android shell.\r\n',
+          );
+          return;
+        }
       }
 
       _output.add('[Terminal] First run: installing Userland...\r\n');
