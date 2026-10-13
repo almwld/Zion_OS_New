@@ -213,7 +213,7 @@ class ZionLocalKaliBootstrap {
       await _saveState(filesDir, 'READY', extra: <String, Object>{
         'sha256': ZionLocalKaliConfig.expectedSha256,
         'size_bytes': await _directorySize(rootfs),
-        'rootfs_path': 'userland/${ZionLocalKaliConfig.rootfsName}',
+        'rootfs_path': 'home/.zion/dists/kali/rootfs',
       });
       try { await File(tarPath).delete(); } catch (_) {}
       try { await internal.delete(); } catch (_) {}
