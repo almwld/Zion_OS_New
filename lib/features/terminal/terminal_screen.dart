@@ -747,7 +747,7 @@ $request''',
     final startupProgress = tab == null
         ? const <String>[]
         : tab.recentOutput
-            .split(RegExp(r'[\\r\\n]+'))
+            .split(RegExp(r'[\r\n]+'))
             .where((line) => line.contains('[Userland]') || line.contains('[Terminal]'))
             .where((line) => line.trim().isNotEmpty)
             .toList();
