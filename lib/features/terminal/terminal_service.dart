@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
+import '../../core/userland/zion_userland_installer.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
@@ -57,6 +58,24 @@ class TerminalService {
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
   };
+  static const String _userlandBash = '/data/data/com.zion.os/files/usr/bin/bash';
+  static const Map<String, String> _userlandEnvironment = <String, String>{
+    'HOME': '/data/data/com.zion.os/files/home',
+    'PREFIX': '/data/data/com.zion.os/files/usr',
+    'TMPDIR': '/data/data/com.zion.os/files/tmp',
+    'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin',
+    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+    'TERM': 'xterm-256color',
+    'COLORTERM': 'truecolor',
+    'LANG': 'C.UTF-8',
+    'LC_ALL': 'C.UTF-8',
+  };
+  static const ZionUserlandInstaller _userlandInstaller = ZionUserlandInstaller();
+
+  Map<String, String> _environmentFor(String shell) =>
+      shell == _userlandBash || shell.startsWith('/data/data/com.zion.os/files/usr/bin/')
+          ? _userlandEnvironment
+          : _androidEnvironment;
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
@@ -105,9 +124,24 @@ class TerminalService {
     return null;
   }
 
-  Future<String?> _findShell() async {
-    // Use Android's built-in POSIX shell. Zion Userland, PRoot and a local
-    // Linux rootfs are deliberately not prerequisites for the terminal.
+  Future<String?> _findShell({bool installIfMissing = false}) async {
+    try {
+      if (await _userlandInstaller.isInstalled()) return _userlandBash;
+      if (installIfMissing) {
+        _output.add('[Terminal] First run: installing Userland from local storage...\\r\\n');
+        final result = await _userlandInstaller.installLatest(
+          onProgress: (message) => _output.add('$message\\r\\n'),
+        );
+        if (result.success && await _userlandInstaller.isInstalled()) {
+          _output.add('[Terminal] ✓ Userland ready\\r\\n');
+          return _userlandBash;
+        }
+        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\\r\\n');
+      }
+    } catch (e) {
+      _output.add('[Terminal] Userland check/install failed: $e\\r\\n');
+    }
+
     const shell = '/system/bin/sh';
     try {
       if (!await File(shell).exists()) return null;
@@ -182,7 +216,7 @@ class TerminalService {
         shell,
         <String>['-c', command],
         runInShell: false,
-        environment: _androidEnvironment,
+        environment: _environmentFor(shell),
       );
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
@@ -308,11 +342,11 @@ class TerminalService {
       return false;
     }
     final started = DateTime.now();
-    // Ensure a private working directory before starting the native Android PTY.
+    // Ensure private home/tmp exist before automatic Userland installation.
     await _ensureTerminalEnvironment();
-    final shell = await _findShell();
+    final shell = await _findShell(installIfMissing: true);
     if (shell == null) {
-      _output.add('Android system shell /system/bin/sh is unavailable on this device.\r\n');
+      _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'unavailable',
@@ -323,7 +357,9 @@ class TerminalService {
       );
       return false;
     }
-    _output.add('Android shell ready: $shell\r\n');
+    _output.add(shell == _userlandBash
+        ? 'Userland Bash ready: $shell\r\n'
+        : 'Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -351,7 +387,9 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add('Connected to Android system shell: $shell • native PTY\r\n');
+      _output.add(shell == _userlandBash
+          ? 'Connected to Userland: bash • native PTY\r\n'
+          : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
