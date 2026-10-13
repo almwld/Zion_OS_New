@@ -89,7 +89,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Future<void> _createTabSafely() async {
     try {
-      await _createTab();
+      await _createTab(autoStart: true);
     } catch (error, stackTrace) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: error,
