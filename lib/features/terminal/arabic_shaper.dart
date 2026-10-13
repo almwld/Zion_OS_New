@@ -60,7 +60,7 @@ class ArabicShaper {
       final joinsPrevious = _joinsNext(previous) && _joinsPrevious(cp);
       final joinsNext = _joinsNext(cp) && _joinsPrevious(next);
       final index = joinsPrevious && joinsNext ? 3 : joinsPrevious ? 1 : joinsNext ? 2 : 0;
-      out.writeCharCode(forms[index.clamp(0, forms.length - 1)]);
+      out.writeCharCode(forms[index]);
     }
     return out.toString();
   }
