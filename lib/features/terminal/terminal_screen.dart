@@ -939,7 +939,7 @@ $request''',
                                     border: Border.all(color: _palette.accent.withOpacity(0.55)),
                                   ),
                                   child: Text(
-                                    startupProgress.reversed.take(5).toList().reversed.join('\\n'),
+                                    startupProgress.reversed.take(5).toList().reversed.join('\n'),
                                     maxLines: 6,
                                     overflow: TextOverflow.ellipsis,
                                     textDirection: TextDirection.ltr,
