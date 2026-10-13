@@ -218,7 +218,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             _starting = false;
             _startupError = connected
                 ? null
-                : 'تعذر تشغيل جلسة PTY. يمكنك إبقاء الطرفية مفتوحة ومراجعة حالة البيئة.';
+                : 'تعذر تشغيل جلسة PTY. إذا ظهرت رسالة «Zion Userland غير جاهز»، فانتظر حتى تظهر نتيجة [Userland] في سجل الطرفية، ثم أعد المحاولة. إذا انتهى التجهيز برسالة فشل، فالمشكلة في تنزيل البيئة أو تثبيتها وليست في إدخال Enter.';
           });
         }
       } catch (error, stackTrace) {
