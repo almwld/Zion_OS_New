@@ -600,8 +600,8 @@ class ZionUserlandInstaller {
       value = value.substring(2);
     }
     if (value.startsWith('/') || value.contains('\u0000')) return null;
-    final termuxMarker = '/data/data/com.termux/files/usr/';
-    final zionMarker = '/data/data/com.zion.os/files/usr/';
+    final termuxMarker = 'data/data/com.termux/files/usr/';
+    final zionMarker = 'data/data/com.zion.os/files/usr/';
     final termuxIndex = value.indexOf(termuxMarker);
     final zionIndex = value.indexOf(zionMarker);
     if (termuxIndex >= 0) {
@@ -621,7 +621,7 @@ class ZionUserlandInstaller {
   bool _isSafeLocalLink(String linkPath, String target) {
     if (target.isEmpty || target.startsWith('/') || target.contains(r'\')) return false;
     final parts = <String>[
-      ...linkPath.split('/')..removeLast(),
+      ...(linkPath.split('/')..removeLast()),
       ...target.split('/'),
     ];
     var depth = 0;
