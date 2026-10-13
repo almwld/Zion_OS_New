@@ -263,7 +263,7 @@ class ZionUserlandInstaller {
             }
 
             bool safeLinkTarget(String linkPath, String target) {
-              if (target.isEmpty || target.contains(r'\\')) return false;
+              if (target.isEmpty || target.contains(r'\')) return false;
               final components = <String>[
                 if (!target.startsWith('/'))
                   ...(linkPath.split('/')..removeLast()),
