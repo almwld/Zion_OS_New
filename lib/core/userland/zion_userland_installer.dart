@@ -29,11 +29,31 @@ class ZionUserlandInstaller {
       );
     }
 
-    if (await ZionBootstrap.isInstalled() && await _hasCompatibleProot()) {
+    // A release marker and a working PRoot do not prove that the shell
+    // executable is present. This was allowing a damaged/incomplete prefix
+    // to be reported as "already installed", after which PTY startup failed.
+    if (await ZionBootstrap.isInstalled() &&
+        await _hasCompatibleProot() &&
+        await _hasCompatibleShell()) {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
         success: true,
-        message: 'Zion Userland مثبت بالفعل.',
+        message: 'Zion Userland مثبت بالفعل والصدفة قابلة للتشغيل.',
+        releaseTag: await ZionBootstrap.currentRelease(),
+      );
+    }
+
+    // Prefer a known-good local backup before downloading a full runtime.
+    // Never treat a successful restore call alone as proof; revalidate both
+    // the shell and PRoot before returning.
+    if (await ZionBootstrap.restoreLatestBackup() &&
+        await ZionBootstrap.isInstalled() &&
+        await _hasCompatibleProot() &&
+        await _hasCompatibleShell()) {
+      await ZionBootstrap.initializeRuntime();
+      return ZionUserlandInstallResult(
+        success: true,
+        message: 'تم استعادة نسخة Zion Userland سليمة محليًا.',
         releaseTag: await ZionBootstrap.currentRelease(),
       );
     }
@@ -63,9 +83,19 @@ class ZionUserlandInstaller {
           message: result.error ?? 'فشل تثبيت Userland.',
         );
       }
+      // Verify the installed runtime end-to-end. A valid archive/hash is not
+      // sufficient if the extracted shell or its shared libraries cannot run.
+      if (!await ZionBootstrap.isInstalled() ||
+          !await _hasCompatibleProot() ||
+          !await _hasCompatibleShell()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
+        );
+      }
       return ZionUserlandInstallResult(
         success: true,
-        message: 'تم تنزيل وتثبيت Zion Userland بنجاح.',
+        message: 'تم تنزيل وتثبيت Zion Userland والتحقق من تشغيل الصدفة بنجاح.',
         releaseTag: await ZionBootstrap.currentRelease(),
       );
     } finally {
@@ -73,6 +103,49 @@ class ZionUserlandInstaller {
         await File(remote.path!).delete();
       } catch (_) {}
     }
+  }
+
+  Future<bool> _hasCompatibleShell() async {
+    const candidates = <String>[
+      '${ZionBootstrap.prefix}/bin/bash',
+      '${ZionBootstrap.prefix}/bin/zsh',
+      '${ZionBootstrap.prefix}/bin/fish',
+      '${ZionBootstrap.prefix}/bin/ash',
+    ];
+    final environment = <String, String>{
+      ...Platform.environment,
+      'HOME': ZionBootstrap.home,
+      'PREFIX': ZionBootstrap.prefix,
+      'TMPDIR': ZionBootstrap.tmp,
+      'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
+      'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
+      'TERM': 'xterm-256color',
+      'LANG': 'C.UTF-8',
+      'LC_ALL': 'C.UTF-8',
+    };
+
+    for (final path in candidates) {
+      try {
+        final stat = await File(path).stat();
+        if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
+          continue;
+        }
+        final result = await Process.run(
+          path,
+          const <String>['-c', 'printf ZionUserlandShellOK'],
+          runInShell: false,
+          environment: environment,
+        ).timeout(const Duration(seconds: 4));
+        if (result.exitCode == 0 &&
+            result.stdout.toString().contains('ZionUserlandShellOK')) {
+          return true;
+        }
+      } catch (_) {
+        // Try the next supported shell; a missing shared library or broken
+        // executable must not be mistaken for a usable runtime.
+      }
+    }
+    return false;
   }
 
   Future<bool> _hasCompatibleProot() async {
