@@ -312,7 +312,7 @@ class TerminalService {
     await _ensureTerminalEnvironment();
     final shell = await _findShell();
     if (shell == null) {
-      _output.add('Android system shell /system/bin/sh is unavailable on this device.\\r\\n');
+      _output.add('Android system shell /system/bin/sh is unavailable on this device.\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'unavailable',
