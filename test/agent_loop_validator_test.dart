@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zion_os/features/terminal/agent_loop_validator.dart';
+import 'package:project_zion/features/terminal/agent_loop_validator.dart';
 
 void main() {
   const validator = AgentLoopValidator();
