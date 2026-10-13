@@ -268,6 +268,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
     return false;
   }
 
+  void _sendRaw(String value) {
+    final tab = _selectedTab;
+    if (tab == null) return;
+    if (!tab.service.isInteractiveRunning) {
+      if (mounted) setState(() => _startupError = 'جلسة PTY متوقفة. اضغط زر التشغيل قبل إرسال الأوامر.');
+      return;
+    }
+    tab.service.write(value);
+  }
+
   Future<void> _copyOutput() async {
     final tab = _selectedTab;
     if (tab == null || tab.recentOutput.isEmpty) { _showTerminalNotice('لا توجد مخرجات حديثة لنسخها.'); return; }
