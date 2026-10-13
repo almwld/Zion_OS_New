@@ -29,11 +29,11 @@ class ZionUserlandInstaller {
       );
     }
 
-    // A release marker and a working PRoot do not prove that the shell
-    // executable is present. This was allowing a damaged/incomplete prefix
-    // to be reported as "already installed", after which PTY startup failed.
+    // Basic Zion Userland is the interactive shell/runtime layer. PRoot is an
+    // optional Linux-container component installed and validated separately;
+    // requiring it here made a healthy Bash prefix reinstall forever when the
+    // minimal bootstrap did not bundle PRoot.
     if (await ZionBootstrap.isInstalled() &&
-        await _hasCompatibleProot() &&
         await _hasCompatibleShell()) {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
@@ -44,11 +44,10 @@ class ZionUserlandInstaller {
     }
 
     // Prefer a known-good local backup before downloading a full runtime.
-    // Never treat a successful restore call alone as proof; revalidate both
-    // the shell and PRoot before returning.
+    // Never treat a successful restore call alone as proof; revalidate the
+    // shell before returning. Container support has its own PRoot installer.
     if (await ZionBootstrap.restoreLatestBackup() &&
         await ZionBootstrap.isInstalled() &&
-        await _hasCompatibleProot() &&
         await _hasCompatibleShell()) {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
@@ -83,10 +82,9 @@ class ZionUserlandInstaller {
           message: result.error ?? 'فشل تثبيت Userland.',
         );
       }
-      // Verify the installed runtime end-to-end. A valid archive/hash is not
+      // Verify the installed shell end-to-end. A valid archive/hash is not
       // sufficient if the extracted shell or its shared libraries cannot run.
       if (!await ZionBootstrap.isInstalled() ||
-          !await _hasCompatibleProot() ||
           !await _hasCompatibleShell()) {
         return const ZionUserlandInstallResult(
           success: false,
@@ -146,55 +144,6 @@ class ZionUserlandInstaller {
       }
     }
     return false;
-  }
-
-  Future<bool> _hasCompatibleProot() async {
-    final target = File(ZionBootstrap.prefix + '/bin/proot');
-    try {
-      final stat = await target.stat();
-      if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
-        return false;
-      }
-      final environment = <String, String>{
-        ...Platform.environment,
-        'HOME': ZionBootstrap.home,
-        'PREFIX': ZionBootstrap.prefix,
-        'PATH': ZionBootstrap.prefix +
-            '/bin:' +
-            ZionBootstrap.prefix +
-            '/sbin:/system/bin:/system/xbin',
-        'LD_LIBRARY_PATH': ZionBootstrap.prefix +
-            '/lib:' +
-            ZionBootstrap.prefix +
-            '/lib64',
-      };
-      final version = await Process.run(
-        target.path,
-        const <String>['--version'],
-        runInShell: false,
-        environment: environment,
-      ).timeout(const Duration(seconds: 5));
-      if (version.exitCode != 0 ||
-          !('${version.stdout}\n${version.stderr}')
-              .toLowerCase()
-              .contains('proot')) {
-        return false;
-      }
-      final help = await Process.run(
-        target.path,
-        const <String>['--help'],
-        runInShell: false,
-        environment: environment,
-      ).timeout(const Duration(seconds: 5));
-      final usage = '${help.stdout}\n${help.stderr}'.toLowerCase();
-      final rootId = usage.contains('--root-id') ||
-          RegExp(r'(^|\s)-0([,\s]|$)').hasMatch(usage);
-      final link2symlink = usage.contains('--link2symlink') ||
-          RegExp(r'(^|\s)-l([,\s]|$)').hasMatch(usage);
-      return rootId && link2symlink;
-    } catch (_) {
-      return false;
-    }
   }
 
   Future<({bool success, String? path, String? message})>
