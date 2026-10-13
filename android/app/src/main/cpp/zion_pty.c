@@ -298,6 +298,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("PS1", "$ ", 1);
         setenv("ZION_SHELL_MODE", "android-system", 1);
     } else {
+        // Keep the requested minimal dollar prompt for Userland Bash as well
+        // as Android sh; the selected shell still receives the full PATH.
+        setenv("PS1", "$ ", 1);
         setenv("ZION_SHELL_MODE", "zion-userland", 1);
     }
 
