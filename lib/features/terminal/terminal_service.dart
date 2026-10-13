@@ -458,7 +458,7 @@ class TerminalService {
       final command = rawCommand.trim();
       if (command.isEmpty) continue;
       _remember(command);
-      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: shell == _userlandBash ? 'userland-bash' : 'android-system-shell', duration: Duration.zero, interactive: true);
+      _audit(command: command, outcome: 'submitted', exitCode: -1, shell: 'android-system-shell', duration: Duration.zero, interactive: true);
     }
   }
 
