@@ -843,6 +843,7 @@ $request''',
             selectedIndex: _selectedIndex,
             onSelect: (index) => setState(() => _selectedIndex = index),
             onClose: _closeTab,
+            palette: _palette,
           ),
           if (_showToolbar) _buildToolbar(),
           if (_startupError != null)
@@ -875,8 +876,8 @@ $request''',
               ),
             ),
           if (_showQuickCommands) _buildQuickCommands(),
-          _StatusBar(tab: tab),
-          _ExtraKeys(onSend: (value) {
+          _StatusBar(tab: tab, palette: _palette),
+          _ExtraKeys(palette: _palette, onSend: (value) {
             final current = _selectedTab;
             if (current != null && current.service.isInteractiveRunning) current.service.write(value);
             else _showTerminalNotice('شغّل جلسة PTY أولاً.');
@@ -893,9 +894,11 @@ class _SessionBar extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.onClose,
+    required this.palette,
   });
 
   final List<_TerminalTab> tabs;
+  final TerminalPalette palette;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final Future<void> Function(int) onClose;
@@ -916,14 +919,10 @@ class _SessionBar extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 105),
               padding: const EdgeInsets.only(left: 10, right: 4),
               decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFF1B241D)
-                    : const Color(0xFF0F130F),
+                color: selected ? palette.surface : palette.background,
                 border: Border(
                   bottom: BorderSide(
-                    color: selected
-                        ? const Color(0xFF19D3C5)
-                        : Colors.transparent,
+                    color: selected ? palette.accent : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -933,18 +932,17 @@ class _SessionBar extends StatelessWidget {
                   Icon(
                     Icons.terminal,
                     size: 14,
-                    color: tab.connected
-                        ? const Color(0xFF19D3C5)
-                        : Colors.orangeAccent,
+                    color: tab.connected ? palette.accent : Colors.orangeAccent,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       tab.name,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
+                        color: palette.foreground,
                       ),
                     ),
                   ),
@@ -969,9 +967,10 @@ class _SessionBar extends StatelessWidget {
 }
 
 class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.tab});
+  const _StatusBar({required this.tab, required this.palette});
 
   final _TerminalTab? tab;
+  final TerminalPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -979,13 +978,13 @@ class _StatusBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      color: const Color(0xFF0D1514),
+      color: palette.surface,
       child: Row(
         children: [
           Icon(
             connected ? Icons.circle : Icons.circle_outlined,
             size: 9,
-            color: connected ? const Color(0xFF19D3C5) : Colors.orangeAccent,
+            color: connected ? palette.accent : Colors.orangeAccent,
           ),
           const SizedBox(width: 7),
           Expanded(
@@ -993,7 +992,7 @@ class _StatusBar extends StatelessWidget {
               connected
                   ? 'REAL SHELL • xterm-256color • Ctrl-C • 3,000 scrollback'
                   : 'Shell unavailable / stopped',
-              style: const TextStyle(fontSize: 11),
+              style: TextStyle(fontSize: 11, color: palette.foreground),
             ),
           ),
           if (tab != null)
@@ -1002,7 +1001,7 @@ class _StatusBar extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 10,
                 fontFamily: 'monospace',
-                color: Color(0xFF91A995),
+                color: palette.accent,
               ),
             ),
         ],
@@ -1012,9 +1011,10 @@ class _StatusBar extends StatelessWidget {
 }
 
 class _ExtraKeys extends StatelessWidget {
-  const _ExtraKeys({required this.onSend});
+  const _ExtraKeys({required this.onSend, required this.palette});
 
   final ValueChanged<String> onSend;
+  final TerminalPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -1044,7 +1044,7 @@ class _ExtraKeys extends StatelessWidget {
           itemBuilder: (context, index) {
             final item = keys[index];
             return Material(
-              color: const Color(0xFF171B18),
+              color: palette.surface,
               borderRadius: BorderRadius.circular(5),
               child: InkWell(
                 borderRadius: BorderRadius.circular(5),
@@ -1057,7 +1057,7 @@ class _ExtraKeys extends StatelessWidget {
                       style: const TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
-                        color: Color(0xFFB7C7BA),
+                        color: palette.foreground,
                       ),
                     ),
                   ),
