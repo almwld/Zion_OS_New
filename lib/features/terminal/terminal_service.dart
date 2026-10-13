@@ -128,18 +128,18 @@ class TerminalService {
     try {
       if (await _userlandInstaller.isInstalled()) return _userlandBash;
       if (installIfMissing) {
-        _output.add('[Terminal] First run: installing Userland from local storage...\\r\\n');
+        _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
-          onProgress: (message) => _output.add('$message\\r\\n'),
+          onProgress: (message) => _output.add('$message\r\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          _output.add('[Terminal] ✓ Userland ready\\r\\n');
+          _output.add('[Terminal] ✓ Userland ready\r\n');
           return _userlandBash;
         }
-        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\\r\\n');
+        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
       }
     } catch (e) {
-      _output.add('[Terminal] Userland check/install failed: $e\\r\\n');
+      _output.add('[Terminal] Userland check/install failed: $e\r\n');
     }
 
     const shell = '/system/bin/sh';
