@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -15,6 +16,24 @@ class ZionUserlandInstaller {
   const ZionUserlandInstaller();
 
   static const _maxDownloadBytes = 256 * 1024 * 1024;
+
+  /// Installs only the existing local backup; this path never uses the network.
+  Future<ZionUserlandInstallResult> installLocalBackup({
+    void Function(String message)? onProgress,
+  }) async {
+    const backupPath = '/storage/emulated/0/Download/termux_usr_backup';
+    if (!await Directory(backupPath).exists()) {
+      return const ZionUserlandInstallResult(
+        success: false,
+        message: 'مجلد النسخة المحلية غير موجود: $backupPath',
+      );
+    }
+    return _installFromDirectory(
+      backupPath,
+      onProgress: onProgress,
+      requireProot: false,
+    );
+  }
 
   Future<ZionUserlandInstallResult> installLatest({
     void Function(String message)? onProgress,
@@ -170,6 +189,7 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installFromDirectory(
     String sourcePath, {
     void Function(String message)? onProgress,
+    bool requireProot = true,
   }) async {
     try {
       final sourceDir = Directory(sourcePath);
@@ -194,16 +214,48 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Copying backup directly into ${targetDir.path}...');
-      final result = await Process.run('/system/bin/cp', <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'], runInShell: false);
-      if (result.exitCode != 0) {
-        onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
+      onProgress?.call('[Userland] Copying files... 0%');
+      onProgress?.call('[Userland] Copying 1.4 GB; this may take a few minutes.');
+      final process = await Process.start(
+        '/system/bin/cp',
+        <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'],
+        runInShell: false,
+      );
+      final stderrBuffer = StringBuffer();
+      final stderrDone = process.stderr
+          .transform(const SystemEncoding().decoder)
+          .listen(stderrBuffer.write);
+      final exitCompleter = Completer<int>();
+      process.exitCode.then((code) {
+        if (!exitCompleter.isCompleted) exitCompleter.complete(code);
+      });
+      final stopwatch = Stopwatch()..start();
+      var lastProgressSeconds = -1;
+      while (!exitCompleter.isCompleted) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (exitCompleter.isCompleted) break;
+        final elapsedSeconds = stopwatch.elapsed.inSeconds;
+        if (elapsedSeconds != lastProgressSeconds) {
+          lastProgressSeconds = elapsedSeconds;
+          onProgress?.call('[Userland] Copying files... still working (${elapsedSeconds}s)');
+        }
+        if (stopwatch.elapsed > const Duration(minutes: 10)) {
+          process.kill(ProcessSignal.sigkill);
+          if (!exitCompleter.isCompleted) exitCompleter.complete(124);
+          break;
+        }
+      }
+      final copyExit = await exitCompleter.future;
+      await stderrDone.cancel();
+      if (copyExit != 0) {
+        onProgress?.call('cp -a failed (exit $copyExit): ${stderrBuffer.toString()}. Trying Dart copy fallback.');
         try {
           await _manualCopy(sourceDir, targetDir);
         } catch (e) {
-          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${result.stderr}; fallback: $e');
+          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${stderrBuffer.toString()}; fallback: $e');
         }
       }
+      onProgress?.call('[Userland] Copying files... 100%');
 
       onProgress?.call('[Userland] Repairing permissions...');
       await _repairPermissions(targetDir);
@@ -214,7 +266,7 @@ class ZionUserlandInstaller {
       if (!await _hasCompatibleShell()) {
         return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن الصدفة لا تعمل؛ تحقق من توافق الملفات والمكتبات المشتركة.');
       }
-      if (!await _hasCompatibleProot()) {
+      if (requireProot && !await _hasCompatibleProot()) {
         return const ZionUserlandInstallResult(success: false, message: 'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل.');
       }
       await ZionBootstrap.initializeRuntime();
