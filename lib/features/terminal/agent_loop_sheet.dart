@@ -98,9 +98,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
 
   ({String? action, String? command, String? reasoning}) _parse(String response) {
     var candidate = response.trim();
-    candidate = candidate
-        .replaceFirst(RegExp(r'^\`\`\`(?:json)?\s*', caseSensitive: false), '')
-        .replaceFirst(RegExp(r'\s*\`\`\`$'), '');
+    candidate = candidate.replaceAll('```json', '').replaceAll('```', '').trim();
     final firstBrace = candidate.indexOf('{');
     final lastBrace = candidate.lastIndexOf('}');
     if (firstBrace >= 0 && lastBrace > firstBrace) {
