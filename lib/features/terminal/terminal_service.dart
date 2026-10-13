@@ -387,15 +387,36 @@ class TerminalService {
 
   Future<void> _scheduleUserlandInstall() async {
     if (_userlandInstallInProgress) {
-      if (!_output.isClosed) _output.add('[Userland] التثبيت جارٍ بالفعل؛ لن يبدأ تنزيل مكرر.\r\n');
+      if (!_output.isClosed) {
+        _output.add('[Userland] التثبيت جارٍ بالفعل؛ لن يبدأ تنزيل مكرر.\r\n');
+      }
       return;
     }
     _userlandInstallInProgress = true;
+    if (!_output.isClosed) {
+      _output.add(
+        '\r\n[Userland] بدء فحص بيئة Zion وتجهيزها عند الحاجة...\r\n'
+        '[Userland] يجري التحقق من الحزمة وتنزيلها والتحقق من سلامتها ثم تثبيتها.\r\n',
+      );
+    }
     try {
       final message = await Isolate.run(_installZionUserlandInBackground);
-      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
+      if (!_output.isClosed) {
+        final failed = message.toLowerCase().contains('تعذر') ||
+            message.toLowerCase().contains('فشل');
+        _output.add('[Userland] ${failed ? 'فشل التجهيز: ' : ''}$message\r\n');
+        if (!failed) {
+          _output.add('[Userland] أعد الضغط على زر التشغيل لمحاولة بدء PTY.\r\n');
+        } else {
+          _output.add(
+            '[Userland] راجع السبب أعلاه؛ لم يتم اعتبار التثبيت ناجحًا.\r\n',
+          );
+        }
+      }
     } catch (error) {
-      if (!_output.isClosed) _output.add('[Userland] تعذر إكمال التثبيت: $error\r\n');
+      if (!_output.isClosed) {
+        _output.add('[Userland] تعذر إكمال التثبيت: $error\r\n');
+      }
     } finally {
       _userlandInstallInProgress = false;
     }
