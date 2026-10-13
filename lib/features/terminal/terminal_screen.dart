@@ -143,6 +143,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
         tab.recentOutput =
             tab.recentOutput.substring(tab.recentOutput.length - 8000);
       }
+      // Rebuild only for installer/status messages, not every terminal byte,
+      // so first-run copy progress stays visible without making typing janky.
+      if (data.contains('[Userland]') || data.contains('[Terminal]')) {
+        setState(() {});
+      }
       try {
         terminal.write(data);
       } catch (error, stackTrace) {
@@ -739,6 +744,13 @@ $request''',
   @override
   Widget build(BuildContext context) {
     final tab = _selectedTab;
+    final startupProgress = tab == null
+        ? const <String>[]
+        : tab.recentOutput
+            .split(RegExp(r'[\\r\\n]+'))
+            .where((line) => line.contains('[Userland]') || line.contains('[Terminal]'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
     return Scaffold(
       backgroundColor: _palette.background,
       appBar: AppBar(
@@ -907,7 +919,7 @@ $request''',
                               const SizedBox(height: 12),
                               Text(
                                 _starting
-                                    ? 'جارٍ تجهيز Zion Userland وفتح جلسة PTY…'
+                                    ? 'جارٍ تجهيز Userland وفتح جلسة PTY…'
                                     : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
@@ -915,6 +927,30 @@ $request''',
                                   fontSize: 14,
                                 ),
                               ),
+                              if (_starting && startupProgress.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  constraints: const BoxConstraints(maxWidth: 520),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _palette.surface.withOpacity(0.92),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _palette.accent.withOpacity(0.55)),
+                                  ),
+                                  child: Text(
+                                    startupProgress.reversed.take(5).toList().reversed.join('\\n'),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                    textDirection: TextDirection.ltr,
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (!_starting) ...[
                                 const SizedBox(height: 16),
                                 FilledButton.icon(
