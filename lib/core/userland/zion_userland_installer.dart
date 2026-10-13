@@ -174,62 +174,117 @@ class ZionUserlandInstaller {
     try {
       final sourceDir = Directory(sourcePath);
       if (!await sourceDir.exists()) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message: 'Termux backup directory not found.',
-        );
+        return const ZionUserlandInstallResult(success: false, message: 'مجلد النسخة الاحتياطية غير موجود.');
       }
-
       final targetDir = Directory(ZionBootstrap.prefix);
       await targetDir.create(recursive: true);
 
-      // cp -a preserves executable modes and symlinks; hard links can only
-      // remain hard links when the underlying filesystems permit it.
-      final result = await Process.run(
-        '/system/bin/cp',
-        <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'],
-        runInShell: false,
-      );
+      onProgress?.call('[Userland] Checking private storage...');
+      final df = await Process.run('/system/bin/df', <String>['-k', targetDir.path], runInShell: false);
+      if (df.exitCode == 0) {
+        final lines = df.stdout.toString().trim().split('\n');
+        if (lines.length >= 2) {
+          final columns = lines.last.trim().split(RegExp(r'\s+'));
+          if (columns.length >= 4) {
+            final availableKb = int.tryParse(columns[3]);
+            if (availableKb != null && availableKb < 1800 * 1024) {
+              return const ZionUserlandInstallResult(success: false, message: 'المساحة الحرة غير كافية؛ يلزم نحو 1.8 GB على الأقل داخل مساحة التطبيق.');
+            }
+          }
+        }
+      }
 
+      onProgress?.call('[Userland] Copying backup directly into \${targetDir.path}...');
+      final result = await Process.run('/system/bin/cp', <String>['-a', '\${sourceDir.path}/.', '\${targetDir.path}/'], runInShell: false);
       if (result.exitCode != 0) {
-        onProgress?.call(
-          'cp -a failed (exit ${result.exitCode}): ${result.stderr}. '
-          'Trying a filesystem-aware Dart copy fallback.',
-        );
-        await _manualCopy(sourceDir, targetDir);
+        onProgress?.call('cp -a failed (exit \${result.exitCode}): \${result.stderr}. Trying Dart copy fallback.');
+        try {
+          await _manualCopy(sourceDir, targetDir);
+        } catch (e) {
+          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: \${result.stderr}; fallback: $e');
+        }
       }
 
-      final shellReady = await _hasCompatibleShell();
-      if (!shellReady) {
-        return ZionUserlandInstallResult(
-          success: false,
-          message:
-              'تم نسخ النسخة الاحتياطية، لكن لم يتم العثور على shell قابل للتشغيل. '
-              'cp output: ${result.stderr}',
-        );
-      }
+      onProgress?.call('[Userland] Repairing permissions...');
+      await _repairPermissions(targetDir);
+      onProgress?.call('[Userland] Recreating missing command links...');
+      await _recreateCoreutilsSymlinks('\${targetDir.path}/bin');
+      await _createOtherSymlinks('\${targetDir.path}/bin');
 
-      // A Termux usr backup is not automatically a complete Zion runtime.
-      // Require a compatible PRoot before marking Userland ready.
+      if (!await _hasCompatibleShell()) {
+        return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن الصدفة لا تعمل؛ تحقق من توافق الملفات والمكتبات المشتركة.');
+      }
       if (!await _hasCompatibleProot()) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message:
-              'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل؛ '
-              'لم يتم اعتماد Userland كتثبيت مكتمل.',
-        );
+        return const ZionUserlandInstallResult(success: false, message: 'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل.');
       }
-
       await ZionBootstrap.initializeRuntime();
-      return const ZionUserlandInstallResult(
-        success: true,
-        message: 'Termux usr backup copied directly into Zion Userland.',
-      );
+      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من التشغيل: \${targetDir.path}');
     } catch (e) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: 'Direct backup copy failed: $e',
-      );
+      return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
+    }
+  }
+
+  /// Avoid chmod -R 644 on lib: that removes directory traversal permissions.
+  /// Repair directories and files individually, preserving existing executable
+  /// bits where they matter.
+  Future<void> _repairPermissions(Directory root) async {
+    Future<void> repairTree(Directory directory, {required String directoryMode, required String fileMode, bool preserveExecutableFiles = false}) async {
+      if (!await directory.exists()) return;
+      await Process.run('/system/bin/chmod', <String>[directoryMode, directory.path], runInShell: false);
+      await for (final entity in directory.list(recursive: true, followLinks: false)) {
+        try {
+          if (entity is Link) continue;
+          if (entity is Directory) {
+            await Process.run('/system/bin/chmod', <String>[directoryMode, entity.path], runInShell: false);
+          } else if (entity is File) {
+            var mode = fileMode;
+            if (preserveExecutableFiles && ((await entity.stat()).mode & 0x49) != 0) mode = '755';
+            await Process.run('/system/bin/chmod', <String>[mode, entity.path], runInShell: false);
+          }
+        } catch (e) {
+          print('[Userland] chmod failed for \${entity.path}: $e');
+        }
+      }
+    }
+
+    await repairTree(Directory('\${root.path}/bin'), directoryMode: '755', fileMode: '755');
+    await repairTree(Directory('\${root.path}/libexec'), directoryMode: '755', fileMode: '755');
+    await repairTree(Directory('\${root.path}/lib'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+    await repairTree(Directory('\${root.path}/share'), directoryMode: '755', fileMode: '644');
+    for (final name in <String>['etc', 'tmp', 'var', 'include', 'sbin']) {
+      await repairTree(Directory('\${root.path}/$name'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+    }
+  }
+
+  Future<void> _recreateCoreutilsSymlinks(String binDir) async {
+    if (!await File('$binDir/coreutils').exists()) {
+      print('[Symlinks] coreutils multicall binary not found; preserving existing commands.');
+      return;
+    }
+    const tools = <String>[
+      'ls','cat','cp','mv','rm','mkdir','rmdir','chmod','chown','ln','touch','echo','pwd','whoami','id','true','false','yes','env','basename','dirname','head','tail','wc','sort','uniq','cut','tr','tee','sleep','seq','shuf','readlink','realpath','stat','du','df','date','hostname','uname','nproc','printenv','printf','test','timeout','kill','unlink','install','mkfifo','mknod','od','base64','basenc','cksum','comm','csplit','dd','dir','dircolors','expand','expr','factor','fmt','fold','groups','join','link','logname','md5sum','sha1sum','sha256sum','nl','nohup','numfmt','paste','pathchk','pr','ptx','runcon','split','stdbuf','sum','sync','tac','truncate','tsort','tty','unexpand','users','vdir','chcon',
+    ];
+    for (final tool in tools) {
+      await _createLinkIfMissing('$binDir/$tool', 'coreutils');
+    }
+  }
+
+  Future<void> _createOtherSymlinks(String binDir) async {
+    const mappings = <String, String>{'sh':'bash','awk':'gawk','nawk':'gawk','vi':'vim','editor':'nano','nc':'netcat','python':'python3','pip':'pip3'};
+    for (final entry in mappings.entries) {
+      await _createLinkIfMissing('$binDir/\${entry.key}', entry.value);
+    }
+  }
+
+  Future<void> _createLinkIfMissing(String linkPath, String targetName) async {
+    final targetPath = '\${File(linkPath).parent.path}/$targetName';
+    if (!await File(targetPath).exists() && !await Link(targetPath).exists()) return;
+    // Preserve existing real commands and avoid self-links such as bash -> bash.
+    if (await File(linkPath).exists() || await Link(linkPath).exists()) return;
+    try {
+      await Link(linkPath).create(targetName);
+    } catch (e) {
+      print('[Symlinks] \${linkPath.split('/').last} failed: $e');
     }
   }
 
