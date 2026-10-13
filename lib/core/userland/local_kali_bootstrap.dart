@@ -212,7 +212,8 @@ class ZionLocalKaliBootstrap {
 
       // Mark the install in the format consumed by KaliLoaderService.
       // The rootfs is installed only after the archive checksum has passed.
-      final marker = File('${rootfs.path}/.zion-rootfs.json');
+      final marker = File('${rootfs.parent.path}/.zion-rootfs.json');
+      await marker.parent.create(recursive: true);
       await marker.writeAsString(const JsonEncoder.withIndent('  ').convert(
         <String, Object>{
           'distro': 'kali',
