@@ -186,15 +186,15 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
         if (_stopRequested) break;
         _step = i;
         if (mounted) setState(() => _status = 'تحليل الخطوة $i من $_maxSteps');
-        final recent = _events.take(12).map((e) {
+        final recent = _events.reversed.take(12).toList().reversed.map((e) {
           final out = e['output']?.toString() ?? '';
-          return '[${e['type']}] ${e['message']}${out.isEmpty ? '' : '\nالمخرجات: ${out.substring(0, out.length.clamp(0, 1200))}'}';
+          return '[${e['type']}] ${e['message']}${out.isEmpty ? '' : '\nالمخرجات: ${out.substring(0, out.length.clamp(0, 1200).toInt())}'}';
         }).join('\n');
         final terminalContext = widget.recentOutput().trim();
         final prompt = '''You are Zion OS Agent Loop, a local security reconnaissance assistant.
 Target: $target
 Only assess this exact target. Do not pivot to other hosts.
-Available tools: nmap, whois, dig, nslookup, ping, traceroute, curl, whatweb, nikto.
+Available tools: nmap, whois, dig, nslookup, ping, traceroute, curl, whatweb, nikto.\nPrefer limited read-only reconnaissance: nmap -sV -p 22,53,80,443,8080 TARGET; whois TARGET; dig TARGET; nslookup TARGET; ping -c 3 TARGET; curl -I https://TARGET; whatweb https://TARGET; nikto -h https://TARGET only when explicitly approved.
 Return exactly these fields:
 ACTION: RUN or THINK or DONE
 COMMAND: one single command line, only when RUN
@@ -240,7 +240,7 @@ Choose the next step.''';
         _log(
           result.succeeded ? 'result' : 'command_error',
           'انتهى الأمر برمز خروج ${result.exitCode} خلال ${result.duration.inSeconds}s',
-          {'command': command, 'exitCode': result.exitCode, 'output': output.substring(0, output.length.clamp(0, 4000))},
+          {'command': command, 'exitCode': result.exitCode, 'output': output.substring(0, output.length.clamp(0, 4000).toInt())},
         );
         if (_stopRequested) break;
       }
