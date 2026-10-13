@@ -921,6 +921,17 @@ $request''',
                                 size: 42,
                                 color: _palette.accent,
                               ),
+                              if (_starting) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: 190,
+                                  child: LinearProgressIndicator(
+                                    backgroundColor: _palette.surface,
+                                    color: _palette.accent,
+                                    minHeight: 3,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 12),
                               Text(
                                 _starting
