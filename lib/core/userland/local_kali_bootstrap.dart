@@ -210,10 +210,23 @@ class ZionLocalKaliBootstrap {
       await _fixupRootfs(rootfs);
       progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
 
+      // Mark the install in the format consumed by KaliLoaderService.
+      // The rootfs is installed only after the archive checksum has passed.
+      final marker = File('${rootfs.path}/.zion-rootfs.json');
+      await marker.writeAsString(const JsonEncoder.withIndent('  ').convert(
+        <String, Object>{
+          'distro': 'kali',
+          'architecture': 'arm64',
+          'source_sha256': ZionLocalKaliConfig.expectedSha256,
+          'installed_at': DateTime.now().toUtc().toIso8601String(),
+          'rootfs_path': 'home/.zion/dists/kali/rootfs',
+        },
+      ));
+
       await _saveState(filesDir, 'READY', extra: <String, Object>{
         'sha256': ZionLocalKaliConfig.expectedSha256,
         'size_bytes': await _directorySize(rootfs),
-        'rootfs_path': 'userland/${ZionLocalKaliConfig.rootfsName}',
+        'rootfs_path': 'home/.zion/dists/kali/rootfs',
       });
       try { await File(tarPath).delete(); } catch (_) {}
       try { await internal.delete(); } catch (_) {}
