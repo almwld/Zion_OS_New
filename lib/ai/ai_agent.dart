@@ -63,13 +63,13 @@ class AIAgent {
         ? _history.sublist(_history.length - 2)
         : _history;
     for (final item in recent) {
-      final content = item.content.length > 240
-          ? item.content.substring(0, 240)
+      final content = item.content.length > 160
+          ? item.content.substring(0, 160)
           : item.content;
       b..writeln('<|${item.role}|>')..writeln(content)..writeln('<|end|>');
     }
-    final boundedMessage = message.length > 600
-        ? message.substring(0, 600)
+    final boundedMessage = message.length > 480
+        ? message.substring(0, 480)
         : message;
     b..writeln('<|user|>')..writeln(boundedMessage)..writeln('<|end|>')..writeln('<|assistant|>');
     return b.toString();
