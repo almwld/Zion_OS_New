@@ -53,6 +53,7 @@ class TerminalService {
   static const String _userlandPrefix = '/data/data/com.zion.os/files/usr';
   static const String _userlandBash = '$_userlandPrefix/bin/bash';
   static const String _localUserlandBackup = '/storage/emulated/0/Download/termux_usr_backup';
+  static Future<void>? _localUserlandInstallTask;
 
   static const Map<String, String> _androidEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
@@ -157,27 +158,60 @@ class TerminalService {
 
   Future<void> _installLocalUserlandIfNeeded() async {
     if (await _isUserlandBashUsable()) {
-      _output.add('[Terminal] Using Userland bash\r\n');
+      _output.add('[Terminal] Using Userland bash\\r\\n');
       return;
     }
-    if (!await Directory(_localUserlandBackup).exists()) {
-      _output.add('[Terminal] Local Userland backup not found; using Android shell.\r\n');
-      return;
+
+    // Multiple tabs can be created quickly. Share one restore task so two
+    // sessions never copy 1.4 GB into the same prefix at the same time.
+    final pending = _localUserlandInstallTask;
+    if (pending != null) {
+      await pending;
+      if (await _isUserlandBashUsable()) {
+        _output.add('[Terminal] Using Userland bash\\r\\n');
+        return;
+      }
     }
-    _output.add('[Terminal] First run: installing Userland...\r\n');
-    _output.add('[Userland] Installing from local storage...\r\n');
-    final result = await const ZionUserlandInstaller().installLocalBackup(
-      onProgress: (message) => _output.add('$message\r\n'),
-    );
-    if (!result.success) {
-      _output.add('[Userland] ✗ ${result.message}\r\n');
-      _output.add('[Terminal] Falling back to Android shell.\r\n');
-      return;
-    }
-    if (await _isUserlandBashUsable()) {
-      _output.add('[Userland] ✓ Ready\r\n');
-    } else {
-      _output.add('[Userland] ✗ Bash failed the runtime check.\r\n');
+
+    final completer = Completer<void>();
+    final task = completer.future;
+    _localUserlandInstallTask = task;
+    try {
+      // Recheck after acquiring the shared task: another tab may have
+      // completed a successful install while this tab was waiting.
+      if (await _isUserlandBashUsable()) {
+        _output.add('[Terminal] Using Userland bash\\r\\n');
+        return;
+      }
+      if (!await Directory(_localUserlandBackup).exists()) {
+        _output.add(
+          '[Terminal] Local Userland backup is missing or blocked by Android storage access; using Android shell.\\r\\n',
+        );
+        return;
+      }
+
+      _output.add('[Terminal] First run: installing Userland...\\r\\n');
+      _output.add('[Userland] Installing from local storage...\\r\\n');
+      final result = await const ZionUserlandInstaller().installLocalBackup(
+        onProgress: (message) => _output.add('$message\\r\\n'),
+      );
+      if (!result.success) {
+        _output.add('[Userland] ✗ ${result.message}\\r\\n');
+        _output.add('[Terminal] Falling back to Android shell.\\r\\n');
+        return;
+      }
+      if (await _isUserlandBashUsable()) {
+        _output.add('[Terminal] Connected to Userland bash.\\r\\n');
+      } else {
+        _output.add(
+          '[Userland] ✗ Bash failed the runtime check; keeping Android shell fallback.\\r\\n',
+        );
+      }
+    } finally {
+      completer.complete();
+      if (identical(_localUserlandInstallTask, task)) {
+        _localUserlandInstallTask = null;
+      }
     }
   }
 
