@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -11,18 +10,8 @@ import '../../security/core/security_core.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 import '../../core/userland/zion_userland_installer.dart';
+import '../../core/userland/local_kali_bootstrap.dart';
 
-Future<String> _installZionUserlandInBackground() async {
-  try {
-    const installer = ZionUserlandInstaller();
-    final result = await installer.installLatest();
-    return result.success
-        ? 'تم تجهيز Zion Userland في الخلفية بنجاح.'
-        : 'تعذر تجهيز Zion Userland في الخلفية: ' + result.message;
-  } catch (e) {
-    return 'تعذر تجهيز Zion Userland في الخلفية: ' + e.toString();
-  }
-}
 class _TerminalEnvironment {
   const _TerminalEnvironment({required this.home, required this.prefix, required this.tmp});
   final String home;
@@ -388,7 +377,7 @@ class TerminalService {
     final inFlight = _userlandInstallFuture;
     if (inFlight != null) return inFlight;
 
-    final task = Isolate.run(_installZionUserlandInBackground);
+    final task = _installUserlandWithLocalAccess();
     _userlandInstallFuture = task;
     try {
       final message = await task;
@@ -402,6 +391,48 @@ class TerminalService {
       if (identical(_userlandInstallFuture, task)) {
         _userlandInstallFuture = null;
       }
+    }
+  }
+
+  Future<String> _installUserlandWithLocalAccess() async {
+    const installer = ZionUserlandInstaller();
+    try {
+      var result = await installer.installLatest(
+        onProgress: (message) {
+          if (!_output.isClosed) _output.add('[Userland] ' + message + '\r\n');
+        },
+      );
+      if (result.success) return result.message;
+
+      // Direct /storage/emulated/0 access is restricted on Android 11+.
+      // If paths are hidden by scoped storage, use the existing SAF picker to
+      // copy the on-device Kali archive into app-private storage. This remains
+      // offline and never attempts DNS or a network download.
+      if (result.message.contains('لم أتمكن من قراءة أي حزمة محلية')) {
+        if (!_output.isClosed) {
+          _output.add('[Userland] طلب اختيار ملف Kali المحلي عبر منتقي Android...\r\n');
+        }
+        final local = await const ZionLocalKaliBootstrap().install(
+          onProgress: (progress) {
+            if (!_output.isClosed) {
+              _output.add('[Kali] ' + progress.message + '\r\n');
+            }
+          },
+        );
+        if (!local.isSuccess) {
+          return 'تعذر تثبيت الحزمة المحلية: ' + (local.error?.toString() ?? 'سبب غير معروف');
+        }
+        result = await installer.installLatest(
+          onProgress: (message) {
+            if (!_output.isClosed) _output.add('[Userland] ' + message + '\r\n');
+          },
+        );
+        if (result.success) return result.message;
+        return 'تم تجهيز rootfs المحلي، لكن ما زال مكوّن Zion/PRoot غير جاهز: ' + result.message;
+      }
+      return result.message;
+    } catch (error) {
+      return 'تعذر تجهيز Userland من الملفات المحلية: ' + error.toString();
     }
   }
 
