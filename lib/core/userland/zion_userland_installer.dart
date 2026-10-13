@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -15,10 +16,106 @@ class ZionUserlandInstaller {
   const ZionUserlandInstaller();
 
   static const _maxDownloadBytes = 256 * 1024 * 1024;
+  static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
+  static Future<ZionUserlandInstallResult>? _installFuture;
+  static bool _installCompleted = false;
+
+  /// A valid Bash executable is authoritative; the state file prevents repeat
+  /// copies, but a stale/missing marker never forces a 1.4 GB recopy by itself.
+  Future<bool> isInstalled() async {
+    final bashPath = '${ZionBootstrap.prefix}/bin/bash';
+    try {
+      if (!await File(bashPath).exists()) return false;
+      final result = await Process.run(
+        bashPath,
+        const <String>['-c', 'printf ZION_USERLAND_BASH_OK'],
+        runInShell: false,
+        environment: <String, String>{
+          ...Platform.environment,
+          'HOME': ZionBootstrap.home,
+          'PREFIX': ZionBootstrap.prefix,
+          'TMPDIR': ZionBootstrap.tmp,
+          'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
+          'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
+          'TERM': 'xterm-256color',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+        },
+      ).timeout(const Duration(seconds: 4));
+      if (result.exitCode != 0 || !result.stdout.toString().contains('ZION_USERLAND_BASH_OK')) return false;
+
+      final stateFile = File(_stateFilePath);
+      var stateIsValid = false;
+      if (await stateFile.exists()) {
+        try {
+          final state = jsonDecode(await stateFile.readAsString());
+          stateIsValid = state is Map && state['installed'] == true && state['bashPath'] == bashPath;
+        } catch (_) {
+          // Rebuild a corrupt marker below; do not recopy a working Userland.
+        }
+      }
+      if (!stateIsValid) {
+        await _writeState(source: 'existing-userland', sizeBytes: 0);
+      }
+      _installCompleted = true;
+      return true;
+    } catch (e) {
+      print('[Userland] installed check failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> _writeState({required String source, required int sizeBytes}) async {
+    final file = File(_stateFilePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(<String, Object>{
+      'installed': true,
+      'installedAt': DateTime.now().toUtc().toIso8601String(),
+      'bashPath': '${ZionBootstrap.prefix}/bin/bash',
+      'version': '1.0',
+      'source': source,
+      'sizeBytes': sizeBytes,
+    }), flush: true);
+    try {
+      await Process.run('/system/bin/chmod', <String>['600', _stateFilePath], runInShell: false);
+    } catch (_) {}
+    print('[Userland] state saved: $_stateFilePath');
+  }
+
+  Future<void> uninstallState() async {
+    final file = File(_stateFilePath);
+    if (await file.exists()) await file.delete();
+    _installCompleted = false;
+  }
 
   Future<ZionUserlandInstallResult> installLatest({
     void Function(String message)? onProgress,
+  }) {
+    final active = _installFuture;
+    if (active != null) return active;
+    final future = _installLatestInternal(onProgress: onProgress).then((result) async {
+      if (result.success) {
+        _installCompleted = true;
+        final stateFile = File(_stateFilePath);
+        if (!await stateFile.exists()) {
+          await _writeState(source: 'zion-userland-install', sizeBytes: 0);
+        }
+      }
+      return result;
+    });
+    _installFuture = future;
+    return future.whenComplete(() {
+      if (identical(_installFuture, future)) _installFuture = null;
+    });
+  }
+
+  Future<ZionUserlandInstallResult> _installLatestInternal({
+    void Function(String message)? onProgress,
   }) async {
+    if (await isInstalled()) {
+      onProgress?.call('[Userland] Already installed; skipping copy.');
+      return const ZionUserlandInstallResult(success: true, message: 'Userland already installed; no copy needed.');
+    }
     final abi = ZionBootstrapEndpoint.currentAbi();
     onProgress?.call('اكتشاف معمارية الجهاز: $abi...');
 
@@ -194,8 +291,8 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Copying backup directly into ${targetDir.path}...');
-      final result = await Process.run('/system/bin/cp', <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'], runInShell: false);
+      onProgress?.call('[Userland] Copying files... (source is about 1.4 GB; this runs asynchronously)');
+      final result = await Process.run('/system/bin/cp', <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'], runInShell: false).timeout(const Duration(minutes: 10));
       if (result.exitCode != 0) {
         onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
         try {
@@ -205,55 +302,105 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Repairing permissions...');
+      onProgress?.call('[Userland] Setting permissions (best-effort; root-owned files are tolerated)...');
       await _repairPermissions(targetDir);
-      onProgress?.call('[Userland] Recreating missing command links...');
+      onProgress?.call('[Userland] Creating symlinks...');
       await _recreateCoreutilsSymlinks('${targetDir.path}/bin');
       await _createOtherSymlinks('${targetDir.path}/bin');
 
       if (!await _hasCompatibleShell()) {
-        return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن الصدفة لا تعمل؛ تحقق من توافق الملفات والمكتبات المشتركة.');
+        return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن Bash لا يعمل؛ تحقق من الصلاحيات ومكتبات التشغيل.');
       }
-      if (!await _hasCompatibleProot()) {
-        return const ZionUserlandInstallResult(success: false, message: 'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل.');
-      }
+      // Termux usr is useful as a Bash environment even when PRoot is absent.
+      // PRoot is an optional tool, not a prerequisite for launching Bash.
       await ZionBootstrap.initializeRuntime();
-      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من التشغيل: ${targetDir.path}');
+      await _writeState(source: sourcePath, sizeBytes: 1400000000);
+      onProgress?.call('[Userland] ✓ Ready');
+      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
     } catch (e) {
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
   }
 
-  /// Avoid chmod -R 644 on lib: that removes directory traversal permissions.
-  /// Repair directories and files individually, preserving existing executable
-  /// bits where they matter.
+  /// Repair permissions without allowing a few root-owned shared libraries to
+  /// abort the restore. Directories stay traversable; Bash is verified afterward.
   Future<void> _repairPermissions(Directory root) async {
-    Future<void> repairTree(Directory directory, {required String directoryMode, required String fileMode, bool preserveExecutableFiles = false}) async {
-      if (!await directory.exists()) return;
-      await Process.run('/system/bin/chmod', <String>[directoryMode, directory.path], runInShell: false);
-      await for (final entity in directory.list(recursive: true, followLinks: false)) {
-        try {
-          if (entity is Link) continue;
-          if (entity is Directory) {
-            await Process.run('/system/bin/chmod', <String>[directoryMode, entity.path], runInShell: false);
-          } else if (entity is File) {
-            var mode = fileMode;
-            if (preserveExecutableFiles && ((await entity.stat()).mode & 0x49) != 0) mode = '755';
-            await Process.run('/system/bin/chmod', <String>[mode, entity.path], runInShell: false);
-          }
-        } catch (e) {
-          print('[Userland] chmod failed for ${entity.path}: $e');
+    Future<void> recursiveChmod(String path, String mode, {bool critical = false}) async {
+      if (!await Directory(path).exists()) return;
+      try {
+        final result = await Process.run(
+          '/system/bin/chmod', <String>['-R', mode, path],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        print('[Permissions] $path: exit=${result.exitCode}');
+        if (critical && result.exitCode != 0) {
+          print('[Permissions] $path had partial chmod failures; verifying executable instead of aborting.');
         }
+      } catch (e) {
+        print('[Permissions] $path ignored: $e');
       }
     }
 
-    await repairTree(Directory('${root.path}/bin'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('${root.path}/libexec'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('${root.path}/lib'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
-    await repairTree(Directory('${root.path}/share'), directoryMode: '755', fileMode: '644');
-    for (final name in <String>['etc', 'tmp', 'var', 'include', 'sbin']) {
-      await repairTree(Directory('${root.path}/$name'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+    await recursiveChmod('${root.path}/bin', '755', critical: true);
+    await recursiveChmod('${root.path}/libexec', '755', critical: true);
+
+    // Never chmod -R 644 on a directory tree: that removes execute/traverse
+    // bits from directories. find changes files only and leaves directory modes.
+    for (final entry in <({String name, String mode})>[
+      (name: 'lib', mode: '644'),
+      (name: 'share', mode: '644'),
+      (name: 'etc', mode: '644'),
+    ]) {
+      final path = '${root.path}/${entry.name}';
+      if (!await Directory(path).exists()) continue;
+      try {
+        final dirs = await Process.run(
+          '/system/bin/find', <String>[path, '-type', 'd', '-exec', 'chmod', '755', '{}', '+'],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        final files = await Process.run(
+          '/system/bin/find', <String>[path, '-type', 'f', '-exec', 'chmod', entry.mode, '{}', '+'],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        print('[Permissions] $path: dirs=${dirs.exitCode}, files=${files.exitCode} (non-fatal)');
+      } catch (e) {
+        print('[Permissions] $path (ignored): $e');
+      }
     }
+
+    // Restore execution bits on known entry points if ownership allows it.
+    for (final path in <String>[
+      '${root.path}/bin/bash',
+      '${root.path}/bin/coreutils',
+      '${root.path}/bin/gawk',
+      '${root.path}/bin/vim',
+    ]) {
+      try {
+        await Process.run('/system/bin/chmod', <String>['755', path], runInShell: false);
+      } catch (_) {}
+    }
+
+    final bash = File('${root.path}/bin/bash');
+    if (!await bash.exists()) throw StateError('bash missing after Userland copy');
+    final test = await Process.run(
+      bash.path, const <String>['-c', 'printf BASH_OK'],
+      runInShell: false,
+      environment: <String, String>{
+        ...Platform.environment,
+        'HOME': ZionBootstrap.home,
+        'PREFIX': ZionBootstrap.prefix,
+        'TMPDIR': ZionBootstrap.tmp,
+        'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
+        'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
+        'TERM': 'xterm-256color',
+        'LANG': 'C.UTF-8',
+        'LC_ALL': 'C.UTF-8',
+      },
+    ).timeout(const Duration(seconds: 5));
+    if (test.exitCode != 0 || !test.stdout.toString().contains('BASH_OK')) {
+      throw StateError('bash verification failed (exit=${test.exitCode}): ${test.stderr}');
+    }
+    print('[Permissions] ✓ Critical Bash check passed; non-critical chmod errors were tolerated.');
   }
 
   Future<void> _recreateCoreutilsSymlinks(String binDir) async {
