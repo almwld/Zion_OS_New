@@ -481,10 +481,14 @@ class TerminalService {
   void write(String input) {
     if (input.isEmpty) return;
     if (!_pty.isRunning) {
-      _output.add(
-        '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
-        '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
-      );
+      // TerminalView sends one callback for every typed character. Report the
+      // stopped session on Enter only, not on every keypress.
+      if (input.contains('\n') || input.contains('\r')) {
+        _output.add(
+          '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
+          '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
+        );
+      }
       return;
     }
     unawaited(_pty.write(input));
