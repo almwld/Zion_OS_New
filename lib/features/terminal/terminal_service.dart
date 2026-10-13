@@ -503,8 +503,12 @@ class TerminalService {
       }
       return;
     }
-    unawaited(_pty.write(input));
-    final parts = (_interactiveInputBuffer + input).split('\n');
+    // Normalize Enter from different Android keyboards/xterm versions.
+    // The native PTY is canonical, but some keyboards send CR while others
+    // send LF; forwarding a normalized newline makes command submission stable.
+    final ptyInput = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    unawaited(_pty.write(ptyInput));
+    final parts = (_interactiveInputBuffer + ptyInput).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
