@@ -10,13 +10,6 @@ import '../../security/core/security_core.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
-class _TerminalEnvironment {
-  const _TerminalEnvironment({required this.home, required this.prefix, required this.tmp});
-  final String home;
-  final String prefix;
-  final String tmp;
-}
-
 class TerminalResult {
   const TerminalResult({
     required this.command,
@@ -130,23 +123,14 @@ class TerminalService {
     }
   }
 
-  Future<_TerminalEnvironment> _ensureTerminalEnvironment() async {
+  Future<void> _ensureTerminalEnvironment() async {
     final base = Directory('/data/data/com.zion.os/files');
-    final home = Directory(base.path + '/home');
-    final prefix = Directory(base.path + '/usr');
-    final tmp = Directory(base.path + '/tmp');
     try {
-      await home.create(recursive: true);
-      await Directory(prefix.path + '/bin').create(recursive: true);
-      await Directory(prefix.path + '/sbin').create(recursive: true);
-      await Directory(prefix.path + '/lib').create(recursive: true);
-      await Directory(prefix.path + '/lib64').create(recursive: true);
-      await tmp.create(recursive: true);
-      await Directory(base.path + '/etc').create(recursive: true);
+      await Directory(base.path + '/home').create(recursive: true);
+      await Directory(base.path + '/tmp').create(recursive: true);
     } catch (_) {
-      // Process.start below reports the filesystem failure if creation fails.
+      // The shell startup will report a concrete error if private storage fails.
     }
-    return _TerminalEnvironment(home: home.path, prefix: prefix.path, tmp: tmp.path);
   }
 
   bool _authorized(String command) {
@@ -353,7 +337,7 @@ class TerminalService {
       return false;
     }
     final started = DateTime.now();
-    // Create app-local terminal directories before starting the native PTY.
+    // Ensure a private working directory before starting the native Android PTY.
     await _ensureTerminalEnvironment();
     final shell = await _findShell();
     if (shell == null) {
