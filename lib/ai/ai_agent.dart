@@ -54,14 +54,15 @@ class AIAgent {
   );
 
   String _cleanResponse(String response) {
-    // Some small models print ChatML boundary tokens as ordinary text. Keep
-    // those control markers out of the chat transcript and next-turn history.
-    return response
-        .replaceAll(
-          RegExp(r'<\\|(?:im_start|im_end|endoftext|fim_suffix|user|assistant|system)\\|>', caseSensitive: false),
-          '',
-        )
-        .trim();
+    // Small models occasionally print boundary tokens instead of stopping.
+    var cleaned = response;
+    for (final marker in const [
+      '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
+      '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
+    ]) {
+      cleaned = cleaned.replaceAll(marker, '');
+    }
+    return cleaned.trim();
   }
 
   String _buildPrompt(String message) {
