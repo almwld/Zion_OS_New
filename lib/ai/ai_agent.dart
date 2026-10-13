@@ -57,17 +57,19 @@ class AIAgent {
       ..writeln('<|end|>');
     // Bound prompt size to fit the conservative 1024-token mobile context.
     // Long chat histories should never make native inference exhaust device RAM.
-    final recent = _history.length > 4
-        ? _history.sublist(_history.length - 4)
+    // Keep only one recent turn and tightly bound each message for the
+    // 512-token low-memory native context.
+    final recent = _history.length > 2
+        ? _history.sublist(_history.length - 2)
         : _history;
     for (final item in recent) {
-      final content = item.content.length > 500
-          ? item.content.substring(0, 500)
+      final content = item.content.length > 240
+          ? item.content.substring(0, 240)
           : item.content;
       b..writeln('<|${item.role}|>')..writeln(content)..writeln('<|end|>');
     }
-    final boundedMessage = message.length > 1200
-        ? message.substring(0, 1200)
+    final boundedMessage = message.length > 600
+        ? message.substring(0, 600)
         : message;
     b..writeln('<|user|>')..writeln(boundedMessage)..writeln('<|end|>')..writeln('<|assistant|>');
     return b.toString();
