@@ -406,12 +406,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
       {'label':'مساعدة','command':'help','icon':Icons.help_outline},
       {'label':'المسار','command':'pwd','icon':Icons.folder_open},
       {'label':'الملفات','command':'ls -la','icon':Icons.folder},
-      {'label':'الحالة','command':'zion-status','icon':Icons.monitor_heart},
-      {'label':'الإمكانات','command':'capabilities','icon':Icons.tune},
-      {'label':'السجل','command':'history','icon':Icons.history},
+      {'label':'النظام','command':'uname -a','icon':Icons.memory},
+      {'label':'المستخدم','command':'id','icon':Icons.person},
       {'label':'المساحة','command':'df -h','icon':Icons.storage},
+      {'label':'العمليات','command':'ps','icon':Icons.list_alt},
       {'label':'الشبكات','command':'ip addr','icon':Icons.lan},
-      {'label':'Wi-Fi','command':'wifi scan','icon':Icons.wifi},
+      {'label':'Android','command':'getprop','icon':Icons.phone_android},
     ];
     return Container(height: 70, color: _palette.surface, padding: const EdgeInsets.symmetric(vertical: 7),
       child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -780,45 +780,12 @@ $request''',
             ),
             onPressed: tab == null || _starting ? null : _toggleSelected,
           ),
-          IconButton(
-            tooltip: 'لصق من الحافظة',
-            icon: const Icon(Icons.content_paste),
-            onPressed: tab == null ? null : _paste,
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'اختصارات الطرفية',
-            icon: const Icon(Icons.keyboard_alt_outlined),
-            onSelected: _sendControl,
-            itemBuilder: (context) => [
-              for (final key in const ['C', 'D', 'Z', 'L', 'A', 'E', 'U', 'K'])
-                PopupMenuItem(
-                  value: key,
-                  child: Text('Ctrl+$key'),
-                ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'مسح الشاشة',
-            icon: const Icon(Icons.clear_all),
-            onPressed: _clear,
-          ),
-          PopupMenuButton<double>(
-            tooltip: 'حجم الخط',
-            icon: const Icon(Icons.text_fields),
-            onSelected: (value) => setState(() => _fontSize = value),
-            itemBuilder: (context) => [
-              for (final size in [10.0, 12.0, 13.0, 15.0, 17.0, 20.0])
-                PopupMenuItem(
-                  value: size,
-                  child: Text('${size.toInt()} px'),
-                ),
-            ],
-          ),
           PopupMenuButton<String>(
             tooltip: 'أدوات الطرفية', icon: const Icon(Icons.more_vert),
             onSelected: (value) {
               switch (value) {
                 case 'copy': unawaited(_copyOutput()); break;
+                case 'paste': unawaited(_paste()); break;
                 case 'history': unawaited(_showHistorySearch()); break;
                 case 'theme': unawaited(_showThemeSelector()); break;
                 case 'settings': unawaited(_showSettings()); break;
@@ -826,10 +793,24 @@ $request''',
                 case 'toolbar': setState(() => _showToolbar = !_showToolbar); break;
                 case 'fullscreen': unawaited(_toggleFullscreen()); break;
                 case 'clear': _clear(); break;
+                case 'ctrl-C': _sendControl('C'); break;
+                case 'ctrl-D': _sendControl('D'); break;
+                case 'ctrl-Z': _sendControl('Z'); break;
+                case 'ctrl-L': _sendControl('L'); break;
+                case 'ctrl-A': _sendControl('A'); break;
+                case 'ctrl-E': _sendControl('E'); break;
+                case 'ctrl-U': _sendControl('U'); break;
+                case 'ctrl-K': _sendControl('K'); break;
+                default:
+                  if (value.startsWith('font-')) {
+                    final size = double.tryParse(value.substring(5));
+                    if (size != null) setState(() => _fontSize = size);
+                  }
               }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
+              PopupMenuItem(value: 'paste', child: Text('لصق من الحافظة')),
               PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
               PopupMenuItem(value: 'theme', child: Text('تغيير الثيم')),
               PopupMenuItem(value: 'settings', child: Text('إعدادات الطرفية')),
@@ -837,6 +818,20 @@ $request''',
               PopupMenuItem(value: 'toolbar', child: Text('إظهار/إخفاء شريط الأدوات')),
               PopupMenuItem(value: 'fullscreen', child: Text('ملء الشاشة')),
               PopupMenuItem(value: 'clear', child: Text('مسح الشاشة')),
+              PopupMenuItem(value: 'font-10', child: Text('حجم الخط: 10')),
+              PopupMenuItem(value: 'font-12', child: Text('حجم الخط: 12')),
+              PopupMenuItem(value: 'font-13', child: Text('حجم الخط: 13')),
+              PopupMenuItem(value: 'font-15', child: Text('حجم الخط: 15')),
+              PopupMenuItem(value: 'font-17', child: Text('حجم الخط: 17')),
+              PopupMenuItem(value: 'font-20', child: Text('حجم الخط: 20')),
+              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
+              PopupMenuItem(value: 'ctrl-D', child: Text('Ctrl+D')),
+              PopupMenuItem(value: 'ctrl-Z', child: Text('Ctrl+Z')),
+              PopupMenuItem(value: 'ctrl-L', child: Text('Ctrl+L')),
+              PopupMenuItem(value: 'ctrl-A', child: Text('Ctrl+A')),
+              PopupMenuItem(value: 'ctrl-E', child: Text('Ctrl+E')),
+              PopupMenuItem(value: 'ctrl-U', child: Text('Ctrl+U')),
+              PopupMenuItem(value: 'ctrl-K', child: Text('Ctrl+K')),
             ],
           ),
         ],
