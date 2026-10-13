@@ -214,8 +214,8 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Copying files... 0%');
-      onProgress?.call('[Userland] Copying 1.4 GB; this may take a few minutes.');
+      onProgress?.call('[Userland] Copying files...');
+      onProgress?.call('[Userland] Copying about 1.4 GB; this may take several minutes.');
       final process = await Process.start(
         '/system/bin/cp',
         <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'],
@@ -235,9 +235,11 @@ class ZionUserlandInstaller {
         await Future<void>.delayed(const Duration(seconds: 2));
         if (exitCompleter.isCompleted) break;
         final elapsedSeconds = stopwatch.elapsed.inSeconds;
-        if (elapsedSeconds != lastProgressSeconds) {
+        if (elapsedSeconds != lastProgressSeconds && elapsedSeconds % 5 == 0) {
           lastProgressSeconds = elapsedSeconds;
-          onProgress?.call('[Userland] Copying files... still working (${elapsedSeconds}s)');
+          onProgress?.call(
+            '[Userland] Copying files... still working (${elapsedSeconds}s elapsed; cp -a has no reliable byte progress).',
+          );
         }
         if (stopwatch.elapsed > const Duration(minutes: 10)) {
           process.kill(ProcessSignal.sigkill);
@@ -255,7 +257,7 @@ class ZionUserlandInstaller {
           return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${stderrBuffer.toString()}; fallback: $e');
         }
       }
-      onProgress?.call('[Userland] Copying files... 100%');
+      onProgress?.call('[Userland] Copy complete.');
 
       onProgress?.call('[Userland] Repairing permissions...');
       await _repairPermissions(targetDir);
