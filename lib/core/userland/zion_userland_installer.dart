@@ -29,6 +29,20 @@ class ZionUserlandInstaller {
       );
     }
 
+    // Restore the uncompressed Termux usr backup directly first. Do not
+    // package it as ZIP/TAR: archive metadata and executable bits matter.
+    const backupPath = '/storage/emulated/0/Download/termux_usr_backup';
+    if (await Directory(backupPath).exists()) {
+      onProgress?.call('[Userland] Restoring direct directory backup: $backupPath');
+      final restored = await _installFromDirectory(backupPath, onProgress: onProgress);
+      if (restored.success) {
+        return restored;
+      }
+      onProgress?.call('تعذرت استعادة النسخة المحلية مباشرة: ${restored.message}');
+      // Do not silently replace a failed direct restore with a network fetch.
+      return restored;
+    }
+
     // Offline-first: inspect local package locations before considering any
     // network endpoint. Only verified Zion bootstrap ZIPs are accepted here;
     // a Kali rootfs tarball must not be unpacked into the Zion prefix.
@@ -150,6 +164,95 @@ class ZionUserlandInstaller {
       try {
         await File(remote.path!).delete();
       } catch (_) {}
+    }
+  }
+
+  Future<ZionUserlandInstallResult> _installFromDirectory(
+    String sourcePath, {
+    void Function(String message)? onProgress,
+  }) async {
+    try {
+      final sourceDir = Directory(sourcePath);
+      if (!await sourceDir.exists()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'Termux backup directory not found.',
+        );
+      }
+
+      final targetDir = Directory(ZionBootstrap.prefix);
+      await targetDir.create(recursive: true);
+
+      // cp -a preserves executable modes and symlinks; hard links can only
+      // remain hard links when the underlying filesystems permit it.
+      final result = await Process.run(
+        '/system/bin/cp',
+        <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'],
+        runInShell: false,
+      );
+
+      if (result.exitCode != 0) {
+        onProgress?.call(
+          'cp -a failed (exit ${result.exitCode}): ${result.stderr}. '
+          'Trying a filesystem-aware Dart copy fallback.',
+        );
+        await _manualCopy(sourceDir, targetDir);
+      }
+
+      final shellReady = await _hasCompatibleShell();
+      if (!shellReady) {
+        return ZionUserlandInstallResult(
+          success: false,
+          message:
+              'تم نسخ النسخة الاحتياطية، لكن لم يتم العثور على shell قابل للتشغيل. '
+              'cp output: ${result.stderr}',
+        );
+      }
+
+      // A Termux usr backup is not automatically a complete Zion runtime.
+      // Require a compatible PRoot before marking Userland ready.
+      if (!await _hasCompatibleProot()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message:
+              'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل؛ '
+              'لم يتم اعتماد Userland كتثبيت مكتمل.',
+        );
+      }
+
+      await ZionBootstrap.initializeRuntime();
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'Termux usr backup copied directly into Zion Userland.',
+      );
+    } catch (e) {
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'Direct backup copy failed: $e',
+      );
+    }
+  }
+
+  Future<void> _manualCopy(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final name = entity.uri.pathSegments.isNotEmpty
+          ? entity.uri.pathSegments[entity.uri.pathSegments.length - 1]
+          : entity.path.split('/').last;
+      final destination = '${target.path}/$name';
+
+      if (entity is Link) {
+        final linkTarget = await entity.target();
+        final link = Link(destination);
+        if (await link.exists()) {
+          await link.delete();
+        }
+        await link.create(linkTarget);
+      } else if (entity is Directory) {
+        await _manualCopy(entity, Directory(destination));
+      } else if (entity is File) {
+        await entity.copy(destination);
+      }
     }
   }
 
