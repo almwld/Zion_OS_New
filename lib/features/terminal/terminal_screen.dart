@@ -9,6 +9,7 @@ import '../../ai/llama_service.dart';
 
 import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
+import 'terminal_palette.dart';
 import 'terminal_service.dart';
 
 class TerminalScreen extends StatefulWidget {
@@ -47,6 +48,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _aiReady = false;
   String? _startupError;
   double _fontSize = 13;
+  String _fontFamily = 'monospace';
+  bool _showToolbar = true;
+  bool _showQuickCommands = false;
+  bool _isFullscreen = false;
+  TerminalPalette _palette = TerminalPalette.zion;
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -54,6 +60,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
@@ -110,6 +117,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
     final service = TerminalService(security);
+    unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
       name: 'shell-$id',
@@ -237,8 +245,187 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  void _sendRaw(String value) {
-    _selectedTab?.service.write(value);
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final keyboard = HardwareKeyboard.instance;
+    if (!keyboard.isControlPressed) return false;
+    if (keyboard.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyT) {
+      if (!_starting && _tabs.length < _maxSessions) unawaited(_createTabSafely());
+      return true;
+    }
+    if (keyboard.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyW) {
+      unawaited(_closeTab(_selectedIndex)); return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyC) { _sendControl('C'); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.keyL) { _clear(); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.keyR) { unawaited(_showHistorySearch()); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.equal || event.logicalKey == LogicalKeyboardKey.add) {
+      setState(() => _fontSize = (_fontSize + 1).clamp(8, 24).toDouble()); return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.minus) {
+      setState(() => _fontSize = (_fontSize - 1).clamp(8, 24).toDouble()); return true;
+    }
+    return false;
+  }
+
+  Future<void> _copyOutput() async {
+    final tab = _selectedTab;
+    if (tab == null || tab.recentOutput.isEmpty) { _showTerminalNotice('لا توجد مخرجات حديثة لنسخها.'); return; }
+    await Clipboard.setData(ClipboardData(text: ArabicShaper.readableText(tab.recentOutput)));
+    _showTerminalNotice('تم نسخ المخرجات الحديثة.');
+  }
+
+  void _showTerminalNotice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+  }
+
+  Future<void> _showHistorySearch() async {
+    final tab = _selectedTab;
+    if (tab == null) return;
+    String query = '';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final history = tab.service.history.where((command) => command.toLowerCase().contains(query.toLowerCase())).toList(growable: false);
+          return AlertDialog(
+            backgroundColor: _palette.surface,
+            title: Text('البحث في سجل الأوامر', style: TextStyle(color: _palette.foreground)),
+            content: SizedBox(
+              width: double.maxFinite, height: 360,
+              child: Column(children: [
+                TextField(autofocus: true, onChanged: (value) => setDialogState(() => query = value),
+                  style: TextStyle(color: _palette.foreground),
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'اكتب جزءاً من الأمر…')),
+                const SizedBox(height: 8),
+                Expanded(child: history.isEmpty
+                  ? Center(child: Text('لا توجد أوامر مطابقة', style: TextStyle(color: _palette.foreground)))
+                  : ListView.builder(itemCount: history.length, itemBuilder: (context, index) => ListTile(
+                      dense: true, leading: Icon(Icons.history, color: _palette.accent),
+                      title: Text(history[index], style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 12)),
+                      onTap: () {
+                        Navigator.pop(dialogContext);
+                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index]); }
+                        else { _showTerminalNotice('شغّل جلسة PTY أولاً.'); }
+                      },
+                    ))),
+              ]),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إغلاق'))],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showThemeSelector() async {
+    await showModalBottomSheet<void>(
+      context: context, backgroundColor: _palette.surface,
+      builder: (sheetContext) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        Padding(padding: const EdgeInsets.all(18), child: Text('ثيم الطرفية', style: TextStyle(color: _palette.foreground, fontSize: 18, fontWeight: FontWeight.bold))),
+        for (final palette in TerminalPalette.all)
+          ListTile(
+            leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: palette.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.accent)),
+              child: Center(child: Text('λ', style: TextStyle(color: palette.foreground, fontFamily: 'monospace')))),
+            title: Text(palette.name, style: TextStyle(color: _palette.foreground)),
+            subtitle: Text(palette.description, style: TextStyle(color: _palette.foreground.withOpacity(0.65))),
+            trailing: _palette.name == palette.name ? Icon(Icons.check, color: palette.accent) : null,
+            onTap: () { setState(() => _palette = palette); Navigator.pop(sheetContext); },
+          ),
+      ])),
+    );
+  }
+
+  Future<void> _showSettings() async {
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: _palette.surface,
+      builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('إعدادات الطرفية', style: TextStyle(color: _palette.foreground, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('حجم الخط', style: TextStyle(color: _palette.foreground)),
+            Slider(value: _fontSize.clamp(8, 24).toDouble(), min: 8, max: 24, divisions: 16, activeColor: _palette.accent,
+              onChanged: (value) { setSheetState(() => _fontSize = value); setState(() {}); }),
+            Text('نوع الخط', style: TextStyle(color: _palette.foreground)),
+            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono'].map((font) => ChoiceChip(
+              label: Text(font, style: TextStyle(color: _palette.foreground)), selected: _fontFamily == font,
+              selectedColor: _palette.accent.withOpacity(0.25),
+              onSelected: (_) { setSheetState(() => _fontFamily = font); setState(() {}); },
+            )).toList()),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('إظهار شريط الأدوات', style: TextStyle(color: _palette.foreground)),
+              value: _showToolbar, activeColor: _palette.accent, onChanged: (v) { setSheetState(() => _showToolbar = v); setState(() {}); }),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('إظهار الأوامر السريعة', style: TextStyle(color: _palette.foreground)),
+              value: _showQuickCommands, activeColor: _palette.accent, onChanged: (v) { setSheetState(() => _showQuickCommands = v); setState(() {}); }),
+            Align(alignment: AlignmentDirectional.centerEnd, child: FilledButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('تم'))),
+          ])),
+        ),
+      )),
+    );
+  }
+
+  Future<void> _toggleFullscreen() async {
+    final next = !_isFullscreen;
+    await SystemChrome.setEnabledSystemUIMode(next ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+    if (mounted) setState(() => _isFullscreen = next);
+  }
+
+  Widget _buildToolbar() => Container(
+    height: 42, color: _palette.surface,
+    child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      _toolbarButton(Icons.copy, 'نسخ المخرجات', _copyOutput),
+      _toolbarButton(Icons.content_paste, 'لصق', _paste),
+      _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
+      _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
+      _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
+      _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
+      _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
+      _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
+      _toolbarButton(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, 'ملء الشاشة', () => unawaited(_toggleFullscreen())),
+    ])),
+  );
+
+  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onPressed) => IconButton(
+    tooltip: tooltip, onPressed: onPressed, icon: Icon(icon, color: _palette.foreground.withOpacity(0.85), size: 19),
+    constraints: const BoxConstraints(minWidth: 42, minHeight: 42), padding: EdgeInsets.zero,
+  );
+
+  Widget _buildQuickCommands() {
+    const commands = <Map<String, Object>>[
+      {'label':'مساعدة','command':'help','icon':Icons.help_outline},
+      {'label':'المسار','command':'pwd','icon':Icons.folder_open},
+      {'label':'الملفات','command':'ls -la','icon':Icons.folder},
+      {'label':'الحالة','command':'zion-status','icon':Icons.monitor_heart},
+      {'label':'الإمكانات','command':'capabilities','icon':Icons.tune},
+      {'label':'السجل','command':'history','icon':Icons.history},
+      {'label':'المساحة','command':'df -h','icon':Icons.storage},
+      {'label':'الشبكات','command':'ip addr','icon':Icons.lan},
+      {'label':'Wi-Fi','command':'wifi scan','icon':Icons.wifi},
+    ];
+    return Container(height: 70, color: _palette.surface, padding: const EdgeInsets.symmetric(vertical: 7),
+      child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: commands.length, separatorBuilder: (_, __) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          final item = commands[index];
+          return Material(color: _palette.background, borderRadius: BorderRadius.circular(9),
+            child: InkWell(borderRadius: BorderRadius.circular(9), onTap: () {
+              final tab = _selectedTab;
+              if (tab == null || !tab.service.isInteractiveRunning) { _showTerminalNotice('شغّل جلسة PTY أولاً.'); return; }
+              tab.service.write(item['command'].toString() + '\n');
+            }, child: Container(width: 72,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), border: Border.all(color: _palette.accent.withOpacity(0.32))),
+              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(item['icon'] as IconData, size: 19, color: _palette.accent),
+                const SizedBox(height: 3),
+                Text(item['label'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _palette.foreground, fontSize: 10)),
+              ]),
+            )),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _paste() async {
@@ -529,6 +716,8 @@ $request''',
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
       unawaited(tab.outputSubscription?.cancel());
@@ -543,8 +732,10 @@ $request''',
   Widget build(BuildContext context) {
     final tab = _selectedTab;
     return Scaffold(
-      backgroundColor: const Color(0xFF090B0A),
+      backgroundColor: _palette.background,
       appBar: AppBar(
+        backgroundColor: _palette.surface,
+        foregroundColor: _palette.foreground,
         title: const Text('Zion OS Terminal'),
         actions: [
           IconButton(
@@ -613,6 +804,31 @@ $request''',
                 ),
             ],
           ),
+          PopupMenuButton<String>(
+            tooltip: 'أدوات الطرفية', icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'copy': unawaited(_copyOutput()); break;
+                case 'history': unawaited(_showHistorySearch()); break;
+                case 'theme': unawaited(_showThemeSelector()); break;
+                case 'settings': unawaited(_showSettings()); break;
+                case 'quick': setState(() => _showQuickCommands = !_showQuickCommands); break;
+                case 'toolbar': setState(() => _showToolbar = !_showToolbar); break;
+                case 'fullscreen': unawaited(_toggleFullscreen()); break;
+                case 'clear': _clear(); break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
+              PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
+              PopupMenuItem(value: 'theme', child: Text('تغيير الثيم')),
+              PopupMenuItem(value: 'settings', child: Text('إعدادات الطرفية')),
+              PopupMenuItem(value: 'quick', child: Text('إظهار/إخفاء الأوامر السريعة')),
+              PopupMenuItem(value: 'toolbar', child: Text('إظهار/إخفاء شريط الأدوات')),
+              PopupMenuItem(value: 'fullscreen', child: Text('ملء الشاشة')),
+              PopupMenuItem(value: 'clear', child: Text('مسح الشاشة')),
+            ],
+          ),
         ],
       ),
       body: Column(
@@ -623,6 +839,7 @@ $request''',
             onSelect: (index) => setState(() => _selectedIndex = index),
             onClose: _closeTab,
           ),
+          if (_showToolbar) _buildToolbar(),
           if (_startupError != null)
             Container(
               width: double.infinity,
@@ -638,9 +855,10 @@ $request''',
                 autofocus: true,
                 backgroundOpacity: 1,
                 cursorType: TerminalCursorType.block,
+                theme: _palette.toXtermTheme(),
                 textStyle: TerminalStyle(
                   fontSize: _fontSize,
-                  fontFamily: 'monospace',
+                  fontFamily: _fontFamily,
                 ),
                 simulateScroll: false,
               ),
@@ -651,8 +869,13 @@ $request''',
                 child: CircularProgressIndicator(),
               ),
             ),
+          if (_showQuickCommands) _buildQuickCommands(),
           _StatusBar(tab: tab),
-          _ExtraKeys(onSend: _sendRaw),
+          _ExtraKeys(onSend: (value) {
+            final current = _selectedTab;
+            if (current != null && current.service.isInteractiveRunning) current.service.write(value);
+            else _showTerminalNotice('شغّل جلسة PTY أولاً.');
+          }),
         ],
       ),
     );
