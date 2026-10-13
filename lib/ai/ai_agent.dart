@@ -51,14 +51,13 @@ class AIAgent {
   );
 
   String _buildPrompt(String message) {
+    // Qwen2.5-Instruct is trained on ChatML. Role tags such as <|system|>
+    // and <|end|> are not equivalent and can cause role leakage/repetition.
     final b = StringBuffer()
-      ..writeln('<|system|>')
+      ..writeln('<|im_start|>system')
       ..writeln(_systemPrompt(_role))
-      ..writeln('<|end|>');
-    // Bound prompt size to fit the conservative 1024-token mobile context.
-    // Long chat histories should never make native inference exhaust device RAM.
-    // Keep only one recent turn and tightly bound each message for the
-    // 512-token low-memory native context.
+      ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
+      ..writeln('<|im_end|>');
     final recent = _history.length > 2
         ? _history.sublist(_history.length - 2)
         : _history;
@@ -66,15 +65,21 @@ class AIAgent {
       final content = item.content.length > 160
           ? item.content.substring(0, 160)
           : item.content;
-      b..writeln('<|${item.role}|>')..writeln(content)..writeln('<|end|>');
+      b
+        ..writeln('<|im_start|>${item.role}')
+        ..writeln(content)
+        ..writeln('<|im_end|>');
     }
-    final boundedMessage = message.length > 480
-        ? message.substring(0, 480)
+    final boundedMessage = message.length > 360
+        ? message.substring(0, 360)
         : message;
-    b..writeln('<|user|>')..writeln(boundedMessage)..writeln('<|end|>')..writeln('<|assistant|>');
+    b
+      ..writeln('<|im_start|>user')
+      ..writeln(boundedMessage)
+      ..writeln('<|im_end|>')
+      ..writeln('<|im_start|>assistant');
     return b.toString();
   }
-
   String _systemPrompt(AgentRole role) => switch (role) {
     AgentRole.terminalAssistant => 'أنت مساعد طرفية محلي داخل Zion OS. أجب بالعربية، وفسّر الأوامر والأخطاء وقدّم خطوات آمنة.',
     AgentRole.securityExpert => 'أنت مساعد أمن دفاعي محلي. حلل الإعدادات والسجلات والأوامر بهدف التشخيص والحماية فقط.',
