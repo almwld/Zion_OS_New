@@ -11,6 +11,8 @@ import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
@@ -199,6 +201,32 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "hasAllFilesAccess" -> result.success(
+                        Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                            Environment.isExternalStorageManager()
+                    )
+                    "requestAllFilesAccess" -> {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                            Environment.isExternalStorageManager()) {
+                            result.success(true)
+                        } else {
+                            try {
+                                startActivity(
+                                    Intent(
+                                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                        Uri.parse("package:$packageName")
+                                    )
+                                )
+                            } catch (_: Throwable) {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                } catch (_: Throwable) {
+                                    result.success(false)
+                                }
+                            }
+                            result.success(false)
+                        }
+                    }
                     "pickKaliPackage" -> {
                         if (pendingKaliResult != null) {
                             result.error("BUSY", "A Kali package picker is already open.", null)
