@@ -392,11 +392,11 @@ class TerminalService {
     _userlandInstallFuture = task;
     try {
       final message = await task;
-      if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
       return message;
     } catch (error) {
       final message = 'تعذر إكمال التثبيت: $error';
-      if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
       return message;
     } finally {
       if (identical(_userlandInstallFuture, task)) {
@@ -416,13 +416,13 @@ class TerminalService {
     await _ensureTerminalEnvironment();
     var shell = await _findShell();
     if (shell == null) {
-      _output.add('Zion Userland غير جاهز؛ يبدأ التثبيت أو الإصلاح الآن. لن يتم تشغيل صدفة Android بديلة.\\r\\n');
+      _output.add('Zion Userland غير جاهز؛ يبدأ التثبيت أو الإصلاح الآن. لن يتم تشغيل صدفة Android بديلة.\r\n');
       final installMessage = await _scheduleUserlandInstall();
       // If installation repaired the runtime, rediscover and continue in this
       // same Start action rather than requiring a close/reopen/retry cycle.
       shell = await _findShell();
       if (shell == null) {
-        _output.add('Zion Userland ما زال غير جاهز بعد محاولة الإصلاح. $installMessage\\r\\n');
+        _output.add('Zion Userland ما زال غير جاهز بعد محاولة الإصلاح. $installMessage\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'unavailable',
@@ -433,9 +433,9 @@ class TerminalService {
         );
         return false;
       }
-      _output.add('تم تجهيز Zion Userland؛ متابعة تشغيل PTY تلقائيًا.\\r\\n');
+      _output.add('تم تجهيز Zion Userland؛ متابعة تشغيل PTY تلقائيًا.\r\n');
     }
-    _output.add('Zion runtime جاهز: ' + shell + '\\r\\n');
+    _output.add('Zion runtime جاهز: ' + shell + '\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
