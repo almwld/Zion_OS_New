@@ -48,18 +48,6 @@ class ZionUserlandInstaller {
       );
     }
 
-    if (await ZionBootstrap.restoreLatestBackup() &&
-        await ZionBootstrap.isInstalled() &&
-        await _hasCompatibleProot() &&
-        await _hasCompatibleShell()) {
-      await ZionBootstrap.initializeRuntime();
-      return ZionUserlandInstallResult(
-        success: true,
-        message: 'تمت استعادة نسخة Zion Userland سليمة محليًا.',
-        releaseTag: await ZionBootstrap.currentRelease(),
-      );
-    }
-
     // Use only local sources. Kali rootfs is installed under the canonical
     // PRoot path, never over the usr prefix.
     const localCandidates = <String>[
@@ -105,6 +93,20 @@ class ZionUserlandInstaller {
         success: false,
         message: localFailure ??
             'وُجدت ملفات محلية، لكن لم تنجح أي حزمة في تجهيز بيئة قابلة للتشغيل.',
+      );
+    }
+
+    // Last local fallback: restore Zion's own internal backup only after
+    // the user's explicit Download packages and Termux backup were attempted.
+    if (await ZionBootstrap.restoreLatestBackup() &&
+        await ZionBootstrap.isInstalled() &&
+        await _hasCompatibleProot() &&
+        await _hasCompatibleShell()) {
+      await ZionBootstrap.initializeRuntime();
+      return ZionUserlandInstallResult(
+        success: true,
+        message: 'تمت استعادة نسخة Zion Userland سليمة محليًا.',
+        releaseTag: await ZionBootstrap.currentRelease(),
       );
     }
 
