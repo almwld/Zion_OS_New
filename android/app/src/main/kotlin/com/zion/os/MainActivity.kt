@@ -361,8 +361,10 @@ class MainActivity : FlutterFragmentActivity() {
                 "export HOME=\"${home.absolutePath}\"\n" +
                 "export PREFIX=\"${prefix.absolutePath}\"\n" +
                 "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\"\n" +
-                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin\"\n" +
-                "export TERM=\"xterm-256color\"\n"
+                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
+                "export LD_LIBRARY_PATH=\"${prefix.absolutePath}/lib:${prefix.absolutePath}/lib64\"\n" +
+                "export TERM=\"xterm-256color\"\n" +
+                "export PS1=\"$ \"\n"
             )
         }
         val bashrc = File(home, ".bashrc")
