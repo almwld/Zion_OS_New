@@ -24,9 +24,12 @@ class AIAgent {
 
   Future<String> chat(String message, {int maxTokens = 128}) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
-    final response = await llama.generate(_buildPrompt(message), maxTokens: maxTokens);
+    final rawResponse = await llama.generate(_buildPrompt(message), maxTokens: maxTokens, temperature: 0.25);
+    final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
-      _history..add(AgentMessage(role: 'user', content: message))..add(AgentMessage(role: 'assistant', content: response));
+      _history
+        ..add(AgentMessage(role: 'user', content: message))
+        ..add(AgentMessage(role: 'assistant', content: response));
       if (_history.length > 20) _history.removeRange(0, _history.length - 20);
     }
     return response;
@@ -49,6 +52,17 @@ class AIAgent {
     'حوّل الطلب العربي التالي إلى أمر Linux مناسب، ثم أضف سطراً قصيراً يوضح ما سيفعله. لا تستخدم أوامر تدميرية:\n$arabic',
     maxTokens: 120, temperature: 0.2,
   );
+
+  String _cleanResponse(String response) {
+    // Some small models print ChatML boundary tokens as ordinary text. Keep
+    // those control markers out of the chat transcript and next-turn history.
+    return response
+        .replaceAll(
+          RegExp(r'<\\|(?:im_start|im_end|endoftext|fim_suffix|user|assistant|system)\\|>', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
 
   String _buildPrompt(String message) {
     // Qwen2.5-Instruct is trained on ChatML. Role tags such as <|system|>
