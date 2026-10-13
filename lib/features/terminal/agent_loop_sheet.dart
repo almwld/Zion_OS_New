@@ -163,6 +163,33 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
         false;
   }
 
+  Future<void> _loadPreviousSession(String target) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final safeTarget = target.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final file = File('${directory.path}/agent_loop/session_${safeTarget}.json');
+      if (!await file.exists()) return;
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map<String, dynamic>) return;
+      final rawEvents = decoded['events'];
+      if (rawEvents is! List) return;
+      final restored = rawEvents
+          .whereType<Map>()
+          .map((event) => Map<String, dynamic>.from(event))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _events
+          ..clear()
+          ..addAll(restored);
+        _sessionPath = file.path;
+      });
+      _log('memory', 'تم استرجاع ${restored.length} حدثاً سابقاً لهذا الهدف.');
+    } catch (_) {
+      _log('memory_warning', 'تعذر استرجاع الجلسة السابقة؛ ستبدأ ذاكرة جديدة.');
+    }
+  }
+
   Future<void> _runMission() async {
     final target = _target.text.trim();
     if (!_validTarget(target)) {
@@ -242,6 +269,13 @@ Choose the next step.''';
           'انتهى الأمر برمز خروج ${result.exitCode} خلال ${result.duration.inSeconds}s',
           {'command': command, 'exitCode': result.exitCode, 'output': output.substring(0, output.length.clamp(0, 4000).toInt())},
         );
+        if (result.succeeded && command.trimLeft().startsWith('nmap ')) {
+          for (final line in result.stdout.split('\\n')) {
+            if (RegExp(r'^\\s*\\d+/(tcp|udp)\\s+open\\b').hasMatch(line)) {
+              _log('finding', line.trim());
+            }
+          }
+        }
         if (_stopRequested) break;
       }
       _log('summary', _stopRequested ? 'أُوقفت المهمة يدوياً.' : 'انتهت حلقة المهمة بعد $_step خطوة.');
@@ -308,6 +342,11 @@ Choose the next step.''';
                 TextField(
                   controller: _target,
                   enabled: !_running,
+                  onChanged: (_) {
+                    if (_events.isNotEmpty && !_running) {
+                      setState(() => _events.clear());
+                    }
+                  },
                   decoration: const InputDecoration(
                     labelText: 'الهدف (نطاق أو IPv4)',
                     hintText: '192.168.1.10 أو example.org',
