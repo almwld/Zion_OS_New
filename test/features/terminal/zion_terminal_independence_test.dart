@@ -118,9 +118,10 @@ void main() {
       expect(installer, contains('--link2symlink'));
       expect(installer, isNot(contains("_repo = 'proot-rs'")));
       expect(installer, isNot(contains('releases/download')));
-      expect(userland, contains('_hasCompatibleProot()'));
-      expect(userland, contains('--root-id'));
-      expect(userland, contains('--link2symlink'));
+      expect(userland, isNot(contains('_hasCompatibleProot()')));
+      expect(userland, isNot(contains('--root-id')));
+      expect(userland, isNot(contains('--link2symlink')));
+      expect(userland, contains('_hasCompatibleShell()'));
     });
 
     test('unified Linux installer prepares Zion Userland before checking PRoot', () async {
