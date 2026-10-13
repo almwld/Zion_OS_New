@@ -16,9 +16,19 @@ void main() {
 
   test('Arabic shaping preserves text and selects connected presentation forms', () {
     final shaped = ArabicShaper.shape('سلام');
-    expect(shaped.runes.length, 4);
+    expect(shaped.runes.length, 3); // lam-alef is combined into one presentation ligature
     expect(shaped, isNot('سلام'));
     expect(ArabicShaper.isArabic(shaped), isTrue);
+  });
+
+  test('Arabic shaping preserves diacritics and applies lam-alef ligature', () {
+    final marked = ArabicShaper.shape('بَت');
+    expect(marked.runes.toList(), contains(0x064E));
+    expect(marked, isNot('بَت'));
+
+    final lamAlef = ArabicShaper.shape('لا');
+    expect(lamAlef.runes.length, 1);
+    expect(lamAlef.runes.single, 0xFEFB);
   });
 
   test('built-in help is handled without spawning a shell', () async {
