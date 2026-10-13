@@ -262,6 +262,26 @@ class ZionUserlandInstaller {
               }
             }
 
+            bool safeLinkTarget(String linkPath, String target) {
+              if (target.isEmpty || target.contains(r'\\')) return false;
+              final components = <String>[
+                if (!target.startsWith('/'))
+                  ...(linkPath.split('/')..removeLast()),
+                ...target.split('/'),
+              ];
+              var depth = 0;
+              for (final component in components) {
+                if (component.isEmpty || component == '.') continue;
+                if (component == '..') {
+                  depth--;
+                  if (depth < 0) return false;
+                } else {
+                  depth++;
+                }
+              }
+              return true;
+            }
+
             for (final entry in links) {
               var relative = normalizeTarName(entry.name);
               if (rootPrefix.isNotEmpty) {
@@ -270,8 +290,7 @@ class ZionUserlandInstaller {
               }
               if (relative.isEmpty || relative == '.') continue;
               final target = entry.symbolicLink ?? '';
-              if (target.isEmpty || target.startsWith('/') ||
-                  target.split('/').contains('..')) {
+              if (!safeLinkTarget(relative, target)) {
                 throw const FormatException('Unsafe symbolic link in Kali rootfs.');
               }
               final link = Link(staging.path + '/' + relative);
