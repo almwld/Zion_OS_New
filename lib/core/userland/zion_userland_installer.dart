@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
@@ -157,66 +158,156 @@ class ZionUserlandInstaller {
 
         try {
           await staging.create(recursive: true);
-          final prefix = ZionBootstrap.prefix;
-          final tarCandidates = <String>[
-            prefix + '/bin/tar',
-            backupDir.path + '/bin/tar',
-          ];
-          final environment = <String, String>{
-            ...Platform.environment,
-            'HOME': ZionBootstrap.home,
-            'PREFIX': prefix,
-            'PATH': backupDir.path + '/bin:' + prefix +
-                '/bin:' + prefix + '/sbin:/system/bin:/system/xbin',
-            'LD_LIBRARY_PATH': backupDir.path + '/lib:' +
-                backupDir.path + '/lib64:' + prefix + '/lib:' + prefix + '/lib64',
-            'TMPDIR': ZionBootstrap.tmp,
-          };
-          var extracted = false;
-          String? extractionError;
-          for (final tarPath in tarCandidates) {
-            if (!await File(tarPath).exists()) continue;
+          final tarFile = File(staging.path + '.tar');
+          try {
+            onProgress?.call('فك ضغط XZ محليًا باستخدام محرك الأرشيف المدمج...');
+            final xzInput = InputFileStream(sourcePath);
+            final tarOutput = OutputFileStream(tarFile.path);
             try {
-              final result = await Process.run(
-                tarPath,
-                <String>['-xJf', sourcePath, '-C', staging.path],
-                runInShell: false,
-                environment: environment,
-              ).timeout(const Duration(minutes: 15));
-              if (result.exitCode == 0) {
-                extracted = true;
+              XZDecoder().decodeStream(
+                xzInput,
+                tarOutput,
+                verify: true,
+                throwOnError: true,
+              );
+            } finally {
+              await xzInput.close();
+              await tarOutput.close();
+            }
+
+            onProgress?.call('استخراج ملفات Kali إلى مساحة مؤقتة...');
+            final tarInput = InputFileStream(tarFile.path);
+            Archive tarArchive;
+            try {
+              tarArchive = TarDecoder().decodeStream(
+                tarInput,
+                callback: (entry) {
+                  final name = entry.name.replaceAll(r'\', '/');
+                  if (name.startsWith('/') ||
+                      name.split('/').any((part) => part == '..')) {
+                    throw const FormatException('Unsafe path in Kali tar archive.');
+                  }
+                },
+              );
+            } finally {
+              await tarInput.close();
+            }
+
+            String normalizeTarName(String raw) {
+              var name = raw.replaceAll(r'\', '/');
+              while (name.startsWith('./')) {
+                name = name.substring(2);
+              }
+              return name;
+            }
+
+            final normalizedNames = tarArchive.files
+                .map((entry) => normalizeTarName(entry.name))
+                .toList(growable: false);
+            String rootPrefix = '';
+            for (final name in normalizedNames) {
+              if (name == 'bin/sh' || name == 'bin/bash') {
+                rootPrefix = '';
                 break;
               }
-              extractionError = result.stderr.toString();
-            } catch (error) {
-              extractionError = error.toString();
-            }
-          }
-
-          if (!extracted && await File('/system/bin/toybox').exists()) {
-            try {
-              final result = await Process.run(
-                '/system/bin/toybox',
-                <String>['tar', '-xJf', sourcePath, '-C', staging.path],
-                runInShell: false,
-                environment: environment,
-              ).timeout(const Duration(minutes: 15));
-              if (result.exitCode == 0) {
-                extracted = true;
-              } else {
-                extractionError = result.stderr.toString();
+              final marker = '/bin/sh';
+              final index = name.lastIndexOf(marker);
+              if (index > 0) {
+                rootPrefix = name.substring(0, index + 1);
+                break;
               }
-            } catch (error) {
-              extractionError = error.toString();
             }
-          }
 
-          if (!extracted) {
+            final modeGroups = <int, List<String>>{};
+            final links = <ArchiveFile>[];
+            var extractedFiles = 0;
+            for (var index = 0; index < tarArchive.files.length; index++) {
+              final entry = tarArchive.files[index];
+              var relative = normalizeTarName(entry.name);
+              if (rootPrefix.isNotEmpty) {
+                if (!relative.startsWith(rootPrefix)) continue;
+                relative = relative.substring(rootPrefix.length);
+              }
+              if (relative.isEmpty || relative == '.') continue;
+              final parts = relative.split('/');
+              if (relative.startsWith('/') ||
+                  parts.any((part) => part == '..' || part == '.')) {
+                throw const FormatException('Unsafe relative path in Kali rootfs.');
+              }
+              if (relative == 'dev' || relative.startsWith('dev/')) continue;
+              final destinationPath = staging.path + '/' + relative;
+              if (entry.isSymbolicLink) {
+                links.add(entry);
+                continue;
+              }
+              if (entry.isDirectory) {
+                await Directory(destinationPath).create(recursive: true);
+              } else if (entry.isFile) {
+                final destination = File(destinationPath);
+                await destination.parent.create(recursive: true);
+                await destination.writeAsBytes(
+                  List<int>.from(entry.content as List<int>),
+                  flush: false,
+                );
+                final mode = entry.unixPermissions & 0x1ff;
+                if (mode != 0) {
+                  modeGroups.putIfAbsent(mode, () => <String>[]).add(destinationPath);
+                }
+                extractedFiles++;
+              }
+              if (index % 500 == 0) {
+                onProgress?.call(
+                  'استخراج Kali: ' + extractedFiles.toString() + ' ملفًا',
+                );
+              }
+            }
+
+            for (final entry in links) {
+              var relative = normalizeTarName(entry.name);
+              if (rootPrefix.isNotEmpty) {
+                if (!relative.startsWith(rootPrefix)) continue;
+                relative = relative.substring(rootPrefix.length);
+              }
+              if (relative.isEmpty || relative == '.') continue;
+              final target = entry.symbolicLink ?? '';
+              if (target.isEmpty || target.startsWith('/') ||
+                  target.split('/').contains('..')) {
+                throw const FormatException('Unsafe symbolic link in Kali rootfs.');
+              }
+              final link = Link(staging.path + '/' + relative);
+              await link.parent.create(recursive: true);
+              if (await link.exists()) await link.delete();
+              await link.create(target);
+            }
+
+            // Restore Unix executable bits without spawning one process per
+            // archive entry. Batches keep installation practical on phones.
+            for (final group in modeGroups.entries) {
+              for (var offset = 0; offset < group.value.length; offset += 100) {
+                final batch = group.value.skip(offset).take(100).toList();
+                try {
+                  await Process.run(
+                    '/system/bin/chmod',
+                    <String>[group.key.toRadixString(8), ...batch],
+                    runInShell: false,
+                  );
+                } catch (_) {}
+              }
+            }
+            if (!await File(staging.path + '/bin/sh').exists()) {
+              throw const FormatException(
+                'Kali archive does not contain a usable rootfs/bin/sh.',
+              );
+            }
+          } catch (error) {
             return ZionUserlandInstallResult(
               success: false,
-              message: 'تعذر فك أرشيف Kali محليًا باستخدام أدوات الجهاز: ' +
-                  (extractionError ?? 'لا يوجد tar يدعم xz'),
+              message: 'تعذر فك أرشيف Kali محليًا: ' + error.toString(),
             );
+          } finally {
+            try {
+              if (await tarFile.exists()) await tarFile.delete();
+            } catch (_) {}
           }
 
           var extractedRoot = staging;
