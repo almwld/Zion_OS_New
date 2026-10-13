@@ -133,8 +133,19 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
         return 'الأمر لا يشير إلى الهدف المحدد ($target).';
       }
     }
-    if (RegExp(r'\b(--script\s+.*(exploit|vuln)|-oN\s+/|--output\s+/)').hasMatch(value.toLowerCase())) {
-      return 'خيار إخراج أو سكربت غير مسموح في هذا المسار.';
+    final lower = value.toLowerCase();
+    if (RegExp(r'(^|\s)(--script|-o[a-z]*|--output|--data|--upload-file|--request|--config|--proxy|--connect-to|--resolve)(\s|=|$)').hasMatch(lower)) {
+      return 'خيارات السكربت/الإخراج/الإرسال غير مفعّلة في Agent Loop.';
+    }
+    if (RegExp(r'(^|\s)(-a|-sc|-su|-p-|-x|-d|-t|-o|-k)(\s|$)').hasMatch(lower) ||
+        RegExp(r'\b(--insecure|--force-ssl|--auth|--password|--user)\b').hasMatch(lower)) {
+      return 'الخيار غير مدعوم في وضع الاستطلاع المحدود.';
+    }
+    if (base == 'nmap' && RegExp(r'(^|\s)-p\s*(?:1-65535|0-65535|-)(\s|$)').hasMatch(lower)) {
+      return 'يجب تحديد مجموعة منافذ محدودة بدلاً من فحص جميع المنافذ.';
+    }
+    if (base == 'curl' && !RegExp(r'^curl\s+(?:-sS\s+)?-I\s+https?://').hasMatch(value)) {
+      return 'curl متاح لطلبات HEAD فقط في Agent Loop.';
     }
     return null;
   }
