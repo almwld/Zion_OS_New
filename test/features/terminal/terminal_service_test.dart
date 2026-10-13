@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../lib/features/terminal/terminal_service.dart';
+import '../../../lib/features/terminal/arabic_shaper.dart';
 import '../../../lib/security/core/security_core.dart';
 
 void main() {
@@ -11,6 +12,13 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  test('Arabic shaping preserves text and selects connected presentation forms', () {
+    final shaped = ArabicShaper.shape('سلام');
+    expect(shaped.runes.length, 4);
+    expect(shaped, isNot('سلام'));
+    expect(ArabicShaper.isArabic(shaped), isTrue);
   });
 
   test('built-in help is handled without spawning a shell', () async {
