@@ -868,18 +868,67 @@ $request''',
             ),
           if (tab != null)
             Expanded(
-              child: TerminalView(
-                tab.terminal,
-                controller: tab.controller,
-                autofocus: true,
-                backgroundOpacity: 1,
-                cursorType: TerminalCursorType.block,
-                theme: _palette.toXtermTheme(),
-                textStyle: TerminalStyle(
-                  fontSize: _fontSize,
-                  fontFamily: _fontFamily,
-                ),
-                simulateScroll: false,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AbsorbPointer(
+                    // Do not accept characters into xterm while there is no
+                    // child process to receive them. Previously the text was
+                    // silently discarded and only Enter reported a stopped PTY.
+                    absorbing: _starting || !tab.service.isInteractiveRunning,
+                    child: TerminalView(
+                      tab.terminal,
+                      controller: tab.controller,
+                      autofocus: tab.service.isInteractiveRunning,
+                      backgroundOpacity: 1,
+                      cursorType: TerminalCursorType.block,
+                      theme: _palette.toXtermTheme(),
+                      textStyle: TerminalStyle(
+                        fontSize: _fontSize,
+                        fontFamily: _fontFamily,
+                      ),
+                      simulateScroll: false,
+                    ),
+                  ),
+                  if (_starting || !tab.service.isInteractiveRunning)
+                    ColoredBox(
+                      color: _palette.background.withOpacity(0.94),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _starting ? Icons.hourglass_top : Icons.terminal,
+                                size: 42,
+                                color: _palette.accent,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _starting
+                                    ? 'جارٍ تجهيز Zion Userland وفتح جلسة PTY…'
+                                    : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _palette.foreground,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (!_starting) ...[
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: () => unawaited(_toggleSelected()),
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('بدء جلسة PTY'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             )
           else
