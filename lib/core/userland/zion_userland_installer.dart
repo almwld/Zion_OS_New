@@ -194,22 +194,22 @@ class ZionUserlandInstaller {
         }
       }
 
-      onProgress?.call('[Userland] Copying backup directly into \${targetDir.path}...');
-      final result = await Process.run('/system/bin/cp', <String>['-a', '\${sourceDir.path}/.', '\${targetDir.path}/'], runInShell: false);
+      onProgress?.call('[Userland] Copying backup directly into ${targetDir.path}...');
+      final result = await Process.run('/system/bin/cp', <String>['-a', '${sourceDir.path}/.', '${targetDir.path}/'], runInShell: false);
       if (result.exitCode != 0) {
-        onProgress?.call('cp -a failed (exit \${result.exitCode}): \${result.stderr}. Trying Dart copy fallback.');
+        onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
         try {
           await _manualCopy(sourceDir, targetDir);
         } catch (e) {
-          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: \${result.stderr}; fallback: $e');
+          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${result.stderr}; fallback: $e');
         }
       }
 
       onProgress?.call('[Userland] Repairing permissions...');
       await _repairPermissions(targetDir);
       onProgress?.call('[Userland] Recreating missing command links...');
-      await _recreateCoreutilsSymlinks('\${targetDir.path}/bin');
-      await _createOtherSymlinks('\${targetDir.path}/bin');
+      await _recreateCoreutilsSymlinks('${targetDir.path}/bin');
+      await _createOtherSymlinks('${targetDir.path}/bin');
 
       if (!await _hasCompatibleShell()) {
         return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن الصدفة لا تعمل؛ تحقق من توافق الملفات والمكتبات المشتركة.');
@@ -218,7 +218,7 @@ class ZionUserlandInstaller {
         return const ZionUserlandInstallResult(success: false, message: 'تم نسخ الملفات، لكن PRoot المتوافق غير موجود أو لا يعمل.');
       }
       await ZionBootstrap.initializeRuntime();
-      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من التشغيل: \${targetDir.path}');
+      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من التشغيل: ${targetDir.path}');
     } catch (e) {
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
@@ -242,17 +242,17 @@ class ZionUserlandInstaller {
             await Process.run('/system/bin/chmod', <String>[mode, entity.path], runInShell: false);
           }
         } catch (e) {
-          print('[Userland] chmod failed for \${entity.path}: $e');
+          print('[Userland] chmod failed for ${entity.path}: $e');
         }
       }
     }
 
-    await repairTree(Directory('\${root.path}/bin'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('\${root.path}/libexec'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('\${root.path}/lib'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
-    await repairTree(Directory('\${root.path}/share'), directoryMode: '755', fileMode: '644');
+    await repairTree(Directory('${root.path}/bin'), directoryMode: '755', fileMode: '755');
+    await repairTree(Directory('${root.path}/libexec'), directoryMode: '755', fileMode: '755');
+    await repairTree(Directory('${root.path}/lib'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+    await repairTree(Directory('${root.path}/share'), directoryMode: '755', fileMode: '644');
     for (final name in <String>['etc', 'tmp', 'var', 'include', 'sbin']) {
-      await repairTree(Directory('\${root.path}/$name'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+      await repairTree(Directory('${root.path}/$name'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
     }
   }
 
@@ -272,19 +272,19 @@ class ZionUserlandInstaller {
   Future<void> _createOtherSymlinks(String binDir) async {
     const mappings = <String, String>{'sh':'bash','awk':'gawk','nawk':'gawk','vi':'vim','editor':'nano','nc':'netcat','python':'python3','pip':'pip3'};
     for (final entry in mappings.entries) {
-      await _createLinkIfMissing('$binDir/\${entry.key}', entry.value);
+      await _createLinkIfMissing('$binDir/${entry.key}', entry.value);
     }
   }
 
   Future<void> _createLinkIfMissing(String linkPath, String targetName) async {
-    final targetPath = '\${File(linkPath).parent.path}/$targetName';
+    final targetPath = '${File(linkPath).parent.path}/$targetName';
     if (!await File(targetPath).exists() && !await Link(targetPath).exists()) return;
     // Preserve existing real commands and avoid self-links such as bash -> bash.
     if (await File(linkPath).exists() || await Link(linkPath).exists()) return;
     try {
       await Link(linkPath).create(targetName);
     } catch (e) {
-      print('[Symlinks] \${linkPath.split('/').last} failed: $e');
+      print('[Symlinks] ${linkPath.split('/').last} failed: $e');
     }
   }
 
