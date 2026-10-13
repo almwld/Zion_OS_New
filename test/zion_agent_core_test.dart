@@ -36,8 +36,8 @@ void main(){
   expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
   await agent.chat('first question');
   await agent.chat('second question');
-  expect(llama.lastPrompt, contains('<|user|>\nfirst question\n<|end|>'));
-  expect(llama.lastPrompt, contains('<|assistant|>\nlocal reply\n<|end|>'));
+  expect(llama.lastPrompt, contains('<|im_start|>user\nfirst question\n<|im_end|>'));
+  expect(llama.lastPrompt, contains('<|im_start|>assistant\nlocal reply\n<|im_end|>'));
   expect(llama.lastPrompt, isNot(contains(r'${item.role}')));
   await agent.dispose();
  });
