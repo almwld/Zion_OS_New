@@ -695,7 +695,7 @@ $request''',
   Future<void> _showReadableOutput() async {
     final tab = _selectedTab;
     if (tab == null) return;
-    final text = ArabicShaper.readableText(tab.recentOutput);
+    final text = ArabicShaper.shape(ArabicShaper.readableText(tab.recentOutput));
     final hasArabic = ArabicShaper.isArabic(text);
     await showDialog<void>(
       context: context,
@@ -871,6 +871,23 @@ $request''',
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Opacity(
+                        opacity: 0.16,
+                        child: Image.asset(
+                          'assets/icons/app_icon.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: ColoredBox(color: _palette.background.withOpacity(0.76)),
+                    ),
+                  ),
                   AbsorbPointer(
                     // Do not accept characters into xterm while there is no
                     // child process to receive them. Previously the text was
@@ -880,7 +897,7 @@ $request''',
                       tab.terminal,
                       controller: tab.controller,
                       autofocus: tab.service.isInteractiveRunning,
-                      backgroundOpacity: 1,
+                      backgroundOpacity: 0.0,
                       cursorType: TerminalCursorType.block,
                       theme: _palette.toXtermTheme(),
                       textStyle: TerminalStyle(
@@ -892,7 +909,7 @@ $request''',
                   ),
                   if (_starting || !tab.service.isInteractiveRunning)
                     ColoredBox(
-                      color: _palette.background.withOpacity(0.94),
+                      color: _palette.background.withOpacity(0.64),
                       child: Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
@@ -907,7 +924,7 @@ $request''',
                               const SizedBox(height: 12),
                               Text(
                                 _starting
-                                    ? 'جارٍ تجهيز Zion Userland وفتح جلسة PTY…'
+                                    ? 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…'
                                     : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
