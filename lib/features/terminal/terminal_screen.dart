@@ -8,6 +8,7 @@ import 'package:xterm2/xterm.dart';
 import '../../ai/llama_service.dart';
 
 import '../../security/core/security_core.dart';
+import 'arabic_shaper.dart';
 import 'terminal_service.dart';
 
 class TerminalScreen extends StatefulWidget {
@@ -496,6 +497,36 @@ $request''',
     }
   }
 
+  Future<void> _showReadableOutput() async {
+    final tab = _selectedTab;
+    if (tab == null) return;
+    final text = ArabicShaper.readableText(tab.recentOutput);
+    final hasArabic = ArabicShaper.isArabic(text);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('قراءة مخرجات الطرفية'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text.isEmpty ? 'لا توجد مخرجات بعد.' : text,
+              textDirection: hasArabic ? TextDirection.rtl : TextDirection.ltr,
+              textAlign: hasArabic ? TextAlign.right : TextAlign.left,
+              style: TextStyle(fontFamily: 'monospace', fontSize: _fontSize),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     unawaited(_ai.unloadModel());
@@ -516,6 +547,11 @@ $request''',
       appBar: AppBar(
         title: const Text('Zion OS Terminal'),
         actions: [
+          IconButton(
+            tooltip: 'قراءة المخرجات العربية',
+            icon: const Icon(Icons.translate),
+            onPressed: tab == null ? null : () => unawaited(_showReadableOutput()),
+          ),
           IconButton(
             tooltip: 'المساعد المحلي',
             icon: const Icon(Icons.auto_awesome),
