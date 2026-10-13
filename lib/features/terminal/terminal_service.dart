@@ -482,8 +482,8 @@ class TerminalService {
     if (input.isEmpty) return;
     if (!_pty.isRunning) {
       _output.add(
-        '\r\n\x1b[33m[PTY] الجلسة متوقفة.\r\n'
-        '\x1b[36mاضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
+        '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
+        '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
       );
       return;
     }
