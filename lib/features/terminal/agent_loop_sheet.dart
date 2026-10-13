@@ -97,6 +97,31 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
   bool _validTarget(String value) => _validator.validTarget(value);
 
   ({String? action, String? command, String? reasoning}) _parse(String response) {
+    var candidate = response.trim();
+    candidate = candidate
+        .replaceFirst(RegExp(r'^\`\`\`(?:json)?\s*', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'\s*\`\`\`$'), '');
+    final firstBrace = candidate.indexOf('{');
+    final lastBrace = candidate.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        final decoded = jsonDecode(candidate.substring(firstBrace, lastBrace + 1));
+        if (decoded is Map) {
+          final action = decoded['action']?.toString().toUpperCase();
+          final command = decoded['command']?.toString().trim();
+          final reasoning = decoded['reasoning']?.toString().trim();
+          if (action == 'RUN' || action == 'THINK' || action == 'DONE') {
+            return (
+              action: action,
+              command: command?.isEmpty == true ? null : command,
+              reasoning: reasoning,
+            );
+          }
+        }
+      } catch (_) {
+        // Fall back to the strict field parser for older local model responses.
+      }
+    }
     final action = RegExp(r'ACTION\s*:\s*(RUN|THINK|DONE)', caseSensitive: false)
         .firstMatch(response)?.group(1)?.toUpperCase();
     final command = RegExp(r'^COMMAND\s*:\s*(.+)$', multiLine: true, caseSensitive: false)
@@ -105,7 +130,6 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
         .firstMatch(response)?.group(1)?.trim();
     return (action: action, command: command, reasoning: reasoning);
   }
-
   String? _validateCommand(String command, String target) =>
       _validator.validateCommand(command, target);
 
