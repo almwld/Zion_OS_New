@@ -48,6 +48,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _aiLoading = false;
   bool _aiReady = false;
   String? _startupError;
+  String _startupProgress = '';
   double _fontSize = 13;
   String _fontFamily = 'monospace';
   bool _showToolbar = true;
@@ -137,6 +138,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // A tab can be closed while native PTY output is still in flight.
       // Do not write to a disposed terminal or let late output crash the UI.
       if (!mounted || !_tabs.contains(tab)) return;
+      // Surface installer phases above the terminal while the 1.4 GB copy is
+      // running; the terminal output itself remains untouched for PTY fidelity.
+      if (_starting) {
+        final statusLines = data
+            .split(RegExp(r'[\\r\\n]+'))
+            .map((line) => line.trim())
+            .where((line) =>
+                line.startsWith('[Terminal]') || line.startsWith('[Userland]'))
+            .toList(growable: false);
+        if (statusLines.isNotEmpty && statusLines.last != _startupProgress) {
+          setState(() => _startupProgress = statusLines.last);
+        }
+      }
       // Retain only recent PTY text for local AI context; xterm2 keeps the full scrollback.
       tab.recentOutput += data;
       if (tab.recentOutput.length > 8000) {
@@ -161,7 +175,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
 
     if (autoStart) {
-      if (mounted) setState(() => _starting = true);
+      if (mounted) {
+        setState(() {
+          _starting = true;
+          _startupProgress = 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…';
+        });
+      }
       try {
         tab.connected = await service.startInteractive();
         if (!tab.connected) {
@@ -184,7 +203,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
           context: ErrorDescription('while starting an interactive PTY session'),
         ));
       } finally {
-        if (mounted) setState(() => _starting = false);
+        if (mounted) {
+          setState(() {
+            _starting = false;
+            _startupProgress = '';
+          });
+        }
       }
     }
     return tab;
@@ -873,52 +897,25 @@ $request''',
                 children: [
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: Center(
-                        child: Opacity(
-                          opacity: 0.16,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 176,
-                                height: 176,
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Color(0xFF00BCD4), Color(0xFF006064)],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  shape: BoxShape.circle,
-                                ),
-                                alignment: Alignment.center,
-                                child: const Text(
-                                  'Z',
-                                  style: TextStyle(
-                                    fontSize: 100,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              const Text(
-                                'ZION OS',
-                                style: TextStyle(
-                                  color: Color(0xFF00BCD4),
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      child: ColoredBox(
+                        color: _palette.background.withOpacity(0.78),
                       ),
                     ),
                   ),
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: ColoredBox(color: _palette.background.withOpacity(0.76)),
+                      child: Center(
+                        child: Opacity(
+                          opacity: 0.16,
+                          child: Image.asset(
+                            'assets/icons/app_icon.png',
+                            width: 220,
+                            height: 220,
+                            fit: BoxFit.contain,
+                            semanticLabel: 'Zion OS',
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   AbsorbPointer(
@@ -968,7 +965,9 @@ $request''',
                               const SizedBox(height: 12),
                               Text(
                                 _starting
-                                    ? 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…'
+                                    ? (_startupProgress.isEmpty
+                                        ? 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…'
+                                        : _startupProgress)
                                     : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
