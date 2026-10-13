@@ -142,7 +142,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // running; the terminal output itself remains untouched for PTY fidelity.
       if (_starting) {
         final statusLines = data
-            .split(RegExp(r'[\\r\\n]+'))
+            .split(RegExp(r'[\r\n]+'))
             .map((line) => line.trim())
             .where((line) =>
                 line.startsWith('[Terminal]') || line.startsWith('[Userland]'))
