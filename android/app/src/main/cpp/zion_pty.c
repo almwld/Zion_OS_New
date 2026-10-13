@@ -294,6 +294,8 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("TERM", "xterm-256color", 1);
         setenv("COLORTERM", "truecolor", 1);
         setenv("SHELL", "/system/bin/sh", 1);
+        // Keep a conventional, stable Android shell prompt with no path prefix.
+        setenv("PS1", "$ ", 1);
         setenv("ZION_SHELL_MODE", "android-system", 1);
     } else {
         setenv("ZION_SHELL_MODE", "zion-userland", 1);
