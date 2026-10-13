@@ -352,7 +352,7 @@ class TerminalService {
       );
       return false;
     }
-    _output.add('Android shell ready: $shell\\r\\n');
+    _output.add('Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -391,7 +391,7 @@ class TerminalService {
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start Zion Userland PTY: ${e.message}\r\n');
+      _output.add('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -402,7 +402,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start Zion Userland PTY: $e\r\n');
+      _output.add('ERROR: Unable to start Android shell PTY: $e\r\n');
       return false;
     }
   }
