@@ -95,7 +95,7 @@ static void mkdir_p(const char *path, mode_t mode) {
 static void prepare_environment(void) {
     const char *home = "/data/data/com.zion.os/files/home";
     const char *prefix = "/data/data/com.zion.os/files/usr";
-    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin";
+    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin";
     const char *library_path = "/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64";
     const char *directories[] = {
         "/data/data/com.zion.os/files/home",
