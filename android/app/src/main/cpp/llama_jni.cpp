@@ -31,7 +31,12 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring modelPath, jint threads, jstring loraPath, jfloat loraScale) {
     if (!modelPath) return JNI_FALSE;
     const char * path = env->GetStringUTFChars(modelPath, nullptr);
+    if (!path) {
+        LOGE("Unable to access model path from JNI");
+        return JNI_FALSE;
+    }
     std::lock_guard<std::mutex> lock(g_mutex);
+    LOGE("Loading local GGUF model");
     freeLocked();
     llama_backend_init();
 
@@ -46,7 +51,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     // Conservative Android defaults: loading a GGUF may succeed while the
     // first decode still triggers LMK/process death due to KV-cache/batch RAM.
     // Keep inference bounded for low-memory devices.
-    ctxParams.n_ctx = 1024;
+    ctxParams.n_ctx = 512;
     ctxParams.n_batch = 32;
     ctxParams.n_ubatch = 32;
     ctxParams.n_seq_max = 1;
@@ -54,7 +59,11 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     ctxParams.n_threads = safeThreads;
     ctxParams.n_threads_batch = safeThreads;
     g_ctx = llama_init_from_model(g_model, ctxParams);
-    if (!g_ctx) { freeLocked(); return JNI_FALSE; }
+    if (!g_ctx) {
+        LOGE("llama_init_from_model failed; releasing partial model state");
+        freeLocked();
+        return JNI_FALSE;
+    }
 
     if (loraPath) {
         const char * adapterPath = env->GetStringUTFChars(loraPath, nullptr);
@@ -75,6 +84,11 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 
     auto samplerParams = llama_sampler_chain_default_params();
     g_sampler = llama_sampler_chain_init(samplerParams);
+    if (!g_sampler) {
+        LOGE("Unable to initialize llama sampler");
+        freeLocked();
+        return JNI_FALSE;
+    }
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(0.7f));
@@ -86,7 +100,9 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring prompt, jint maxTokens, jfloat temperature) {
     if (!prompt) return env->NewStringUTF("ERROR: Empty prompt");
     const char * text = env->GetStringUTFChars(prompt, nullptr);
+    if (!text) return env->NewStringUTF("ERROR: Unable to read prompt");
     std::lock_guard<std::mutex> lock(g_mutex);
+    LOGE("Starting local inference");
     if (!g_model || !g_ctx || !g_sampler) {
         env->ReleaseStringUTFChars(prompt, text);
         return env->NewStringUTF("ERROR: Model not loaded");
@@ -110,7 +126,10 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     tokens.resize(nTokens);
 
     const uint32_t nCtx = llama_n_ctx(g_ctx);
-    if (tokens.size() >= nCtx - 8) return env->NewStringUTF("ERROR: Prompt exceeds local context window");
+    if (nCtx <= 8 || tokens.size() >= static_cast<size_t>(nCtx - 8)) {
+        LOGE("Prompt too long for bounded context: tokens=%zu context=%u", tokens.size(), nCtx);
+        return env->NewStringUTF("ERROR: Prompt exceeds the safe local context window; shorten the message or clear chat history.");
+    }
 
     if (temperature > 0.0f) {
         llama_sampler_free(g_sampler);
@@ -122,12 +141,26 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
 
-    auto batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(tokens.size()));
-    if (llama_decode(g_ctx, batch) != 0) return env->NewStringUTF("ERROR: Prompt decode failed");
+    // n_batch is deliberately small on phones. Never submit the whole prompt
+    // as one batch: long Arabic/system prompts can exceed n_batch and cause
+    // inference failures on some llama.cpp builds.
+    constexpr int32_t kDecodeBatch = 32;
+    for (int32_t offset = 0; offset < nTokens;) {
+        const int32_t count = std::min<int32_t>(kDecodeBatch, nTokens - offset);
+        auto batch = llama_batch_get_one(tokens.data() + offset, count);
+        const int decodeStatus = llama_decode(g_ctx, batch);
+        if (decodeStatus != 0) {
+            LOGE("Prompt decode failed at token offset %d (status=%d)", offset, decodeStatus);
+            return env->NewStringUTF("ERROR: Prompt decode failed; try a shorter message.");
+        }
+        offset += count;
+    }
 
     std::string output;
-    // Keep one response from monopolizing CPU/RAM on a phone.
-    const int limit = std::clamp(static_cast<int>(maxTokens), 1, 128);
+    // Bound generation to both the remaining context and a phone-safe limit.
+    const int remaining = static_cast<int>(nCtx - tokens.size() - 1);
+    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 64), remaining);
+    LOGE("Prompt tokenized: %d tokens; generation limit: %d", nTokens, limit);
 
     for (int i = 0; i < limit; ++i) {
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
@@ -139,8 +172,12 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
 
         llama_sampler_accept(g_sampler, next);
         auto nextBatch = llama_batch_get_one(&next, 1);
-        if (llama_decode(g_ctx, nextBatch) != 0) break;
+        if (llama_decode(g_ctx, nextBatch) != 0) {
+            LOGE("Decode stopped after %d generated tokens", i + 1);
+            break;
+        }
     }
+    LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
     return env->NewStringUTF(output.c_str());
 }
 
