@@ -212,6 +212,7 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
       return;
     }
     if (_running) return;
+    if (_events.isEmpty) await _loadPreviousSession(target);
     setState(() {
       _running = true;
       _stopRequested = false;
@@ -281,8 +282,8 @@ Choose the next step.''';
           {'command': command, 'exitCode': result.exitCode, 'output': output.substring(0, output.length.clamp(0, 4000).toInt())},
         );
         if (result.succeeded && command.trimLeft().startsWith('nmap ')) {
-          for (final line in result.stdout.split('\\n')) {
-            if (RegExp(r'^\\s*\\d+/(tcp|udp)\\s+open\\b').hasMatch(line)) {
+          for (final line in result.stdout.split('\n')) {
+            if (RegExp(r'^\s*\d+/(tcp|udp)\s+open\b').hasMatch(line)) {
               _log('finding', line.trim());
             }
           }
