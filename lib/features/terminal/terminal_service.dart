@@ -158,7 +158,7 @@ class TerminalService {
 
   Future<void> _installLocalUserlandIfNeeded() async {
     if (await _isUserlandBashUsable()) {
-      _output.add('[Terminal] Using Userland bash\\r\\n');
+      _output.add('[Terminal] Using Userland bash\r\n');
       return;
     }
 
@@ -168,7 +168,7 @@ class TerminalService {
     if (pending != null) {
       await pending;
       if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Using Userland bash\\r\\n');
+        _output.add('[Terminal] Using Userland bash\r\n');
         return;
       }
     }
@@ -180,31 +180,31 @@ class TerminalService {
       // Recheck after acquiring the shared task: another tab may have
       // completed a successful install while this tab was waiting.
       if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Using Userland bash\\r\\n');
+        _output.add('[Terminal] Using Userland bash\r\n');
         return;
       }
       if (!await Directory(_localUserlandBackup).exists()) {
         _output.add(
-          '[Terminal] Local Userland backup is missing or blocked by Android storage access; using Android shell.\\r\\n',
+          '[Terminal] Local Userland backup is missing or blocked by Android storage access; using Android shell.\r\n',
         );
         return;
       }
 
-      _output.add('[Terminal] First run: installing Userland...\\r\\n');
-      _output.add('[Userland] Installing from local storage...\\r\\n');
+      _output.add('[Terminal] First run: installing Userland...\r\n');
+      _output.add('[Userland] Installing from local storage...\r\n');
       final result = await const ZionUserlandInstaller().installLocalBackup(
-        onProgress: (message) => _output.add('$message\\r\\n'),
+        onProgress: (message) => _output.add('$message\r\n'),
       );
       if (!result.success) {
-        _output.add('[Userland] ✗ ${result.message}\\r\\n');
-        _output.add('[Terminal] Falling back to Android shell.\\r\\n');
+        _output.add('[Userland] ✗ ${result.message}\r\n');
+        _output.add('[Terminal] Falling back to Android shell.\r\n');
         return;
       }
       if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Connected to Userland bash.\\r\\n');
+        _output.add('[Terminal] Connected to Userland bash.\r\n');
       } else {
         _output.add(
-          '[Userland] ✗ Bash failed the runtime check; keeping Android shell fallback.\\r\\n',
+          '[Userland] ✗ Bash failed the runtime check; keeping Android shell fallback.\r\n',
         );
       }
     } finally {
