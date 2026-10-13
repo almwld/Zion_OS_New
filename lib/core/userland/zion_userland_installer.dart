@@ -6,6 +6,7 @@ import 'package:archive/archive_io.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 
+import 'local_kali_config.dart';
 import 'zion_bootstrap.dart';
 import 'zion_bootstrap_endpoint.dart';
 
@@ -138,10 +139,21 @@ class ZionUserlandInstaller {
       if (fileName.endsWith('.tar.xz')) {
         final source = File(sourcePath);
         final length = await source.length();
-        if (length <= 0 || length > 1024 * 1024 * 1024) {
+        if (length != ZionLocalKaliConfig.expectedSize) {
+          return ZionUserlandInstallResult(
+            success: false,
+            message: 'حجم أرشيف Kali لا يطابق الملف المحلي المتوقع: ' +
+                length.toString() + ' بايت.',
+          );
+        }
+        onProgress?.call('التحقق من بصمة SHA-256 لملف Kali المحلي...');
+        final localDigest =
+            (await sha256.bind(source.openRead()).first).toString();
+        if (localDigest.toLowerCase() !=
+            ZionLocalKaliConfig.expectedSha256.toLowerCase()) {
           return const ZionUserlandInstallResult(
             success: false,
-            message: 'حجم أرشيف Kali المحلي غير صالح.',
+            message: 'فشل تحقق SHA-256 لملف Kali المحلي؛ لم يتم فك الأرشيف.',
           );
         }
 
