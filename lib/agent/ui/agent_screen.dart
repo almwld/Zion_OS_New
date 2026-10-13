@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
+import 'kali_agent_loop_screen.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -154,6 +155,15 @@ class _AgentScreenState extends State<AgentScreen> {
           _messages..clear()..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
           _events.clear();_result=null;
         }),icon:const Icon(Icons.add_comment_outlined),tooltip:'محادثة جديدة'),
+        IconButton(
+          onPressed: _runtime.canCancel ? null : () {
+            Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
+            ));
+          },
+          icon: const Icon(Icons.loop),
+          tooltip: 'Agent Loop · Kali',
+        ),
       ],
     ),
     body:Column(children:[
