@@ -86,6 +86,7 @@ class TerminalService {
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
   String _interactiveInputBuffer = '';
+  DateTime? _lastStoppedPtyNoticeAt;
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
@@ -480,7 +481,26 @@ class TerminalService {
 
   void write(String input) {
     if (input.isEmpty) return;
-    if (!_pty.isRunning) return;
+    if (!_pty.isRunning) {
+      // xterm2 sends every keystroke through onOutput. Do not emit a warning
+      // for every character; report the stopped session when the user submits
+      // a line (Enter), with a short throttle for CR/LF pairs.
+      if (input.contains('\r') || input.contains('\n')) {
+        final now = DateTime.now();
+        final lastNotice = _lastStoppedPtyNoticeAt;
+        if (lastNotice == null ||
+            now.difference(lastNotice) >= const Duration(seconds: 2)) {
+          _lastStoppedPtyNoticeAt = now;
+          if (!_output.isClosed) {
+            _output.add(
+              '\r\n[PTY] الجلسة متوقفة؛ لم يُنفّذ الإدخال. '
+              'اضغط زر التشغيل لبدء الجلسة. إذا فشل التشغيل، راجع رسائل [Userland].\r\n',
+            );
+          }
+        }
+      }
+      return;
+    }
     unawaited(_pty.write(input));
     final parts = (_interactiveInputBuffer + input).split('\n');
     _interactiveInputBuffer = parts.removeLast();
