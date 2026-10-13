@@ -221,7 +221,8 @@ class MainActivity : FlutterFragmentActivity() {
                                 try {
                                     startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                                 } catch (_: Throwable) {
-                                    result.success(false)
+                                    // Report denial below; do not complete the
+                                    // MethodChannel result twice.
                                 }
                             }
                             result.success(false)
