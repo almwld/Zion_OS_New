@@ -67,7 +67,7 @@ class TerminalService {
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
-  static bool _userlandInstallInProgress = false;
+  static Future<String>? _userlandInstallFuture;
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
   static const Map<String, String> _userlandEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
@@ -384,19 +384,24 @@ class TerminalService {
     }
   }
 
-  Future<void> _scheduleUserlandInstall() async {
-    if (_userlandInstallInProgress) {
-      if (!_output.isClosed) _output.add('[Userland] التثبيت جارٍ بالفعل؛ لن يبدأ تنزيل مكرر.\r\n');
-      return;
-    }
-    _userlandInstallInProgress = true;
+  Future<String> _scheduleUserlandInstall() async {
+    final inFlight = _userlandInstallFuture;
+    if (inFlight != null) return inFlight;
+
+    final task = Isolate.run(_installZionUserlandInBackground);
+    _userlandInstallFuture = task;
     try {
-      final message = await Isolate.run(_installZionUserlandInBackground);
-      if (!_output.isClosed) _output.add('[Userland] $message\r\n');
+      final message = await task;
+      if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+      return message;
     } catch (error) {
-      if (!_output.isClosed) _output.add('[Userland] تعذر إكمال التثبيت: $error\r\n');
+      final message = 'تعذر إكمال التثبيت: $error';
+      if (!_output.isClosed) _output.add('[Userland] $message\\r\\n');
+      return message;
     } finally {
-      _userlandInstallInProgress = false;
+      if (identical(_userlandInstallFuture, task)) {
+        _userlandInstallFuture = null;
+      }
     }
   }
 
@@ -409,21 +414,28 @@ class TerminalService {
     final started = DateTime.now();
     // Create app-local terminal directories before starting the native PTY.
     await _ensureTerminalEnvironment();
-    final shell = await _findShell();
+    var shell = await _findShell();
     if (shell == null) {
-      _output.add('Zion Userland غير جاهز؛ لن يتم تشغيل صدفة Android بديلة. يبدأ تجهيز Userland الموثوق في الخلفية؛ أعد فتح الطرفية بعد اكتماله.\r\n');
-      unawaited(_scheduleUserlandInstall());
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'unavailable',
-        exitCode: 127,
-        shell: 'unavailable',
-        duration: DateTime.now().difference(started),
-        interactive: false,
-      );
-      return false;
+      _output.add('Zion Userland غير جاهز؛ يبدأ التثبيت أو الإصلاح الآن. لن يتم تشغيل صدفة Android بديلة.\\r\\n');
+      final installMessage = await _scheduleUserlandInstall();
+      // If installation repaired the runtime, rediscover and continue in this
+      // same Start action rather than requiring a close/reopen/retry cycle.
+      shell = await _findShell();
+      if (shell == null) {
+        _output.add('Zion Userland ما زال غير جاهز بعد محاولة الإصلاح. $installMessage\\r\\n');
+        _audit(
+          command: '<interactive-start>',
+          outcome: 'unavailable',
+          exitCode: 127,
+          shell: 'unavailable',
+          duration: DateTime.now().difference(started),
+          interactive: false,
+        );
+        return false;
+      }
+      _output.add('تم تجهيز Zion Userland؛ متابعة تشغيل PTY تلقائيًا.\\r\\n');
     }
-    _output.add('Zion runtime جاهز: ' + shell + '\r\n');
+    _output.add('Zion runtime جاهز: ' + shell + '\\r\\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
