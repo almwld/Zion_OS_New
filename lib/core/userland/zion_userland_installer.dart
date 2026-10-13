@@ -25,6 +25,16 @@ class ZionUserlandInstaller {
   /// copies, but a stale/missing marker never forces a 1.4 GB recopy by itself.
   Future<bool> isInstalled() async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
+    if (_installCompleted) {
+      try {
+        final state = jsonDecode(await File(_stateFilePath).readAsString());
+        if (state is Map && state['installed'] == true && state['bashPath'] == bashPath && await File(bashPath).exists()) {
+          return true;
+        }
+      } catch (_) {
+        _installCompleted = false;
+      }
+    }
     try {
       if (!await File(bashPath).exists()) return false;
       final result = await Process.run(
