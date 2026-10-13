@@ -7,7 +7,7 @@ class ZionLocalKaliConfig {
       'kali-nethunter-rootfs-minimal-arm64.tar.xz';
   static const expectedSha256 =
       'd6403a5da175df325611d23af4b92330856059c45454eced7f4cdf3ca6df2e4e';
-  static const expectedSize = 136314880;
+  static const expectedSize = 137313840;
   static const rootfsName = 'kali-arm64';
 
   static const searchPaths = <String>[
