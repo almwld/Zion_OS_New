@@ -24,9 +24,12 @@ class AIAgent {
 
   Future<String> chat(String message, {int maxTokens = 128}) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
-    final response = await llama.generate(_buildPrompt(message), maxTokens: maxTokens);
+    final rawResponse = await llama.generate(_buildPrompt(message), maxTokens: maxTokens, temperature: 0.25);
+    final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
-      _history..add(AgentMessage(role: 'user', content: message))..add(AgentMessage(role: 'assistant', content: response));
+      _history
+        ..add(AgentMessage(role: 'user', content: message))
+        ..add(AgentMessage(role: 'assistant', content: response));
       if (_history.length > 20) _history.removeRange(0, _history.length - 20);
     }
     return response;
@@ -50,15 +53,26 @@ class AIAgent {
     maxTokens: 120, temperature: 0.2,
   );
 
+  String _cleanResponse(String response) {
+    // Small models occasionally print boundary tokens instead of stopping.
+    var cleaned = response;
+    for (final marker in const [
+      '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
+      '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
+    ]) {
+      cleaned = cleaned.replaceAll(marker, '');
+    }
+    return cleaned.trim();
+  }
+
   String _buildPrompt(String message) {
+    // Qwen2.5-Instruct is trained on ChatML. Role tags such as <|system|>
+    // and <|end|> are not equivalent and can cause role leakage/repetition.
     final b = StringBuffer()
-      ..writeln('<|system|>')
+      ..writeln('<|im_start|>system')
       ..writeln(_systemPrompt(_role))
-      ..writeln('<|end|>');
-    // Bound prompt size to fit the conservative 1024-token mobile context.
-    // Long chat histories should never make native inference exhaust device RAM.
-    // Keep only one recent turn and tightly bound each message for the
-    // 512-token low-memory native context.
+      ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
+      ..writeln('<|im_end|>');
     final recent = _history.length > 2
         ? _history.sublist(_history.length - 2)
         : _history;
@@ -66,15 +80,21 @@ class AIAgent {
       final content = item.content.length > 160
           ? item.content.substring(0, 160)
           : item.content;
-      b..writeln('<|${item.role}|>')..writeln(content)..writeln('<|end|>');
+      b
+        ..writeln('<|im_start|>${item.role}')
+        ..writeln(content)
+        ..writeln('<|im_end|>');
     }
-    final boundedMessage = message.length > 480
-        ? message.substring(0, 480)
+    final boundedMessage = message.length > 360
+        ? message.substring(0, 360)
         : message;
-    b..writeln('<|user|>')..writeln(boundedMessage)..writeln('<|end|>')..writeln('<|assistant|>');
+    b
+      ..writeln('<|im_start|>user')
+      ..writeln(boundedMessage)
+      ..writeln('<|im_end|>')
+      ..writeln('<|im_start|>assistant');
     return b.toString();
   }
-
   String _systemPrompt(AgentRole role) => switch (role) {
     AgentRole.terminalAssistant => 'أنت مساعد طرفية محلي داخل Zion OS. أجب بالعربية، وفسّر الأوامر والأخطاء وقدّم خطوات آمنة.',
     AgentRole.securityExpert => 'أنت مساعد أمن دفاعي محلي. حلل الإعدادات والسجلات والأوامر بهدف التشخيص والحماية فقط.',
