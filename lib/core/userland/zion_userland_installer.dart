@@ -20,18 +20,15 @@ class ZionUserlandInstaller {
     void Function(String message)? onProgress,
   }) async {
     final abi = ZionBootstrapEndpoint.currentAbi();
-    onProgress?.call('اكتشاف معمارية الجهاز: $abi...');
+    onProgress?.call('اكتشاف معمارية الجهاز: ' + abi + '...');
 
     if (!ZionBootstrap.isSupportedAndroidAbi()) {
       return ZionUserlandInstallResult(
         success: false,
-        message: 'معمارية Android غير مدعومة حاليًا: $abi',
+        message: 'معمارية Android غير مدعومة حاليًا: ' + abi,
       );
     }
 
-    // A release marker and a working PRoot do not prove that the shell
-    // executable is present. This was allowing a damaged/incomplete prefix
-    // to be reported as "already installed", after which PTY startup failed.
     if (await ZionBootstrap.isInstalled() &&
         await _hasCompatibleProot() &&
         await _hasCompatibleShell()) {
@@ -43,9 +40,13 @@ class ZionUserlandInstaller {
       );
     }
 
-    // Prefer a known-good local backup before downloading a full runtime.
-    // Never treat a successful restore call alone as proof; revalidate both
-    // the shell and PRoot before returning.
+    if (await _hasKaliRootfs() && await _hasCompatibleProot()) {
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'بيئة Kali المحلية موجودة وقابلة للتشغيل عبر PRoot.',
+      );
+    }
+
     if (await ZionBootstrap.restoreLatestBackup() &&
         await ZionBootstrap.isInstalled() &&
         await _hasCompatibleProot() &&
@@ -53,15 +54,61 @@ class ZionUserlandInstaller {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
         success: true,
-        message: 'تم استعادة نسخة Zion Userland سليمة محليًا.',
+        message: 'تمت استعادة نسخة Zion Userland سليمة محليًا.',
         releaseTag: await ZionBootstrap.currentRelease(),
       );
     }
 
-    final remote = await _downloadFromSingleEndpoint(
-      abi,
-      onProgress: onProgress,
-    );
+    // Local sources are always attempted before the network. Kali rootfs is
+    // installed under the canonical PRoot path, never over the usr prefix.
+    const localCandidates = <String>[
+      '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
+      '/storage/emulated/0/Download/bootstrap-aarch64.zip',
+      '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
+    ];
+    var foundLocalFile = false;
+    String? localFailure;
+    for (final path in localCandidates) {
+      try {
+        final file = File(path);
+        if (!await file.exists()) continue;
+        foundLocalFile = true;
+        onProgress?.call('[Userland] Found local package: ' + path);
+        final result = await _installFromFile(path, onProgress: onProgress);
+        if (result.success) return result;
+        localFailure = result.message;
+        onProgress?.call('تعذر استخدام ' + path + ': ' + result.message);
+      } catch (error) {
+        localFailure = 'تعذر فحص الملف المحلي ' + path + ': ' + error.toString();
+      }
+    }
+
+    final backupPath = '/storage/emulated/0/Download/termux_usr_backup';
+    final backupDir = Directory(backupPath);
+    if (await backupDir.exists()) {
+      foundLocalFile = true;
+      onProgress?.call('[Userland] Using local termux_usr_backup');
+      final restored = await _installFromBackup(backupPath);
+      if (restored.success && await _hasCompatibleProot() &&
+          await _hasCompatibleShell()) {
+        return restored;
+      }
+      localFailure = restored.success
+          ? 'تم نسخ النسخة الاحتياطية لكن فشل التحقق من Bash أو PRoot.'
+          : restored.message;
+    }
+
+    // Do not hit DNS when a local archive exists but is invalid or unsupported.
+    if (foundLocalFile) {
+      return ZionUserlandInstallResult(
+        success: false,
+        message: localFailure ??
+            'وُجدت ملفات محلية، لكن لم تنجح أي حزمة في تجهيز بيئة قابلة للتشغيل.',
+      );
+    }
+
+    onProgress?.call('[Userland] No local files found, trying network...');
+    final remote = await _downloadFromSingleEndpoint(abi, onProgress: onProgress);
     if (!remote.success || remote.path == null) {
       return ZionUserlandInstallResult(
         success: false,
@@ -74,7 +121,7 @@ class ZionUserlandInstaller {
       final result = await ZionBootstrap().installFromArchive(
         remote.path!,
         onProgress: (progress, message) => onProgress?.call(
-          '[${(progress * 100).round()}%] $message',
+          '[' + (progress * 100).round().toString() + '%] ' + message,
         ),
       );
       if (!result.success) {
@@ -83,14 +130,13 @@ class ZionUserlandInstaller {
           message: result.error ?? 'فشل تثبيت Userland.',
         );
       }
-      // Verify the installed runtime end-to-end. A valid archive/hash is not
-      // sufficient if the extracted shell or its shared libraries cannot run.
       if (!await ZionBootstrap.isInstalled() ||
           !await _hasCompatibleProot() ||
           !await _hasCompatibleShell()) {
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
+          message:
+              'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
         );
       }
       return ZionUserlandInstallResult(
@@ -103,6 +149,291 @@ class ZionUserlandInstaller {
         await File(remote.path!).delete();
       } catch (_) {}
     }
+  }
+
+  Future<ZionUserlandInstallResult> _installFromFile(
+    String sourcePath, {
+    void Function(String message)? onProgress,
+  }) async {
+    final fileName = sourcePath.split('/').last;
+    try {
+      if (fileName.endsWith('.tar.xz')) {
+        final source = File(sourcePath);
+        final length = await source.length();
+        if (length <= 0 || length > 1024 * 1024 * 1024) {
+          return const ZionUserlandInstallResult(
+            success: false,
+            message: 'حجم أرشيف Kali المحلي غير صالح.',
+          );
+        }
+
+        final distsDir = Directory(ZionBootstrap.home + '/.zion/dists/kali');
+        await distsDir.create(recursive: true);
+        final staging = Directory(
+          distsDir.path + '/.rootfs-staging-' +
+              DateTime.now().microsecondsSinceEpoch.toString(),
+        );
+        final rootfs = Directory(distsDir.path + '/rootfs');
+        final backupDir = Directory(
+          '/storage/emulated/0/Download/termux_usr_backup',
+        );
+
+        try {
+          await staging.create(recursive: true);
+          final prefix = ZionBootstrap.prefix;
+          final tarCandidates = <String>[
+            prefix + '/bin/tar',
+            backupDir.path + '/bin/tar',
+          ];
+          final environment = <String, String>{
+            ...Platform.environment,
+            'HOME': ZionBootstrap.home,
+            'PREFIX': prefix,
+            'PATH': backupDir.path + '/bin:' + prefix +
+                '/bin:' + prefix + '/sbin:/system/bin:/system/xbin',
+            'LD_LIBRARY_PATH': backupDir.path + '/lib:' +
+                backupDir.path + '/lib64:' + prefix + '/lib:' + prefix + '/lib64',
+            'TMPDIR': ZionBootstrap.tmp,
+          };
+          var extracted = false;
+          String? extractionError;
+          for (final tarPath in tarCandidates) {
+            if (!await File(tarPath).exists()) continue;
+            try {
+              final result = await Process.run(
+                tarPath,
+                <String>['-xJf', sourcePath, '-C', staging.path],
+                runInShell: false,
+                environment: environment,
+              ).timeout(const Duration(minutes: 15));
+              if (result.exitCode == 0) {
+                extracted = true;
+                break;
+              }
+              extractionError = result.stderr.toString();
+            } catch (error) {
+              extractionError = error.toString();
+            }
+          }
+
+          if (!extracted && await File('/system/bin/toybox').exists()) {
+            try {
+              final result = await Process.run(
+                '/system/bin/toybox',
+                <String>['tar', '-xJf', sourcePath, '-C', staging.path],
+                runInShell: false,
+                environment: environment,
+              ).timeout(const Duration(minutes: 15));
+              if (result.exitCode == 0) {
+                extracted = true;
+              } else {
+                extractionError = result.stderr.toString();
+              }
+            } catch (error) {
+              extractionError = error.toString();
+            }
+          }
+
+          if (!extracted) {
+            return ZionUserlandInstallResult(
+              success: false,
+              message: 'تعذر فك أرشيف Kali محليًا باستخدام أدوات الجهاز: ' +
+                  (extractionError ?? 'لا يوجد tar يدعم xz'),
+            );
+          }
+
+          var extractedRoot = staging;
+          if (!await File(extractedRoot.path + '/bin/sh').exists()) {
+            final children = await staging.list(followLinks: false)
+                .where((entity) => entity is Directory)
+                .cast<Directory>().toList();
+            for (final child in children) {
+              if (await File(child.path + '/bin/sh').exists()) {
+                extractedRoot = child;
+                break;
+              }
+            }
+          }
+          if (!await File(extractedRoot.path + '/bin/sh').exists()) {
+            return const ZionUserlandInstallResult(
+              success: false,
+              message: 'فُك أرشيف Kali لكن لم يُعثر على bin/sh؛ لم يتم تفعيل الجذر.',
+            );
+          }
+
+          if (extractedRoot.path != staging.path) {
+            final normalized = Directory(staging.path + '-normalized');
+            await extractedRoot.rename(normalized.path);
+            if (await staging.exists()) await staging.delete(recursive: true);
+            await normalized.rename(staging.path);
+          }
+
+          final oldRoot = Directory(
+            distsDir.path + '/.rootfs-old-' +
+                DateTime.now().microsecondsSinceEpoch.toString(),
+          );
+          if (await rootfs.exists()) await rootfs.rename(oldRoot.path);
+          try {
+            await staging.rename(rootfs.path);
+            if (await oldRoot.exists()) await oldRoot.delete(recursive: true);
+          } catch (_) {
+            if (!await rootfs.exists() && await oldRoot.exists()) {
+              await oldRoot.rename(rootfs.path);
+            }
+            rethrow;
+          }
+
+          await Directory(ZionBootstrap.home).create(recursive: true);
+          await Directory(ZionBootstrap.tmp).create(recursive: true);
+          if (!await _hasCompatibleProot() && await backupDir.exists()) {
+            final seeded = await _installFromBackup(backupDir.path);
+            if (!seeded.success) {
+              return ZionUserlandInstallResult(
+                success: false,
+                message: 'تم تثبيت جذر Kali محليًا، لكن تجهيز PRoot من النسخة الاحتياطية فشل: ' +
+                    seeded.message,
+              );
+            }
+          }
+          if (!await _hasKaliRootfs() || !await _hasCompatibleProot()) {
+            return const ZionUserlandInstallResult(
+              success: false,
+              message: 'تم فك جذر Kali محليًا، لكن PRoot غير جاهز؛ لم يتم إعلان الطرفية قابلة للتشغيل.',
+            );
+          }
+          onProgress?.call('تم تثبيت Kali rootfs محليًا في ' + rootfs.path + '.');
+          return ZionUserlandInstallResult(
+            success: true,
+            message: 'تم تثبيت Kali Userland من الملف المحلي: ' + fileName,
+          );
+        } finally {
+          try {
+            if (await staging.exists()) await staging.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+
+      if (fileName.endsWith('.zip')) {
+        final result = await ZionBootstrap().installFromArchive(
+          sourcePath,
+          onProgress: (progress, message) => onProgress?.call(
+            '[' + (progress * 100).round().toString() + '%] ' + message,
+          ),
+        );
+        if (!result.success) {
+          return ZionUserlandInstallResult(
+            success: false,
+            message: result.error ?? 'ملف ZIP ليس حزمة Zion Userland صالحة.',
+          );
+        }
+        if (!await ZionBootstrap.isInstalled() ||
+            !await _hasCompatibleProot() ||
+            !await _hasCompatibleShell()) {
+          return const ZionUserlandInstallResult(
+            success: false,
+            message: 'تم فك ZIP لكن فشل التحقق من Bash أو PRoot.',
+          );
+        }
+        return ZionUserlandInstallResult(
+          success: true,
+          message: 'تم تثبيت Zion Userland من الملف المحلي: ' + fileName,
+          releaseTag: await ZionBootstrap.currentRelease(),
+        );
+      }
+
+      return const ZionUserlandInstallResult(
+        success: false,
+        message: 'نوع الحزمة المحلية غير معروف.',
+      );
+    } catch (error) {
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'فشل التثبيت من الملف المحلي ' + fileName + ': ' + error.toString(),
+      );
+    }
+  }
+
+  Future<ZionUserlandInstallResult> _installFromBackup(
+    String backupPath,
+  ) async {
+    try {
+      final backup = Directory(backupPath);
+      if (!await backup.exists()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'مجلد النسخة الاحتياطية غير موجود.',
+        );
+      }
+      final usrDir = Directory(ZionBootstrap.prefix);
+      await usrDir.create(recursive: true);
+      final entities = await backup.list(followLinks: false).toList();
+      for (final entity in entities) {
+        final name = entity.path.split('/').last;
+        final targetPath = usrDir.path + '/' + name;
+        if (entity is Directory) {
+          await _copyDirectory(entity, Directory(targetPath));
+        } else if (entity is File) {
+          await entity.copy(targetPath);
+        } else if (entity is Link) {
+          final link = Link(targetPath);
+          await link.parent.create(recursive: true);
+          if (await link.exists()) await link.delete();
+          await link.create(await entity.target());
+        }
+      }
+
+      await Directory(usrDir.path + '/bin').create(recursive: true);
+      try {
+        await Process.run(
+          '/system/bin/chmod',
+          <String>['-R', '755', usrDir.path + '/bin'],
+          runInShell: false,
+        );
+      } catch (_) {}
+      await Directory(ZionBootstrap.home).create(recursive: true);
+      await Directory(ZionBootstrap.tmp).create(recursive: true);
+
+      if (!await _hasCompatibleShell()) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'نُسخت النسخة الاحتياطية لكن لم يتمكن Bash المحلي من العمل.',
+        );
+      }
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'تم تجهيز الصدفة محليًا من termux_usr_backup؛ لم يتم تنزيل أي ملف.',
+      );
+    } catch (error) {
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'فشل استعادة النسخة الاحتياطية المحلية: ' + error.toString(),
+      );
+    }
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final name = entity.path.substring(source.path.length + 1);
+      final destination = target.path + '/' + name;
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(destination));
+      } else if (entity is File) {
+        await File(destination).parent.create(recursive: true);
+        await entity.copy(destination);
+      } else if (entity is Link) {
+        await Link(destination).parent.create(recursive: true);
+        final link = Link(destination);
+        if (await link.exists()) await link.delete();
+        await link.create(await entity.target());
+      }
+    }
+  }
+
+  Future<bool> _hasKaliRootfs() async {
+    final root = Directory(ZionBootstrap.home + '/.zion/dists/kali/rootfs');
+    return await File(root.path + '/bin/sh').exists() &&
+        await File(root.path + '/etc/os-release').exists();
   }
 
   Future<bool> _hasCompatibleShell() async {
