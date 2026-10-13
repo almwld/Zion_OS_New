@@ -44,15 +44,6 @@ class ZionUserlandInstaller {
       );
     }
 
-    // A locally restored Termux prefix may be runnable without Zion's release
-    // marker. Do not reinstall it on every terminal launch.
-    if (await _hasCompatibleProot() && await _hasCompatibleShell()) {
-      return const ZionUserlandInstallResult(
-        success: true,
-        message: 'بيئة الطرفية المحلية جاهزة بالفعل؛ لا حاجة إلى تنزيلات.',
-      );
-    }
-
     if (await _hasKaliRootfs() && await _hasCompatibleProot()) {
       return const ZionUserlandInstallResult(
         success: true,
@@ -117,6 +108,17 @@ class ZionUserlandInstaller {
         success: false,
         message: localFailure ??
             'وُجدت ملفات محلية، لكن لم تنجح أي حزمة في تجهيز بيئة قابلة للتشغيل.',
+      );
+    }
+
+    // If there are no readable local packages but the existing prefix is
+    // already usable, keep the terminal available without network access.
+    if (!foundLocalFile &&
+        await _hasCompatibleProot() &&
+        await _hasCompatibleShell()) {
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'بيئة الطرفية المحلية جاهزة بالفعل؛ لم يلزم تنزيل أي ملف.',
       );
     }
 
