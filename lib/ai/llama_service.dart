@@ -101,7 +101,7 @@ class LlamaService {
     }
   }
 
-  Future<String> generate(String prompt, {int maxTokens = 512, double temperature = 0.7}) async {
+  Future<String> generate(String prompt, {int maxTokens = 128, double temperature = 0.25}) async {
     if (!await refreshLoadedState()) return 'ERROR: النموذج المحلي غير محمل.';
     return (await _channel.invokeMethod<String>('generate', {
       'prompt': prompt, 'maxTokens': maxTokens, 'temperature': temperature,
