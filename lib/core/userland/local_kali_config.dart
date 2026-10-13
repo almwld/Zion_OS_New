@@ -24,7 +24,7 @@ class ZionLocalKaliConfig {
   static Directory userland(Directory filesDir) =>
       Directory('${appRoot(filesDir).path}/userland');
   static Directory rootfs(Directory filesDir) =>
-      Directory('${userland(filesDir).path}/$rootfsName');
+      Directory('${filesDir.path}/home/.zion/dists/kali/rootfs');
   static Directory logs(Directory filesDir) =>
       Directory('${appRoot(filesDir).path}/logs');
   static File stateFile(Directory filesDir) =>
