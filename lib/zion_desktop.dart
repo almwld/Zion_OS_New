@@ -557,46 +557,27 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
           Text(_currentDate, style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 9)),
         ]),
       ]),
-      Row(children: [
-        _buildStatusIcon(Icons.speed, primaryColor, isDark), const SizedBox(width: 8),
-        _buildStatusIcon(Icons.wifi, primaryColor, isDark), const SizedBox(width: 8),
-        _buildStatusIcon(Icons.battery_full, Colors.green, isDark), const SizedBox(width: 12),
-        Container(
+      // Android owns live system indicators; avoid decorative duplicate icons.
+      Semantics(
+        label: 'الوقت الحالي $_currentTime',
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: primaryColor.withOpacity(0.3))),
-          child: Text(_currentTime, style: TextStyle(color: primaryColor, fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          decoration: BoxDecoration(
+            color: primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: primaryColor.withOpacity(0.3)),
+          ),
+          child: Text(
+            _currentTime,
+            style: TextStyle(
+              color: primaryColor,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          ),
         ),
-      ]),
-    ]),
-  );
-
-  Widget _buildStatusIcon(IconData icon, Color color, bool isDark) => Icon(icon, color: color.withOpacity(0.7), size: 16);
-
-  Widget _buildDock(ThemeProvider theme, bool isDark, Color primaryColor) => Container(
-    height: 76, margin: const EdgeInsets.all(16), padding: const EdgeInsets.symmetric(horizontal: 20),
-    decoration: BoxDecoration(
-      color: isDark ? Colors.black.withOpacity(0.6) : Colors.white.withOpacity(0.9),
-      borderRadius: BorderRadius.circular(24), border: Border.all(color: primaryColor.withOpacity(0.2)),
-      boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 8))],
-    ),
-    child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-      _buildDockItem(icon: Icons.apps, label: 'القائمة', color: const Color(0xFF3742FA), isDark: isDark, onTap: () => setState(() => _showStartMenu = true)),
-      _buildDockItem(icon: Icons.terminal, label: 'الطرفية', color: const Color(0xFFFFA502), isDark: isDark, onTap: () => _openApp({"name":"TERMINAL","nameAr":"الطرفية","icon":Icons.terminal,"color":_neonIndigo})),
-      _buildDockItem(icon: Icons.folder, label: 'الملفات', color: const Color(0xFF4B7BEC), isDark: isDark, onTap: () => _openApp({"name":"FILES","nameAr":"الملفات","icon":Icons.folder,"color":_neonIndigo})),
-      _buildDockItem(icon: Icons.radar, label: 'الرادار', color: const Color(0xFF2ED573), isDark: isDark, onTap: () => setState(() => _showRadar = !_showRadar)),
-      _buildDockItem(icon: Icons.settings, label: 'الإعدادات', color: const Color(0xFF8854D0), isDark: isDark, onTap: () => _openApp({"name":"SETTINGS","nameAr":"الإعدادات","icon":Icons.settings,"color":_neonIndigo})),
-    ]),
-  );
-
-  Widget _buildDockItem({required IconData icon, required String label, required Color color, required bool isDark, required VoidCallback onTap}) => GestureDetector(
-    onTap: onTap,
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 46, height: 46, decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [color, color.withOpacity(0.7)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(14), boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-      ), child: Icon(icon, color: Colors.white, size: 22)),
-      const SizedBox(height: 4),
-      Text(label, style: TextStyle(color: isDark ? Colors.white70 : Colors.black54, fontSize: 9, fontWeight: FontWeight.w600)),
+      ),
     ]),
   );
 
