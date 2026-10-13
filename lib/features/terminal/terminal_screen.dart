@@ -873,12 +873,45 @@ $request''',
                 children: [
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: Opacity(
-                        opacity: 0.16,
-                        child: Image.asset(
-                          'assets/icons/app_icon.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      child: Center(
+                        child: Opacity(
+                          opacity: 0.16,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 176,
+                                height: 176,
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [Color(0xFF00BCD4), Color(0xFF006064)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Z',
+                                  style: TextStyle(
+                                    fontSize: 100,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              const Text(
+                                'ZION OS',
+                                style: TextStyle(
+                                  color: Color(0xFF00BCD4),
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 4,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
