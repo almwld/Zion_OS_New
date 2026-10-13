@@ -74,7 +74,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Future<void> _initializeFirstTab() async {
     try {
-      await _createTab(autoStart: false);
+      // Open the terminal in a real PTY session instead of presenting an
+      // editable-looking but disconnected xterm surface on first entry.
+      await _createTab(autoStart: true);
     } catch (error, stackTrace) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: error,
@@ -104,7 +106,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  Future<_TerminalTab?> _createTab({bool autoStart = false}) async {
+  Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -128,11 +130,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
 
     terminal.onOutput = service.write;
-    if (!autoStart) {
-      terminal.write(
-        'Zion OS Terminal جاهزة. اضغط زر التشغيل لبدء جلسة PTY حقيقية.\\r\\n',
-      );
-    }
     terminal.onResize = (width, height, _, __) {
       unawaited(service.resizeInteractive(rows: height, cols: width));
     };
