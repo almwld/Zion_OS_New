@@ -95,7 +95,7 @@ static void mkdir_p(const char *path, mode_t mode) {
 static void prepare_environment(void) {
     const char *home = "/data/data/com.zion.os/files/home";
     const char *prefix = "/data/data/com.zion.os/files/usr";
-    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin";
+    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin";
     const char *library_path = "/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64";
     const char *directories[] = {
         "/data/data/com.zion.os/files/home",
@@ -126,6 +126,7 @@ static void prepare_environment(void) {
     setenv("LD_LIBRARY_PATH", library_path, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
+    setenv("PS1", "$ ", 1);
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C.UTF-8", 1);
     setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1);
