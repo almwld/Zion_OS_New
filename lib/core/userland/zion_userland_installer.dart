@@ -282,31 +282,84 @@ class ZionUserlandInstaller {
   /// Repair directories and files individually, preserving existing executable
   /// bits where they matter.
   Future<void> _repairPermissions(Directory root) async {
-    Future<void> repairTree(Directory directory, {required String directoryMode, required String fileMode, bool preserveExecutableFiles = false}) async {
+    Future<void> chmodTree(String name, String mode) async {
+      final directory = Directory('${root.path}/$name');
       if (!await directory.exists()) return;
-      await Process.run('/system/bin/chmod', <String>[directoryMode, directory.path], runInShell: false);
-      await for (final entity in directory.list(recursive: true, followLinks: false)) {
-        try {
-          if (entity is Link) continue;
-          if (entity is Directory) {
-            await Process.run('/system/bin/chmod', <String>[directoryMode, entity.path], runInShell: false);
-          } else if (entity is File) {
-            var mode = fileMode;
-            if (preserveExecutableFiles && ((await entity.stat()).mode & 0x49) != 0) mode = '755';
-            await Process.run('/system/bin/chmod', <String>[mode, entity.path], runInShell: false);
-          }
-        } catch (e) {
-          print('[Userland] chmod failed for ${entity.path}: $e');
-        }
+      final result = await Process.run(
+        '/system/bin/chmod',
+        <String>['-R', mode, directory.path],
+        runInShell: false,
+      );
+      if (result.exitCode != 0) {
+        throw FileSystemException(
+          'chmod -R $mode failed for ${directory.path}: ${result.stderr}',
+        );
       }
     }
 
-    await repairTree(Directory('${root.path}/bin'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('${root.path}/libexec'), directoryMode: '755', fileMode: '755');
-    await repairTree(Directory('${root.path}/lib'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
-    await repairTree(Directory('${root.path}/share'), directoryMode: '755', fileMode: '644');
-    for (final name in <String>['etc', 'tmp', 'var', 'include', 'sbin']) {
-      await repairTree(Directory('${root.path}/$name'), directoryMode: '755', fileMode: '644', preserveExecutableFiles: true);
+    Future<void> normalizeDataTree(String name) async {
+      final directory = Directory('${root.path}/$name');
+      if (!await directory.exists()) return;
+
+      // First restore directory traversal, then make regular data files
+      // readable/writable by the app without spawning chmod once per file.
+      // Toybox find batches paths via -exec ... +, keeping large restores fast.
+      final directories = await Process.run(
+        '/system/bin/find',
+        <String>[
+          directory.path,
+          '-type',
+          'd',
+          '-exec',
+          '/system/bin/chmod',
+          '755',
+          '{}',
+          '+',
+        ],
+        runInShell: false,
+      );
+      if (directories.exitCode != 0) {
+        throw FileSystemException(
+          'Unable to repair directory permissions in ${directory.path}: ${directories.stderr}',
+        );
+      }
+      final files = await Process.run(
+        '/system/bin/find',
+        <String>[
+          directory.path,
+          '-type',
+          'f',
+          '-exec',
+          '/system/bin/chmod',
+          '644',
+          '{}',
+          '+',
+        ],
+        runInShell: false,
+      );
+      if (files.exitCode != 0) {
+        throw FileSystemException(
+          'Unable to repair file permissions in ${directory.path}: ${files.stderr}',
+        );
+      }
+    }
+
+    // Executables stay executable; data trees get searchable directories and
+    // readable regular files. This is batched and avoids thousands of child
+    // processes for a 1.4 GB Termux prefix.
+    for (final name in <String>['bin', 'libexec', 'sbin']) {
+      await chmodTree(name, '755');
+    }
+    for (final name in <String>[
+      'lib',
+      'lib64',
+      'share',
+      'etc',
+      'tmp',
+      'var',
+      'include',
+    ]) {
+      await normalizeDataTree(name);
     }
   }
 
