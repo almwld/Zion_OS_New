@@ -138,7 +138,8 @@ static int is_allowed_shell(const char *shell) {
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0;
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
+           strcmp(shell, "/system/bin/sh") == 0;
 }
 
 static const char *select_shell(const char *configured_shell) {
@@ -148,6 +149,7 @@ static const char *select_shell(const char *configured_shell) {
     }
 
     static const char *fallbacks[] = {
+        "/system/bin/sh",
         "/data/data/com.zion.os/files/usr/bin/bash",
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
@@ -266,7 +268,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         return 0;
     }
 
-    // Prepare the fixed Zion environment before fork(). Android/Flutter is
+    // Prepare the base process environment before fork(). Android/Flutter is
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
@@ -282,10 +284,19 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
         mkdir_p("/data/data/com.zion.os/files/zion/tmp", 0700);
         setenv("ZION_SHELL_MODE", "kali-proot", 1);
+    } else if (strcmp(selected_shell, "/system/bin/sh") == 0) {
+        // Android host-shell mode is intentionally independent of the broken
+        // Userland prefix: keep PATH limited to Android's shipped commands.
+        setenv("HOME", "/data/data/com.zion.os/files/home", 1);
+        setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+        setenv("PATH", "/system/bin:/system/xbin:/vendor/bin", 1);
+        setenv("LD_LIBRARY_PATH", "", 1);
+        setenv("TERM", "xterm-256color", 1);
+        setenv("COLORTERM", "truecolor", 1);
+        setenv("SHELL", "/system/bin/sh", 1);
+        setenv("ZION_SHELL_MODE", "android-system", 1);
     } else {
-        setenv("ZION_SHELL_MODE",
-               "zion-userland",
-               1);
+        setenv("ZION_SHELL_MODE", "zion-userland", 1);
     }
 
     pid_t pid = fork();
