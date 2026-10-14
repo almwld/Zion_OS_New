@@ -65,6 +65,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _loadingModel = false;
   bool _generating = false;
   String? _error;
+  String? _status;
   double _temperature = 0.25;
   int _maxTokens = 128;
   static const _historyKey = 'zion_offline_ai_messages_v1';
@@ -307,7 +308,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
     setState(() {
       _loadingModel = true;
-      _error = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
+      _status = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
+      _error = null;
     });
     try {
       final ok = await _agent.initialize(
@@ -320,6 +322,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
         _error = ok
             ? null
             : 'تعذر تحميل النموذج. اختر نموذج GGUF أصغر أو متوافقاً مع الجهاز.';
+        _status = ok ? 'النموذج محمل محلياً دون اتصال.' : null;
         if (ok) {
           _preferredModelPath = model.path;
           _agent.restoreHistory(_messages);
@@ -331,7 +334,24 @@ class _AIChatScreenState extends State<AIChatScreen> {
         await _persistConversation();
       }
     } catch (e) {
-      if (mounted) setState(() => _error = 'تعذر تحميل النموذج: $e');
+      if (mounted) setState(() { _error = 'تعذر تحميل النموذج: $e'; _status = null; });
+    } finally {
+      if (mounted) setState(() => _loadingModel = false);
+    }
+  }
+
+  Future<void> _unloadModel() async {
+    if (_generating || _loadingModel || !_agent.isInitialized) return;
+    setState(() {
+      _loadingModel = true;
+      _status = 'جارٍ تحرير ذاكرة النموذج...';
+      _error = null;
+    });
+    try {
+      await _agent.unload();
+      if (mounted) setState(() => _status = 'تم تفريغ النموذج وتحرير الذاكرة.');
+    } catch (e) {
+      if (mounted) setState(() { _error = 'تعذر تفريغ النموذج: $e'; _status = null; });
     } finally {
       if (mounted) setState(() => _loadingModel = false);
     }
@@ -419,7 +439,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _newChat, tooltip: 'محادثة جديدة', icon: const Icon(Icons.add_comment_outlined)), IconButton(onPressed: _showSessions, tooltip: 'المحادثات المحفوظة', icon: const Icon(Icons.history)), IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _newChat, tooltip: 'محادثة جديدة', icon: const Icon(Icons.add_comment_outlined)), IconButton(onPressed: _showSessions, tooltip: 'المحادثات المحفوظة', icon: const Icon(Icons.history)), IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), if (_agent.isInitialized) IconButton(onPressed: _loadingModel || _generating ? null : _unloadModel, tooltip: 'تفريغ النموذج وتحرير الذاكرة', icon: const Icon(Icons.eject)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
         if (_availableModels.length > 1) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: DropdownButton<LlamaModel>(isExpanded: true, value: _selected, items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(), onChanged: _loadingModel || _generating ? null : (m) async {
@@ -429,6 +449,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
           await prefs.setString(_modelPathKey, m.path);
         })),
         if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
+        if (_status != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Align(alignment: AlignmentDirectional.centerStart, child: Text(_status!, style: TextStyle(color: Theme.of(context).colorScheme.secondary)))),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
           final m = _messages[i]; final user = m.role == 'user';
