@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
@@ -189,9 +190,7 @@ class _AgentScreenState extends State<AgentScreen> {
         _result = result;
         _messages.add({
           'role': 'assistant',
-          'text': result.success
-              ? (result.report ?? 'اكتملت المهمة بنجاح.')
-              : 'توقفت المهمة: ' + (result.error ?? 'خطأ غير معروف'),
+          'text': _visibleResultSummary(result),
         });
       });
       await _persistMessages();
@@ -318,31 +317,125 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   );
 
-  Widget _resultCard()=>Card(
-    color:const Color(0xFF101812),
-    child:Padding(
-      padding:const EdgeInsets.all(14),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[Icon(_result!.success?Icons.task_alt:Icons.error_outline,color:_result!.success?Colors.greenAccent:Colors.redAccent),const SizedBox(width:8),const Text('النتيجة النهائية')]),
-        const SizedBox(height:8),
-        SelectableText(_result!.report??_result!.error??'لا توجد نتيجة.',style:const TextStyle(color:Colors.white70,height:1.4)),
-        if (!_result!.success) ...[
-          const SizedBox(height: 10),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: OutlinedButton.icon(
-              onPressed: (_runtime.canCancel || _submitting) ? null : () {
-                _input.text = _result!.task;
-                _run();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('إعادة المحاولة'),
-            ),
-          ),
-        ],
-      ]),
-    ),
-  );
+  Widget _resultCard() {
+    final result = _result!;
+    final actual = _visibleResultSummary(result);
+    return Card(
+      color: const Color(0xFF101812),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(result.success ? Icons.task_alt : Icons.error_outline,
+                  color: result.success ? Colors.greenAccent : Colors.redAccent),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('نتائج التنفيذ الفعلية')),
+              IconButton(
+                tooltip: 'نسخ النتائج',
+                onPressed: () => Clipboard.setData(ClipboardData(text: actual)),
+                icon: const Icon(Icons.copy, size: 18),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            SelectableText(actual, style: const TextStyle(color: Colors.white70, height: 1.45)),
+            if (result.steps.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              for (var i = 0; i < result.steps.length; i++) _stepResultTile(i + 1, result.steps[i]),
+            ],
+            if (!result.success) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: OutlinedButton.icon(
+                  onPressed: (_runtime.canCancel || _submitting) ? null : () {
+                    _input.text = result.task;
+                    _run();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('إعادة المحاولة'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stepResultTile(int index, StepResult step) {
+    final detail = _formatActualData(step.data);
+    final text = [
+      '$index. ${step.success ? 'نجاح' : 'فشل'} — ${step.summary}',
+      if (step.error != null && step.error!.trim().isNotEmpty) 'الخطأ: ${step.error}',
+      if (detail.isNotEmpty) 'المخرجات الفعلية:\n$detail',
+      'المدة: ${step.duration.inMilliseconds} ms',
+    ].join('\n');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: (step.success ? Colors.greenAccent : Colors.redAccent).withOpacity(.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(step.success ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 17, color: step.success ? Colors.greenAccent : Colors.redAccent),
+              const SizedBox(width: 7),
+              Expanded(child: Text('الخطوة $index', style: const TextStyle(fontWeight: FontWeight.w600))),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'نسخ نتيجة الخطوة',
+                onPressed: () => Clipboard.setData(ClipboardData(text: text)),
+                icon: const Icon(Icons.copy, size: 16),
+              ),
+            ]),
+            SelectableText(text, style: const TextStyle(color: Colors.white70, height: 1.4, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _visibleResultSummary(AgentResult result) {
+    if (result.steps.isEmpty) {
+      return result.success
+          ? 'اكتملت المهمة، لكن لم تُرجع الأدوات مخرجات تفصيلية.'
+          : 'لم تكتمل المهمة. السبب: ${result.error ?? 'لم يقدّم المحرك سبباً محدداً.'}';
+    }
+    final lines = result.steps.asMap().entries.map((entry) {
+      final step = entry.value;
+      final output = _formatActualData(step.data);
+      return [
+        '${entry.key + 1}. ${step.success ? 'نجاح' : 'فشل'} — ${step.summary}',
+        if (step.error != null && step.error!.trim().isNotEmpty) 'الخطأ: ${step.error}',
+        if (output.isNotEmpty) 'المخرجات الفعلية: $output',
+      ].join('\n');
+    }).join('\n\n');
+    return '${result.success ? 'اكتملت المهمة حسب نتائج الأدوات.' : 'لم تكتمل المهمة بنجاح.'}\nالمهمة: ${result.task}\n$lines${result.error == null ? '' : '\nالسبب النهائي: ${result.error}'}';
+  }
+
+  String _formatActualData(dynamic data) {
+    if (data == null) return '';
+    String value;
+    try {
+      value = data is String ? data : const JsonEncoder.withIndent('  ').convert(data);
+    } catch (_) {
+      value = data.toString();
+    }
+    const maxLength = 5000;
+    return value.length <= maxLength
+        ? value
+        : '${value.substring(0, maxLength)}\n… تم اختصار المخرجات المعروضة؛ انسخ النتيجة الكاملة من مصدر الأداة.';
+  }
 
   Widget _composer()=>SafeArea(
     child:Padding(
