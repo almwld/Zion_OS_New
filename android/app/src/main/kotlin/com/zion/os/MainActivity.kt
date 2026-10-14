@@ -416,7 +416,7 @@ class MainActivity : FlutterFragmentActivity() {
                 }
                 shell?.startsWith("zion-kali@") == true -> {
                     // Launch the selected rootfs in-place. Never copy or extract it.
-                    val rootfsPath = shell.removePrefix("zion-kali@").trim()
+                    val rootfsPath = shell.orEmpty().removePrefix("zion-kali@").trim()
                     if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
                         rootfsPath.contains("|") || rootfsPath.contains("\n") ||
                         rootfsPath.contains("\r") || rootfsPath.contains("\u0000")) return 0
