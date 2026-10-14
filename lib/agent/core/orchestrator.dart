@@ -116,7 +116,7 @@ class AgentOrchestrator {
         final started = DateTime.now();
         StepResult r;
         try {
-          r = await tool.execute(params).timeout(stepTimeout);
+          r = await tool.executeCancellable(params, cancellationToken).timeout(stepTimeout);
         } on TimeoutException {
           r = StepResult.failure(
             'انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية.',
@@ -140,13 +140,14 @@ class AgentOrchestrator {
             cancellationToken?.throwIfCancelled();
             final alt = await _alternative(step, r.error ?? 'فشل');
             if (alt == null) break;
-            final d = policy.evaluate(tool: alt.tool, params: alt.params);
+            final altParams = _resolveParams(alt.params, results);
+            final d = policy.evaluate(tool: alt.tool, params: altParams);
             final t = tools.getTool(alt.tool);
             if (t == null) break;
-            final altPermissions = t.requiredPermissions(alt.params);
+            final altPermissions = t.requiredPermissions(altParams);
             final altNeedsApproval =
                 altPermissions.any((permission) => permission != AgentPermission.readOnly) ||
-                t.requiresApproval(alt.params) ||
+                t.requiresApproval(altParams) ||
                 alt.permission != AgentPermission.readOnly ||
                 alt.requiresApproval ||
                 alt.risk != AgentRisk.safe;
@@ -160,7 +161,7 @@ class AgentOrchestrator {
             final alternativeStarted = DateTime.now();
             StepResult ar;
             try {
-              ar = await t.execute(alt.params).timeout(stepTimeout);
+              ar = await t.executeCancellable(altParams, cancellationToken).timeout(stepTimeout);
             } on TimeoutException {
               ar = StepResult.failure(
                 'انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية.',
