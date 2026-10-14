@@ -316,10 +316,39 @@ class AgentOrchestrator {
     final p=_parsePlan(response);return p?.steps.isNotEmpty==true?p!.steps.first:null;
   }
 
-  Future<String> _report(String task,List<StepResult> results) async {
-    final summary=results.map((r)=>r.success?'نجاح: '+r.summary:'فشل: '+(r.error??r.summary)).join('\n');
-    if(await _nativeAiAvailable()){final r=await ai.generate('المهمة: '+task+'\nالنتائج:\n'+summary+'\nاكتب تقريراً مختصراً.',maxTokens:700,temperature:0.2);if(!r.startsWith('ERROR:'))return r;}
+  Future<String> _report(String task, List<StepResult> results) async {
+    final summary = results.asMap().entries.map((entry) {
+      final index = entry.key + 1;
+      final result = entry.value;
+      final status = result.success ? 'نجاح' : 'فشل';
+      final data = result.data == null ? '' : '\nالبيانات: ' + _compactData(result.data);
+      return '$index. $status: ${result.summary}' +
+          (result.error == null ? '' : '\nالخطأ: ${result.error}') + data;
+    }).join('\n\n');
+    if (await _nativeAiAvailable()) {
+      final report = await ai.generate(
+        'المهمة المطلوبة: $task\nنتائج التنفيذ الفعلية:\n$summary\n'
+        'اكتب تقريراً عربياً واضحاً يجيب عن هدف المستخدم اعتماداً على النتائج فقط. '
+        'لا تدّعِ نجاح شيء لم تثبته النتائج، واذكر أي نقص أو فشل.',
+        maxTokens: 900,
+        temperature: 0.2,
+      );
+      if (!report.startsWith('ERROR:') && report.trim().isNotEmpty) return report;
+    }
     return summary;
+  }
+
+  String _compactData(dynamic data) {
+    String encoded;
+    try {
+      encoded = jsonEncode(data);
+    } catch (_) {
+      encoded = data.toString();
+    }
+    const maxLength = 6000;
+    return encoded.length <= maxLength
+        ? encoded
+        : '${encoded.substring(0, maxLength)}… [تم اقتطاع البيانات الطويلة]';
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
