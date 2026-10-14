@@ -30,8 +30,8 @@ class AIAgent {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
     final rawResponse = await llama.generate(
       _buildPrompt(message),
-      maxTokens: maxTokens.clamp(1, 256),
-      temperature: temperature.clamp(0.0, 2.0),
+      maxTokens: maxTokens.clamp(1, 256).toInt(),
+      temperature: temperature.clamp(0.0, 2.0).toDouble(),
     );
     final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
