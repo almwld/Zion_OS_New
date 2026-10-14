@@ -212,8 +212,9 @@ class ZionLocalKaliBootstrap {
 
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
-      if (!await File('${rootfs.path}/bin/sh').exists()) {
-        throw StateError('Kali rootfs extraction did not produce bin/sh.');
+      if (!await File('${rootfs.path}/bin/sh').exists() ||
+          !await File('${rootfs.path}/bin/bash').exists()) {
+        throw StateError('Kali rootfs extraction did not produce bin/sh and bin/bash.');
       }
       progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
 
