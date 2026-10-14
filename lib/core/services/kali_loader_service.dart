@@ -176,7 +176,7 @@ class KaliLoaderService {
     final rootfsPath = await _resolveRootfsPath();
     final installed = rootfsPath != null;
     final root = await hasRootAccess();
-    final chroot = await hasChroot();
+    final chroot = rootfsPath == _installPath && await hasChroot();
     final proot = await findProot();
     return {
       'installed': installed,
