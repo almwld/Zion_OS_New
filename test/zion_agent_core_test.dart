@@ -75,7 +75,7 @@ void main(){
   await agent.dispose();
  });
  test('local chat strips common model turn markers',() async {
-  final llama = RecordingLlamaService()..reply = '<|im_start|>assistant\\nHello<|im_end|>\\nUser: next turn';
+  final llama = RecordingLlamaService()..reply = '<|im_start|>assistant\nHello<|im_end|>\nUser: next turn';
   final agent = AIAgent(llama: llama);
   expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
   expect(await agent.chat('say hello'), 'Hello');
