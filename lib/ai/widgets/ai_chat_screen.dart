@@ -498,5 +498,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
   }
 
-  @override void dispose() { _input.dispose(); _scroll.dispose(); _agent.dispose(); super.dispose(); }
+  @override void dispose() {
+    if (_generating) unawaited(_agent.llama.cancelGeneration());
+    _input.dispose();
+    _scroll.dispose();
+    unawaited(_agent.dispose());
+    super.dispose();
+  }
 }
