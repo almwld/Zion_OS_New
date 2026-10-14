@@ -23,6 +23,7 @@ void main() {
   });
 
   test('rejects non-HTTP schemes and embedded URL credentials', () async {
+    final tool = BrowserTool();
     final fileUrl = await tool.execute({'action': 'fetch', 'url': 'file:///etc/passwd'});
     final credentials = await tool.execute({'action': 'fetch', 'url': 'https://user:pass@example.com/'});
     final invalidAction = await tool.execute({'action': 'delete'});
