@@ -299,7 +299,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   /// The raw bytes are still sent unchanged to xterm/PTY; Flutter's text engine
   /// performs shaping and bidi layout in this separate view.
   List<String> _arabicOverlayLines(_TerminalTab tab) {
-    final cleaned = ArabicShaper.readableText(tab.recentOutput);
+    final cleaned = ArabicShaper.forRtlDisplay(tab.recentOutput);
     return cleaned
         .split('\n')
         .map((line) => line.trimRight())
