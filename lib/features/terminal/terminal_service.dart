@@ -499,8 +499,11 @@ class TerminalService {
       }
       return;
     }
-    unawaited(_pty.write(input));
-    final parts = (_interactiveInputBuffer + input).split('\n');
+    // Android keyboards may submit Enter as CR, LF, or CRLF. Normalize
+    // before forwarding to the PTY and before updating command history.
+    final normalizedInput = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    unawaited(_pty.write(normalizedInput));
+    final parts = (_interactiveInputBuffer + normalizedInput).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
