@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../widgets/toast_bar.dart';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
@@ -114,7 +115,7 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
   Future<void> _scanPorts() async {
     final host = _hostController.text.trim();
     if (host.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Enter an authorized host/IP address.')),
       );
       return;
