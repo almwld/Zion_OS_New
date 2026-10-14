@@ -22,7 +22,6 @@ class _NetworkAnalyzerAppState extends State<NetworkAnalyzerApp> {
   int _dataPoint = 0;
   Timer? _monitorTimer;
   StreamSubscription<dynamic>? _radarSubscription;
-  Map<String, dynamic> _liveNetworkSample = <String, dynamic>{};
 
   @override
   void initState() {
@@ -54,7 +53,6 @@ class _NetworkAnalyzerAppState extends State<NetworkAnalyzerApp> {
       final rx = sample['rxBytesPerSec'];
       final tx = sample['txBytesPerSec'];
       if (rx is! num || tx is! num || !mounted) return;
-      _liveNetworkSample = sample;
       _dataPoint++;
       setState(() {
         _trafficHistory.add(FlSpot(_dataPoint.toDouble(), (rx + tx).toDouble()));
