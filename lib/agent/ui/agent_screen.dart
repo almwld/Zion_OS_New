@@ -51,17 +51,20 @@ class _AgentScreenState extends State<AgentScreen> {
           .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+      final nativeReady = await _runtime.orchestrator.ai.refreshLoadedState();
       if (mounted) setState(() {
         _candidateModel = candidates.isEmpty ? null : candidates.first;
-        _modelReady = _runtime.orchestrator.ai.isLoaded;
-        _modelName = _modelReady
-            ? _runtime.orchestrator.ai.currentModel?.split('/').last
+        _modelReady = nativeReady;
+        _modelName = nativeReady
+            ? (_runtime.orchestrator.ai.currentModel?.split('/').last ?? 'Local AI')
             : _candidateModel?.name;
-        _modelStatus = _candidateModel == null
-            ? (models.isEmpty
-                ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
-                : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
-            : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
+        _modelStatus = nativeReady
+            ? 'النموذج المحلي جاهز'
+            : _candidateModel == null
+                ? (models.isEmpty
+                    ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+                    : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
+                : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
       });
     } catch (e) {
       if (mounted) setState(() {
@@ -118,13 +121,9 @@ class _AgentScreenState extends State<AgentScreen> {
   Future<void> _run(){
     final task=_input.text.trim();
     if(task.isEmpty||_runtime.canCancel)return Future.value();
-    if (!_modelReady) {
-      setState(() => _messages.add({
-        'role': 'assistant',
-        'text': 'الوكيل لم ينفذ المهمة لأن نموذج GGUF غير محمّل. ' + _modelStatus + ' استخدم زر استيراد النموذج بالأعلى ثم أعد المحاولة.',
-      }));
-      return Future.value();
-    }
+    // Deterministic tool tasks (for example, an explicitly requested local
+    // diagnostic command) can run without a loaded model. Tasks that need
+    // language reasoning will report clearly when local GGUF is unavailable.
     _input.clear();
     setState((){
       _messages.add({'role':'user','text':task});
@@ -277,19 +276,27 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   );
 
-  IconData _eventIcon(AgentEvent e){
-    if(e.message.contains('⛔')||e.message.contains('❌'))return Icons.block;
-    if(e.message.contains('🔐'))return Icons.lock_outline;
-    if(e.message.contains('✅'))return Icons.check_circle_outline;
-    return Icons.bolt;
-  }
+  IconData _eventIcon(AgentEvent e)=>switch(e.state){
+    AgentState.waitingApproval=>Icons.lock_outline,
+    AgentState.completed=>Icons.check_circle_outline,
+    AgentState.failed=>Icons.error_outline,
+    AgentState.cancelled=>Icons.stop_circle_outlined,
+    AgentState.planning=>Icons.account_tree_outlined,
+    AgentState.executing=>Icons.play_circle_outline,
+    AgentState.evaluating=>Icons.fact_check_outlined,
+    AgentState.idle=>Icons.info_outline,
+  };
 
-  Color _eventColor(AgentEvent e){
-    if(e.message.contains('⛔')||e.message.contains('❌'))return Colors.redAccent;
-    if(e.message.contains('🔐'))return Colors.orangeAccent;
-    if(e.message.contains('✅'))return Colors.greenAccent;
-    return Colors.white54;
-  }
+  Color _eventColor(AgentEvent e)=>switch(e.state){
+    AgentState.waitingApproval=>Colors.orangeAccent,
+    AgentState.completed=>Colors.greenAccent,
+    AgentState.failed=>Colors.redAccent,
+    AgentState.cancelled=>Colors.orangeAccent,
+    AgentState.planning=>Colors.cyanAccent,
+    AgentState.executing=>Colors.white70,
+    AgentState.evaluating=>Colors.cyanAccent,
+    AgentState.idle=>Colors.white54,
+  };
 
   String _stateLabel(AgentState s)=>switch(s){
     AgentState.idle=>'جاهز',AgentState.planning=>'تخطيط',AgentState.executing=>'تنفيذ',

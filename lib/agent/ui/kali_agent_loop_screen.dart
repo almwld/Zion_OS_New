@@ -67,10 +67,10 @@ class _KaliAgentLoopScreenState extends State<KaliAgentLoopScreen> {
   Future<void> _startLoop() async {
     if (_running || !_modelReady) return;
     final target = _validTarget(_target.text);
-    if (target == null) { _add('⛔ أدخل نطاقاً أو عنوان IPv4 صحيحاً واحداً.'); return; }
+    if (target == null) { _add('أدخل نطاقاً أو عنوان IPv4 صحيحاً واحداً.'); return; }
     setState(() { _running = true; _iteration = 0; _log.clear(); });
-    _add('🎯 بدء الحلقة للهدف: ' + target);
-    _add('🔐 كل أمر يتطلب موافقتك؛ الأدوات محدودة.');
+    _add('بدء الحلقة للهدف: ' + target);
+    _add('كل أمر يتطلب موافقتك؛ الأدوات محدودة.');
     final history = <String>[];
     final seen = <String>{};
     try {
@@ -91,27 +91,27 @@ REASONING: سبب مختصر
 السجل:
 ''' + history.join('\n').substring(0, 3500);
         final response = await widget.ai.generate(prompt, maxTokens: 180, temperature: 0.15);
-        if (response.startsWith('ERROR:')) { _add('❌ تعذر توليد الخطوة: ' + response); break; }
+        if (response.startsWith('ERROR:')) { _add('تعذر توليد الخطوة: ' + response); break; }
         final action = RegExp(r'ACTION\s*:\s*(RUN|THINK|DONE)', caseSensitive: false).firstMatch(response)?.group(1)?.toUpperCase();
         final reason = RegExp(r'REASONING\s*:\s*([^\r\n]+)', caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? 'لا يوجد تفسير.';
-        _add('💭 ' + reason);
+        _add('تحليل: ' + reason);
         history.add('الخطوة ' + i.toString() + ': ' + reason);
-        if (action == 'DONE') { _add('✅ قرر Qwen أن المهمة اكتملت.'); break; }
-        if (action == 'THINK') { _add('ℹ️ إعادة تقييم دون تنفيذ.'); continue; }
-        if (action != 'RUN') { _add('⛔ رد غير مفهوم؛ أوقفت الحلقة.'); break; }
+        if (action == 'DONE') { _add('قرر Qwen أن المهمة اكتملت.'); break; }
+        if (action == 'THINK') { _add('إعادة تقييم دون تنفيذ.'); continue; }
+        if (action != 'RUN') { _add('رد غير مفهوم؛ أوقفت الحلقة.'); break; }
         final command = RegExp(r'^\s*COMMAND\s*:\s*([^\r\n]+)', multiLine: true, caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? '';
         final parsed = _parseCommand(command, target);
-        if (parsed == null) { _add('⛔ رفضت بوابة الأمان الأمر: ' + command); history.add('أمر مرفوض من بوابة الأمان.'); continue; }
-        if (!seen.add(command)) { _add('⛔ تكرار الأمر؛ إيقاف الحلقة.'); break; }
-        if (!await _approve(command, reason)) { _add('🚫 رفض المستخدم الأمر؛ توقفت الحلقة.'); break; }
+        if (parsed == null) { _add('رفضت بوابة الأمان الأمر: ' + command); history.add('أمر مرفوض من بوابة الأمان.'); continue; }
+        if (!seen.add(command)) { _add('تكرار الأمر؛ إيقاف الحلقة.'); break; }
+        if (!await _approve(command, reason)) { _add('رفض المستخدم الأمر؛ توقفت الحلقة.'); break; }
         final result = await _executeKali(parsed.$1, parsed.$2);
         final out = result.output.length > _maxOutput ? result.output.substring(0, _maxOutput) + '\n… اقتطعت المخرجات.' : result.output;
-        _add((result.ok ? '📄 ' : '⚠️ ') + command + '\n' + out);
+        _add((result.ok ? 'نتيجة: ' : 'تحذير: ') + command + '\n' + out);
         history.add('COMMAND: ' + command + '\nEXIT: ' + result.code.toString() + '\nOUTPUT: ' + out.substring(0, out.length > 800 ? 800 : out.length));
-        if (result.code == 127) { _add('ℹ️ تحقق من تثبيت الأداة وتجهيز Kali Userland.'); break; }
+        if (result.code == 127) { _add('تحقق من تثبيت الأداة وتجهيز Kali Userland.'); break; }
       }
-      if (_iteration >= _maxIterations) _add('ℹ️ وصلنا إلى الحد الأقصى (' + _maxIterations.toString() + ').');
-    } catch (e) { _add('❌ خطأ أثناء الحلقة: ' + e.toString()); }
+      if (_iteration >= _maxIterations) _add('وصلنا إلى الحد الأقصى (' + _maxIterations.toString() + ').');
+    } catch (e) { _add('خطأ أثناء الحلقة: ' + e.toString()); }
     finally { if (mounted) setState(() => _running = false); }
   }
 
