@@ -357,10 +357,18 @@ class TerminalService {
           await File(loader).exists();
       if (!alreadyInstalled) {
         _output.add('[Kali] لم يتم العثور على rootfs صالح في المسار المشترك؛ أبحث عن الحزمة المحلية.\r\n');
+        var lastKaliProgress = -1;
         final installed = await const ZionLocalKaliBootstrap().install(
-          onProgress: (progress) => _output.add(
-            '[Kali] ${progress.percent}% — ${progress.message}\r\n',
-          ),
+          onProgress: (progress) {
+            // Emit only meaningful percentage changes so a large archive does
+            // not flood the PTY stream or rebuild the terminal for every file.
+            if (progress.percent != lastKaliProgress ||
+                progress.state == ZionKaliInstallState.ready ||
+                progress.state == ZionKaliInstallState.error) {
+              lastKaliProgress = progress.percent;
+              _output.add('[Kali] ${progress.percent}% — ${progress.message}\r\n');
+            }
+          },
         );
         if (!installed.isSuccess) {
           _output.add('[Kali] فشل تثبيت الحزمة المحلية: ${installed.error}\r\n');
