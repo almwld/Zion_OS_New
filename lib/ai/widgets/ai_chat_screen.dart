@@ -55,6 +55,7 @@ class AIChatScreen extends StatefulWidget {
 class _AIChatScreenState extends State<AIChatScreen> {
   late final AIAgent _agent;
   final _input = TextEditingController();
+  final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   final _messages = <AgentMessage>[];
   final List<_LocalChatSession> _sessions = <_LocalChatSession>[];
@@ -486,10 +487,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
           final m = _messages[i]; final user = m.role == 'user';
-          return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [SelectableText(m.content), if (!user) Align(alignment: AlignmentDirectional.centerEnd, child: IconButton(visualDensity: VisualDensity.compact, tooltip: 'نسخ الرد', icon: const Icon(Icons.copy, size: 16), onPressed: () => Clipboard.setData(ClipboardData(text: m.content))))])));
+          return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SelectableText(m.content, style: const TextStyle(height: 1.45)),
+            const SizedBox(height: 4),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: 'نسخ النص', icon: const Icon(Icons.copy_outlined, size: 16), onPressed: () => Clipboard.setData(ClipboardData(text: m.content))),
+              if (user) IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: 'تعديل وإعادة إرسال المدخل', icon: const Icon(Icons.edit_outlined, size: 16), onPressed: _generating ? null : () { _input.value = TextEditingValue(text: m.content, selection: TextSelection.collapsed(offset: m.content.length)); FocusScope.of(context).requestFocus(_inputFocus); }),
+            ]),
+          ])));
         })),
-        if (_generating) const LinearProgressIndicator(),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, maxLength: 700, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder(), counterText: ''))), const SizedBox(width: 8), IconButton.filled(
+        if (_generating) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Row(children: [const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10), Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف النموذج...' : 'النموذج يكتب الآن...', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13))), TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف'))])),
+        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(focusNode: _inputFocus, controller: _input, minLines: 1, maxLines: 5, maxLength: 700, textInputAction: TextInputAction.newline, onSubmitted: (_) => _send(), decoration: InputDecoration(hintText: _generating ? 'النموذج يكتب...' : 'اكتب رسالتك...', prefixIcon: const Icon(Icons.edit_note), border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)), counterText: ''))), const SizedBox(width: 8), IconButton.filled(
           onPressed: _loadingModel ? null : (_generating ? _cancelGeneration : _send),
           tooltip: _generating ? 'إيقاف التوليد' : 'إرسال الرسالة',
           icon: Icon(_generating ? Icons.stop : Icons.send),
@@ -501,6 +509,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   @override void dispose() {
     if (_generating) unawaited(_agent.llama.cancelGeneration());
     _input.dispose();
+    _inputFocus.dispose();
     _scroll.dispose();
     unawaited(_agent.dispose());
     super.dispose();
