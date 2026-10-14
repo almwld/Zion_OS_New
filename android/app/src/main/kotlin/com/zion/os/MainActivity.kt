@@ -418,8 +418,8 @@ class MainActivity : FlutterFragmentActivity() {
                     // Launch the selected rootfs in-place. Never copy or extract it.
                     val rootfsPath = shell.removePrefix("zion-kali@").trim()
                     if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
-                        rootfsPath.contains("|") || rootfsPath.contains("\\n") ||
-                        rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
+                        rootfsPath.contains("|") || rootfsPath.contains("\n") ||
+                        rootfsPath.contains("\r") || rootfsPath.contains("\u0000")) return 0
                     val rootfs = File(rootfsPath)
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(filesDir, "usr/libexec/proot")
