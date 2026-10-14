@@ -302,24 +302,10 @@ class _SettingsAppState extends State<SettingsApp> {
         leading: const Icon(Icons.translate, color: ZionColors.cyan),
         title: const Text('نوع الحروف'),
         subtitle: Text(
-          tp.cmatrixUseMusnad
-              ? 'المسند — Old South Arabian'
-              : 'العربية الحديثة',
+          'المسند فقط — Old South Arabian',
           style: TextStyle(color: secondary),
         ),
-        trailing: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: tp.cmatrixUseMusnad ? 'musnad' : 'modern',
-            items: const [
-              DropdownMenuItem(value: 'musnad', child: Text('المسند')),
-              DropdownMenuItem(value: 'modern', child: Text('عربي حديث')),
-            ],
-            onChanged: (value) {
-              if (value == 'musnad') tp.setCMatrixUseMusnad(true);
-              if (value == 'modern') tp.setCMatrixUseArabic(true);
-            },
-          ),
-        ),
+        trailing: const Icon(Icons.lock_outline, color: ZionColors.cyan),
       );
 
   Widget _matrixColors(ThemeProvider tp) => ListTile(
