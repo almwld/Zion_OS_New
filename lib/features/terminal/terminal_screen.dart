@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
@@ -57,6 +59,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _showQuickCommands = false;
   bool _isFullscreen = false;
   TerminalPalette _palette = TerminalPalette.zion;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -405,6 +409,92 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
+  Future<void> _startKaliFromLocalRootfs() async {
+    final tab = _selectedTab;
+    if (tab == null || _starting) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+    if (saved != null && saved.startsWith('/')) _kaliRootfsPath = saved;
+
+    final controller = TextEditingController(text: _kaliRootfsPath);
+    var path = _kaliRootfsPath;
+    if (!await File('$path/bin/bash').exists() ||
+        !await File('$path/bin/sh').exists()) {
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('مسار Kali Linux المحلي'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(
+              labelText: 'مسار rootfs',
+              hintText: '/storage/emulated/0/Download/Kali',
+              helperText: 'اختر مجلدًا يحتوي bin/bash وbin/sh. لن يتم نسخ الملفات.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('تشغيل'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (selected == null || selected.isEmpty) return;
+      path = selected;
+      if (!path.startsWith('/') || path.contains('|') ||
+          path.contains('\\n') || path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _showTerminalNotice('مسار Kali غير صالح.');
+        return;
+      }
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+      if (!await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _showTerminalNotice('لم يتم العثور على bin/bash وbin/sh في المسار المحدد. تحقق من صلاحية الوصول إلى الملفات.');
+        return;
+      }
+    } else {
+      controller.dispose();
+    }
+
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+    try {
+      if (tab.service.isInteractiveRunning) await tab.service.stopInteractive();
+      tab.name = 'kali-' + tab.id.toString();
+      tab.terminal.write('\\r\\n[Zion] تشغيل Kali من rootfs المحلي دون نسخ الملفات: $path\\r\\n');
+      final connected = await tab.service.startInteractive(kaliRootfsPath: path);
+      if (mounted) {
+        setState(() {
+          tab.connected = connected;
+          if (!connected) {
+            _startupError = 'تعذر تشغيل Kali. تحقق من وجود PRoot وloader داخل Zion Userland ومن صلاحية الوصول إلى rootfs.';
+          }
+        });
+      }
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while launching local Kali rootfs'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تشغيل Kali: $error');
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
   Future<void> _toggleFullscreen() async {
     final next = !_isFullscreen;
     await SystemChrome.setEnabledSystemUIMode(next ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
@@ -418,6 +508,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.content_paste, 'لصق', _paste),
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
+      _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
       _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
