@@ -310,7 +310,7 @@ class _EmailClientState extends State<EmailClient> {
             ? _emails.where((e) => e['starred']).toList()
             : _emails.where((e) => !e['read']).toList();
 
-    return Scaffold(
+    return DefaultTabController(length: 3, child: Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Row(
@@ -414,6 +414,6 @@ class _EmailClientState extends State<EmailClient> {
           );
         },
       ),
-    );
+    ));
   }
 }

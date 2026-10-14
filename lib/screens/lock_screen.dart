@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/services/biometric_service.dart';
 
@@ -32,6 +33,7 @@ class _LockScreenState extends State<LockScreen> {
   DateTime? _lockedUntil;
   bool _isAuthenticating = false;
   bool _biometricAvailable = false;
+  static const _biometricKey = 'zion_biometric_unlock_enabled';
 
   @override
   void initState() {
@@ -53,9 +55,15 @@ class _LockScreenState extends State<LockScreen> {
   }
 
   Future<void> _checkBiometricAvailability() async {
-    final available = await BiometricService().isAvailable();
-    if (!mounted) return;
-    setState(() => _biometricAvailable = available);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_biometricKey) ?? false;
+      final available = enabled && await BiometricService().isAvailable();
+      if (!mounted) return;
+      setState(() => _biometricAvailable = available);
+    } catch (_) {
+      if (mounted) setState(() => _biometricAvailable = false);
+    }
   }
 
   Future<void> _authenticateWithBiometric() async {

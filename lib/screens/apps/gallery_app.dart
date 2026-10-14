@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+/// Local gallery launcher. Uses Android's system photo picker so it displays
+/// actual user-selected media without requesting broad storage access.
 class GalleryApp extends StatefulWidget {
   const GalleryApp({super.key});
 
@@ -10,43 +13,74 @@ class GalleryApp extends StatefulWidget {
 }
 
 class _GalleryAppState extends State<GalleryApp> {
-  final List<Map<String, dynamic>> _photos = [];
+  final ImagePicker _picker = ImagePicker();
+  final List<XFile> _photos = <XFile>[];
   bool _isLoading = false;
+  String? _error;
 
-  @override
-  void initState() {
-    super.initState();
+  Future<void> _addPhotos() async {
+    if (_isLoading) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final selected = await _picker.pickMultiImage(imageQuality: 100);
+      if (!mounted) return;
+      if (selected.isNotEmpty) {
+        final known = _photos.map((file) => file.path).toSet();
+        setState(() {
+          _photos.addAll(selected.where((file) => !known.contains(file.path)));
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = 'تعذر فتح منتقي الصور: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _viewPhoto(Map<String, dynamic> photo) {
-    showDialog(
+  void _viewPhoto(XFile photo) {
+    showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                height: 300,
-                decoration: BoxDecoration(color: const Color(0xFF00BCD4).withOpacity(0.1), borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20))),
-                child: const Center(child: Icon(Icons.image, size: 80, color: Color(0xFF00BCD4))),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: IconButton(
+                  tooltip: 'إغلاق الصورة',
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+              Expanded(
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.file(
+                      File(photo.path),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Text(
+                        'تعذر عرض هذه الصورة.',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Text(photo['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text('Size: ${photo['size']} • Date: ${photo['date']}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00BCD4), foregroundColor: Colors.black),
-                      child: const Text('Close'),
-                    ),
-                  ],
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  photo.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70),
                 ),
               ),
             ],
@@ -58,35 +92,82 @@ class _GalleryAppState extends State<GalleryApp> {
 
   @override
   Widget build(BuildContext context) {
+    const accent = Color(0xFF00BCD4);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Gallery', style: TextStyle(color: Color(0xFF00BCD4))),
+        title: const Text('الاستوديو', style: TextStyle(color: accent)),
         backgroundColor: Colors.black,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)),
-          onPressed: () => Navigator.pop(context),
-        ),
+        actions: [
+          IconButton(
+            tooltip: 'إضافة صور من الجهاز',
+            onPressed: _isLoading ? null : _addPhotos,
+            icon: const Icon(Icons.add_photo_alternate_outlined, color: accent),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isLoading ? null : _addPhotos,
+        backgroundColor: accent,
+        foregroundColor: Colors.black,
+        child: const Icon(Icons.photo_library_outlined),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00BCD4)))
+          ? const Center(child: CircularProgressIndicator(color: accent))
           : _photos.isEmpty
-              ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.photo_library, size: 64, color: Colors.white24), SizedBox(height: 16), Text('No photos', style: TextStyle(color: Colors.white38))]))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.photo_library_outlined, size: 64, color: Colors.white38),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'اختر الصور من مكتبة الجهاز لعرضها هنا.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _addPhotos,
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('فتح الصور'),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
+                        ],
+                      ],
+                    ),
+                  ),
+                )
               : GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 1, crossAxisSpacing: 8, mainAxisSpacing: 8),
+                  padding: const EdgeInsets.all(8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 6,
+                    mainAxisSpacing: 6,
+                  ),
                   itemCount: _photos.length,
-                  itemBuilder: (ctx, i) {
-                    final photo = _photos[i];
-                    return GestureDetector(
-                      onTap: () => _viewPhoto(photo),
-                      child: Container(
-                        decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF00BCD4), Color(0xFF006064)]), borderRadius: BorderRadius.circular(12)),
-                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          const Icon(Icons.image, color: Colors.white, size: 40),
-                          const SizedBox(height: 8),
-                          Text(photo['name'], style: const TextStyle(color: Colors.white70, fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ]),
+                  itemBuilder: (context, index) {
+                    final photo = _photos[index];
+                    return Semantics(
+                      button: true,
+                      label: photo.name,
+                      child: GestureDetector(
+                        onTap: () => _viewPhoto(photo),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(photo.path),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const ColoredBox(
+                              color: Color(0xFF172126),
+                              child: Icon(Icons.broken_image_outlined, color: Colors.white54),
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
