@@ -51,17 +51,20 @@ class _AgentScreenState extends State<AgentScreen> {
           .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+      final nativeReady = await _runtime.orchestrator.ai.refreshLoadedState();
       if (mounted) setState(() {
         _candidateModel = candidates.isEmpty ? null : candidates.first;
-        _modelReady = _runtime.orchestrator.ai.isLoaded;
-        _modelName = _modelReady
-            ? _runtime.orchestrator.ai.currentModel?.split('/').last
+        _modelReady = nativeReady;
+        _modelName = nativeReady
+            ? (_runtime.orchestrator.ai.currentModel?.split('/').last ?? 'Local AI')
             : _candidateModel?.name;
-        _modelStatus = _candidateModel == null
-            ? (models.isEmpty
-                ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
-                : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
-            : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
+        _modelStatus = nativeReady
+            ? 'النموذج المحلي جاهز'
+            : _candidateModel == null
+                ? (models.isEmpty
+                    ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
+                    : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
+                : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
       });
     } catch (e) {
       if (mounted) setState(() {
