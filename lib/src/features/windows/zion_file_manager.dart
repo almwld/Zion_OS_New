@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../widgets/toast_bar.dart';
 
 class ZionFileManager extends StatefulWidget {
   const ZionFileManager({super.key});
@@ -28,7 +29,7 @@ class _ZionFileManagerState extends State<ZionFileManager> {
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()async{
         final name=c.text.trim();if(name.isEmpty)return;final path=_current.path+'/'+name;
         try{if(folder){await Directory(path).create();}else{await File(path).create();}if(ctx.mounted)Navigator.pop(ctx);await _load();}
-        catch(e){if(ctx.mounted)ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content:Text(e.toString())));}
+        catch(e){if(ctx.mounted)ToastBar.show(ctx, SnackBar(content:Text(e.toString())));}
       },child:const Text('Create'))],
     ));
     c.dispose();
@@ -40,7 +41,7 @@ class _ZionFileManagerState extends State<ZionFileManager> {
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:const Text('Cancel')),FilledButton(onPressed:()async{
         final name=c.text.trim();if(name.isEmpty)return;
         try{await item.rename(_current.path+'/'+name);if(ctx.mounted)Navigator.pop(ctx);await _load();}
-        catch(e){if(ctx.mounted)ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content:Text(e.toString())));}
+        catch(e){if(ctx.mounted)ToastBar.show(ctx, SnackBar(content:Text(e.toString())));}
       },child:const Text('Rename'))],
     ));
     c.dispose();
@@ -52,13 +53,13 @@ class _ZionFileManagerState extends State<ZionFileManager> {
     ));
     if(ok!=true)return;
     try{if(item is Directory){await item.delete(recursive:true);}else{await item.delete();}if(mounted)setState(()=>_selected=null);await _load();}
-    catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString())));}
+    catch(e){if(mounted)ToastBar.show(context, SnackBar(content:Text(e.toString())));}
   }
   Future<void> _copySelected() async {
     final path=_selected;if(path==null)return;
-    if(await FileSystemEntity.type(path)!=FileSystemEntityType.file){if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Copy currently supports files.')));return;}
+    if(await FileSystemEntity.type(path)!=FileSystemEntityType.file){if(mounted)ToastBar.show(context, const SnackBar(content:Text('Copy currently supports files.')));return;}
     final target=path+'.copy';
-    try{await File(path).copy(target);await _load();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(e.toString())));}
+    try{await File(path).copy(target);await _load();}catch(e){if(mounted)ToastBar.show(context, SnackBar(content:Text(e.toString())));}
   }
   @override Widget build(BuildContext context){
     return Scaffold(
