@@ -224,7 +224,7 @@ class AgentOrchestrator {
       }
 
       _state = AgentState.completed;
-      final report = await _report(clean, results);
+      final report = _actualResultsSummary(clean, results);
       await memory.remember(
         kind: 'agent-task',
         text: clean,
@@ -478,18 +478,17 @@ ${jsonEncode(relevantMemory)}
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
 
-  Future<String> _report(String task,List<StepResult> results) async {
-    final summary=results.asMap().entries.map((entry) {
+  String _actualResultsSummary(String task, List<StepResult> results) {
+    if (results.isEmpty) return 'لم تُنفّذ أي خطوة ولم تُنتج الأدوات مخرجات.';
+    final successCount = results.where((result) => result.success).length;
+    final lines = results.asMap().entries.map((entry) {
       final result = entry.value;
-      final details = result.data == null ? '' : '\nالمخرجات: ' + _stepOutput(result);
-      final status = result.success ? 'نجاح: ' + result.summary : 'فشل: ' + (result.error ?? result.summary);
-      return 'الخطوة ${entry.key + 1} (${result.duration.inMilliseconds} ms): ' + status + details;
-    }).join('\n');
-    if(await _nativeAiAvailable()){
-      final response=await ai.generate('المهمة: '+task+'\nالنتائج الفعلية:\n'+summary+'\nاكتب تقريراً مختصراً بالعربية يميز بين ما تم تنفيذه وما لم يتم، ولا تدّع نجاح خطوة فاشلة.',maxTokens:700,temperature:0.2);
-      if(!response.startsWith('ERROR:'))return response;
-    }
-    return summary;
+      final status = result.success ? 'نجاح' : 'فشل';
+      final details = result.data == null ? '' : '\nالمخرجات الفعلية: ${_stepOutput(result)}';
+      final error = result.error == null ? '' : '\nسبب الفشل: ${result.error}';
+      return '${entry.key + 1}. $status — ${result.summary}$error$details\nالمدة: ${result.duration.inMilliseconds} ms';
+    }).join('\n\n');
+    return 'المهمة: $task\nالخطوات الناجحة: $successCount/${results.length}\n\nنتائج التنفيذ الفعلية:\n$lines';
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
