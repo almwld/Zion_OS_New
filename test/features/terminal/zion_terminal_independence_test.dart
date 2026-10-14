@@ -79,11 +79,13 @@ void main() {
       expect(native, contains('"/data/data/com.zion.os/files/home:/root"'));
     });
 
-    test('background Userland bootstrap avoids platform-only path provider calls', () async {
+    test('Userland recovery stays offline and avoids platform-only path provider calls', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
       expect(installer, isNot(contains('path_provider')));
-      expect(installer, contains(r"Directory('${ZionBootstrap.base}/zion/bootstrap-downloads')"));
+      expect(installer, contains("const backupPath = '/storage/emulated/0/Download/termux_usr_backup'"));
+      expect(installer, contains('لم تتم محاولة الاتصال بالإنترنت'));
+      expect(installer, isNot(contains('_downloadFromSingleEndpoint')));
       expect(bootstrap, contains("'/system/bin/chmod'"));
       expect(bootstrap, contains('static Future<Directory?> _activate'));
       expect(bootstrap, contains('previousPrefix'));
