@@ -2,8 +2,8 @@
 
 ## Security
 - External `com.zion.os.ZION_API` is now protected at two layers:
-  1. Android signature-level component permission.
-  2. Per-install 32-byte token verified in `TrustVerifier`.
+  1. Per-install 32-byte token verified in `TrustVerifier`.
+- The launcher `MainActivity` must remain launchable by Android launchers; it must not be protected by a custom signature-level activity permission. A separate API component would be required to add that second boundary without breaking app launch.
 - The token is canonical in app-private SharedPreferences and mirrored to the app-private Userland token file so the in-app CLI can authenticate without exposing a credential to other apps.
 - `zion-api-dispatch` now supplies the token; unauthenticated intents are rejected before API dispatch.
 - Five native unit tests cover valid, wrong, missing, malformed-request-id, and malformed-method credentials.
