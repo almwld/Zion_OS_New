@@ -68,7 +68,7 @@ class AgentRuntime {
   }) async {
     final clean = task.trim();
     if (clean.isEmpty) return AgentResult.error(clean, 'المهمة فارغة.');
-    if (_active != null && orchestrator.isRunning) {
+    if (_active != null && (_starting || orchestrator.isRunning)) {
       return AgentResult.error(clean, 'هناك مهمة قيد التنفيذ.');
     }
 
