@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import '../../widgets/toast_bar.dart';
 
 class TranslatorApp extends StatefulWidget {
   const TranslatorApp({super.key});
@@ -102,7 +103,7 @@ class _TranslatorAppState extends State<TranslatorApp> {
   void _copyTranslation() {
     if (_translatedText.isEmpty) return;
     Clipboard.setData(ClipboardData(text: _translatedText));
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('تم نسخ الترجمة')),
     );
   }
