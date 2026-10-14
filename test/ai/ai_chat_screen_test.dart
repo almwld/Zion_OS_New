@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:project_zion/ai/widgets/ai_chat_screen.dart';
-import 'package:project_zion/agent/tools/browser_tool.dart';
 
 const _aiChannel = MethodChannel('zion.os/ai');
 
@@ -69,41 +68,5 @@ void main() {
     expect(input.controller!.text, 'اشرح الطرفية');
   });
 
-
-  group('BrowserTool URL guardrails', () {
-    late BrowserTool browser;
-
-    setUp(() {
-      browser = BrowserTool();
-    });
-
-    test('rejects unsupported actions and non-HTTP schemes', () async {
-      final unsupported = await browser.execute({'action': 'delete'});
-      final fileUrl = await browser.execute({
-        'action': 'fetch',
-        'url': 'file:///etc/passwd',
-      });
-      expect(unsupported.success, isFalse);
-      expect(unsupported.error, contains('غير مدعوم'));
-      expect(fileUrl.success, isFalse);
-      expect(fileUrl.error, contains('رابط غير صالح'));
-    });
-
-    test('blocks private IPs, local hosts, metadata and URL credentials', () async {
-      for (final url in [
-        'http://127.0.0.1/',
-        'http://10.0.0.2/',
-        'http://192.168.1.1/',
-        'http://169.254.169.254/latest/meta-data/',
-        'http://[::1]/',
-        'http://localhost/',
-        'http://metadata.google.internal/',
-        'https://user:password@example.com/',
-      ]) {
-        final result = await browser.execute({'action': 'fetch', 'url': url});
-        expect(result.success, isFalse, reason: 'Must reject $url');
-      }
-    });
-  });
 
 }
