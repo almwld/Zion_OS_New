@@ -40,7 +40,12 @@ class _AgentScreenState extends State<AgentScreen> {
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
-      setState(()=>_events.add(e));
+      setState(() {
+        _events.add(e);
+        if (_events.length > 150) {
+          _events.removeRange(0, _events.length - 150);
+        }
+      });
       _scrollEnd();
     });
     unawaited(_restoreMessages());
@@ -89,6 +94,13 @@ class _AgentScreenState extends State<AgentScreen> {
       await prefs.setString(_historyKey, jsonEncode(recent));
     } catch (_) {
       // The agent remains usable when local history persistence is unavailable.
+    }
+  }
+
+  void _appendMessage(Map<String, String> message) {
+    _messages.add(message);
+    if (_messages.length > 100) {
+      _messages.removeRange(0, _messages.length - 100);
     }
   }
 
@@ -178,7 +190,7 @@ class _AgentScreenState extends State<AgentScreen> {
     setState(() {
       _submitting = true;
       _input.clear();
-      _messages.add({'role': 'user', 'text': task});
+      _appendMessage({'role': 'user', 'text': task});
       _result = null;
     });
     await _persistMessages();
@@ -188,7 +200,7 @@ class _AgentScreenState extends State<AgentScreen> {
       if (!mounted) return;
       setState(() {
         _result = result;
-        _messages.add({
+        _appendMessage({
           'role': 'assistant',
           'text': _visibleResultSummary(result),
         });
@@ -198,7 +210,7 @@ class _AgentScreenState extends State<AgentScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _messages.add({'role': 'assistant', 'text': 'تعذر إكمال المهمة: $error'});
+        _appendMessage({'role': 'assistant', 'text': 'تعذر إكمال المهمة: $error'});
       });
       await _persistMessages();
     } finally {

@@ -9,7 +9,7 @@ class LlamaModel {
   factory LlamaModel.fromMap(Map<dynamic, dynamic> map) => LlamaModel(
     name: map['name']?.toString() ?? 'GGUF',
     path: map['path']?.toString() ?? '',
-    sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
+    sizeBytes: num.tryParse(map['sizeBytes']?.toString() ?? '')?.toInt() ?? 0,
     readable: map['readable'] == true,
   );
 }
@@ -54,9 +54,16 @@ class LlamaService {
   /// Discover every readable GGUF exposed by the Android bridge and choose a
   /// practical chat/instruct model automatically. Preference is given to
   /// instruction/chat-tuned names, then to a moderate model size.
-  Future<LlamaModel?> autoLoadBestModel({int threads = 4}) async {
+  Future<LlamaModel?> autoLoadBestModel({
+    int threads = 2,
+    int maxModelBytes = 2 * 1024 * 1024 * 1024,
+  }) async {
     final models = (await discoverModels())
-        .where((m) => m.readable && m.path.isNotEmpty)
+        .where((m) =>
+            m.readable &&
+            m.path.isNotEmpty &&
+            m.sizeBytes > 0 &&
+            m.sizeBytes <= maxModelBytes)
         .toList();
     if (models.isEmpty) return null;
 
@@ -70,11 +77,11 @@ class LlamaService {
       if (n.contains('llama')) s += 45;
       if (n.contains('tinyllama')) s += 35;
       if (n.contains('base')) s -= 25;
-      // Prefer models in a mobile-friendly range without making size a hard
-      // requirement; the native loader remains the final compatibility check.
+      // Oversized models are filtered before scoring to reduce avoidable
+      // low-memory process deaths on Android devices.
       final gb = m.sizeBytes / (1024 * 1024 * 1024);
-      if (gb >= 1.0 && gb <= 5.0) s += 25;
-      if (gb > 8.0) s -= 20;
+      if (gb >= 0.5 && gb <= 2.0) s += 25;
+      if (gb > 1.5) s -= 10;
       return s;
     }
 
@@ -92,7 +99,7 @@ class LlamaService {
 
   Future<bool> loadModel(
     String path, {
-    int threads = 4,
+    int threads = 2,
     String? loraPath,
     double loraScale = 1.0,
   }) async {
@@ -101,10 +108,14 @@ class LlamaService {
       _modelPath = null;
       return false;
     }
+    // The native bridge frees its old model before loading a replacement.
+    // Reset cached state before the call to avoid stale readiness on failures.
+    _loaded = false;
+    _modelPath = null;
     try {
       final ok = await _channel.invokeMethod<bool>('loadModel', {
         'path': path,
-        'threads': threads.clamp(1, 8),
+        'threads': threads.clamp(1, 2).toInt(),
         if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
         'loraScale': loraScale > 0 ? loraScale : 1.0,
       }) ?? false;
@@ -141,13 +152,23 @@ class LlamaService {
     try {
       return (await _channel.invokeMethod<String>('generate', {
         'prompt': prompt,
-        'maxTokens': maxTokens.clamp(1, 2048),
-        'temperature': temperature.clamp(0.0, 2.0),
+        'maxTokens': maxTokens.clamp(1, 256).toInt(),
+        'temperature': temperature.clamp(0.0, 1.5).toDouble(),
       })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
     } on PlatformException catch (e) {
       return 'ERROR: تعذر تشغيل النموذج المحلي: ${e.message ?? e.code}';
     } on MissingPluginException {
       return 'ERROR: محرك الذكاء الاصطناعي المحلي غير متاح على هذا البناء.';
+    }
+  }
+
+  Future<bool> cancelGeneration() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelGeneration') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 

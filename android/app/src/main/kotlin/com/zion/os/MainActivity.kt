@@ -177,6 +177,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(ok) }
                         }
                     }
+                    "cancelGeneration" -> {
+                        // This JNI method only sets an atomic flag; do not queue it
+                        // behind inference on aiExecutor or cancellation would be ineffective.
+                        val cancelled = try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false }
+                        result.success(cancelled)
+                    }
                     "generate" -> {
                         val prompt = call.argument<String>("prompt") ?: ""
                         val maxTokens = call.argument<Int>("maxTokens") ?: 512
@@ -192,7 +198,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(null) }
                         }
                     }
-                    "isLoaded" -> result.success(try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false })
+                    "isLoaded" -> aiExecutor.execute {
+                        // Native readiness takes g_mutex; never block the Android UI
+                        // thread while model loading or inference owns that lock.
+                        val loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                        runOnUiThread { result.success(loaded) }
+                    }
                     "version" -> result.success(try { llamaBridge.nativeVersion() } catch (_: Throwable) { "unavailable" })
                     else -> result.notImplemented()
                 }

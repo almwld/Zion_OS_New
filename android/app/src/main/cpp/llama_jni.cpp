@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -16,6 +17,19 @@ llama_model * g_model = nullptr;
 llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
 llama_adapter_lora * g_lora = nullptr;
+std::atomic<bool> g_generation_active{false};
+std::atomic<bool> g_cancel_requested{false};
+
+struct GenerationStateGuard {
+    GenerationStateGuard() {
+        g_cancel_requested.store(false, std::memory_order_relaxed);
+        g_generation_active.store(true, std::memory_order_release);
+    }
+    ~GenerationStateGuard() {
+        g_generation_active.store(false, std::memory_order_release);
+        g_cancel_requested.store(false, std::memory_order_relaxed);
+    }
+};
 
 void freeLocked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
@@ -107,6 +121,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         env->ReleaseStringUTFChars(prompt, text);
         return env->NewStringUTF("ERROR: Model not loaded");
     }
+    GenerationStateGuard generationState;
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
@@ -131,15 +146,23 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         return env->NewStringUTF("ERROR: Prompt exceeds the safe local context window; shorten the message or clear chat history.");
     }
 
-    if (temperature > 0.0f) {
-        llama_sampler_free(g_sampler);
-        auto samplerParams = llama_sampler_chain_default_params();
-        g_sampler = llama_sampler_chain_init(samplerParams);
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(temperature));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    // Rebuild the sampler for every request so a temperature of zero does not
+    // accidentally reuse the previous request's sampling configuration. The
+    // current llama.cpp temperature sampler expects a positive value, so map
+    // zero to a very low deterministic-like temperature.
+    llama_sampler_free(g_sampler);
+    g_sampler = nullptr;
+    auto samplerParams = llama_sampler_chain_default_params();
+    g_sampler = llama_sampler_chain_init(samplerParams);
+    if (!g_sampler) {
+        LOGE("Unable to initialize request sampler");
+        return env->NewStringUTF("ERROR: Unable to initialize local sampler.");
     }
+    const float safeTemperature = std::clamp(static_cast<float>(temperature), 0.05f, 1.5f);
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(safeTemperature));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     // n_batch is deliberately small on phones. Never submit the whole prompt
     // as one batch: long Arabic/system prompts can exceed n_batch and cause
@@ -159,10 +182,14 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     std::string output;
     // Bound generation to both the remaining context and a phone-safe limit.
     const int remaining = static_cast<int>(nCtx - tokens.size() - 1);
-    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 64), remaining);
+    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 256), remaining);
     LOGE("Prompt tokenized: %d tokens; generation limit: %d", nTokens, limit);
 
     for (int i = 0; i < limit; ++i) {
+        if (g_cancel_requested.load(std::memory_order_acquire)) {
+            LOGE("Inference cancelled after %d generated tokens", i);
+            break;
+        }
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
 
@@ -179,6 +206,13 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     }
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
     return env->NewStringUTF(output.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_zion_os_ai_LlamaBridge_nativeCancelGeneration(JNIEnv *, jobject) {
+    if (!g_generation_active.load(std::memory_order_acquire)) return JNI_FALSE;
+    g_cancel_requested.store(true, std::memory_order_release);
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL

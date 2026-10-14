@@ -11,6 +11,9 @@ abstract class AgentTool {
   Set<AgentPermission> get permissions => const {AgentPermission.readOnly};
   Set<AgentPermission> requiredPermissions(Map<String, dynamic> params) => permissions;
   bool requiresApproval(Map<String, dynamic> params) => false;
+
+  /// Opt in only for tools whose network actions are strictly read-only GETs.
+  bool get supportsReadOnlyWebRetrieval => false;
   bool supports(Map<String, dynamic> params) => true;
 
   Future<StepResult> execute(Map<String, dynamic> params);

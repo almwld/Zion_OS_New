@@ -37,15 +37,15 @@ class ReviewPolicy extends AgentPolicy {
       );
 }
 
-class SlowHttpTool extends AgentTool {
+class SlowAITool extends AgentTool {
   final Duration delay;
-  SlowHttpTool(this.delay);
+  SlowAITool(this.delay);
 
   @override
-  String get name => 'http';
+  String get name => 'ai';
 
   @override
-  String get description => 'Deterministic slow HTTP test tool.';
+  String get description => 'Deterministic delayed test tool.';
 
   @override
   Map<String, dynamic> get parameters => const {};
@@ -57,12 +57,14 @@ class SlowHttpTool extends AgentTool {
   }
 }
 
-class NetworkHttpTool extends AgentTool {
-  @override
-  String get name => 'http';
+class NetworkBrowserTool extends AgentTool {
+  Map<String, dynamic>? lastParams;
 
   @override
-  String get description => 'Deterministic network permission test tool.';
+  String get name => 'browser';
+
+  @override
+  String get description => 'Deterministic read-only web permission test tool.';
 
   @override
   Map<String, dynamic> get parameters => const {};
@@ -72,8 +74,10 @@ class NetworkHttpTool extends AgentTool {
       const {AgentPermission.network};
 
   @override
-  Future<StepResult> execute(Map<String, dynamic> params) async =>
-      StepResult.success('network tool completed');
+  Future<StepResult> execute(Map<String, dynamic> params) async {
+    lastParams = Map<String, dynamic>.from(params);
+    return StepResult.success('network tool completed');
+  }
 }
 
 void main() {
@@ -94,19 +98,23 @@ void main() {
     orchestrator.dispose();
   });
 
-  test('Tool-declared network permission requires approval even for a read-only plan', () async {
+  test('read-only web retrieval respects the registered tool permission contract', () async {
+    final browser = NetworkBrowserTool();
     final orchestrator = AgentOrchestrator(
-      tools: ToolRegistry(customTools: [NetworkHttpTool()]),
+      tools: ToolRegistry(customTools: [browser]),
       policy: const AgentPolicy(),
     );
     final future = orchestrator.executeTask('ابحث عن معلومات');
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(orchestrator.state, AgentState.waitingApproval);
-    expect(orchestrator.isWaitingForApproval, isTrue);
-    orchestrator.denyPendingStep();
+    orchestrator.approvePendingStep();
     final result = await future;
-    expect(result.success, isFalse);
-    expect(result.error, contains('تم رفض تنفيذ الخطوة'));
+    expect(result.success, isTrue);
+    expect(result.steps, hasLength(1));
+    expect(result.steps.single.summary, 'network tool completed');
+    expect(browser.lastParams?['action'], 'search');
+    expect(browser.lastParams?['query'], 'معلومات');
+    expect(orchestrator.state, AgentState.completed);
     orchestrator.dispose();
   });
 
@@ -123,6 +131,27 @@ void main() {
     expect(result.success, isFalse);
     expect(result.error, contains('تم رفض تنفيذ الخطوة'));
     orchestrator.dispose();
+  });
+
+  test('cancellation while waiting for approval releases the pending wait', () async {
+    final token = CancellationToken();
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [ReviewTool()]),
+      policy: ReviewPolicy(),
+    );
+    final future = orchestrator.executeTask(
+      'حلل المهمة',
+      cancellationToken: token,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    token.cancel();
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, 'تم إلغاء المهمة.');
+    expect(orchestrator.state, AgentState.cancelled);
+    orchestrator.dispose();
+    await token.dispose();
   });
 
   test('Orchestrator denies a pending reviewed step', () async {
@@ -184,13 +213,13 @@ void main() {
   });
 
   test('Orchestrator enforces the central step timeout', () async {
-    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 250))]);
+    final tools = ToolRegistry(customTools: [SlowAITool(const Duration(milliseconds: 250))]);
     final orchestrator = AgentOrchestrator(
       tools: tools,
       policy: const AgentPolicy(),
     );
     final result = await orchestrator.executeTask(
-      'search timeout test',
+      'حلل مهمة timeout test',
       stepTimeout: const Duration(milliseconds: 25),
     );
     expect(result.success, isFalse);
@@ -201,13 +230,13 @@ void main() {
   });
 
   test('AgentRuntime cancellation interrupts an active orchestration', () async {
-    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 500))]);
+    final tools = ToolRegistry(customTools: [SlowAITool(const Duration(milliseconds: 500))]);
     final runtime = AgentRuntime(
       orchestrator: AgentOrchestrator(tools: tools),
     );
 
     final future = runtime.run(
-      'search cancellation test',
+      'حلل مهمة cancellation test',
       stepTimeout: const Duration(seconds: 2),
     );
     await Future<void>.delayed(const Duration(milliseconds: 40));

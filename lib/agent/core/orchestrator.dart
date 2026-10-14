@@ -67,15 +67,26 @@ class AgentOrchestrator {
         // effective permission from the registered tool implementation too.
         final requiredPermissions = tool.requiredPermissions(params);
         final toolRequiresApproval = tool.requiresApproval(params);
+        // Read-only web retrieval is a normal agent capability. Mutations and
+        // local/process side effects still require explicit approval.
+        final isReadOnlyWeb = tool.supportsReadOnlyWebRetrieval &&
+            (params['action']?.toString() == 'search' ||
+                params['action']?.toString() == 'fetch');
         final requiresSensitiveApproval =
-            requiredPermissions.any((permission) => permission != AgentPermission.readOnly) ||
+            requiredPermissions.any((permission) =>
+                permission == AgentPermission.localWrite ||
+                permission == AgentPermission.process ||
+                permission == AgentPermission.externalSideEffect ||
+                (permission == AgentPermission.network && !isReadOnlyWeb)) ||
             toolRequiresApproval;
+        final declaredReview =
+            (step.risk == AgentRisk.review && !isReadOnlyWeb) ||
+            step.requiresApproval ||
+            (step.permission != AgentPermission.readOnly &&
+                !(isReadOnlyWeb && step.permission == AgentPermission.network));
         final decision = step.risk == AgentRisk.blocked
             ? const AgentPolicyDecision(risk: AgentRisk.blocked, reason: 'الخطوة مصنفة محظورة من مخطط Zion Agent.', requiresApproval: false)
-            : (step.risk == AgentRisk.review ||
-                    step.permission != AgentPermission.readOnly ||
-                    step.requiresApproval ||
-                    requiresSensitiveApproval)
+            : (declaredReview || requiresSensitiveApproval)
                 ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
                 : policyDecision;
         _log('[ خطوة ${i + 1}/${plan.steps.length}] ${step.description}');
@@ -260,16 +271,29 @@ class AgentOrchestrator {
     String description,
   ) async {
     final completer = Completer<bool>();
+    StreamSubscription<void>? cancellationSubscription;
     _approvalCompleter = completer;
     try {
       if (cancellationToken == null) return await completer.future;
+      if (cancellationToken.isCancelled) {
+        throw const AgentCancelledException();
+      }
+      final cancelled = Completer<bool>();
+      cancellationSubscription = cancellationToken.onCancel.listen((_) {
+        if (!cancelled.isCompleted) {
+          cancelled.completeError(const AgentCancelledException());
+        }
+      });
+      // Close the small race between the pre-check and stream subscription.
+      if (cancellationToken.isCancelled && !cancelled.isCompleted) {
+        cancelled.completeError(const AgentCancelledException());
+      }
       return await Future.any<bool>([
         completer.future,
-        cancellationToken.onCancel.first.then<bool>((_) {
-          throw const AgentCancelledException();
-        }),
+        cancelled.future,
       ]);
     } finally {
+      await cancellationSubscription?.cancel();
       if (identical(_approvalCompleter, completer)) {
         _approvalCompleter = null;
       }
@@ -395,7 +419,24 @@ ${jsonEncode(relevantMemory)}
         ),
       ]);
     }
-    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'البحث عن المعلومات عبر الويب',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)})]);
+    if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
+      final query = task.replaceFirst(
+        RegExp(
+          r'^(?:من فضلك\s*)?(?:(?:ابحث|بحث)\s*(?:عن\s*)?|search\s*(?:for\s*)?|تحقق من\s*|آخر الأخبار\s*)',
+          caseSensitive: false,
+        ),
+        '',
+      ).trim();
+      return AgentPlan(task: task, steps: [
+        AgentStep(
+          id: '1',
+          description: 'البحث الفعلي على الويب عن: ${query.isEmpty ? task : query}',
+          tool: 'browser',
+          params: {'action': 'search', 'query': query.isEmpty ? task : query},
+          permission: AgentPermission.network,
+        ),
+      ]);
+    }
     if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
     return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
   }

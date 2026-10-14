@@ -12,6 +12,11 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(
     return env->NewStringUTF("ERROR: Local AI engine is available only on ARM64.");
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_zion_os_ai_LlamaBridge_nativeCancelGeneration(JNIEnv*, jobject) {
+    return JNI_FALSE;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_zion_os_ai_LlamaBridge_nativeFreeModel(JNIEnv*, jobject) {}
 
