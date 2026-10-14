@@ -6,6 +6,46 @@ import 'package:flutter/material.dart';
 import '../ai_agent.dart';
 import '../llama_service.dart';
 
+class _LocalChatSession {
+  final String id;
+  String title;
+  DateTime updatedAt;
+  final List<AgentMessage> messages;
+
+  _LocalChatSession({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+    List<AgentMessage>? messages,
+  }) : messages = messages ?? <AgentMessage>[];
+
+  factory _LocalChatSession.fromJson(dynamic value) {
+    if (value is! Map) {
+      throw const FormatException('Invalid local chat session');
+    }
+    final rawMessages = value['messages'];
+    final parsed = rawMessages is List
+        ? rawMessages.whereType<Map>().map((item) => AgentMessage(
+            role: item['role'] == 'user' ? 'user' : 'assistant',
+            content: (item['content'] ?? '').toString(),
+          )).where((m) => m.content.isNotEmpty).toList()
+        : <AgentMessage>[];
+    return _LocalChatSession(
+      id: (value['id'] ?? '').toString(),
+      title: (value['title'] ?? 'محادثة جديدة').toString(),
+      updatedAt: DateTime.tryParse((value['updatedAt'] ?? '').toString()) ?? DateTime.now(),
+      messages: parsed.length > 40 ? parsed.sublist(parsed.length - 40) : parsed,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'title': title,
+    'updatedAt': updatedAt.toIso8601String(),
+    'messages': messages.map((m) => {'role': m.role, 'content': m.content}).toList(),
+  };
+}
+
 class AIChatScreen extends StatefulWidget {
   final AgentRole role;
   const AIChatScreen({super.key, this.role = AgentRole.terminalAssistant});
@@ -17,6 +57,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _messages = <AgentMessage>[];
+  final List<_LocalChatSession> _sessions = <_LocalChatSession>[];
+  String? _activeSessionId;
   List<LlamaModel> _availableModels = <LlamaModel>[];
   LlamaModel? _selected;
   bool _loading = true;
@@ -26,6 +68,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   double _temperature = 0.25;
   int _maxTokens = 128;
   static const _historyKey = 'zion_offline_ai_messages_v1';
+  static const _sessionsKey = 'zion_offline_ai_sessions_v1';
+  static const _activeSessionKey = 'zion_offline_ai_active_session_v1';
   static const _temperatureKey = 'zion_offline_ai_temperature_v1';
   static const _maxTokensKey = 'zion_offline_ai_max_tokens_v1';
   static const _modelPathKey = 'zion_offline_ai_model_path_v1';
@@ -73,31 +117,162 @@ class _AIChatScreenState extends State<AIChatScreen> {
     _temperature = (prefs.getDouble(_temperatureKey) ?? 0.25).clamp(0.0, 1.2).toDouble();
     _maxTokens = (prefs.getInt(_maxTokensKey) ?? 128).clamp(32, 256).toInt();
     _preferredModelPath = prefs.getString(_modelPathKey);
-    final raw = prefs.getString(_historyKey);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      _messages.addAll(decoded.whereType<Map>().take(100).map((item) => AgentMessage(
-        role: item['role'] == 'user' ? 'user' : 'assistant',
-        content: (item['content'] ?? '').toString(),
-      )).where((m) => m.content.isNotEmpty));
-      _agent.restoreHistory(_messages);
-    } catch (_) {
-      await prefs.remove(_historyKey);
+
+    final sessionsRaw = prefs.getString(_sessionsKey);
+    if (sessionsRaw != null && sessionsRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(sessionsRaw);
+        if (decoded is List) {
+          _sessions
+            ..clear()
+            ..addAll(decoded.map(_LocalChatSession.fromJson)
+                .where((session) => session.id.isNotEmpty));
+        }
+      } catch (_) {
+        _sessions.clear();
+        await prefs.remove(_sessionsKey);
+      }
     }
+
+    final preferredId = prefs.getString(_activeSessionKey);
+    _LocalChatSession? active;
+    for (final session in _sessions) {
+      if (session.id == preferredId) {
+        active = session;
+        break;
+      }
+    }
+    if (active == null && _sessions.isNotEmpty) {
+      _sessions.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      active = _sessions.first;
+    }
+
+    if (active != null) {
+      _activeSessionId = active.id;
+      _messages.addAll(active.messages);
+      _agent.restoreHistory(_messages);
+      return;
+    }
+
+    // Migrate the previous single-conversation format without losing messages.
+    final raw = prefs.getString(_historyKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          _messages.addAll(decoded.whereType<Map>().take(100).map((item) => AgentMessage(
+            role: item['role'] == 'user' ? 'user' : 'assistant',
+            content: (item['content'] ?? '').toString(),
+          )).where((m) => m.content.isNotEmpty));
+        }
+      } catch (_) {
+        await prefs.remove(_historyKey);
+      }
+    }
+    _agent.restoreHistory(_messages);
+    _activeSessionId = 'chat-${DateTime.now().microsecondsSinceEpoch}';
+    _sessions.add(_LocalChatSession(
+      id: _activeSessionId!,
+      title: _titleForMessages(_messages),
+      updatedAt: DateTime.now(),
+      messages: List<AgentMessage>.of(_messages),
+    ));
+  }
+
+  String _titleForMessages(List<AgentMessage> messages) {
+    final first = messages.where((m) => m.role == 'user').firstOrNull;
+    if (first == null) return 'محادثة جديدة';
+    final text = first.content.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    return text.length > 34 ? '${text.substring(0, 34)}…' : text;
   }
 
   Future<void> _persistConversation() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final recent = _messages.length > 100 ? _messages.sublist(_messages.length - 100) : _messages;
+      final recent = _messages.length > 40 ? _messages.sublist(_messages.length - 40) : _messages;
+      final id = _activeSessionId ?? 'chat-${DateTime.now().microsecondsSinceEpoch}';
+      _activeSessionId = id;
+      final index = _sessions.indexWhere((session) => session.id == id);
+      final session = _LocalChatSession(
+        id: id,
+        title: _titleForMessages(_messages),
+        updatedAt: DateTime.now(),
+        messages: List<AgentMessage>.of(recent),
+      );
+      if (index >= 0) {
+        _sessions[index] = session;
+      } else {
+        _sessions.add(session);
+      }
+      _sessions.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (_sessions.length > 12) {
+        _sessions.removeRange(12, _sessions.length);
+      }
+      await prefs.setString(_sessionsKey, jsonEncode(_sessions.map((s) => s.toJson()).toList()));
+      await prefs.setString(_activeSessionKey, id);
+      // Keep the legacy key in sync for downgrade compatibility.
       await prefs.setString(_historyKey, jsonEncode(
         recent.map((m) => {'role': m.role, 'content': m.content}).toList(),
       ));
     } catch (_) {
       if (mounted) setState(() => _error = 'تعذر حفظ سجل المحادثة على الجهاز.');
     }
+  }
+
+  Future<void> _newChat() async {
+    if (_generating || _loadingModel) return;
+    await _persistConversation();
+    final id = 'chat-${DateTime.now().microsecondsSinceEpoch}';
+    setState(() {
+      _activeSessionId = id;
+      _messages.clear();
+      _agent.clearHistory();
+      _error = null;
+    });
+    await _persistConversation();
+  }
+
+  Future<void> _showSessions() async {
+    if (_generating || _loadingModel) return;
+    final selectedId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.65,
+          child: Column(children: [
+            const ListTile(title: Text('المحادثات المحفوظة')),
+            Expanded(
+              child: ListView(
+                children: _sessions.map((session) => ListTile(
+                  leading: Icon(session.id == _activeSessionId ? Icons.chat_bubble : Icons.chat_bubble_outline),
+                  title: Text(session.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${session.messages.length} رسالة'),
+                  selected: session.id == _activeSessionId,
+                  onTap: () => Navigator.pop(sheetContext, session.id),
+                )).toList(),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (selectedId == null || selectedId == _activeSessionId || !mounted) return;
+    await _persistConversation();
+    final session = _sessions.where((s) => s.id == selectedId).firstOrNull;
+    if (session == null) return;
+    setState(() {
+      _activeSessionId = session.id;
+      _messages
+        ..clear()
+        ..addAll(session.messages);
+      _agent.restoreHistory(_messages);
+      _error = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_activeSessionKey, session.id);
+    await _persistConversation();
+    _scrollToEnd();
   }
 
   void _scrollToEnd() {
@@ -117,8 +292,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _agent.clearHistory();
       _error = null;
     });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_historyKey);
+    _activeSessionId = _activeSessionId ?? 'chat-${DateTime.now().microsecondsSinceEpoch}';
+    await _persistConversation();
   }
 
   Future<void> _loadSelected() async {
@@ -241,7 +416,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _newChat, tooltip: 'محادثة جديدة', icon: const Icon(Icons.add_comment_outlined)), IconButton(onPressed: _showSessions, tooltip: 'المحادثات المحفوظة', icon: const Icon(Icons.history)), IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
         if (_availableModels.length > 1) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: DropdownButton<LlamaModel>(isExpanded: true, value: _selected, items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(), onChanged: _loadingModel || _generating ? null : (m) async {
