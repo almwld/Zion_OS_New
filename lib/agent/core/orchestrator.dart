@@ -8,7 +8,7 @@ import 'agent_policy.dart';
 import 'cancellation_token.dart';
 
 class AgentOrchestrator {
-  final ToolRegistry tools;
+  late final ToolRegistry tools;
   final AgentPolicy policy;
   final LongTermAIMemory memory;
   final LlamaService ai;
@@ -21,7 +21,9 @@ class AgentOrchestrator {
   static const int defaultMaxRecoveryAttempts = 2;
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai})
-      :tools=tools??ToolRegistry(),policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService();
+      :policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService() {
+    this.tools = tools ?? ToolRegistry(ai: this.ai);
+  }
 
   Stream<AgentEvent> get events=>_events.stream;
   AgentState get state=>_state;
@@ -39,31 +41,32 @@ class AgentOrchestrator {
     if (_running) return AgentResult.error(clean, 'Zion Agent مشغول بمهمة أخرى.');
     _running = true;
     _state = AgentState.planning;
-    _log('🎯 بدء المهمة: $clean');
+    _log('بدء المهمة: $clean');
     final results = <StepResult>[];
     try {
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean);
-      _log('📋 الخطة: ${plan.steps.length} خطوة.');
+      _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
-        _log('🔐 تم تجاهل خيار تجاوز الموافقات العام؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
+        _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
       }
       _state = AgentState.executing;
 
       for (var i = 0; i < plan.steps.length; i++) {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
+        final params = _resolveParams(step.params, results);
         final tool = tools.getTool(step.tool);
         if (tool == null) {
           final r = StepResult.failure('الأداة غير متاحة: ${step.tool}');
           results.add(r);
           return AgentResult(success: false, task: clean, steps: results, error: r.error);
         }
-        final policyDecision = policy.evaluate(tool: step.tool, params: step.params);
+        final policyDecision = policy.evaluate(tool: step.tool, params: params);
         // Never trust the model's declared permission alone: derive the
         // effective permission from the registered tool implementation too.
-        final requiredPermissions = tool.requiredPermissions(step.params);
-        final toolRequiresApproval = tool.requiresApproval(step.params);
+        final requiredPermissions = tool.requiredPermissions(params);
+        final toolRequiresApproval = tool.requiresApproval(params);
         final requiresSensitiveApproval =
             requiredPermissions.any((permission) => permission != AgentPermission.readOnly) ||
             toolRequiresApproval;
@@ -75,19 +78,19 @@ class AgentOrchestrator {
                     requiresSensitiveApproval)
                 ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
                 : policyDecision;
-        _log('▶️ [${i + 1}/${plan.steps.length}] ${step.description}');
+        _log('[ خطوة ${i + 1}/${plan.steps.length}] ${step.description}');
 
         if (decision.risk == AgentRisk.blocked) {
           final r = StepResult.failure(decision.reason);
           results.add(r);
-          _log('⛔ ${decision.reason}');
+          _log('محظور: ${decision.reason}');
           return AgentResult(success: false, task: clean, steps: results, error: decision.reason);
         }
 
         if (decision.requiresApproval) {
           _state = AgentState.waitingApproval;
           _pendingApprovalStepId = step.id;
-          _log('🔐 بانتظار موافقتك: ${decision.reason}');
+          _log('بانتظار موافقتك: ${decision.reason}');
           final approved = await _waitForApproval(
             cancellationToken,
             step.description,
@@ -97,7 +100,7 @@ class AgentOrchestrator {
             _state = AgentState.failed;
             final r = StepResult.failure('تم رفض تنفيذ الخطوة: ${step.description}');
             results.add(r);
-            _log('🚫 تم رفض الخطوة.');
+            _log('تم رفض الخطوة.');
             return AgentResult(
               success: false,
               task: clean,
@@ -106,14 +109,14 @@ class AgentOrchestrator {
             );
           }
           _state = AgentState.executing;
-          _log('✅ تمت الموافقة على الخطوة.');
+          _log('تمت الموافقة على الخطوة.');
         }
 
         cancellationToken?.throwIfCancelled();
         final started = DateTime.now();
         StepResult r;
         try {
-          r = await tool.execute(step.params).timeout(stepTimeout);
+          r = await tool.execute(params).timeout(stepTimeout);
         } on TimeoutException {
           r = StepResult.failure(
             'انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية.',
@@ -124,9 +127,9 @@ class AgentOrchestrator {
         await memory.remember(
           kind: 'agent-step',
           text: step.description,
-          metadata: {'tool': step.tool, 'success': r.success},
+          metadata: {'tool': step.tool, 'success': r.success, 'stepId': step.id},
         );
-        _log(r.success ? '  ✅ ${r.summary}' : '  ❌ ${r.error ?? r.summary}');
+        _log(r.success ? 'نجاح: ${r.summary}' : 'فشل: ${r.error ?? r.summary}');
 
         if (!r.success) {
           _state = AgentState.evaluating;
@@ -150,7 +153,7 @@ class AgentOrchestrator {
             // Recovery is automatic only for explicitly safe, read-only steps.
             // A model-generated alternative must not bypass the approval gate.
             if (d.risk != AgentRisk.safe || d.requiresApproval || altNeedsApproval) {
-              _log('🔐 البديل يحتاج موافقة أو محظور.');
+              _log('البديل يحتاج موافقة أو محظور.');
               break;
             }
             cancellationToken?.throwIfCancelled();
@@ -166,7 +169,7 @@ class AgentOrchestrator {
             }
             results.add(ar);
             recovered = ar.success;
-            _log('🔄 المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
+            _log('المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
           }
           if (!recovered) {
             _state = AgentState.failed;
@@ -183,15 +186,15 @@ class AgentOrchestrator {
 
       _state = AgentState.completed;
       final report = await _report(clean, results);
-      _log('✅ اكتملت المهمة.');
+      _log('اكتملت المهمة.');
       return AgentResult(success: true, task: clean, steps: results, report: report);
     } on AgentCancelledException {
       _state = AgentState.cancelled;
-      _log('⏹️ تم إلغاء المهمة.');
+      _log('تم إلغاء المهمة.');
       return AgentResult(success: false, task: clean, steps: results, error: 'تم إلغاء المهمة.');
     } catch (e) {
       _state = AgentState.failed;
-      _log('❌ ${e.toString()}');
+      _log('خطأ: ${e.toString()}');
       return AgentResult(success: false, task: clean, steps: results, error: e.toString());
     } finally {
       _running = false;
@@ -244,7 +247,8 @@ class AgentOrchestrator {
     await memory.load();
     if(await _nativeAiAvailable()){
       final prompt='''أنت مخطط Zion Agent. المهمة: $task
-أنشئ خطوات عملية باستخدام الأدوات: ai,data,file,http,shell,python.
+أنشئ خطة قابلة للتنفيذ بخطوات واضحة باستخدام الأدوات المتاحة: ai,browser,data,file,http,shell,python.
+إذا احتاجت خطوة إلى نتيجة خطوة سابقة، ضع {{previous_result}} أو {{step_1}} داخل قيمة النص في params. لا تخترع أسماء أدوات أو معاملات غير مدعومة.
 لا تستخدم أدوات هجومية أو استغلال أو تجاوز حماية.
 لكل خطوة حدّد permission من: readOnly, localWrite, network, process, externalSideEffect، وrisk من: safe, review, blocked، وحدد requiresApproval عند الحاجة.
 أعد JSON فقط بالشكل {"steps":[{"id":"1","description":"...","tool":"...","params":{},"requiresEvaluation":false,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
@@ -287,7 +291,7 @@ class AgentOrchestrator {
         ),
       ]);
     }
-    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)}),AgentStep(id:'2',description:'تلخيص النتائج',tool:'ai',params:{'prompt':'لخّص نتائج البحث التالية للمهمة: '+task},requiresEvaluation:true)]);
+    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات عبر الويب',tool:'browser',params:{'action':'search','query':task},permission:AgentPermission.network,risk:AgentRisk.review,requiresApproval:true)]);
     if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
     return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
   }
@@ -297,6 +301,31 @@ class AgentOrchestrator {
     final command=match?.group(1)?.trim();
     if(command==null||command.isEmpty)return null;
     return command;
+  }
+
+  Map<String, dynamic> _resolveParams(Map<String, dynamic> input, List<StepResult> results) {
+    final output = <String, dynamic>{};
+    for (final entry in input.entries) {
+      final value = entry.value;
+      if (value is String) {
+        var resolved = value.replaceAll('{{previous_result}}',
+            results.isEmpty ? '' : _stepOutput(results.last));
+        resolved = resolved.replaceAllMapped(RegExp(r'\{\{step_(\d+)\}\}'), (match) {
+          final index = int.tryParse(match.group(1) ?? '') ?? 0;
+          return index > 0 && index <= results.length ? _stepOutput(results[index - 1]) : '';
+        });
+        output[entry.key] = resolved;
+      } else {
+        output[entry.key] = value;
+      }
+    }
+    return output;
+  }
+
+  String _stepOutput(StepResult result) {
+    final value = result.data ?? result.summary;
+    final output = value is String ? value : jsonEncode(value);
+    return output.length > 12000 ? '${output.substring(0, 12000)}…[تم اقتطاع المخرجات]' : output;
   }
 
   Future<bool> _nativeAiAvailable() async {
