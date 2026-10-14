@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math';
+import '../../widgets/toast_bar.dart';
 
 class PasswordManagerApp extends StatefulWidget {
   const PasswordManagerApp({super.key});
@@ -128,7 +129,7 @@ class _PasswordManagerAppState extends State<PasswordManagerApp> {
                 });
                 _savePasswords();
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastBar.show(context, 
                   const SnackBar(content: Text('Password added'), backgroundColor: Color(0xFF00BCD4)),
                 );
               }
@@ -156,7 +157,7 @@ class _PasswordManagerAppState extends State<PasswordManagerApp> {
               });
               _savePasswords();
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastBar.show(context, 
                 const SnackBar(content: Text('Password deleted'), backgroundColor: Color(0xFF00BCD4)),
               );
             },
@@ -169,7 +170,7 @@ class _PasswordManagerAppState extends State<PasswordManagerApp> {
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Copied to clipboard'), backgroundColor: Color(0xFF00BCD4)),
     );
   }
