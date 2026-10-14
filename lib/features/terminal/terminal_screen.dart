@@ -1,14 +1,21 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
+import '../../core/userland/local_kali_bootstrap.dart';
 
 import '../../security/core/security_core.dart';
+import 'arabic_shaper.dart';
+import 'agent_loop_sheet.dart';
+import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
@@ -46,6 +53,15 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _aiReady = false;
   String? _startupError;
   double _fontSize = 13;
+  String _fontFamily = 'monospace';
+  bool _showToolbar = true;
+  bool _showArabicOverlay = true;
+  Timer? _arabicOverlayRefreshTimer;
+  bool _showQuickCommands = false;
+  bool _isFullscreen = false;
+  TerminalPalette _palette = TerminalPalette.zion;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -53,6 +69,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
@@ -65,7 +82,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Future<void> _initializeFirstTab() async {
     try {
-      await _createTab(autoStart: false);
+      // Open the terminal in a real PTY session instead of presenting an
+      // editable-looking but disconnected xterm surface on first entry.
+      await _createTab(autoStart: true);
     } catch (error, stackTrace) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: error,
@@ -81,7 +100,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Future<void> _createTabSafely() async {
     try {
-      await _createTab();
+      await _createTab(autoStart: true);
     } catch (error, stackTrace) {
       FlutterError.reportError(FlutterErrorDetails(
         exception: error,
@@ -95,10 +114,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
-  Future<_TerminalTab?> _createTab({bool autoStart = false}) async {
+  Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           const SnackBar(content: Text('تم الوصول إلى الحد الأقصى: 8 جلسات PTY.')),
         );
       }
@@ -109,6 +128,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
     final service = TerminalService(security);
+    unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
       name: 'shell-$id',
@@ -118,11 +138,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
 
     terminal.onOutput = service.write;
-    if (!autoStart) {
-      terminal.write(
-        'Zion OS Terminal جاهزة. اضغط زر التشغيل لبدء جلسة PTY حقيقية.\\r\\n',
-      );
-    }
     terminal.onResize = (width, height, _, __) {
       unawaited(service.resizeInteractive(rows: height, cols: width));
     };
@@ -135,6 +150,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
       if (tab.recentOutput.length > 8000) {
         tab.recentOutput =
             tab.recentOutput.substring(tab.recentOutput.length - 8000);
+      }
+      // Rebuild only for installer/status messages, not every terminal byte,
+      // so first-run copy progress stays visible without making typing janky.
+      if (data.contains('[Userland]') || data.contains('[Terminal]')) {
+        setState(() {});
+      } else if (_showArabicOverlay && ArabicShaper.isArabic(data)) {
+        // Coalesce bursty PTY chunks so the overlay updates without rebuilding
+        // the whole terminal for every byte.
+        _arabicOverlayRefreshTimer?.cancel();
+        _arabicOverlayRefreshTimer = Timer(const Duration(milliseconds: 120), () {
+          if (mounted) setState(() {});
+        });
       }
       try {
         terminal.write(data);
@@ -236,8 +263,339 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final keyboard = HardwareKeyboard.instance;
+    if (!keyboard.isControlPressed) return false;
+    if (keyboard.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyT) {
+      if (!_starting && _tabs.length < _maxSessions) unawaited(_createTabSafely());
+      return true;
+    }
+    if (keyboard.isShiftPressed && event.logicalKey == LogicalKeyboardKey.keyW) {
+      unawaited(_closeTab(_selectedIndex)); return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyC) { _sendControl('C'); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.keyL) { _clear(); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.keyR) { unawaited(_showHistorySearch()); return true; }
+    if (event.logicalKey == LogicalKeyboardKey.equal || event.logicalKey == LogicalKeyboardKey.add) {
+      setState(() => _fontSize = (_fontSize + 1).clamp(8, 24).toDouble()); return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.minus) {
+      setState(() => _fontSize = (_fontSize - 1).clamp(8, 24).toDouble()); return true;
+    }
+    return false;
+  }
+
   void _sendRaw(String value) {
-    _selectedTab?.service.write(value);
+    final tab = _selectedTab;
+    if (tab == null) return;
+    if (!tab.service.isInteractiveRunning) {
+      if (mounted) setState(() => _startupError = 'جلسة PTY متوقفة. اضغط زر التشغيل قبل إرسال الأوامر.');
+      return;
+    }
+    tab.service.write(value);
+  }
+
+  /// Returns the latest Arabic-containing lines for a readable Flutter overlay.
+  /// The raw bytes are still sent unchanged to xterm/PTY; Flutter's text engine
+  /// performs shaping and bidi layout in this separate view.
+  List<String> _arabicOverlayLines(_TerminalTab tab) {
+    final cleaned = ArabicShaper.forRtlDisplay(tab.recentOutput);
+    return cleaned
+        .split('\n')
+        .map((line) => line.trimRight())
+        .where((line) => line.trim().isNotEmpty && ArabicShaper.isArabic(line))
+        .toList(growable: false)
+        .reversed
+        .take(5)
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
+  }
+
+  Future<void> _copyOutput() async {
+    final tab = _selectedTab;
+    if (tab == null || tab.recentOutput.isEmpty) { _showTerminalNotice('لا توجد مخرجات حديثة لنسخها.'); return; }
+    await Clipboard.setData(ClipboardData(text: ArabicShaper.readableText(tab.recentOutput)));
+    _showTerminalNotice('تم نسخ المخرجات الحديثة.');
+  }
+
+  void _showTerminalNotice(String message) {
+    if (!mounted) return;
+    ToastBar.show(context, SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+  }
+
+  Future<void> _showHistorySearch() async {
+    final tab = _selectedTab;
+    if (tab == null) return;
+    String query = '';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final history = tab.service.history.where((command) => command.toLowerCase().contains(query.toLowerCase())).toList(growable: false);
+          return AlertDialog(
+            backgroundColor: _palette.surface,
+            title: Text('البحث في سجل الأوامر', style: TextStyle(color: _palette.foreground)),
+            content: SizedBox(
+              width: double.maxFinite, height: 360,
+              child: Column(children: [
+                TextField(autofocus: true, onChanged: (value) => setDialogState(() => query = value),
+                  style: TextStyle(color: _palette.foreground),
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'اكتب جزءاً من الأمر…')),
+                const SizedBox(height: 8),
+                Expanded(child: history.isEmpty
+                  ? Center(child: Text('لا توجد أوامر مطابقة', style: TextStyle(color: _palette.foreground)))
+                  : ListView.builder(itemCount: history.length, itemBuilder: (context, index) => ListTile(
+                      dense: true, leading: Icon(Icons.history, color: _palette.accent),
+                      title: Text(history[index], style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 12)),
+                      onTap: () {
+                        Navigator.pop(dialogContext);
+                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index] + '\n'); }
+                        else { _showTerminalNotice('شغّل جلسة PTY أولاً.'); }
+                      },
+                    ))),
+              ]),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إغلاق'))],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showThemeSelector() async {
+    await showModalBottomSheet<void>(
+      context: context, backgroundColor: _palette.surface,
+      builder: (sheetContext) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        Padding(padding: const EdgeInsets.all(18), child: Text('ثيم الطرفية', style: TextStyle(color: _palette.foreground, fontSize: 18, fontWeight: FontWeight.bold))),
+        for (final palette in TerminalPalette.all)
+          ListTile(
+            leading: Container(width: 40, height: 40, decoration: BoxDecoration(color: palette.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: palette.accent)),
+              child: Center(child: Text('λ', style: TextStyle(color: palette.foreground, fontFamily: 'monospace')))),
+            title: Text(palette.name, style: TextStyle(color: _palette.foreground)),
+            subtitle: Text(palette.description, style: TextStyle(color: _palette.foreground.withOpacity(0.65))),
+            trailing: _palette.name == palette.name ? Icon(Icons.check, color: palette.accent) : null,
+            onTap: () { setState(() => _palette = palette); Navigator.pop(sheetContext); },
+          ),
+      ])),
+    );
+  }
+
+  Future<void> _showSettings() async {
+    await showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: _palette.surface,
+      builder: (sheetContext) => StatefulBuilder(builder: (context, setSheetState) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.viewInsetsOf(context).bottom + 18),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('إعدادات الطرفية', style: TextStyle(color: _palette.foreground, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('حجم الخط', style: TextStyle(color: _palette.foreground)),
+            Slider(value: _fontSize.clamp(8, 24).toDouble(), min: 8, max: 24, divisions: 16, activeColor: _palette.accent,
+              onChanged: (value) { setSheetState(() => _fontSize = value); setState(() {}); }),
+            Text('نوع الخط', style: TextStyle(color: _palette.foreground)),
+            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono'].map((font) => ChoiceChip(
+              label: Text(font, style: TextStyle(color: _palette.foreground)), selected: _fontFamily == font,
+              selectedColor: _palette.accent.withOpacity(0.25),
+              onSelected: (_) { setSheetState(() => _fontFamily = font); setState(() {}); },
+            )).toList()),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('إظهار شريط الأدوات', style: TextStyle(color: _palette.foreground)),
+              value: _showToolbar, activeColor: _palette.accent, onChanged: (v) { setSheetState(() => _showToolbar = v); setState(() {}); }),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('إظهار الأوامر السريعة', style: TextStyle(color: _palette.foreground)),
+              value: _showQuickCommands, activeColor: _palette.accent, onChanged: (v) { setSheetState(() => _showQuickCommands = v); setState(() {}); }),
+            Align(alignment: AlignmentDirectional.centerEnd, child: FilledButton(onPressed: () => Navigator.pop(sheetContext), child: const Text('تم'))),
+          ])),
+        ),
+      )),
+    );
+  }
+
+  Future<void> _installKaliFromLocalArchive() async {
+    if (_starting) return;
+    final tab = _selectedTab;
+    setState(() { _starting = true; _startupError = null; });
+    try {
+      tab?.terminal.write('[Kali] التحقق من أرشيف Kali المحلي...\\r\\n');
+      final result = await const ZionLocalKaliBootstrap().install(
+        onProgress: (progress) {
+          tab?.terminal.write('[Kali] ${progress.percent}% ${progress.message}\\r\\n');
+        },
+      );
+      if (!result.isSuccess || result.value == null) {
+        final message = 'تعذر تجهيز Kali من الأرشيف المحلي: ${result.error ?? 'لم يتم العثور على ملف صالح.'}';
+        if (mounted) setState(() => _startupError = message);
+        _showTerminalNotice(message);
+        return;
+      }
+      final path = result.value!.path;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+      _kaliRootfsPath = path;
+      if (mounted) setState(() => _starting = false);
+      await _startKaliFromLocalRootfs();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while installing local Kali archive'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تجهيز Kali: $error');
+    } finally {
+      if (mounted && _starting) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _startKaliFromLocalRootfs() async {
+    final tab = _selectedTab;
+    if (tab == null || _starting) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+    if (saved != null && saved.startsWith('/')) _kaliRootfsPath = saved;
+
+    final controller = TextEditingController(text: _kaliRootfsPath);
+    var path = _kaliRootfsPath;
+    if (!await File('$path/bin/bash').exists() ||
+        !await File('$path/bin/sh').exists()) {
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('مسار Kali Linux المحلي'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(
+              labelText: 'مسار rootfs',
+              hintText: '/storage/emulated/0/Download/Kali',
+              helperText: 'اختر مجلدًا يحتوي bin/bash وbin/sh. لن يتم نسخ الملفات.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('تشغيل'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (selected == null || selected.isEmpty) return;
+      path = selected;
+      if (!path.startsWith('/') || path.contains('|') ||
+          path.contains('\\n') || path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _showTerminalNotice('مسار Kali غير صالح.');
+        return;
+      }
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+      if (!await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _showTerminalNotice('لم يتم العثور على bin/bash وbin/sh في المسار المحدد. تحقق من صلاحية الوصول إلى الملفات.');
+        return;
+      }
+    } else {
+      controller.dispose();
+    }
+
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+    try {
+      if (tab.service.isInteractiveRunning) await tab.service.stopInteractive();
+      tab.name = 'kali-' + tab.id.toString();
+      tab.terminal.write('\\r\\n[Zion] تشغيل Kali من rootfs المحلي دون نسخ الملفات: $path\\r\\n');
+      final connected = await tab.service.startInteractive(kaliRootfsPath: path);
+      if (mounted) {
+        setState(() {
+          tab.connected = connected;
+          if (!connected) {
+            _startupError = 'تعذر تشغيل Kali. تحقق من وجود PRoot وloader داخل Zion Userland ومن صلاحية الوصول إلى rootfs.';
+          }
+        });
+      }
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while launching local Kali rootfs'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تشغيل Kali: $error');
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _toggleFullscreen() async {
+    final next = !_isFullscreen;
+    await SystemChrome.setEnabledSystemUIMode(next ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+    if (mounted) setState(() => _isFullscreen = next);
+  }
+
+  Widget _buildToolbar() => Container(
+    height: 42, color: _palette.surface,
+    child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      _toolbarButton(Icons.copy, 'نسخ المخرجات', _copyOutput),
+      _toolbarButton(Icons.content_paste, 'لصق', _paste),
+      _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
+      _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
+      _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
+      _toolbarButton(Icons.archive_outlined, 'تثبيت Kali من الأرشيف المحلي', _installKaliFromLocalArchive),
+      _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
+      _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
+      _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
+      _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
+      _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
+      _toolbarButton(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, 'ملء الشاشة', () => unawaited(_toggleFullscreen())),
+    ])),
+  );
+
+  Widget _toolbarButton(IconData icon, String tooltip, VoidCallback onPressed) => IconButton(
+    tooltip: tooltip, onPressed: onPressed, icon: Icon(icon, color: _palette.foreground.withOpacity(0.85), size: 19),
+    constraints: const BoxConstraints(minWidth: 42, minHeight: 42), padding: EdgeInsets.zero,
+  );
+
+  Widget _buildQuickCommands() {
+    const commands = <Map<String, Object>>[
+      {'label':'مساعدة','command':'help','icon':Icons.help_outline},
+      {'label':'المسار','command':'pwd','icon':Icons.folder_open},
+      {'label':'الملفات','command':'ls -la','icon':Icons.folder},
+      {'label':'النظام','command':'uname -a','icon':Icons.memory},
+      {'label':'المستخدم','command':'id','icon':Icons.person},
+      {'label':'المساحة','command':'df -h','icon':Icons.storage},
+      {'label':'العمليات','command':'ps','icon':Icons.list_alt},
+      {'label':'الشبكات','command':'ip addr','icon':Icons.lan},
+      {'label':'Android','command':'getprop','icon':Icons.phone_android},
+    ];
+    return Container(height: 70, color: _palette.surface, padding: const EdgeInsets.symmetric(vertical: 7),
+      child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: commands.length, separatorBuilder: (_, __) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          final item = commands[index];
+          return Material(color: _palette.background, borderRadius: BorderRadius.circular(9),
+            child: InkWell(borderRadius: BorderRadius.circular(9), onTap: () {
+              final tab = _selectedTab;
+              if (tab == null || !tab.service.isInteractiveRunning) { _showTerminalNotice('شغّل جلسة PTY أولاً.'); return; }
+              tab.service.write(item['command'].toString() + '\n');
+            }, child: Container(width: 72,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), border: Border.all(color: _palette.accent.withOpacity(0.32))),
+              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(item['icon'] as IconData, size: 19, color: _palette.accent),
+                const SizedBox(height: 3),
+                Text(item['label'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: _palette.foreground, fontSize: 10)),
+              ]),
+            )),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _paste() async {
@@ -315,7 +673,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final loaded = await _ensureAiLoaded();
       if (!loaded) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ToastBar.show(context, 
             const SnackBar(
               content: Text('النموذج المحلي غير محمّل. افتح Offline AI وحمّل نموذجاً صغيراً أولاً.'),
             ),
@@ -350,10 +708,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
                     ? 'لا توجد مخرجات حديثة من الطرفية.'
                     : terminalContext;
 
-                String result;
-                try {
-                  result = await _ai.generate(
-                    '''أنت مساعد طرفية محلي داخل Zion OS.
+                final result = await _ai.generate(
+                  '''أنت مساعد طرفية محلي داخل Zion OS.
 حوّل طلب المستخدم إلى مساعدة Linux عملية وآمنة.
 لا تنفذ أي أمر بنفسك.
 إذا كان الطلب يحتاج أمراً، أعد أمراً واحداً فقط داخل fenced code block بلغة bash، ثم شرحاً قصيراً بالعربية.
@@ -363,20 +719,10 @@ $contextBlock
 
 طلب المستخدم:
 $request''',
-                    maxTokens: 192,
-                    temperature: 0.25,
-                  );
-                } catch (error, stackTrace) {
-                  FlutterError.reportError(FlutterErrorDetails(
-                    exception: error,
-                    stack: stackTrace,
-                    library: 'Zion local AI',
-                    context: ErrorDescription('while generating a terminal assistant response'),
-                  ));
-                  result = 'تعذرت الاستجابة من النموذج المحلي. تحقق من توافق النموذج والذاكرة ثم حاول مجدداً.';
-                }
-                final extracted = result.startsWith('ERROR:') ? null : _extractCommand(result);
-                if (!sheetContext.mounted) return;
+                  maxTokens: 300,
+                  temperature: 0.25,
+                );
+                final extracted = _extractCommand(result);
                 setSheetState(() {
                   generating = false;
                   response = result;
@@ -508,8 +854,41 @@ $request''',
     }
   }
 
+  Future<void> _showReadableOutput() async {
+    final tab = _selectedTab;
+    if (tab == null) return;
+    final text = ArabicShaper.readableText(tab.recentOutput);
+    final hasArabic = ArabicShaper.isArabic(text);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('قراءة مخرجات الطرفية'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text.isEmpty ? 'لا توجد مخرجات بعد.' : text,
+              textDirection: hasArabic ? TextDirection.rtl : TextDirection.ltr,
+              textAlign: hasArabic ? TextAlign.right : TextAlign.left,
+              style: TextStyle(fontFamily: 'monospace', fontSize: _fontSize),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _arabicOverlayRefreshTimer?.cancel();
+    if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
       unawaited(tab.outputSubscription?.cancel());
@@ -523,17 +902,46 @@ $request''',
   @override
   Widget build(BuildContext context) {
     final tab = _selectedTab;
+    final startupProgress = tab == null
+        ? const <String>[]
+        : tab.recentOutput
+            .split(RegExp(r'[\r\n]+'))
+            .where((line) => line.contains('[Userland]') || line.contains('[Terminal]'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
     return Scaffold(
-      backgroundColor: const Color(0xFF090B0A),
+      backgroundColor: _palette.background,
       appBar: AppBar(
+        backgroundColor: _palette.surface,
+        foregroundColor: _palette.foreground,
         title: const Text('Zion OS Terminal'),
         actions: [
+          IconButton(
+            tooltip: 'قراءة المخرجات العربية',
+            icon: const Icon(Icons.translate),
+            onPressed: tab == null ? null : () => unawaited(_showReadableOutput()),
+          ),
           IconButton(
             tooltip: 'المساعد المحلي',
             icon: const Icon(Icons.auto_awesome),
             onPressed: tab == null || _aiLoading
                 ? null
                 : () => unawaited(_openAiAssistant()),
+          ),
+          IconButton(
+            tooltip: 'Zion Agent Loop — Qwen + Kali',
+            icon: const Icon(Icons.psychology_alt),
+            onPressed: tab == null
+                ? null
+                : () => unawaited(
+                      AgentLoopSheet.show(
+                        context: context,
+                        ai: _ai,
+                        terminal: tab.service,
+                        palette: _palette,
+                        recentOutput: () => tab.recentOutput,
+                      ),
+                    ),
           ),
           IconButton(
             tooltip: _tabs.length >= _maxSessions
@@ -555,38 +963,58 @@ $request''',
             ),
             onPressed: tab == null || _starting ? null : _toggleSelected,
           ),
-          IconButton(
-            tooltip: 'لصق من الحافظة',
-            icon: const Icon(Icons.content_paste),
-            onPressed: tab == null ? null : _paste,
-          ),
           PopupMenuButton<String>(
-            tooltip: 'اختصارات الطرفية',
-            icon: const Icon(Icons.keyboard_alt_outlined),
-            onSelected: _sendControl,
-            itemBuilder: (context) => [
-              for (final key in const ['C', 'D', 'Z', 'L', 'A', 'E', 'U', 'K'])
-                PopupMenuItem(
-                  value: key,
-                  child: Text('Ctrl+$key'),
-                ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'مسح الشاشة',
-            icon: const Icon(Icons.clear_all),
-            onPressed: _clear,
-          ),
-          PopupMenuButton<double>(
-            tooltip: 'حجم الخط',
-            icon: const Icon(Icons.text_fields),
-            onSelected: (value) => setState(() => _fontSize = value),
-            itemBuilder: (context) => [
-              for (final size in [10.0, 12.0, 13.0, 15.0, 17.0, 20.0])
-                PopupMenuItem(
-                  value: size,
-                  child: Text('${size.toInt()} px'),
-                ),
+            tooltip: 'أدوات الطرفية', icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'copy': unawaited(_copyOutput()); break;
+                case 'paste': unawaited(_paste()); break;
+                case 'history': unawaited(_showHistorySearch()); break;
+                case 'theme': unawaited(_showThemeSelector()); break;
+                case 'settings': unawaited(_showSettings()); break;
+                case 'quick': setState(() => _showQuickCommands = !_showQuickCommands); break;
+                case 'toolbar': setState(() => _showToolbar = !_showToolbar); break;
+                case 'fullscreen': unawaited(_toggleFullscreen()); break;
+                case 'clear': _clear(); break;
+                case 'ctrl-C': _sendControl('C'); break;
+                case 'ctrl-D': _sendControl('D'); break;
+                case 'ctrl-Z': _sendControl('Z'); break;
+                case 'ctrl-L': _sendControl('L'); break;
+                case 'ctrl-A': _sendControl('A'); break;
+                case 'ctrl-E': _sendControl('E'); break;
+                case 'ctrl-U': _sendControl('U'); break;
+                case 'ctrl-K': _sendControl('K'); break;
+                default:
+                  if (value.startsWith('font-')) {
+                    final size = double.tryParse(value.substring(5));
+                    if (size != null) setState(() => _fontSize = size);
+                  }
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
+              PopupMenuItem(value: 'paste', child: Text('لصق من الحافظة')),
+              PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
+              PopupMenuItem(value: 'theme', child: Text('تغيير الثيم')),
+              PopupMenuItem(value: 'settings', child: Text('إعدادات الطرفية')),
+              PopupMenuItem(value: 'quick', child: Text('إظهار/إخفاء الأوامر السريعة')),
+              PopupMenuItem(value: 'toolbar', child: Text('إظهار/إخفاء شريط الأدوات')),
+              PopupMenuItem(value: 'fullscreen', child: Text('ملء الشاشة')),
+              PopupMenuItem(value: 'clear', child: Text('مسح الشاشة')),
+              PopupMenuItem(value: 'font-10', child: Text('حجم الخط: 10')),
+              PopupMenuItem(value: 'font-12', child: Text('حجم الخط: 12')),
+              PopupMenuItem(value: 'font-13', child: Text('حجم الخط: 13')),
+              PopupMenuItem(value: 'font-15', child: Text('حجم الخط: 15')),
+              PopupMenuItem(value: 'font-17', child: Text('حجم الخط: 17')),
+              PopupMenuItem(value: 'font-20', child: Text('حجم الخط: 20')),
+              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
+              PopupMenuItem(value: 'ctrl-D', child: Text('Ctrl+D')),
+              PopupMenuItem(value: 'ctrl-Z', child: Text('Ctrl+Z')),
+              PopupMenuItem(value: 'ctrl-L', child: Text('Ctrl+L')),
+              PopupMenuItem(value: 'ctrl-A', child: Text('Ctrl+A')),
+              PopupMenuItem(value: 'ctrl-E', child: Text('Ctrl+E')),
+              PopupMenuItem(value: 'ctrl-U', child: Text('Ctrl+U')),
+              PopupMenuItem(value: 'ctrl-K', child: Text('Ctrl+K')),
             ],
           ),
         ],
@@ -598,7 +1026,9 @@ $request''',
             selectedIndex: _selectedIndex,
             onSelect: (index) => setState(() => _selectedIndex = index),
             onClose: _closeTab,
+            palette: _palette,
           ),
+          if (_showToolbar) _buildToolbar(),
           if (_startupError != null)
             Container(
               width: double.infinity,
@@ -608,17 +1038,180 @@ $request''',
             ),
           if (tab != null)
             Expanded(
-              child: TerminalView(
-                tab.terminal,
-                controller: tab.controller,
-                autofocus: true,
-                backgroundOpacity: 1,
-                cursorType: TerminalCursorType.block,
-                textStyle: TerminalStyle(
-                  fontSize: _fontSize,
-                  fontFamily: 'monospace',
-                ),
-                simulateScroll: false,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Zion's splash mark stays behind the terminal cells. The
+                  // terminal renderer remains interactive and the mark is
+                  // intentionally subtle to preserve text contrast.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: _palette.background),
+                        child: Center(
+                          child: Opacity(
+                            opacity: 0.14,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 180,
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _palette.accent,
+                                      width: 3,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Z',
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontSize: 128,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'ZION OS',
+                                  style: TextStyle(
+                                    color: _palette.foreground,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  AbsorbPointer(
+                    // Do not accept characters into xterm while there is no
+                    // child process to receive them. Previously the text was
+                    // silently discarded and only Enter reported a stopped PTY.
+                    absorbing: _starting || !tab.service.isInteractiveRunning,
+                    child: TerminalView(
+                      tab.terminal,
+                      controller: tab.controller,
+                      autofocus: tab.service.isInteractiveRunning,
+                      // Terminals should start with lowercase and must not autocorrect shell commands.
+                      keyboardType: TextInputType.visiblePassword,
+                      backgroundOpacity: 0.75,
+                      cursorType: TerminalCursorType.block,
+                      theme: _palette.toXtermTheme(),
+                      textStyle: TerminalStyle(
+                        fontSize: _fontSize,
+                        fontFamily: _fontFamily,
+                      ),
+                      simulateScroll: false,
+                    ),
+                  ),
+                  // xterm2's cell grid cannot correctly shape Arabic or apply
+                  // per-line RTL. Keep the live terminal interactive and show
+                  // the latest Arabic output in a separate Flutter text overlay.
+                  if (_showArabicOverlay && ArabicShaper.isArabic(tab.recentOutput))
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: 8,
+                      child: IgnorePointer(
+                        child: Material(
+                          color: _palette.surface.withOpacity(0.96),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            constraints: const BoxConstraints(maxHeight: 136),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _palette.accent.withOpacity(0.65)),
+                            ),
+                            child: SingleChildScrollView(
+                              reverse: true,
+                              child: SelectableText(
+                                _arabicOverlayLines(tab).join('\n'),
+                                textDirection: TextDirection.rtl,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: _palette.foreground,
+                                  fontFamily: _fontFamily,
+                                  fontSize: _fontSize,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_starting || !tab.service.isInteractiveRunning)
+                    ColoredBox(
+                      color: _palette.background.withOpacity(0.94),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _starting ? Icons.hourglass_top : Icons.terminal,
+                                size: 42,
+                                color: _palette.accent,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _starting
+                                    ? 'جارٍ تجهيز Userland وفتح جلسة PTY…'
+                                    : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _palette.foreground,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (_starting && startupProgress.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  constraints: const BoxConstraints(maxWidth: 520),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _palette.surface.withOpacity(0.92),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _palette.accent.withOpacity(0.55)),
+                                  ),
+                                  child: Text(
+                                    startupProgress.reversed.take(5).toList().reversed.join('\n'),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                    textDirection: TextDirection.ltr,
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (!_starting) ...[
+                                const SizedBox(height: 16),
+                                FilledButton.icon(
+                                  onPressed: () => unawaited(_toggleSelected()),
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('بدء جلسة PTY'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             )
           else
@@ -627,8 +1220,13 @@ $request''',
                 child: CircularProgressIndicator(),
               ),
             ),
-          _StatusBar(tab: tab),
-          _ExtraKeys(onSend: _sendRaw),
+          if (_showQuickCommands) _buildQuickCommands(),
+          _StatusBar(tab: tab, palette: _palette),
+          _ExtraKeys(palette: _palette, onSend: (value) {
+            final current = _selectedTab;
+            if (current != null && current.service.isInteractiveRunning) current.service.write(value);
+            else _showTerminalNotice('شغّل جلسة PTY أولاً.');
+          }),
         ],
       ),
     );
@@ -641,9 +1239,11 @@ class _SessionBar extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.onClose,
+    required this.palette,
   });
 
   final List<_TerminalTab> tabs;
+  final TerminalPalette palette;
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final Future<void> Function(int) onClose;
@@ -664,14 +1264,10 @@ class _SessionBar extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 105),
               padding: const EdgeInsets.only(left: 10, right: 4),
               decoration: BoxDecoration(
-                color: selected
-                    ? const Color(0xFF1B241D)
-                    : const Color(0xFF0F130F),
+                color: selected ? palette.surface : palette.background,
                 border: Border(
                   bottom: BorderSide(
-                    color: selected
-                        ? const Color(0xFF19D3C5)
-                        : Colors.transparent,
+                    color: selected ? palette.accent : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -681,18 +1277,17 @@ class _SessionBar extends StatelessWidget {
                   Icon(
                     Icons.terminal,
                     size: 14,
-                    color: tab.connected
-                        ? const Color(0xFF19D3C5)
-                        : Colors.orangeAccent,
+                    color: tab.connected ? palette.accent : Colors.orangeAccent,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       tab.name,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
+                        color: palette.foreground,
                       ),
                     ),
                   ),
@@ -717,9 +1312,10 @@ class _SessionBar extends StatelessWidget {
 }
 
 class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.tab});
+  const _StatusBar({required this.tab, required this.palette});
 
   final _TerminalTab? tab;
+  final TerminalPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -727,30 +1323,30 @@ class _StatusBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      color: const Color(0xFF0D1514),
+      color: palette.surface,
       child: Row(
         children: [
           Icon(
             connected ? Icons.circle : Icons.circle_outlined,
             size: 9,
-            color: connected ? const Color(0xFF19D3C5) : Colors.orangeAccent,
+            color: connected ? palette.accent : Colors.orangeAccent,
           ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
               connected
-                  ? 'REAL SHELL • xterm-256color • Ctrl-C • 3,000 scrollback'
+                  ? 'REAL SHELL • xterm-256color • Ctrl-C • 1,200 scrollback'
                   : 'Shell unavailable / stopped',
-              style: const TextStyle(fontSize: 11),
+              style: TextStyle(fontSize: 11, color: palette.foreground),
             ),
           ),
           if (tab != null)
             Text(
               tab!.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 fontFamily: 'monospace',
-                color: Color(0xFF91A995),
+                color: palette.accent,
               ),
             ),
         ],
@@ -760,9 +1356,10 @@ class _StatusBar extends StatelessWidget {
 }
 
 class _ExtraKeys extends StatelessWidget {
-  const _ExtraKeys({required this.onSend});
+  const _ExtraKeys({required this.onSend, required this.palette});
 
   final ValueChanged<String> onSend;
+  final TerminalPalette palette;
 
   @override
   Widget build(BuildContext context) {
@@ -792,7 +1389,7 @@ class _ExtraKeys extends StatelessWidget {
           itemBuilder: (context, index) {
             final item = keys[index];
             return Material(
-              color: const Color(0xFF171B18),
+              color: palette.surface,
               borderRadius: BorderRadius.circular(5),
               child: InkWell(
                 borderRadius: BorderRadius.circular(5),
@@ -802,10 +1399,10 @@ class _ExtraKeys extends StatelessWidget {
                   child: Center(
                     child: Text(
                       item.key,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 11,
-                        color: Color(0xFFB7C7BA),
+                        color: palette.foreground,
                       ),
                     ),
                   ),
