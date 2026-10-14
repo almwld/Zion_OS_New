@@ -159,7 +159,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     std::string output;
     // Bound generation to both the remaining context and a phone-safe limit.
     const int remaining = static_cast<int>(nCtx - tokens.size() - 1);
-    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 64), remaining);
+    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 256), remaining);
     LOGE("Prompt tokenized: %d tokens; generation limit: %d", nTokens, limit);
 
     for (int i = 0; i < limit; ++i) {
