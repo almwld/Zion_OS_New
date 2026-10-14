@@ -145,8 +145,12 @@ class ZionLocalKaliBootstrap {
       }
       progress(ZionKaliInstallState.verifying, 100, 'SHA-256 صحيح.');
 
-      final rootfs = ZionLocalKaliConfig.rootfs(filesDir);
-      if (await rootfs.exists()) await rootfs.delete(recursive: true);
+      final targetRootfs = ZionLocalKaliConfig.rootfs(filesDir);
+      await targetRootfs.parent.create(recursive: true);
+      final rootfs = Directory(
+        targetRootfs.path + '.staging-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
+      );
       await rootfs.create(recursive: true);
 
       progress(ZionKaliInstallState.decompressing, 10, 'فك ضغط tar.xz...');
@@ -208,31 +212,36 @@ class ZionLocalKaliBootstrap {
 
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
+      if (!await File('${rootfs.path}/bin/sh').exists() ||
+          !await File('${rootfs.path}/bin/bash').exists()) {
+        throw StateError('Kali rootfs extraction did not produce bin/sh and bin/bash.');
+      }
       progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
 
-      // Mark the install in the format consumed by KaliLoaderService.
-      // The rootfs is installed only after the archive checksum has passed.
-      final marker = File('${rootfs.parent.path}/.zion-rootfs.json');
-      await marker.parent.create(recursive: true);
-      await marker.writeAsString(const JsonEncoder.withIndent('  ').convert(
-        <String, Object>{
-          'distro': 'kali',
-          'architecture': 'arm64',
-          'source_sha256': ZionLocalKaliConfig.expectedSha256,
-          'installed_at': DateTime.now().toUtc().toIso8601String(),
-          'rootfs_path': 'home/.zion/dists/kali/rootfs',
-        },
-      ));
+      final oldRootfs = Directory(
+        targetRootfs.path + '.old-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
+      );
+      if (await targetRootfs.exists()) await targetRootfs.rename(oldRootfs.path);
+      try {
+        await rootfs.rename(targetRootfs.path);
+        if (await oldRootfs.exists()) await oldRootfs.delete(recursive: true);
+      } catch (_) {
+        if (!await targetRootfs.exists() && await oldRootfs.exists()) {
+          await oldRootfs.rename(targetRootfs.path);
+        }
+        rethrow;
+      }
 
       await _saveState(filesDir, 'READY', extra: <String, Object>{
         'sha256': ZionLocalKaliConfig.expectedSha256,
-        'size_bytes': await _directorySize(rootfs),
+        'size_bytes': await _directorySize(targetRootfs),
         'rootfs_path': 'home/.zion/dists/kali/rootfs',
       });
       try { await File(tarPath).delete(); } catch (_) {}
       try { await internal.delete(); } catch (_) {}
       progress(ZionKaliInstallState.ready, 100, 'Kali جاهز للتشغيل.');
-      return ZionKaliInstallResult.success(rootfs);
+      return ZionKaliInstallResult.success(targetRootfs);
     } catch (e) {
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
       return ZionKaliInstallResult.failure(e);
