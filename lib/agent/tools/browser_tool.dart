@@ -19,6 +19,9 @@ class BrowserTool extends AgentTool {
   Set<AgentPermission> get permissions => const {AgentPermission.network};
 
   @override
+  bool get supportsReadOnlyWebRetrieval => true;
+
+  @override
   String get description =>
       'جلب صفحات ويب والبحث النصي عبر HTTP؛ لا ينفذ JavaScript أو يسجل دخولاً تلقائياً.';
 
