@@ -124,10 +124,13 @@ class ZionLocalKaliBootstrap {
           progress(ZionKaliInstallState.copying, p, 'نسخ الحزمة...');
         });
       } else {
-        await _storage.invokeMethod<void>('copyDocumentToPrivate', <String, Object>{
+        final copied = await _storage.invokeMethod<bool>('copyDocumentToPrivate', <String, Object>{
           'uri': discovered.first['uri'] as String,
           'destination': internal.path,
         });
+        if (copied != true) {
+          throw StateError('تعذر نسخ الحزمة المختارة إلى مساحة Zion الخاصة.');
+        }
         progress(ZionKaliInstallState.copying, 100, 'تم نسخ الحزمة.');
       }
 
@@ -192,7 +195,7 @@ class ZionLocalKaliBootstrap {
           final mode = entry.mode & 0x1ff;
           if (entry.isDirectory) {
             await destination.create(recursive: true);
-            if (mode != 0) (modePaths[mode] ??= <String>[]).add(destination.path);
+            if (mode != 0 && mode != 0x1ed) (modePaths[mode] ??= <String>[]).add(destination.path);
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
             try { await Link(destination.path).delete(); } catch (_) {}
@@ -201,7 +204,7 @@ class ZionLocalKaliBootstrap {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
             await destination.writeAsBytes(entry.content, flush: false);
-            if (mode != 0) (modePaths[mode] ??= <String>[]).add(destination.path);
+            if (mode != 0 && mode != 0x1a4) (modePaths[mode] ??= <String>[]).add(destination.path);
           }
           if (i % 250 == 0) {
             progress(
