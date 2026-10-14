@@ -37,6 +37,7 @@ class _TerminalTab {
   final TerminalController controller;
   StreamSubscription<String>? outputSubscription;
   bool connected = false;
+  bool kali = false;
   String recentOutput = '';
 }
 
@@ -146,7 +147,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       }
       // Rebuild only for installer/status messages, not every terminal byte,
       // so first-run copy progress stays visible without making typing janky.
-      if (data.contains('[Userland]') || data.contains('[Terminal]')) {
+      if (data.contains('[Userland]') || data.contains('[Terminal]') || data.contains('[Kali]')) {
         setState(() {});
       }
       try {
@@ -224,7 +225,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     } else {
       if (mounted) setState(() => _starting = true);
       try {
-        final connected = await tab.service.startInteractive();
+        final connected = await tab.service.startInteractive(kali: tab.kali);
         if (mounted) {
           setState(() {
             tab.connected = connected;
@@ -244,6 +245,47 @@ class _TerminalScreenState extends State<TerminalScreen> {
         if (mounted) setState(() {
           _starting = false;
           _startupError = 'تعذر تشغيل جلسة الطرفية: $error';
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleKali() async {
+    final tab = _selectedTab;
+    if (tab == null || _starting) return;
+    final launchKali = !tab.kali;
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+    try {
+      if (tab.service.isInteractiveRunning) {
+        await tab.service.stopInteractive();
+      }
+      final connected = await tab.service.startInteractive(kali: launchKali);
+      if (mounted) {
+        setState(() {
+          tab.connected = connected;
+          if (connected) tab.kali = launchKali;
+          _starting = false;
+          _startupError = connected
+              ? null
+              : (launchKali
+                  ? 'تعذر تشغيل Kali. راجع سجل التثبيت المحلي ووجود PRoot/rootfs.'
+                  : 'تعذر العودة إلى جلسة الطرفية الأساسية.');
+        });
+      }
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while switching the terminal runtime'),
+      ));
+      if (mounted) {
+        setState(() {
+          _starting = false;
+          _startupError = 'تعذر تبديل بيئة الطرفية: $error';
         });
       }
     }
@@ -388,6 +430,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget _buildToolbar() => Container(
     height: 42, color: _palette.surface,
     child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      _toolbarButton(Icons.terminal, 'تبديل بيئة Kali Linux', () => unawaited(_toggleKali())),
       _toolbarButton(Icons.copy, 'نسخ المخرجات', _copyOutput),
       _toolbarButton(Icons.content_paste, 'لصق', _paste),
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
