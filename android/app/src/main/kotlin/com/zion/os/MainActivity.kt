@@ -11,11 +11,10 @@ import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
-import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
+import android.os.Environment
 import android.net.TrafficStats
 import android.net.wifi.WifiInfo
 import android.content.ClipData
@@ -71,6 +70,7 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var zionApiChannel: ZionApiChannel
     private lateinit var zionPkgChannel: MethodChannel
     private var pendingTreeResult: MethodChannel.Result? = null
+    private var pendingAllFilesAccessResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
@@ -177,6 +177,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(ok) }
                         }
                     }
+                    "cancelGeneration" -> {
+                        // This JNI method only sets an atomic flag; do not queue it
+                        // behind inference on aiExecutor or cancellation would be ineffective.
+                        val cancelled = try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false }
+                        result.success(cancelled)
+                    }
                     "generate" -> {
                         val prompt = call.argument<String>("prompt") ?: ""
                         val maxTokens = call.argument<Int>("maxTokens") ?: 512
@@ -192,7 +198,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(null) }
                         }
                     }
-                    "isLoaded" -> result.success(try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false })
+                    "isLoaded" -> aiExecutor.execute {
+                        // Native readiness takes g_mutex; never block the Android UI
+                        // thread while model loading or inference owns that lock.
+                        val loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                        runOnUiThread { result.success(loaded) }
+                    }
                     "version" -> result.success(try { llamaBridge.nativeVersion() } catch (_: Throwable) { "unavailable" })
                     else -> result.notImplemented()
                 }
@@ -201,31 +212,23 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "hasAllFilesAccess" -> result.success(
-                        Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
-                            Environment.isExternalStorageManager()
-                    )
-                    "requestAllFilesAccess" -> {
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
-                            Environment.isExternalStorageManager()) {
+                    "ensureAllFilesAccess" -> {
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
                             result.success(true)
+                        } else if (pendingAllFilesAccessResult != null) {
+                            result.error("BUSY", "Storage access settings are already open.", null)
                         } else {
+                            pendingAllFilesAccessResult = result
                             try {
-                                startActivity(
-                                    Intent(
-                                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                        Uri.parse("package:$packageName")
-                                    )
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName")
                                 )
+                                startActivity(intent)
                             } catch (_: Throwable) {
-                                try {
-                                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                                } catch (_: Throwable) {
-                                    // Report denial below; do not complete the
-                                    // MethodChannel result twice.
-                                }
+                                pendingAllFilesAccessResult = null
+                                result.success(false)
                             }
-                            result.success(false)
                         }
                     }
                     "pickKaliPackage" -> {
@@ -390,8 +393,10 @@ class MainActivity : FlutterFragmentActivity() {
                 "export HOME=\"${home.absolutePath}\"\n" +
                 "export PREFIX=\"${prefix.absolutePath}\"\n" +
                 "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\"\n" +
-                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin\"\n" +
-                "export TERM=\"xterm-256color\"\n"
+                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
+                "export LD_LIBRARY_PATH=\"${prefix.absolutePath}/lib:${prefix.absolutePath}/lib64\"\n" +
+                "export TERM=\"xterm-256color\"\n" +
+                "export PS1=\"$ \"\n"
             )
         }
         val bashrc = File(home, ".bashrc")
@@ -405,15 +410,29 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             ensureTerminalEnvironment()
             if (!nativePtyAvailable()) return 0
-            val nativeShell = if (shell == "zion-kali") {
-                val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
-                // PRoot and its loader are shipped by the verified Zion Userland
-                // package, not as JNI libraries in nativeLibraryDir.
-                val proot = File(filesDir, "usr/bin/proot")
-                val loader = File(filesDir, "usr/libexec/proot")
-                if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
-                "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
-            } else shell
+            fun validRootfs(rootfs: File): Boolean =
+                rootfs.isDirectory && File(rootfs, "bin/sh").isFile && File(rootfs, "bin/bash").isFile
+            val nativeShell = when {
+                shell == "zion-kali" -> {
+                    val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                shell?.startsWith("zion-kali@") == true -> {
+                    val rootfsPath = shell.removePrefix("zion-kali@").trim()
+                    if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
+                        rootfsPath.contains("|") || rootfsPath.contains("\\n") ||
+                        rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
+                    val rootfs = File(rootfsPath)
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                else -> shell
+            }
 
             val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
@@ -520,6 +539,8 @@ class MainActivity : FlutterFragmentActivity() {
             var lastTx = TrafficStats.getTotalTxBytes()
             var lastRxPackets = TrafficStats.getTotalRxPackets()
             var lastTxPackets = TrafficStats.getTotalTxPackets()
+            var lastAppRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+            var lastAppTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
             var lastTime = System.nanoTime()
             while (radarRunning) {
                 val now = System.nanoTime()
@@ -528,17 +549,24 @@ class MainActivity : FlutterFragmentActivity() {
                 val tx = TrafficStats.getTotalTxBytes()
                 val rxPackets = TrafficStats.getTotalRxPackets()
                 val txPackets = TrafficStats.getTotalTxPackets()
+                val appRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+                val appTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
                 radarSink?.success(readNetworkRadar(
                     rx, tx, rxPackets, txPackets,
                     ((rx - lastRx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((tx - lastTx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((rxPackets - lastRxPackets).coerceAtLeast(0L) / elapsed).toLong(),
-                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong()
+                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong(),
+                    appRx, appTx,
+                    ((appRx - lastAppRx).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((appTx - lastAppTx).coerceAtLeast(0L) / elapsed).toLong()
                 ))
                 lastRx = rx
                 lastTx = tx
                 lastRxPackets = rxPackets
                 lastTxPackets = txPackets
+                lastAppRx = appRx
+                lastAppTx = appTx
                 lastTime = now
                 try { Thread.sleep(750) } catch (_: InterruptedException) { break }
             }
@@ -571,7 +599,11 @@ class MainActivity : FlutterFragmentActivity() {
         radarNetworkCallback = null
     }
 
-    private fun readNetworkRadar(rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long, rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long): Map<String, Any?> {
+    private fun readNetworkRadar(
+        rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long,
+        rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long,
+        appRxBytes: Long, appTxBytes: Long, appRxRate: Long, appTxRate: Long
+    ): Map<String, Any?> {
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivity.activeNetwork
         val caps = network?.let { connectivity.getNetworkCapabilities(it) }
@@ -609,6 +641,11 @@ class MainActivity : FlutterFragmentActivity() {
             "txBytesPerSec" to txRate,
             "rxPacketsPerSec" to rxPacketRate,
             "txPacketsPerSec" to txPacketRate,
+            // Per-UID counters describe Zion OS itself, separate from whole-device traffic.
+            "appRxBytes" to appRxBytes,
+            "appTxBytes" to appTxBytes,
+            "appRxBytesPerSec" to appRxRate,
+            "appTxBytesPerSec" to appTxRate,
         )
     }
 
@@ -821,6 +858,14 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (t: Throwable) {
             mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Model import failed."))
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingAllFilesAccessResult ?: return
+        pendingAllFilesAccessResult = null
+        val granted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        pending.success(granted)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
