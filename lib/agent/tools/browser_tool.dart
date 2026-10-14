@@ -198,7 +198,8 @@ class BrowserTool extends AgentTool {
       final multicast = first == 0xff;
       final mappedIpv4 = bytes.take(10).every((byte) => byte == 0) &&
           bytes[10] == 0xff && bytes[11] == 0xff;
-      if (mappedIpv4) {
+      final compatibleIpv4 = bytes.take(12).every((byte) => byte == 0);
+      if (mappedIpv4 || compatibleIpv4) {
         final mapped = InternetAddress.fromRawAddress(bytes.sublist(12));
         return _isPrivateAddress(mapped);
       }
