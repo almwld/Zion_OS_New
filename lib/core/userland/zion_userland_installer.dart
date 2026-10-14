@@ -191,6 +191,8 @@ class ZionUserlandInstaller {
     // network endpoint. Only verified Zion bootstrap ZIPs are accepted here;
     // a Kali rootfs tarball must not be unpacked into the Zion prefix.
     const localCandidates = <String>[
+      // Detect the existing shared-storage Kali tarball; never unpack it as Zion usr.
+      '/storage/emulated/0/kali-arm64.tar',
       '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
       '/storage/emulated/0/Download/bootstrap-aarch64.zip',
       '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
