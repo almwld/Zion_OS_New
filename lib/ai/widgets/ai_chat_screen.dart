@@ -447,8 +447,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
         )));
       } else {
         final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
-        final shownResponse = _cancelRequested && response.isNotEmpty
-            ? 'تم إيقاف التوليد.\n$response'
+        final shownResponse = _cancelRequested
+            ? (response.startsWith('ERROR:')
+                ? 'تم إيقاف التوليد.'
+                : 'تم إيقاف التوليد.\n$response')
             : response;
         if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: shownResponse)));
       }
