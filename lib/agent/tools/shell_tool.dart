@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../core/agent_models.dart';
+import '../core/cancellation_token.dart';
 import 'tool.dart';
 
 class ShellTool extends AgentTool {
@@ -24,8 +25,23 @@ class ShellTool extends AgentTool {
   Map<String, dynamic> get parameters => const {'command': 'string', 'timeout': 'int'};
 
   @override
-  Future<StepResult> execute(Map<String, dynamic> params) async {
+  Future<StepResult> execute(Map<String, dynamic> params) =>
+      _execute(params, null);
+
+  @override
+  Future<StepResult> executeCancellable(
+    Map<String, dynamic> params,
+    CancellationToken? cancellationToken,
+  ) => _execute(params, cancellationToken);
+
+  Future<StepResult> _execute(
+    Map<String, dynamic> params,
+    CancellationToken? cancellationToken,
+  ) async {
     final command = params['command']?.toString().trim();
+    if (cancellationToken?.isCancelled == true) {
+      return StepResult.failure('تم إلغاء الأمر قبل التشغيل.');
+    }
     if (command == null || command.isEmpty) {
       return StepResult.failure('command مطلوب.');
     }
@@ -70,6 +86,13 @@ class ShellTool extends AgentTool {
         );
       }
 
+      final cancellationSubscription = cancellationToken?.onCancel.listen((_) {
+        runningProcess.kill(ProcessSignal.sigterm);
+      });
+      if (cancellationToken?.isCancelled == true) {
+        runningProcess.kill(ProcessSignal.sigterm);
+      }
+
       final stdout = StringBuffer();
       final stderr = StringBuffer();
       final stdoutDone = Completer<void>();
@@ -111,6 +134,7 @@ class ShellTool extends AgentTool {
           return 124;
         },
       );
+      await cancellationSubscription?.cancel();
       try {
         await Future.wait<void>([stdoutDone.future, stderrDone.future])
             .timeout(const Duration(seconds: 2));
