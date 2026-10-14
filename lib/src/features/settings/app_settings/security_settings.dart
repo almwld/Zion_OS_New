@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../widgets/toast_bar.dart';
+import '../../../../../widgets/toast_bar.dart';
 
 class SecuritySettings extends StatefulWidget {
   const SecuritySettings({super.key});
