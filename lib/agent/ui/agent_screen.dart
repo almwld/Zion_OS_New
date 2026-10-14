@@ -150,6 +150,16 @@ class _AgentScreenState extends State<AgentScreen> {
         _appendMessage({'role':'assistant','text':r.success?(r.report??'اكتملت المهمة بنجاح.'):'توقفت المهمة: '+(r.error??'خطأ غير معروف')});
       });
       _scrollEnd();
+    }).catchError((Object error) {
+      if (!mounted) return;
+      setState(() {
+        _result = AgentResult.error(task, error.toString());
+        _appendMessage({
+          'role': 'assistant',
+          'text': 'تعذر إكمال المهمة: $error',
+        });
+      });
+      _scrollEnd();
     });
   }
 
