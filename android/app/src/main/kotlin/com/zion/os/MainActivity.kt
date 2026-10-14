@@ -14,6 +14,7 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
+import android.os.Environment
 import android.net.TrafficStats
 import android.net.wifi.WifiInfo
 import android.content.ClipData
@@ -69,6 +70,7 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var zionApiChannel: ZionApiChannel
     private lateinit var zionPkgChannel: MethodChannel
     private var pendingTreeResult: MethodChannel.Result? = null
+    private var pendingAllFilesAccessResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
@@ -199,6 +201,25 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "ensureAllFilesAccess" -> {
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+                            result.success(true)
+                        } else if (pendingAllFilesAccessResult != null) {
+                            result.error("BUSY", "Storage access settings are already open.", null)
+                        } else {
+                            pendingAllFilesAccessResult = result
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
+                            } catch (_: Throwable) {
+                                pendingAllFilesAccessResult = null
+                                result.success(false)
+                            }
+                        }
+                    }
                     "pickKaliPackage" -> {
                         if (pendingKaliResult != null) {
                             result.error("BUSY", "A Kali package picker is already open.", null)
@@ -794,6 +815,14 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (t: Throwable) {
             mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Model import failed."))
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingAllFilesAccessResult ?: return
+        pendingAllFilesAccessResult = null
+        val granted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        pending.success(granted)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
