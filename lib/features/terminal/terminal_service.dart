@@ -144,6 +144,11 @@ class TerminalService {
   }
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
+      // A usable sh/dash may remain after an incomplete backup restore. Check
+      // it before invoking the installer so each app launch does not recopy
+      // the entire Userland tree just because bash is absent.
+      final existingUserlandShell = await _findUsableUserlandShell();
+      if (existingUserlandShell != null) return existingUserlandShell;
       if (await _userlandInstaller.isInstalled(
         onProgress: (message) => _output.add('$message\r\n'),
       )) {
