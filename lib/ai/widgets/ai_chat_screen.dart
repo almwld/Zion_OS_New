@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import '../ai_agent.dart';
 import '../llama_service.dart';
@@ -20,6 +21,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _loadingModel = false;
   bool _generating = false;
   String? _error;
+  double _temperature = 0.25;
+  int _maxTokens = 128;
 
   @override void initState() {
     super.initState();
@@ -103,6 +106,35 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
+  Future<void> _showGenerationSettings() async {
+    var temperature = _temperature;
+    var tokens = _maxTokens;
+    final result = await showModalBottomSheet<Map<String, Object>>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('إعدادات التوليد المحلي', style: Theme.of(context).textTheme.titleLarge),
+              Row(children: [const Expanded(child: Text('طول الإجابة')), Text('$tokens رمزاً')]),
+              Slider(value: tokens.toDouble(), min: 32, max: 256, divisions: 7, onChanged: (v) => setSheetState(() => tokens = v.round())),
+              Row(children: [const Expanded(child: Text('تنوع الإجابة')), Text(temperature.toStringAsFixed(2))]),
+              Slider(value: temperature, min: 0, max: 1.2, divisions: 24, onChanged: (v) => setSheetState(() => temperature = v)),
+              FilledButton(onPressed: () => Navigator.pop(sheetContext, {'tokens': tokens, 'temperature': temperature}), child: const Text('حفظ الإعدادات')),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _maxTokens = result['tokens']! as int;
+      _temperature = result['temperature']! as double;
+    });
+  }
+
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _generating) return;
@@ -115,7 +147,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
     try {
-      final response = await _agent.chat(text, maxTokens: 128);
+      final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
       if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: response)));
     } catch (e) {
       if (mounted) setState(() => _messages.add(AgentMessage(
@@ -130,14 +162,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
         if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
           final m = _messages[i]; final user = m.role == 'user';
-          return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Text(m.content)));
+          return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [SelectableText(m.content), if (!user) Align(alignment: AlignmentDirectional.centerEnd, child: IconButton(visualDensity: VisualDensity.compact, tooltip: 'نسخ الرد', icon: const Icon(Icons.copy, size: 16), onPressed: () => Clipboard.setData(ClipboardData(text: m.content))))])));
         })),
         if (_generating) const LinearProgressIndicator(),
         SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, maxLength: 2000, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder(), counterText: ''))), const SizedBox(width: 8), IconButton.filled(onPressed: _generating || _loadingModel ? null : _send, icon: const Icon(Icons.send))])))
