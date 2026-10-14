@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/features/terminal/arabic_shaper.dart';
 
 import '../../../lib/features/terminal/terminal_service.dart';
 import '../../../lib/security/core/security_core.dart';
@@ -11,6 +12,19 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  test('Arabic shaping preserves diacritics and uses lam-alef presentation ligature', () {
+    final shaped = ArabicShaper.shape('سلام');
+    expect(shaped.runes.length, 3);
+    expect(shaped, isNot('سلام'));
+    expect(ArabicShaper.isArabic(shaped), isTrue);
+
+    final marked = ArabicShaper.shape('بَت');
+    expect(marked.runes.toList(), contains(0x064E));
+    final lamAlef = ArabicShaper.shape('لا');
+    expect(lamAlef.runes.length, 1);
+    expect(lamAlef.runes.single, 0xFEFB);
   });
 
   test('built-in help is handled without spawning a shell', () async {
