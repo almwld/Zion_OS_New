@@ -416,7 +416,7 @@ class MainActivity : FlutterFragmentActivity() {
                 // package, not as JNI libraries in nativeLibraryDir.
                 val proot = File(filesDir, "usr/bin/proot")
                 val loader = File(filesDir, "usr/libexec/proot")
-                if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
+                if (!File(rootfs, "bin/sh").isFile || !proot.canExecute() || !loader.isFile) return 0
                 "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
             } else shell
 
