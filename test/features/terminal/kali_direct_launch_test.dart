@@ -19,9 +19,9 @@ void main() {
       final end = source.indexOf('void write(String input)', start);
       expect(start, greaterThanOrEqualTo(0));
       final method = source.substring(start, end);
-      expect(method, contains("File('$rootfsPath/bin/bash')"));
-      expect(method, contains("File('$rootfsPath/bin/sh')"));
-      expect(method, contains("shell = 'zion-kali@$rootfsPath'"));
+      expect(method, contains(r"File('$rootfsPath/bin/bash')"));
+      expect(method, contains(r"File('$rootfsPath/bin/sh')"));
+      expect(method, contains(r"shell = 'zion-kali@$rootfsPath'"));
       expect(method, contains("_findShell(installIfMissing: true)"));
       expect(method.indexOf('if (kaliRootfsPath != null)'),
           lessThan(method.indexOf('_findShell(installIfMissing: true)')));
