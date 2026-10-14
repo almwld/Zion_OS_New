@@ -84,7 +84,7 @@ void main(){
  });
  test('local chat never exposes an echoed system prompt as the answer',() async {
   final llama = RecordingLlamaService()
-    ..reply = 'أنت مساعد طرفية محلي داخل Zion OS. أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك. كيف يمكنني مساعدتك اليوم؟\\nقم بتحديث الطرفيه';
+    ..reply = 'أنت مساعد طرفية محلي داخل Zion OS. أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك. كيف يمكنني مساعدتك اليوم؟\nقم بتحديث الطرفيه';
   final agent = AIAgent(llama: llama);
   expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.terminalAssistant), isTrue);
   final response = await agent.chat('قم بتحديث الطرفيه');
@@ -95,7 +95,7 @@ void main(){
  });
  test('local chat removes a leading echoed request and keeps the actual answer',() async {
   final llama = RecordingLlamaService()
-    ..reply = 'قم بتحديث الطرفيه\\nنفّذ فحص الحزم أولاً ثم حدّثها بالطريقة المناسبة لتوزيعتك.';
+    ..reply = 'قم بتحديث الطرفيه\nنفّذ فحص الحزم أولاً ثم حدّثها بالطريقة المناسبة لتوزيعتك.';
   final agent = AIAgent(llama: llama);
   expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.terminalAssistant), isTrue);
   expect(await agent.chat('قم بتحديث الطرفيه'), 'نفّذ فحص الحزم أولاً ثم حدّثها بالطريقة المناسبة لتوزيعتك.');
