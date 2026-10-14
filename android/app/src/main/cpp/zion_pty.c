@@ -126,6 +126,7 @@ static void prepare_environment(void) {
     setenv("LD_LIBRARY_PATH", library_path, 1);
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
+    setenv("PS1", "$ ", 1);
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C.UTF-8", 1);
     setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1);
@@ -298,9 +299,6 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("PS1", "$ ", 1);
         setenv("ZION_SHELL_MODE", "android-system", 1);
     } else {
-        // Keep the requested minimal dollar prompt for Userland Bash as well
-        // as Android sh; the selected shell still receives the full PATH.
-        setenv("PS1", "$ ", 1);
         setenv("ZION_SHELL_MODE", "zion-userland", 1);
     }
 
