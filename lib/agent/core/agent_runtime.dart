@@ -45,6 +45,7 @@ class AgentRuntime {
   CancellationToken? _token;
   AgentSession? _active;
   StreamSubscription<AgentEvent>? _subscription;
+  bool _starting = false;
   final StreamController<AgentEvent> _events = StreamController<AgentEvent>.broadcast();
 
   AgentRuntime({AgentOrchestrator? orchestrator})
@@ -52,7 +53,7 @@ class AgentRuntime {
 
   Stream<AgentEvent> get events => _events.stream;
   AgentSession? get activeSession => _active;
-  bool get canCancel => _active != null && orchestrator.isRunning;
+  bool get canCancel => _active != null && (_starting || orchestrator.isRunning);
   AgentSessionSnapshot? get snapshot {
     final s = _active;
     if (s == null) return null;
@@ -77,6 +78,7 @@ class AgentRuntime {
       state: AgentState.planning,
     );
     _active = session;
+    _starting = true;
     final token = CancellationToken();
     _token = token;
 
@@ -88,6 +90,13 @@ class AgentRuntime {
     });
 
     try {
+      // Publish a cancellable busy state before the first asynchronous gap.
+      _events.add(AgentEvent(
+        timestamp: DateTime.now(),
+        message: 'تم قبول المهمة وبدء إعداد جلسة التنفيذ.',
+        state: AgentState.planning,
+      ));
+      _starting = false;
       final result = await orchestrator.executeTask(
         clean,
         approveReviewed: approveReviewed,
@@ -105,6 +114,7 @@ class AgentRuntime {
       session.touch();
       return result;
     } finally {
+      _starting = false;
       await _subscription?.cancel();
       _subscription = null;
       await token.dispose();
