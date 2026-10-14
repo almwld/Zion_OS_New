@@ -72,6 +72,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
         role: item['role'] == 'user' ? 'user' : 'assistant',
         content: (item['content'] ?? '').toString(),
       )).where((m) => m.content.isNotEmpty));
+      _agent.restoreHistory(_messages);
     } catch (_) {
       await prefs.remove(_historyKey);
     }
