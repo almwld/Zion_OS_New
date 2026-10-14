@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
+import '../../widgets/toast_bar.dart';
 
 class ProcessCenter extends StatefulWidget {
   const ProcessCenter({super.key});
@@ -129,11 +130,11 @@ class _ProcessCenterState extends State<ProcessCenter> {
       try {
         await Process.run('kill', ['-9', pid], runInShell: true);
         _loadProcesses();
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           SnackBar(content: Text('Process $name terminated'), backgroundColor: Color(0xFF00BCD4)),
         );
       } catch (_) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           const SnackBar(content: Text('Failed to terminate process'), backgroundColor: Colors.red),
         );
       }
