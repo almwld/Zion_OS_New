@@ -8,6 +8,8 @@ class RecordingLlamaService extends LlamaService {
   String lastPrompt = '';
   int lastMaxTokens = 0;
   double lastTemperature = 0;
+  int generateCalls = 0;
+  String reply = 'local reply';
 
   @override
   Future<bool> loadModel(
@@ -23,10 +25,11 @@ class RecordingLlamaService extends LlamaService {
     int maxTokens = 512,
     double temperature = 0.7,
   }) async {
+    generateCalls++;
     lastPrompt = prompt;
     lastMaxTokens = maxTokens;
     lastTemperature = temperature;
-    return 'local reply';
+    return reply;
   }
 
   @override
@@ -52,6 +55,30 @@ void main(){
   await agent.chat('explain this', maxTokens: 256, temperature: 1.1);
   expect(llama.lastMaxTokens, 256);
   expect(llama.lastTemperature, 1.1);
+  await agent.dispose();
+ });
+ test('local chat ignores blank input without invoking inference',() async {
+  final llama = RecordingLlamaService();
+  final agent = AIAgent(llama: llama);
+  expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
+  expect(await agent.chat('   '), isEmpty);
+  expect(llama.generateCalls, 0);
+  await agent.dispose();
+ });
+ test('local chat clamps out-of-range generation settings',() async {
+  final llama = RecordingLlamaService();
+  final agent = AIAgent(llama: llama);
+  expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
+  await agent.chat('check bounds', maxTokens: 999, temperature: 99);
+  expect(llama.lastMaxTokens, 256);
+  expect(llama.lastTemperature, 1.5);
+  await agent.dispose();
+ });
+ test('local chat strips common model turn markers',() async {
+  final llama = RecordingLlamaService()..reply = '<|im_start|>assistant\\nHello<|im_end|>\\nUser: next turn';
+  final agent = AIAgent(llama: llama);
+  expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
+  expect(await agent.chat('say hello'), 'Hello');
   await agent.dispose();
  });
  test('agent policy blocks destructive shell and requests approval for writes',(){
