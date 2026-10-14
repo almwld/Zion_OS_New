@@ -181,7 +181,7 @@ class BrowserTool extends AgentTool {
     }
     if (address.type == InternetAddressType.IPv6) {
       final allZero = bytes.every((byte) => byte == 0);
-      final loopback = allZero && bytes.last == 1;
+      final loopback = bytes.take(15).every((byte) => byte == 0) && bytes.last == 1;
       final first = bytes.first;
       final linkLocal = first == 0xfe && (bytes[1] & 0xc0) == 0x80;
       final uniqueLocal = (first & 0xfe) == 0xfc;
@@ -204,7 +204,7 @@ class BrowserTool extends AgentTool {
     try {
       while (length < _maxBodyBytes && await iterator.moveNext()) {
         final chunk = iterator.current;
-        final take = (_maxBodyBytes - length).clamp(0, chunk.length);
+        final take = (_maxBodyBytes - length).clamp(0, chunk.length).toInt();
         if (take > 0) {
           output.add(take == chunk.length ? chunk : chunk.sublist(0, take));
           length += take;
