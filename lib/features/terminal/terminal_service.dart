@@ -369,16 +369,48 @@ class TerminalService {
     }
   }
 
-  Future<bool> startInteractive() async {
-    if (isInteractiveRunning) return true;
+  Future<bool> startInteractive({String? kaliRootfsPath}) async {
+    if (isInteractiveRunning && kaliRootfsPath == null) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null) {
+      await stopInteractive();
+    }
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
-    // Ensure private home/tmp exist before automatic Userland installation.
+    // Kali uses the already-installed Zion PRoot runtime and a local rootfs;
+    // it must not trigger Userland restore or copy the selected rootfs.
     await _ensureTerminalEnvironment();
-    final shell = await _findShell(installIfMissing: true);
+    String? shell;
+    if (kaliRootfsPath != null) {
+      final path = kaliRootfsPath.trim();
+      if (!path.startsWith('/') ||
+          path.contains('|') ||
+          path.contains('\\n') ||
+          path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _output.add('[Kali] Invalid local rootfs path.\\r\\n');
+        return false;
+      }
+      final rootfs = Directory(path);
+      final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
+      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
+      if (!await rootfs.exists() ||
+          !await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _output.add('[Kali] Invalid rootfs: expected bin/bash and bin/sh at $path. No files were copied.\\r\\n');
+        return false;
+      }
+      if (!await proot.exists() || !await loader.exists()) {
+        _output.add('[Kali] Zion PRoot/loader is missing. Restore Userland PRoot before launching Kali.\\r\\n');
+        return false;
+      }
+      shell = 'zion-kali@$path';
+      _output.add('[Kali] Starting local rootfs without copying it: $path\\r\\n');
+    } else {
+      shell = await _findShell(installIfMissing: true);
+    }
     if (shell == null) {
       _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
       _audit(
