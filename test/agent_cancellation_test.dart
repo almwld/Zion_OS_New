@@ -37,9 +37,9 @@ class ReviewPolicy extends AgentPolicy {
       );
 }
 
-class SlowBrowserTool extends AgentTool {
+class SlowAITool extends AgentTool {
   final Duration delay;
-  SlowBrowserTool(this.delay);
+  SlowAITool(this.delay);
 
   @override
   String get name => 'ai';
@@ -213,7 +213,7 @@ void main() {
   });
 
   test('Orchestrator enforces the central step timeout', () async {
-    final tools = ToolRegistry(customTools: [SlowBrowserTool(const Duration(milliseconds: 250))]);
+    final tools = ToolRegistry(customTools: [SlowAITool(const Duration(milliseconds: 250))]);
     final orchestrator = AgentOrchestrator(
       tools: tools,
       policy: const AgentPolicy(),
@@ -230,7 +230,7 @@ void main() {
   });
 
   test('AgentRuntime cancellation interrupts an active orchestration', () async {
-    final tools = ToolRegistry(customTools: [SlowBrowserTool(const Duration(milliseconds: 500))]);
+    final tools = ToolRegistry(customTools: [SlowAITool(const Duration(milliseconds: 500))]);
     final runtime = AgentRuntime(
       orchestrator: AgentOrchestrator(tools: tools),
     );
