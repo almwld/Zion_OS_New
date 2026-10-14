@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/services.dart';
 
 class NetworkAnalyzerApp extends StatefulWidget {
   const NetworkAnalyzerApp({super.key});
@@ -20,32 +21,54 @@ class _NetworkAnalyzerAppState extends State<NetworkAnalyzerApp> {
   String _scanResult = '';
   int _dataPoint = 0;
   Timer? _monitorTimer;
+  StreamSubscription<dynamic>? _radarSubscription;
+  Map<String, dynamic> _liveNetworkSample = <String, dynamic>{};
 
   @override
   void initState() {
     super.initState();
     _initData();
     _startMonitoring();
+    _listenToRealNetworkTelemetry();
     _loadNetworkInfo();
   }
 
   @override
   void dispose() {
     _monitorTimer?.cancel();
+    _radarSubscription?.cancel();
     super.dispose();
   }
 
   void _initData() {
-    for (int i = 0; i < 20; i++) {
-      _trafficHistory.add(FlSpot(i.toDouble(), 0));
-    }
+    // Start empty: a chart point is added only after a real native sample arrives.
+    _trafficHistory.clear();
+  }
+
+  void _listenToRealNetworkTelemetry() {
+    const channel = EventChannel('zion.os/network/radar');
+    _radarSubscription = channel.receiveBroadcastStream().listen((dynamic event) {
+      if (event is! Map) return;
+      final sample = Map<String, dynamic>.from(event);
+      if (sample['event'] == true && sample.length <= 4) return;
+      final rx = sample['rxBytesPerSec'];
+      final tx = sample['txBytesPerSec'];
+      if (rx is! num || tx is! num || !mounted) return;
+      _liveNetworkSample = sample;
+      _dataPoint++;
+      setState(() {
+        _trafficHistory.add(FlSpot(_dataPoint.toDouble(), (rx + tx).toDouble()));
+        if (_trafficHistory.length > 20) _trafficHistory.removeAt(0);
+      });
+    }, onError: (_) {
+      // Keep the chart empty rather than substituting fabricated traffic.
+    });
   }
 
   void _startMonitoring() {
     _monitorTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       _updateActiveConnections();
-      _updateTrafficHistory();
-      setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
@@ -103,13 +126,6 @@ class _NetworkAnalyzerAppState extends State<NetworkAnalyzerApp> {
         }
       }
     } catch (_) {}
-  }
-
-  void _updateTrafficHistory() {
-    _dataPoint++;
-    final randomTraffic = 10 + (DateTime.now().second % 90);
-    _trafficHistory.add(FlSpot(_dataPoint.toDouble(), randomTraffic.toDouble()));
-    if (_trafficHistory.length > 20) _trafficHistory.removeAt(0);
   }
 
   Future<void> _scanPorts(String host) async {
@@ -224,22 +240,29 @@ class _NetworkAnalyzerAppState extends State<NetworkAnalyzerApp> {
                   const SizedBox(height: 16),
                   SizedBox(
                     height: 120,
-                    child: LineChart(
-                      LineChartData(
-                        gridData: const FlGridData(show: true, drawVerticalLine: false),
-                        titlesData: const FlTitlesData(show: false),
-                        borderData: FlBorderData(show: false),
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: _trafficHistory,
-                            isCurved: true,
-                            color: const Color(0xFF00BCD4),
-                            barWidth: 2,
-                            dotData: const FlDotData(show: false),
+                    child: _trafficHistory.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Waiting for real Android network samples…',
+                              style: TextStyle(color: Colors.white54, fontSize: 11),
+                            ),
+                          )
+                        : LineChart(
+                            LineChartData(
+                              gridData: const FlGridData(show: true, drawVerticalLine: false),
+                              titlesData: const FlTitlesData(show: false),
+                              borderData: FlBorderData(show: false),
+                              lineBarsData: [
+                                LineChartBarData(
+                                  spots: _trafficHistory,
+                                  isCurved: true,
+                                  color: const Color(0xFF00BCD4),
+                                  barWidth: 2,
+                                  dotData: const FlDotData(show: false),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
                   ),
                 ],
               ),
