@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import '../../core/userland/zion_userland_installer.dart';
+import '../../core/userland/local_kali_bootstrap.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
@@ -337,36 +338,64 @@ class TerminalService {
     }
   }
 
-  Future<bool> startInteractive() async {
+  Future<bool> startInteractive({bool kali = false}) async {
     if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
-    // Ensure private home/tmp exist before automatic Userland installation.
     await _ensureTerminalEnvironment();
-    final shell = await _findShell(installIfMissing: true);
-    if (shell == null) {
-      _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
-      _audit(
-        command: '<interactive-start>',
-        outcome: 'unavailable',
-        exitCode: 127,
-        shell: 'unavailable',
-        duration: DateTime.now().difference(started),
-        interactive: false,
-      );
-      return false;
-    }
-    _output.add(shell == _userlandBash
-        ? 'Userland Bash ready: $shell\r\n'
-        : 'Android shell ready: $shell\r\n');
 
-    // The interactive terminal must use the native PTY. A pipe-backed
-    // Process.start() session is not a terminal: it cannot provide job
-    // control, TTY ioctls, correct resize semantics, or reliable interactive
-    // programs such as vim/top/nano.
+    String? shell;
+    if (kali) {
+      const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+      const proot = '/data/data/com.zion.os/files/usr/bin/proot';
+      const loader = '/data/data/com.zion.os/files/usr/libexec/proot';
+      final alreadyInstalled = await File('$rootfs/bin/sh').exists() &&
+          await File(proot).exists() &&
+          await File(loader).exists();
+      if (!alreadyInstalled) {
+        _output.add('[Kali] لم يتم العثور على rootfs صالح في المسار المشترك؛ أبحث عن الحزمة المحلية.\r\n');
+        final installed = await const ZionLocalKaliBootstrap().install(
+          onProgress: (progress) => _output.add(
+            '[Kali] ${progress.percent}% — ${progress.message}\r\n',
+          ),
+        );
+        if (!installed.isSuccess) {
+          _output.add('[Kali] فشل تثبيت الحزمة المحلية: ${installed.error}\r\n');
+          return false;
+        }
+      }
+      if (!await File('$rootfs/bin/sh').exists() ||
+          !await File(proot).exists() ||
+          !await File(loader).exists()) {
+        _output.add('[Kali] البيئة غير مكتملة. تحقق من Zion Userland وPRoot قبل التشغيل.\r\n');
+        return false;
+      }
+      shell = 'zion-kali';
+      _output.add('[Kali] تم العثور على rootfs محلي صالح؛ بدء جلسة Kali عبر PRoot وPTY الأصلي.\r\n');
+    } else {
+      shell = await _findShell(installIfMissing: true);
+      if (shell == null) {
+        _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
+        _audit(
+          command: '<interactive-start>',
+          outcome: 'unavailable',
+          exitCode: 127,
+          shell: 'unavailable',
+          duration: DateTime.now().difference(started),
+          interactive: false,
+        );
+        return false;
+      }
+      _output.add(shell == _userlandBash
+          ? 'Userland Bash ready: $shell\r\n'
+          : 'Android shell ready: $shell\r\n');
+    }
+
+    // Both Android and Kali use the native PTY so interactive programs,
+    // job control, and terminal resizing work in the same terminal widget.
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
@@ -377,7 +406,7 @@ class TerminalService {
       _ptyOutputSub = _pty.output.listen(_output.add);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start Android shell PTY: $shell\r\n');
+        _output.add('ERROR: Unable to start terminal PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -389,20 +418,22 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(shell == _userlandBash
-          ? 'Connected to Userland: bash • native PTY\r\n'
-          : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _output.add(kali
+          ? 'Connected to Kali Linux • PRoot • native PTY\r\n'
+          : shell == _userlandBash
+              ? 'Connected to Userland: bash • native PTY\r\n'
+              : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
         exitCode: 0,
-        shell: shell,
+        shell: kali ? 'kali-proot-pty' : shell,
         duration: DateTime.now().difference(started),
         interactive: true,
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
+      _output.add('ERROR: Unable to start terminal PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -413,7 +444,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: $e\r\n');
+      _output.add('ERROR: Unable to start terminal PTY: $e\r\n');
       return false;
     }
   }
