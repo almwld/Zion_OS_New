@@ -16,21 +16,44 @@ class AIAgent {
   AIAgent({LlamaService? llama}) : llama = llama ?? LlamaService();
   bool get isInitialized => _initialized;
 
-  Future<bool> initialize({required String modelPath, required AgentRole role, int nThreads = 4}) async {
+  Future<bool> initialize({required String modelPath, required AgentRole role, int nThreads = 2}) async {
+    // A native model replacement first releases the previous model. Clear the
+    // Dart readiness flag before crossing the platform channel so a failed
+    // replacement can never leave the agent claiming that inference is ready.
+    final previousModel = llama.currentModel;
+    _initialized = false;
     final loaded = await llama.loadModel(modelPath, threads: nThreads);
     if (!loaded) return false;
-    _role = role; _initialized = true; return true;
+    if (previousModel != null && previousModel != modelPath) {
+      _history.clear();
+    }
+    _role = role;
+    _initialized = true;
+    return true;
   }
 
-  Future<String> chat(String message, {int maxTokens = 128}) async {
+  Future<String> chat(
+    String message, {
+    int maxTokens = 128,
+    double temperature = 0.25,
+  }) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
-    final rawResponse = await llama.generate(_buildPrompt(message), maxTokens: maxTokens, temperature: 0.25);
+    final cleanMessage = message.trim();
+    if (cleanMessage.isEmpty) return '';
+    final rawResponse = await llama.generate(
+      _buildPrompt(cleanMessage),
+      maxTokens: maxTokens.clamp(1, 256).toInt(),
+      temperature: temperature.clamp(0.0, 1.5).toDouble(),
+    );
     final response = _cleanResponse(rawResponse);
+    if (response.isEmpty) {
+      return 'ERROR: لم ينتج النموذج نصاً. حاول مجدداً أو اختر نموذج محادثة متوافقاً.';
+    }
     if (!response.startsWith('ERROR:')) {
       _history
-        ..add(AgentMessage(role: 'user', content: message))
+        ..add(AgentMessage(role: 'user', content: cleanMessage))
         ..add(AgentMessage(role: 'assistant', content: response));
-      if (_history.length > 20) _history.removeRange(0, _history.length - 20);
+      if (_history.length > 12) _history.removeRange(0, _history.length - 12);
     }
     return response;
   }
@@ -54,39 +77,41 @@ class AIAgent {
   );
 
   String _cleanResponse(String response) {
-    // Small models occasionally print boundary tokens instead of stopping.
     var cleaned = response;
     for (final marker in const [
       '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
       '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
+      '<|end|>', '<|eot_id|>', '<|start_header_id|>', '<|end_header_id|>',
     ]) {
       cleaned = cleaned.replaceAll(marker, '');
     }
+    final nextTurn = cleaned.indexOf(RegExp(r'\n\s*(User|Human|Assistant)\s*:', caseSensitive: false));
+    if (nextTurn >= 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
   }
 
   String _buildPrompt(String message) {
-    // Qwen2.5-Instruct is trained on ChatML. Role tags such as <|system|>
-    // and <|end|> are not equivalent and can cause role leakage/repetition.
     final b = StringBuffer()
       ..writeln('<|im_start|>system')
       ..writeln(_systemPrompt(_role))
       ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
       ..writeln('<|im_end|>');
+    // The native Android context is deliberately bounded to 512 tokens.
+    // Keep one recent exchange so the prompt leaves room for a useful answer.
     final recent = _history.length > 2
         ? _history.sublist(_history.length - 2)
         : _history;
     for (final item in recent) {
-      final content = item.content.length > 160
-          ? item.content.substring(0, 160)
+      final content = item.content.length > 180
+          ? item.content.substring(0, 180)
           : item.content;
       b
         ..writeln('<|im_start|>${item.role}')
         ..writeln(content)
         ..writeln('<|im_end|>');
     }
-    final boundedMessage = message.length > 360
-        ? message.substring(0, 360)
+    final boundedMessage = message.length > 700
+        ? message.substring(0, 700)
         : message;
     b
       ..writeln('<|im_start|>user')
@@ -95,6 +120,7 @@ class AIAgent {
       ..writeln('<|im_start|>assistant');
     return b.toString();
   }
+
   String _systemPrompt(AgentRole role) => switch (role) {
     AgentRole.terminalAssistant => 'أنت مساعد طرفية محلي داخل Zion OS. أجب بالعربية، وفسّر الأوامر والأخطاء وقدّم خطوات آمنة.',
     AgentRole.securityExpert => 'أنت مساعد أمن دفاعي محلي. حلل الإعدادات والسجلات والأوامر بهدف التشخيص والحماية فقط.',
@@ -107,6 +133,12 @@ class AIAgent {
     if (c.contains('rm ') || c.contains('chmod 777') || c.contains('sudo ') || c.contains('su ')) return RiskLevel.high;
     if (c.contains('apt ') || c.contains('pkg ') || c.contains('git clone')) return RiskLevel.medium;
     return RiskLevel.safe;
+  }
+
+  void restoreHistory(Iterable<AgentMessage> messages) {
+    _history
+      ..clear()
+      ..addAll(messages.where((m) => m.role == 'user' || m.role == 'assistant').toList().reversed.take(20).toList().reversed);
   }
 
   void clearHistory() => _history.clear();
