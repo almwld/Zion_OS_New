@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../services/preferences_service.dart';
+import '../services/toast_service.dart';
 
 /// Live network radar. Every plotted value comes from Android's
 /// TrafficStats/ConnectivityManager stream; no demo devices or synthetic values.
@@ -21,7 +22,6 @@ class _RadarWidgetState extends State<RadarWidget>
   static const EventChannel _channel = EventChannel('zion.os/network/radar');
 
   late final AnimationController _scanAnimation;
-  late final Animation<double> _scanRotation;
   StreamSubscription<dynamic>? _subscription;
   Map<String, dynamic> _telemetry = <String, dynamic>{};
   String? _selectedPoint;
@@ -35,8 +35,6 @@ class _RadarWidgetState extends State<RadarWidget>
       duration: const Duration(seconds: 3),
       vsync: this,
     )..repeat();
-    _scanRotation = Tween<double>(begin: 0, end: math.pi * 2)
-        .animate(_scanAnimation);
     _listenToTelemetry();
   }
 
@@ -234,9 +232,16 @@ class _RadarWidgetState extends State<RadarWidget>
                   left: (p.dx - 6).clamp(0.0, width - 12),
                   top: (p.dy - 6).clamp(0.0, height - 12),
                   child: GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedPoint = _selectedPoint == point.name ? null : point.name;
-                    }),
+                    onTap: () {
+                      setState(() {
+                        _selectedPoint =
+                            _selectedPoint == point.name ? null : point.name;
+                      });
+                      ToastService.show(
+                        '${point.name}: ${point.detail}',
+                        tone: ZionToastTone.info,
+                      );
+                    },
                     child: Container(
                       width: 12,
                       height: 12,
