@@ -266,51 +266,10 @@ class ZionUserlandInstaller {
       );
     }
 
-    final remote = await _downloadFromSingleEndpoint(
-      abi,
-      onProgress: onProgress,
+    return const ZionUserlandInstallResult(
+      success: false,
+      message: 'لم يتم العثور على Userland صالح في النسخ المحلية أو النسخة الداخلية. لم تتم محاولة الاتصال بالإنترنت؛ تحقق من وجود Download/termux_usr_backup ومنح إذن الوصول إلى الملفات.',
     );
-    if (!remote.success || remote.path == null) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: remote.message ?? 'تعذر تنزيل Zion Userland.',
-      );
-    }
-
-    try {
-      onProgress?.call('تم تنزيل Bootstrap والتحقق من SHA-256؛ يبدأ التثبيت...');
-      final result = await ZionBootstrap().installFromArchive(
-        remote.path!,
-        onProgress: (progress, message) => onProgress?.call(
-          '[${(progress * 100).round()}%] $message',
-        ),
-      );
-      if (!result.success) {
-        return ZionUserlandInstallResult(
-          success: false,
-          message: result.error ?? 'فشل تثبيت Userland.',
-        );
-      }
-      // Verify the installed runtime end-to-end. A valid archive/hash is not
-      // sufficient if the extracted shell or its shared libraries cannot run.
-      if (!await ZionBootstrap.isInstalled() ||
-          !await _hasCompatibleProot() ||
-          !await _hasCompatibleShell()) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message: 'اكتمل فك الحزمة لكن فشل فحص تشغيل الصدفة أو PRoot؛ لم يتم اعتماد Userland كجاهز.',
-        );
-      }
-      return ZionUserlandInstallResult(
-        success: true,
-        message: 'تم تنزيل وتثبيت Zion Userland والتحقق من تشغيل الصدفة بنجاح.',
-        releaseTag: await ZionBootstrap.currentRelease(),
-      );
-    } finally {
-      try {
-        await File(remote.path!).delete();
-      } catch (_) {}
-    }
   }
 
   Future<ZionUserlandInstallResult> _installFromDirectory(
