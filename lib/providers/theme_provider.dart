@@ -107,8 +107,9 @@ class ThemeProvider extends ChangeNotifier {
       _radarPositionY =
           (prefs.getDouble(_radarPositionYKey) ?? 0.16).clamp(0.0, 1.0).toDouble();
       _cmatrixEnabled = prefs.getBool(_cmatrixEnabledKey) ?? true;
-      _cmatrixUseMusnad = prefs.getBool(_cmatrixMusnadKey) ?? true;
-      _cmatrixUseArabic = prefs.getBool(_cmatrixArabicKey) ?? false;
+      // Zion Matrix uses Musnad-only glyphs by design; ignore legacy modern-Arabic settings.
+      _cmatrixUseMusnad = true;
+      _cmatrixUseArabic = false;
       final storedCMatrixColor = prefs.getInt(_cmatrixColorKey);
       _cmatrixColor = storedCMatrixColor == null || storedCMatrixColor == const Color(0xFF00FF41).value
           ? ZionColors.cyan
@@ -187,8 +188,9 @@ class ThemeProvider extends ChangeNotifier {
     double? fontSize,
   }) async {
     _cmatrixEnabled = enabled ?? _cmatrixEnabled;
-    _cmatrixUseMusnad = useMusnad ?? _cmatrixUseMusnad;
-    _cmatrixUseArabic = useArabic ?? _cmatrixUseArabic;
+    // Keep the glyph source Musnad-only even if an older caller requests Arabic.
+    _cmatrixUseMusnad = true;
+    _cmatrixUseArabic = false;
     _cmatrixColor = color ?? _cmatrixColor;
     _cmatrixOpacity =
         (opacity ?? _cmatrixOpacity).clamp(0.0, 1.0).toDouble();
@@ -217,9 +219,10 @@ class ThemeProvider extends ChangeNotifier {
   Future<void> setCMatrixSpeed(double value) => setCMatrix(speed: value);
   Future<void> setCMatrixFontSize(double value) => setCMatrix(fontSize: value);
   Future<void> setCMatrixUseMusnad(bool value) =>
-      setCMatrix(useMusnad: value, useArabic: !value);
+      setCMatrix(useMusnad: true, useArabic: false);
+  @Deprecated('C Matrix is Musnad-only.')
   Future<void> setCMatrixUseArabic(bool value) =>
-      setCMatrix(useArabic: value, useMusnad: !value);
+      setCMatrix(useMusnad: true, useArabic: false);
   Future<void> setCMatrixColor(Color value) => setCMatrix(color: value);
 
   Future<void> _storePin(String pin) async {
