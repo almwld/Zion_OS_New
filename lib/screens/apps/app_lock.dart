@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../widgets/toast_bar.dart';
 
 class AppLockApp extends StatefulWidget {
   const AppLockApp({super.key});
@@ -115,11 +116,11 @@ class _AppLockAppState extends State<AppLockApp> {
                 await prefs.setString('app_lock_pin', newPinController.text);
                 setState(() => _currentPin = newPinController.text);
                 Navigator.pop(context, true);
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastBar.show(context, 
                   const SnackBar(content: Text('PIN changed successfully'), backgroundColor: Color(0xFF00BCD4)),
                 );
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastBar.show(context, 
                   const SnackBar(content: Text('Invalid PIN'), backgroundColor: Colors.red),
                 );
               }
@@ -161,7 +162,7 @@ class _AppLockAppState extends State<AppLockApp> {
                   _isPinSet = true;
                 });
                 Navigator.pop(context, true);
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastBar.show(context, 
                   const SnackBar(content: Text('PIN set successfully'), backgroundColor: Color(0xFF00BCD4)),
                 );
               }
