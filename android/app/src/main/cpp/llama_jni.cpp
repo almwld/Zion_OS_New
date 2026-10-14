@@ -131,15 +131,23 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         return env->NewStringUTF("ERROR: Prompt exceeds the safe local context window; shorten the message or clear chat history.");
     }
 
-    if (temperature > 0.0f) {
-        llama_sampler_free(g_sampler);
-        auto samplerParams = llama_sampler_chain_default_params();
-        g_sampler = llama_sampler_chain_init(samplerParams);
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(temperature));
-        llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+    // Rebuild the sampler for every request so a temperature of zero does not
+    // accidentally reuse the previous request's sampling configuration. The
+    // current llama.cpp temperature sampler expects a positive value, so map
+    // zero to a very low deterministic-like temperature.
+    llama_sampler_free(g_sampler);
+    g_sampler = nullptr;
+    auto samplerParams = llama_sampler_chain_default_params();
+    g_sampler = llama_sampler_chain_init(samplerParams);
+    if (!g_sampler) {
+        LOGE("Unable to initialize request sampler");
+        return env->NewStringUTF("ERROR: Unable to initialize local sampler.");
     }
+    const float safeTemperature = std::clamp(static_cast<float>(temperature), 0.05f, 1.5f);
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(safeTemperature));
+    llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     // n_batch is deliberately small on phones. Never submit the whole prompt
     // as one batch: long Arabic/system prompts can exceed n_batch and cause
