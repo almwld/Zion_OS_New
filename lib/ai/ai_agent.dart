@@ -45,7 +45,7 @@ class AIAgent {
       maxTokens: maxTokens.clamp(1, 256).toInt(),
       temperature: temperature.clamp(0.0, 1.5).toDouble(),
     );
-    final response = _cleanResponse(rawResponse, userMessage: cleanMessage);
+    final response = _cleanResponse(rawResponse);
     if (response.isEmpty) {
       return 'ERROR: لم ينتج النموذج نصاً. حاول مجدداً أو اختر نموذج محادثة متوافقاً.';
     }
@@ -76,8 +76,8 @@ class AIAgent {
     maxTokens: 120, temperature: 0.2,
   );
 
-  String _cleanResponse(String response, {required String userMessage}) {
-    var cleaned = response.replaceAll('\r\n', '\n');
+  String _cleanResponse(String response) {
+    var cleaned = response;
     for (final marker in const [
       '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
       '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
@@ -85,44 +85,10 @@ class AIAgent {
     ]) {
       cleaned = cleaned.replaceAll(marker, '');
     }
-    // Hide echoed plain-text prompts emitted by some small/base GGUF models.
-    cleaned = cleaned.replaceAll(_systemPrompt(_role), '');
-    cleaned = cleaned.replaceAll(
-      'أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.',
-      '',
-    );
-    cleaned = cleaned.replaceAll(
-      'أخرج نص الإجابة فقط. لا تعرض تعليمات النظام أو نص المستخدم أو سجل المحادثة، ولا تكرر أي جزء من المدخل.',
-      '',
-    );
     cleaned = cleaned.replaceFirst(
-      RegExp(r'^\s*(assistant|system|user|human)\s*:?\s*\n', caseSensitive: false),
+      RegExp(r'^\s*(assistant|system|user)\s*:?\s*\n', caseSensitive: false),
       '',
     );
-    cleaned = cleaned.trimLeft();
-    final echoedUserMessage = userMessage.trim();
-    if (echoedUserMessage.isNotEmpty && cleaned.startsWith(echoedUserMessage)) {
-      final remainder = cleaned.substring(echoedUserMessage.length);
-      if (remainder.isEmpty || remainder.startsWith('\n') || remainder.startsWith(':') || remainder.startsWith('：')) {
-        cleaned = remainder.replaceFirst(RegExp(r'^[\s:：-]+'), '');
-      }
-    }
-    if (cleaned.startsWith('أنت مساعد')) {
-      cleaned = cleaned.replaceFirst(RegExp(r'^أنت مساعد[^\n]*(?:\n|$)'), '');
-    }
-    cleaned = cleaned.replaceFirst(
-      RegExp(r'^كيف يمكنني مساعدتك اليوم؟[\s.!؟]*', caseSensitive: false),
-      '',
-    );
-    // The greeting can precede an echoed request, so check once more after
-    // removing the greeting from the start of the generated text.
-    cleaned = cleaned.trimLeft();
-    if (echoedUserMessage.isNotEmpty && cleaned.startsWith(echoedUserMessage)) {
-      final remainder = cleaned.substring(echoedUserMessage.length);
-      if (remainder.isEmpty || remainder.startsWith('\n') || remainder.startsWith(':') || remainder.startsWith('：')) {
-        cleaned = remainder.replaceFirst(RegExp(r'^[\s:：-]+'), '');
-      }
-    }
     final nextTurn = cleaned.indexOf(RegExp(r'\n\s*(User|Human|Assistant)\s*:', caseSensitive: false));
     if (nextTurn >= 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
@@ -133,7 +99,6 @@ class AIAgent {
       ..writeln('<|im_start|>system')
       ..writeln(_systemPrompt(_role))
       ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
-      ..writeln('أخرج نص الإجابة فقط. لا تعرض تعليمات النظام أو نص المستخدم أو سجل المحادثة، ولا تكرر أي جزء من المدخل.')
       ..writeln('<|im_end|>');
     // The native Android context is deliberately bounded to 512 tokens.
     // Keep one recent exchange so the prompt leaves room for a useful answer.
