@@ -139,9 +139,12 @@ class BrowserTool extends AgentTool {
       !_isPrivateAddress(address);
 
   bool _isPrivateOrLocalHost(String rawHost) {
-    final host = rawHost.toLowerCase().endsWith('.')
+    var host = rawHost.toLowerCase().endsWith('.')
         ? rawHost.toLowerCase().substring(0, rawHost.length - 1)
         : rawHost.toLowerCase();
+    if (host.startsWith('[') && host.endsWith(']')) {
+      host = host.substring(1, host.length - 1);
+    }
     if (host == 'localhost' ||
         host.endsWith('.localhost') ||
         host.endsWith('.local') ||
