@@ -104,7 +104,11 @@ void main() {
       tools: ToolRegistry(customTools: [browser]),
       policy: const AgentPolicy(),
     );
-    final result = await orchestrator.executeTask('ابحث عن معلومات');
+    final future = orchestrator.executeTask('ابحث عن معلومات');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    orchestrator.approvePendingStep();
+    final result = await future;
     expect(result.success, isTrue);
     expect(result.steps, hasLength(1));
     expect(result.steps.single.summary, 'network tool completed');
