@@ -6,6 +6,8 @@ import 'package:project_zion/agent/core/agent_policy.dart';
 
 class RecordingLlamaService extends LlamaService {
   String lastPrompt = '';
+  int lastMaxTokens = 0;
+  double lastTemperature = 0;
 
   @override
   Future<bool> loadModel(
@@ -22,6 +24,8 @@ class RecordingLlamaService extends LlamaService {
     double temperature = 0.7,
   }) async {
     lastPrompt = prompt;
+    lastMaxTokens = maxTokens;
+    lastTemperature = temperature;
     return 'local reply';
   }
 
@@ -39,6 +43,15 @@ void main(){
   expect(llama.lastPrompt, contains('<|im_start|>user\nfirst question\n<|im_end|>'));
   expect(llama.lastPrompt, contains('<|im_start|>assistant\nlocal reply\n<|im_end|>'));
   expect(llama.lastPrompt, isNot(contains(r'${item.role}')));
+  await agent.dispose();
+ });
+ test('local chat forwards bounded generation settings',() async {
+  final llama = RecordingLlamaService();
+  final agent = AIAgent(llama: llama);
+  expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
+  await agent.chat('explain this', maxTokens: 256, temperature: 1.1);
+  expect(llama.lastMaxTokens, 256);
+  expect(llama.lastTemperature, 1.1);
   await agent.dispose();
  });
  test('agent policy blocks destructive shell and requests approval for writes',(){
