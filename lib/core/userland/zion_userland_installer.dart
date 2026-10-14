@@ -21,7 +21,6 @@ class ZionUserlandInstaller {
   static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
   static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
   static Future<ZionUserlandInstallResult>? _installFuture;
-  static bool _installCompleted = false;
 
   /// The on-disk marker is authoritative across app restarts and new tabs.
   /// Never gate this check on the process-local cache: Dart statics reset when
@@ -39,7 +38,6 @@ class ZionUserlandInstaller {
         if (state is Map &&
             state['installed'] == true &&
             state['bashPath'] == bashPath) {
-          _installCompleted = true;
           return true;
         }
       }
@@ -91,7 +89,6 @@ class ZionUserlandInstaller {
         if (!await _hasCompatibleShell()) return false;
         await _writeState(source: 'existing-userland', sizeBytes: 0);
       }
-      _installCompleted = true;
       return true;
     } catch (e) {
       print('[Userland] installed check failed: $e');
@@ -119,7 +116,6 @@ class ZionUserlandInstaller {
   Future<void> uninstallState() async {
     final file = File(_stateFilePath);
     if (await file.exists()) await file.delete();
-    _installCompleted = false;
   }
 
   Future<ZionUserlandInstallResult> installLatest({
@@ -129,7 +125,6 @@ class ZionUserlandInstaller {
     if (active != null) return active;
     final future = _installLatestInternal(onProgress: onProgress).then((result) async {
       if (result.success) {
-        _installCompleted = true;
         final stateFile = File(_stateFilePath);
         if (!await stateFile.exists()) {
           await _writeState(source: 'zion-userland-install', sizeBytes: 0);
