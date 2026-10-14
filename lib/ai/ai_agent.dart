@@ -28,17 +28,19 @@ class AIAgent {
     double temperature = 0.25,
   }) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
+    final cleanMessage = message.trim();
+    if (cleanMessage.isEmpty) return '';
     final rawResponse = await llama.generate(
-      _buildPrompt(message),
+      _buildPrompt(cleanMessage),
       maxTokens: maxTokens.clamp(1, 256).toInt(),
-      temperature: temperature.clamp(0.0, 2.0).toDouble(),
+      temperature: temperature.clamp(0.0, 1.5).toDouble(),
     );
     final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
       _history
-        ..add(AgentMessage(role: 'user', content: message))
+        ..add(AgentMessage(role: 'user', content: cleanMessage))
         ..add(AgentMessage(role: 'assistant', content: response));
-      if (_history.length > 20) _history.removeRange(0, _history.length - 20);
+      if (_history.length > 12) _history.removeRange(0, _history.length - 12);
     }
     return response;
   }
@@ -66,9 +68,12 @@ class AIAgent {
     for (final marker in const [
       '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
       '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
+      '<|end|>', '<|eot_id|>', '<|start_header_id|>', '<|end_header_id|>',
     ]) {
       cleaned = cleaned.replaceAll(marker, '');
     }
+    final nextTurn = cleaned.indexOf(RegExp(r'\\n\\s*(User|Human|Assistant)\\s*:', caseSensitive: false));
+    if (nextTurn > 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
   }
 
@@ -78,20 +83,20 @@ class AIAgent {
       ..writeln(_systemPrompt(_role))
       ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
       ..writeln('<|im_end|>');
-    final recent = _history.length > 2
-        ? _history.sublist(_history.length - 2)
+    final recent = _history.length > 4
+        ? _history.sublist(_history.length - 4)
         : _history;
     for (final item in recent) {
-      final content = item.content.length > 160
-          ? item.content.substring(0, 160)
+      final content = item.content.length > 280
+          ? item.content.substring(0, 280)
           : item.content;
       b
         ..writeln('<|im_start|>${item.role}')
         ..writeln(content)
         ..writeln('<|im_end|>');
     }
-    final boundedMessage = message.length > 360
-        ? message.substring(0, 360)
+    final boundedMessage = message.length > 1200
+        ? message.substring(0, 1200)
         : message;
     b
       ..writeln('<|im_start|>user')
