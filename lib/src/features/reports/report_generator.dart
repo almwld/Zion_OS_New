@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../../widgets/toast_bar.dart';
 
 class ReportGenerator extends StatefulWidget {
   const ReportGenerator({super.key});
@@ -27,7 +28,7 @@ class _ReportGeneratorState extends State<ReportGenerator> {
       _reports.insert(0, newReport);
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Report generated')),
     );
   }
