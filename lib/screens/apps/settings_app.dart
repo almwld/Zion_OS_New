@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/services/biometric_service.dart';
 import '../../widgets/toast_bar.dart';
 
 import '../../core/theme/zion_colors.dart';
@@ -16,6 +18,48 @@ class SettingsApp extends StatefulWidget {
 }
 
 class _SettingsAppState extends State<SettingsApp> {
+  static const _biometricKey = 'zion_biometric_unlock_enabled';
+  bool _biometricEnabled = false;
+  bool _biometricBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricPreference();
+  }
+
+  Future<void> _loadBiometricPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _biometricEnabled = prefs.getBool(_biometricKey) ?? false);
+  }
+
+  Future<void> _setBiometricEnabled(bool enabled) async {
+    if (_biometricBusy) return;
+    setState(() => _biometricBusy = true);
+    try {
+      if (enabled) {
+        final service = BiometricService();
+        if (!await service.isAvailable()) {
+          if (mounted) ToastBar.show(context, const SnackBar(content: Text('لا توجد مصادقة بيومترية مهيأة على هذا الجهاز.')));
+          return;
+        }
+        final result = await service.authenticateResult(reason: 'تحقق من هويتك لتفعيل الدخول بالبصمة في Zion OS');
+        if (!result.success) {
+          if (mounted) ToastBar.show(context, SnackBar(content: Text(result.error ?? 'لم يتم التحقق من البصمة.')));
+          return;
+        }
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_biometricKey, enabled);
+      if (mounted) setState(() => _biometricEnabled = enabled);
+      if (mounted) ToastBar.show(context, SnackBar(content: Text(enabled ? 'تم تفعيل الدخول بالبصمة.' : 'تم إيقاف الدخول بالبصمة.')));
+    } catch (error) {
+      if (mounted) ToastBar.show(context, SnackBar(content: Text('تعذر حفظ إعداد البصمة: $error')));
+    } finally {
+      if (mounted) setState(() => _biometricBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -155,11 +199,26 @@ class _SettingsAppState extends State<SettingsApp> {
             ),
             _section('الأمان'),
             _card(
-              child: _navigationTile(
-                Icons.pin_outlined,
-                'تغيير رمز PIN',
-                'تغيير رمز الدخول المحفوظ بشكل آمن',
-                () => _showChangePinDialog(tp),
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: const Icon(Icons.fingerprint, color: ZionColors.cyan),
+                    title: const Text('الدخول بالبصمة'),
+                    subtitle: Text(_biometricBusy
+                        ? 'جارٍ التحقق من المصادقة…'
+                        : 'استخدم مصادقة Android البيومترية عند شاشة القفل'),
+                    value: _biometricEnabled,
+                    onChanged: _biometricBusy ? null : _setBiometricEnabled,
+                    activeColor: ZionColors.cyan,
+                  ),
+                  _divider(),
+                  _navigationTile(
+                    Icons.pin_outlined,
+                    'تغيير رمز PIN',
+                    'تغيير رمز الدخول المحفوظ بشكل آمن',
+                    () => _showChangePinDialog(tp),
+                  ),
+                ],
               ),
             ),
             _section('اللغة'),
