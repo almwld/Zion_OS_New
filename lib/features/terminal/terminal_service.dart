@@ -124,11 +124,32 @@ class TerminalService {
     return null;
   }
 
+  Future<String?> _findUsableUserlandShell() async {
+    final prefix = '/data/data/com.zion.os/files/usr';
+    for (final name in const <String>['bash', 'sh', 'dash']) {
+      final path = '$prefix/bin/$name';
+      try {
+        if (!await File(path).exists()) continue;
+        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+        if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
+          _output.add('[Userland] Using verified shell: $path\r\n');
+          return path;
+        }
+        _output.add('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+      } catch (error) {
+        _output.add('[Userland] Cannot execute $path: $error\r\n');
+      }
+    }
+    return null;
+  }
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
       if (await _userlandInstaller.isInstalled(
         onProgress: (message) => _output.add('$message\r\n'),
-      )) return _userlandBash;
+      )) {
+        final shell = await _findUsableUserlandShell();
+        if (shell != null) return shell;
+      }
       if (installIfMissing) {
         _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
@@ -138,7 +159,13 @@ class TerminalService {
           _output.add('[Terminal] ✓ Userland ready\r\n');
           return _userlandBash;
         }
-        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
+        _output.add('[Terminal] Userland unavailable: ${result.message}.\r\n');
+        final recoveredShell = await _findUsableUserlandShell();
+        if (recoveredShell != null) {
+          _output.add('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
+          return recoveredShell;
+        }
+        _output.add('[Terminal] Falling back to /system/bin/sh.\r\n');
       }
     } catch (e) {
       _output.add('[Terminal] Userland check/install failed: $e\r\n');
