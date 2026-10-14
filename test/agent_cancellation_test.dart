@@ -42,10 +42,10 @@ class SlowBrowserTool extends AgentTool {
   SlowBrowserTool(this.delay);
 
   @override
-  String get name => 'browser';
+  String get name => 'ai';
 
   @override
-  String get description => 'Deterministic slow browser test tool.';
+  String get description => 'Deterministic delayed test tool.';
 
   @override
   Map<String, dynamic> get parameters => const {};
@@ -194,7 +194,7 @@ void main() {
       policy: const AgentPolicy(),
     );
     final result = await orchestrator.executeTask(
-      'search timeout test',
+      'حلل مهمة timeout test',
       stepTimeout: const Duration(milliseconds: 25),
     );
     expect(result.success, isFalse);
@@ -211,7 +211,7 @@ void main() {
     );
 
     final future = runtime.run(
-      'search cancellation test',
+      'حلل مهمة cancellation test',
       stepTimeout: const Duration(seconds: 2),
     );
     await Future<void>.delayed(const Duration(milliseconds: 40));
