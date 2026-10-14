@@ -91,7 +91,7 @@ void main() {
 
     test('Zion Pkg uses Userland libraries and never shells out for host command lookup', () async {
       final pkg = await File('lib/core/userland/zion_pkg.dart').readAsString();
-      expect(pkg, contains("'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64'"));
+      expect(pkg, contains(r"'LD_LIBRARY_PATH': '$prefix/lib:$prefix/lib64'"));
       expect(pkg, contains("'DEBIAN_FRONTEND': 'noninteractive'"));
       expect(pkg, isNot(contains("Process.run('/system/bin/sh'")));
       expect(pkg, contains("const <String>['/system/bin', '/system/xbin']"));
