@@ -502,7 +502,14 @@ class ZionUserlandInstaller {
     }
 
     final bash = File('${root.path}/bin/bash');
-    if (!await bash.exists()) throw StateError('bash missing after Userland copy');
+    if (!await bash.exists()) {
+      // A backup may contain a usable sh/dash but omit Bash. Do not throw
+      // before diagnostics run: preserve the copied tree and let TerminalService
+      // select the verified fallback shell without repeating a large restore.
+      await _diagnoseShellCandidates();
+      print('[Permissions] Bash is missing; preserving Userland for sh/dash fallback.');
+      return;
+    }
     final test = await Process.run(
       bash.path, const <String>['-c', 'printf BASH_OK'],
       runInShell: false,
