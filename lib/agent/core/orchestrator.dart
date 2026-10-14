@@ -271,15 +271,16 @@ class AgentOrchestrator {
     final lower=task.toLowerCase();
     final command=_extractExplicitCommand(task);
     if(command!=null){
+      final decision = policy.evaluate(tool: 'shell', params: {'command': command});
       return AgentPlan(steps:[
         AgentStep(
           id:'1',
           description:'تنفيذ الأمر المحلي الذي طلبته: $command',
           tool:'shell',
           params:{'command':command},
-          permission:AgentPermission.process,
-          risk:AgentRisk.review,
-          requiresApproval:true,
+          permission:decision.risk == AgentRisk.safe ? AgentPermission.readOnly : AgentPermission.process,
+          risk:decision.risk,
+          requiresApproval:decision.requiresApproval,
           requiresEvaluation:true,
         ),
       ]);
