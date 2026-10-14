@@ -177,6 +177,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(ok) }
                         }
                     }
+                    "cancelGeneration" -> {
+                        // This JNI method only sets an atomic flag; do not queue it
+                        // behind inference on aiExecutor or cancellation would be ineffective.
+                        val cancelled = try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false }
+                        result.success(cancelled)
+                    }
                     "generate" -> {
                         val prompt = call.argument<String>("prompt") ?: ""
                         val maxTokens = call.argument<Int>("maxTokens") ?: 512
@@ -192,7 +198,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(null) }
                         }
                     }
-                    "isLoaded" -> result.success(try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false })
+                    "isLoaded" -> aiExecutor.execute {
+                        // Native readiness takes g_mutex; never block the Android UI
+                        // thread while model loading or inference owns that lock.
+                        val loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                        runOnUiThread { result.success(loaded) }
+                    }
                     "version" -> result.success(try { llamaBridge.nativeVersion() } catch (_: Throwable) { "unavailable" })
                     else -> result.notImplemented()
                 }
@@ -392,12 +403,6 @@ class MainActivity : FlutterFragmentActivity() {
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
     }
-    private fun isValidKaliRootfs(rootfs: File): Boolean {
-        return rootfs.isDirectory &&
-            File(rootfs, "bin/bash").exists() &&
-            File(rootfs, "bin/sh").exists()
-    }
-
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
         synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
 
@@ -405,25 +410,25 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             ensureTerminalEnvironment()
             if (!nativePtyAvailable()) return 0
+            fun validRootfs(rootfs: File): Boolean =
+                rootfs.isDirectory && File(rootfs, "bin/sh").isFile && File(rootfs, "bin/bash").isFile
             val nativeShell = when {
                 shell == "zion-kali" -> {
                     val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
-                    // PRoot and its loader are shipped by Zion Userland.
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(filesDir, "usr/libexec/proot")
-                    if (!isValidKaliRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 shell?.startsWith("zion-kali@") == true -> {
-                    // Launch the selected rootfs in-place. Never copy or extract it.
-                    val rootfsPath = shell.orEmpty().removePrefix("zion-kali@").trim()
+                    val rootfsPath = shell.removePrefix("zion-kali@").trim()
                     if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
-                        rootfsPath.contains("|") || rootfsPath.contains("\n") ||
-                        rootfsPath.contains("\r") || rootfsPath.contains("\u0000")) return 0
+                        rootfsPath.contains("|") || rootfsPath.contains("\\n") ||
+                        rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
                     val rootfs = File(rootfsPath)
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(filesDir, "usr/libexec/proot")
-                    if (!isValidKaliRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 else -> shell
