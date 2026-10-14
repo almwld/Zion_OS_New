@@ -36,7 +36,7 @@ void main() {
       expect(service, contains("shell = 'zion-kali'"));
       expect(service, contains('ZionLocalKaliBootstrap().install'));
       expect(service, contains('_pty.start(rows: 40, cols: 120, shell: shell)'));
-      expect(screen, contains("'تشغيل/إيقاف Kali Linux'") | contains("'تبديل بيئة Kali Linux'"));
+      expect(screen, contains("'تبديل بيئة Kali Linux'"));
       expect(screen, contains('startInteractive(kali: launchKali)'));
       expect(adapter, contains("'shell': shell.trim()"));
     });
