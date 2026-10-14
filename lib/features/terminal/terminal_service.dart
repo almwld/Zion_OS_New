@@ -352,9 +352,9 @@ class TerminalService {
       final rootfsPath = kaliRootfsPath.trim();
       if (!rootfsPath.startsWith('/') ||
           rootfsPath.contains('|') ||
-          rootfsPath.contains('\\n') ||
-          rootfsPath.contains('\\r') ||
-          rootfsPath.contains('\\u0000')) {
+          rootfsPath.contains('\n') ||
+          rootfsPath.contains('\r') ||
+          rootfsPath.contains('\u0000')) {
         _output.add('[Kali] مسار rootfs غير صالح؛ استخدم مسارًا مطلقًا دون أسطر جديدة.\r\n');
         return false;
       }
