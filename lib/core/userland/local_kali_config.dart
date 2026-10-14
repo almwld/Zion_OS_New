@@ -23,8 +23,6 @@ class ZionLocalKaliConfig {
       Directory('${appRoot(filesDir).path}/downloads');
   static Directory userland(Directory filesDir) =>
       Directory('${appRoot(filesDir).path}/userland');
-  // Use the canonical location consumed by TerminalService, MainActivity,
-  // KaliLoaderService, and the existing Zion PRoot integration.
   static Directory rootfs(Directory filesDir) =>
       Directory('${filesDir.path}/home/.zion/dists/kali/rootfs');
   static Directory logs(Directory filesDir) =>
