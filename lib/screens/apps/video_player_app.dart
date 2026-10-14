@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPlayerApp extends StatefulWidget {
@@ -18,6 +21,40 @@ class _VideoPlayerAppState extends State<VideoPlayerApp> {
     _urlController.dispose();
     _controller?.dispose();
     super.dispose();
+  }
+
+  Future<void> _openLocalVideo() async {
+    if (_loading) return;
+    setState(() { _loading = true; _error = null; });
+    VideoPlayerController? candidate;
+    try {
+      final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+      if (picked == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      candidate = VideoPlayerController.file(File(picked.path));
+      await candidate.initialize();
+      if (!mounted) {
+        await candidate.dispose();
+        return;
+      }
+      final old = _controller;
+      setState(() {
+        _controller = candidate;
+        _loading = false;
+        _urlController.text = picked.name;
+      });
+      await old?.dispose();
+      await candidate.play();
+    } catch (error) {
+      await candidate?.dispose();
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'تعذر فتح الفيديو المحلي: $error';
+      });
+    }
   }
 
   Future<void> _openUrl() async {
@@ -104,6 +141,15 @@ class _VideoPlayerAppState extends State<VideoPlayerApp> {
             ),
           ),
           const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _loading ? null : _openLocalVideo,
+              icon: const Icon(Icons.video_library_outlined),
+              label: const Text('اختيار فيديو من الجهاز'),
+            ),
+          ),
+          const SizedBox(height: 8),
           TextField(
             controller: _urlController,
             keyboardType: TextInputType.url,
