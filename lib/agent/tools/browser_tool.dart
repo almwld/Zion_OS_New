@@ -36,8 +36,14 @@ class BrowserTool extends AgentTool {
         ? 'https://html.duckduckgo.com/html/?q=${Uri.encodeComponent(params['query']?.toString() ?? '')}'
         : params['url']?.toString() ?? '';
     var uri = Uri.tryParse(target);
-    if (uri == null || !_isAllowedUri(uri)) {
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
       return StepResult.failure('رابط غير صالح أو محظور لأسباب أمنية.');
+    }
+    if (_isPrivateOrLocalHost(uri.host)) {
+      return StepResult.failure('تم رفض عنوان محلي أو خاص لحماية بيانات الجهاز.');
     }
 
     final client = http.Client();
