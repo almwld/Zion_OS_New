@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../widgets/toast_bar.dart';
+import '../../../../widgets/toast_bar.dart';
 
 class BrowserSettings extends StatefulWidget {
   const BrowserSettings({super.key});
