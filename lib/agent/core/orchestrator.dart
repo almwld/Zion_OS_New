@@ -295,7 +295,7 @@ class AgentOrchestrator {
     await memory.load();
     final relevantMemory = memory.search(task, limit: 6).map((entry) => <String, dynamic>{
       'kind': entry.kind,
-      'text': entry.text,
+      'text': entry.text.length > 400 ? entry.text.substring(0, 400) : entry.text,
       'metadata': entry.metadata,
     }).toList(growable: false);
     if(await _nativeAiAvailable()){
