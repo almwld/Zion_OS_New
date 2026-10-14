@@ -53,10 +53,59 @@ class BackupService {
       final mf=get('manifest.json');final pf=get('preferences.json');if(mf==null||pf==null)throw const FormatException('Backup manifest is incomplete.');
       final manifest=jsonDecode(utf8.decode(List<int>.from(mf.content)));final prefsData=jsonDecode(utf8.decode(List<int>.from(pf.content)));
       if(manifest is! Map||manifest['format']!='zion-backup-v2'||prefsData is! Map)throw const FormatException('Unsupported or invalid backup format.');
-      final hashes=manifest['files'];if(hashes is Map){for(final e in hashes.entries){final f=get('files/'+e.key.toString());if(f==null)throw FormatException('Missing backup file: '+e.key.toString());final actualHash=sha256.convert(List<int>.from(f.content)).toString();if(actualHash.toLowerCase()!=e.value.toString().toLowerCase())throw FormatException('SHA-256 mismatch: '+e.key.toString());}}
-      final prefs=await SharedPreferences.getInstance();int restored=0;
+      final hashes=manifest['files'];
+      final verifiedFiles=<String,List<int>>{};
+      if(hashes is Map){
+        for(final e in hashes.entries){
+          final name=e.key.toString();
+          final archived=get('files/'+name);
+          if(archived==null)throw FormatException('Missing backup file: '+name);
+          final bytes=List<int>.from(archived.content);
+          final actualHash=sha256.convert(bytes).toString();
+          if(actualHash.toLowerCase()!=e.value.toString().toLowerCase())throw FormatException('SHA-256 mismatch: '+name);
+          verifiedFiles[name]=bytes;
+        }
+      }
+
+      // Restore only explicit app-owned files. Never use a path supplied by
+      // the archive as a filesystem destination.
+      const allowedFileTargets=<String,String>{
+        'installed.json':'/data/data/com.zion.os/files/usr/var/lib/zion-pkg/installed.json',
+      };
+      final changedFiles=<({File target,List<int>? previous})>[];
+      try{
+        for(final entry in verifiedFiles.entries){
+          final targetPath=allowedFileTargets[entry.key];
+          if(targetPath==null)continue;
+          if(entry.key=='installed.json'){
+            final parsed=jsonDecode(utf8.decode(entry.value));
+            if(parsed is! List || parsed.any((item)=>item is! Map)){
+              throw const FormatException('Invalid installed package database in backup.');
+            }
+          }
+          final target=File(targetPath);
+          final previous=await target.exists()?await target.readAsBytes():null;
+          await target.parent.create(recursive:true);
+          final temporary=File(targetPath+'.restore-${DateTime.now().microsecondsSinceEpoch}.tmp');
+          await temporary.writeAsBytes(entry.value,flush:true);
+          await temporary.rename(targetPath);
+          changedFiles.add((target:target,previous:previous));
+        }
+        final prefs=await SharedPreferences.getInstance();int restored=0;
       for(final e in (prefsData as Map).entries){if(_sensitive(e.key.toString()))continue;final v=e.value;bool ok=false;if(v is bool)ok=await prefs.setBool(e.key,v);else if(v is String)ok=await prefs.setString(e.key,v);else if(v is int)ok=await prefs.setInt(e.key,v);else if(v is double)ok=await prefs.setDouble(e.key,v);else if(v is List&&v.every((x)=>x is String))ok=await prefs.setStringList(e.key,v.cast<String>());if(ok)restored++;}
-      out..['success']=true..['restored_items']=restored;
+        out..['success']=true..['restored_items']=restored+changedFiles.length;
+      }catch(e){
+        for(final changed in changedFiles.reversed){
+          try{
+            if(changed.previous==null){
+              if(await changed.target.exists())await changed.target.delete();
+            }else{
+              await changed.target.writeAsBytes(changed.previous!,flush:true);
+            }
+          }catch(_){}
+        }
+        rethrow;
+      }
     }catch(e){out['error']=e.toString();}return out;
   }
 

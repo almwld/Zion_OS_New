@@ -1,5 +1,4 @@
 import 'dart:async';
-import '../../widgets/toast_bar.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +12,7 @@ import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
@@ -143,6 +143,11 @@ class _TerminalScreenState extends State<TerminalScreen> {
       if (tab.recentOutput.length > 8000) {
         tab.recentOutput =
             tab.recentOutput.substring(tab.recentOutput.length - 8000);
+      }
+      // Rebuild only for installer/status messages, not every terminal byte,
+      // so first-run copy progress stays visible without making typing janky.
+      if (data.contains('[Userland]') || data.contains('[Terminal]')) {
+        setState(() {});
       }
       try {
         terminal.write(data);
@@ -740,6 +745,13 @@ $request''',
   @override
   Widget build(BuildContext context) {
     final tab = _selectedTab;
+    final startupProgress = tab == null
+        ? const <String>[]
+        : tab.recentOutput
+            .split(RegExp(r'[\r\n]+'))
+            .where((line) => line.contains('[Userland]') || line.contains('[Terminal]'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
     return Scaffold(
       backgroundColor: _palette.background,
       appBar: AppBar(
@@ -872,6 +884,56 @@ $request''',
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Zion's splash mark stays behind the terminal cells. The
+                  // terminal renderer remains interactive and the mark is
+                  // intentionally subtle to preserve text contrast.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: _palette.background),
+                        child: Center(
+                          child: Opacity(
+                            opacity: 0.14,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 180,
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _palette.accent,
+                                      width: 3,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Z',
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontSize: 128,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'ZION OS',
+                                  style: TextStyle(
+                                    color: _palette.foreground,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   AbsorbPointer(
                     // Do not accept characters into xterm while there is no
                     // child process to receive them. Previously the text was
@@ -881,7 +943,7 @@ $request''',
                       tab.terminal,
                       controller: tab.controller,
                       autofocus: tab.service.isInteractiveRunning,
-                      backgroundOpacity: 1,
+                      backgroundOpacity: 0.75,
                       cursorType: TerminalCursorType.block,
                       theme: _palette.toXtermTheme(),
                       textStyle: TerminalStyle(
@@ -908,7 +970,7 @@ $request''',
                               const SizedBox(height: 12),
                               Text(
                                 _starting
-                                    ? 'جارٍ تجهيز Zion Userland وفتح جلسة PTY…'
+                                    ? 'جارٍ تجهيز Userland وفتح جلسة PTY…'
                                     : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
@@ -916,6 +978,30 @@ $request''',
                                   fontSize: 14,
                                 ),
                               ),
+                              if (_starting && startupProgress.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  constraints: const BoxConstraints(maxWidth: 520),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _palette.surface.withOpacity(0.92),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _palette.accent.withOpacity(0.55)),
+                                  ),
+                                  child: Text(
+                                    startupProgress.reversed.take(5).toList().reversed.join('\n'),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                    textDirection: TextDirection.ltr,
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (!_starting) ...[
                                 const SizedBox(height: 16),
                                 FilledButton.icon(

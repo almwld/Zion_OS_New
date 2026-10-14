@@ -1,6 +1,6 @@
 # Confirmed Gaps — status refreshed 2026-10-03
 
-G-01 High — **RESOLVED:** ZION_API now has a signature-level Android permission plus a per-install token checked by ZionApiChannel/TrustVerifier. Userland dispatch supplies the token.
+G-01 High — **PARTIAL / CORRECTED:** ZION_API validates a per-install token through ZionApiChannel/TrustVerifier, and the Userland dispatcher supplies it. MainActivity is also the exported launcher entry point, so it must not require a custom signature-level activity permission. If a second signature-level boundary is required, move the external API entry point to a dedicated exported component.
 
 G-02 High — **RESOLVED:** the current TerminalService uses the native PTY path only; obsolete _interactiveProcess state is absent. MainActivity process-backed terminal state was also removed.
 

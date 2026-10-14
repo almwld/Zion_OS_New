@@ -172,11 +172,14 @@ class ZionPkg {
   }
 
   Map<String, String> _env() => {
+    ...Platform.environment,
     'PREFIX': prefix,
     'HOME': home,
-    'PATH': prefix + '/bin:' + prefix + '/sbin',
-    'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64',
-    'TMPDIR': prefix + '/tmp',
+    'PATH': '$prefix/bin:$prefix/sbin:/system/bin:/system/xbin:/vendor/bin',
+    'LD_LIBRARY_PATH': '$prefix/lib:$prefix/lib64',
+    'TMPDIR': '$prefix/tmp',
+    'TERM': 'xterm-256color',
+    'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
     'DEBIAN_FRONTEND': 'noninteractive',
