@@ -304,7 +304,7 @@ class AgentOrchestrator {
       ]);
     }
     if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
-      final query = task.replaceFirst(RegExp(r'^(?:من فضلك\\s*)?(?:ابحث|بحث|search|تحقق من|آخر الأخبار)\\s*', caseSensitive: false), '').trim();
+      final query = task.replaceFirst(RegExp(r'^(?:من فضلك\s*)?(?:ابحث|بحث|search|تحقق من|آخر الأخبار)\s*', caseSensitive: false), '').trim();
       return AgentPlan(steps:[
         AgentStep(
           id:'1',
@@ -382,7 +382,7 @@ class AgentOrchestrator {
       final details = result.data == null ? '' : '\nالمخرجات الفعلية: ' + _stepOutput(result);
       final error = result.error == null ? '' : '\nالخطأ: ' + result.error!;
       final duration = result.duration.inMilliseconds;
-      return 'الخطوة $index — $status\\n' + result.summary + details + error + '\nالمدة: ' + duration.toString() + 'ms';
+      return 'الخطوة $index — $status\n' + result.summary + details + error + '\nالمدة: ' + duration.toString() + 'ms';
     }).join('\n\\n');
   }
 

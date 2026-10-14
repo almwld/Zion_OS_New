@@ -25,7 +25,7 @@ class BrowserTool extends AgentTool {
   }
 
   bool _isPrivateOrLocalHost(String rawHost) {
-    final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\.), '');
+    final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
     if (host == 'localhost' || host.endsWith('.localhost') ||
         host.endsWith('.local') || host == '::1' || host == '[::1]') {
       return true;
