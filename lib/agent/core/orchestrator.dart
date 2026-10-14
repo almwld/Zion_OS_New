@@ -255,7 +255,10 @@ class AgentOrchestrator {
 لا تستخدم أدوات هجومية أو استغلال أو تجاوز حماية.
 لكل خطوة حدّد permission من: readOnly, localWrite, network, process, externalSideEffect، وrisk من: safe, review, blocked، وحدد requiresApproval عند الحاجة.
 أعد JSON فقط بالشكل {"steps":[{"id":"1","description":"...","tool":"...","params":{},"requiresEvaluation":false,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
-      final response=await ai.generate(prompt,maxTokens:900,temperature:0.2);
+      final response = await ai.generate(prompt, maxTokens: 900, temperature: 0.2).timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => 'ERROR: انتهت مهلة تخطيط المهمة.',
+      );
       final parsed=_parsePlan(response);if(parsed!=null&&parsed.steps.isNotEmpty)return parsed;
     }
     return _heuristicPlan(task);
@@ -326,11 +329,18 @@ class AgentOrchestrator {
   }
 
   Future<bool> _nativeAiAvailable() async {
-    try { return await ai.nativeLoaded; } catch (_) { return false; }
+    try {
+      return await ai.nativeLoaded.timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () => false,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<AgentStep?> _alternative(AgentStep step,String error) async {
-    if(!await ai.nativeLoaded)return null;
+    if (!await _nativeAiAvailable()) return null;
     final response=await ai.generate('الخطوة الفاشلة: '+step.description+'\nالأداة: '+step.tool+'\nالخطأ: '+error+'\nاقترح خطوة دفاعية بديلة JSON فقط.',maxTokens:500,temperature:0.1);
     final p=_parsePlan(response);return p?.steps.isNotEmpty==true?p!.steps.first:null;
   }
