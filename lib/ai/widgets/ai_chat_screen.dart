@@ -26,6 +26,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
   double _temperature = 0.25;
   int _maxTokens = 128;
   static const _historyKey = 'zion_offline_ai_messages_v1';
+  static const _temperatureKey = 'zion_offline_ai_temperature_v1';
+  static const _maxTokensKey = 'zion_offline_ai_max_tokens_v1';
+  static const _modelPathKey = 'zion_offline_ai_model_path_v1';
+  String? _preferredModelPath;
 
   @override void initState() {
     super.initState();
@@ -46,8 +50,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
           .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+      _selected = _availableModels.cast<LlamaModel?>().firstWhere(
+        (m) => m?.path == _preferredModelPath,
+        orElse: () => _availableModels.isEmpty ? null : _availableModels.first,
+      );
       if (_availableModels.isNotEmpty) {
-        _selected = _availableModels.first;
         _error = 'تم العثور على نموذج محلي. اضغط زر تحميل النموذج لبدء المحرك.';
       } else {
         _error = models.isEmpty
@@ -63,6 +70,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _restoreConversation() async {
     final prefs = await SharedPreferences.getInstance();
+    _temperature = (prefs.getDouble(_temperatureKey) ?? 0.25).clamp(0.0, 1.2).toDouble();
+    _maxTokens = (prefs.getInt(_maxTokensKey) ?? 128).clamp(32, 256);
+    _preferredModelPath = prefs.getString(_modelPathKey);
     final raw = prefs.getString(_historyKey);
     if (raw == null || raw.isEmpty) return;
     try {
@@ -134,12 +144,18 @@ class _AIChatScreenState extends State<AIChatScreen> {
             ? null
             : 'تعذر تحميل النموذج. اختر نموذج GGUF أصغر أو متوافقاً مع الجهاز.';
         if (ok) {
+          _preferredModelPath = model.path;
           _messages.add(AgentMessage(
             role: 'assistant',
             content: 'تم تحميل ${model.name}. المعالجة محلية دون اتصال.',
           ));
         }
       });
+      if (ok) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_modelPathKey, model.path);
+        await _persistConversation();
+      }
     } catch (e) {
       if (mounted) setState(() => _error = 'تعذر تحميل النموذج: $e');
     } finally {
@@ -151,11 +167,18 @@ class _AIChatScreenState extends State<AIChatScreen> {
     try {
       final model = await _agent.llama.pickAndImportModel();
       if (model == null || !mounted) return;
+      if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
+        setState(() => _error = 'تم اختيار النموذج لكن حجمه خارج الحد الآمن (2 GiB). اختر نموذجاً أصغر.');
+        return;
+      }
       setState(() {
         _availableModels = [model, ..._availableModels.where((m) => m.path != model.path)];
         _selected = model;
+        _preferredModelPath = model.path;
         _error = 'تم استيراد النموذج. اضغط زر تحميل النموذج لبدء المحرك.';
       });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_modelPathKey, model.path);
     } catch (e) {
       if (mounted) setState(() => _error = 'تعذر استيراد النموذج: $e');
     }
@@ -188,6 +211,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _maxTokens = result['tokens']! as int;
       _temperature = result['temperature']! as double;
     });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_maxTokensKey, _maxTokens);
+    await prefs.setDouble(_temperatureKey, _temperature);
   }
 
   Future<void> _send() async {
@@ -222,7 +248,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
       appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
-        if (_availableModels.length > 1) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: DropdownButton<LlamaModel>(isExpanded: true, value: _selected, items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(), onChanged: _loadingModel || _generating ? null : (m) => setState(() { _selected = m; _error = null; }))),
+        if (_availableModels.length > 1) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: DropdownButton<LlamaModel>(isExpanded: true, value: _selected, items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(), onChanged: _loadingModel || _generating ? null : (m) async {
+          if (m == null) return;
+          setState(() { _selected = m; _preferredModelPath = m.path; _error = null; });
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_modelPathKey, m.path);
+        })),
         if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
