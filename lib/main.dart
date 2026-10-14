@@ -15,7 +15,6 @@ import 'app_router.dart';
 import 'security/core/security_core.dart';
 import 'security/runtime/runtime_integrity.dart';
 import 'services/preferences_service.dart';
-import 'services/toast_service.dart';
 import 'widgets/startup_gate.dart';
 
 Future<void> main() async {
@@ -90,7 +89,6 @@ class ZionOSApp extends StatelessWidget {
           // MaterialApp owns the Zion system/desktop shell theme only.
           // Individual app windows install their own Theme below.
           return MaterialApp(
-            navigatorKey: ToastService.navigatorKey,
             title: 'Zion OS',
             debugShowCheckedModeBanner: false,
             theme: themeProvider.getThemeData(),
