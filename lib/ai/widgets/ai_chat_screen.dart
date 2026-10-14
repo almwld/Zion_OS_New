@@ -505,7 +505,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             ]),
           ])));
         })),
-        if (_generating) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Row(children: [const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10), Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف النموذج...' : 'النموذج يكتب الآن...', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13))), TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف'))])),
+        if (_generating) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Row(children: [const _TypingDots(), const SizedBox(width: 10), Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف النموذج...' : 'النموذج يكتب الآن...', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13))), TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف'))])),
         SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(focusNode: _inputFocus, controller: _input, minLines: 1, maxLines: 5, maxLength: 700, textInputAction: TextInputAction.newline, onSubmitted: (_) => _send(), decoration: InputDecoration(hintText: _generating ? 'النموذج يكتب...' : 'اكتب رسالتك...', prefixIcon: const Icon(Icons.edit_note), border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)), counterText: ''))), const SizedBox(width: 8), IconButton.filled(
           onPressed: _loadingModel ? null : (_generating ? _cancelGeneration : _send),
           tooltip: _generating ? 'إيقاف التوليد' : 'إرسال الرسالة',
@@ -514,6 +514,67 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ]),
     );
   }
+
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  Widget build(BuildContext context) {
+    final dotColor = Theme.of(context).colorScheme.secondary;
+    return Semantics(
+      label: 'النموذج يكتب الآن',
+      liveRegion: true,
+      child: SizedBox(
+        width: 36,
+        height: 20,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List<Widget>.generate(3, (index) {
+            return AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                final phase = (_controller.value - index * 0.22 + 1.0) % 1.0;
+                final pulse = phase < 0.5 ? phase * 2.0 : (1.0 - phase) * 2.0;
+                return Opacity(
+                  opacity: 0.35 + pulse * 0.65,
+                  child: Transform.translate(
+                    offset: Offset(0, -3.0 * pulse),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
 
   @override void dispose() {
     if (_generating) unawaited(_agent.llama.cancelGeneration());
