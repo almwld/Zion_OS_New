@@ -35,7 +35,12 @@ class _AgentScreenState extends State<AgentScreen> {
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
-      setState(()=>_events.add(e));
+      setState(() {
+        _events.add(e);
+        if (_events.length > 150) {
+          _events.removeRange(0, _events.length - 150);
+        }
+      });
       _scrollEnd();
     });
   }
@@ -119,6 +124,13 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  void _appendMessage(Map<String, String> message) {
+    _messages.add(message);
+    if (_messages.length > 60) {
+      _messages.removeRange(0, _messages.length - 60);
+    }
+  }
+
   Future<void> _run(){
     final task=_input.text.trim();
     if(task.isEmpty||_runtime.canCancel)return Future.value();
@@ -127,7 +139,7 @@ class _AgentScreenState extends State<AgentScreen> {
     // language reasoning will report clearly when local GGUF is unavailable.
     _input.clear();
     setState((){
-      _messages.add({'role':'user','text':task});
+      _appendMessage({'role':'user','text':task});
       _result=null;
     });
     _scrollEnd();
@@ -135,7 +147,7 @@ class _AgentScreenState extends State<AgentScreen> {
       if(!mounted)return;
       setState((){
         _result=r;
-        _messages.add({'role':'assistant','text':r.success?(r.report??'اكتملت المهمة بنجاح.'):'توقفت المهمة: '+(r.error??'خطأ غير معروف')});
+        _appendMessage({'role':'assistant','text':r.success?(r.report??'اكتملت المهمة بنجاح.'):'توقفت المهمة: '+(r.error??'خطأ غير معروف')});
       });
       _scrollEnd();
     });
@@ -245,9 +257,10 @@ class _AgentScreenState extends State<AgentScreen> {
   Widget _resultCard() {
     final result = _result!;
     final evidence = result.steps.map((step) {
-      final output = step.data == null
-          ? ''
-          : (step.data is String ? step.data.toString() : step.data.toString());
+      final rawOutput = step.data == null ? '' : step.data.toString();
+      final output = rawOutput.length > 12000
+          ? '${rawOutput.substring(0, 12000)}\n… تم اختصار المخرجات الطويلة'
+          : rawOutput;
       return <String>[
         step.success ? 'نجاح' : 'فشل',
         step.summary,
