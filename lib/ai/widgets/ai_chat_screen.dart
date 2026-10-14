@@ -71,7 +71,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   Future<void> _restoreConversation() async {
     final prefs = await SharedPreferences.getInstance();
     _temperature = (prefs.getDouble(_temperatureKey) ?? 0.25).clamp(0.0, 1.2).toDouble();
-    _maxTokens = (prefs.getInt(_maxTokensKey) ?? 128).clamp(32, 256);
+    _maxTokens = (prefs.getInt(_maxTokensKey) ?? 128).clamp(32, 256).toInt();
     _preferredModelPath = prefs.getString(_modelPathKey);
     final raw = prefs.getString(_historyKey);
     if (raw == null || raw.isEmpty) return;
