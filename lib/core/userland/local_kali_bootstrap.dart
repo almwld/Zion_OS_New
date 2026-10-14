@@ -182,12 +182,28 @@ class ZionLocalKaliBootstrap {
           },
         );
         final prefix = '${ZionLocalKaliConfig.rootfsName}/';
+        String normalizeArchiveName(String name) {
+          var value = name;
+          while (value.startsWith('./')) {
+            value = value.substring(2);
+          }
+          return value;
+        }
+        // NetHunter builds have appeared both with and without a top-level
+        // kali-arm64/ directory. Accept either archive layout, but never escape
+        // the staging root or trust a path supplied by the archive.
+        final hasTopLevelRoot = archive.any(
+          (entry) => normalizeArchiveName(entry.name).startsWith(prefix),
+        );
         final modePaths = <int, List<String>>{};
         for (var i = 0; i < archive.length; i++) {
           final entry = archive[i];
-          if (!entry.name.startsWith(prefix)) continue;
-          final relative = entry.name.substring(prefix.length);
-          if (relative.isEmpty) continue;
+          final normalizedName = normalizeArchiveName(entry.name);
+          if (hasTopLevelRoot && !normalizedName.startsWith(prefix)) continue;
+          final relative = hasTopLevelRoot
+              ? normalizedName.substring(prefix.length)
+              : normalizedName;
+          if (relative.isEmpty || relative == '.') continue;
           final destination = File('${rootfs.path}/$relative');
           if (!destination.absolute.path.startsWith('${rootfs.absolute.path}/')) {
             throw SecurityException('Tar traversal: ${entry.name}');
