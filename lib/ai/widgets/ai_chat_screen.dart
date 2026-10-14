@@ -180,9 +180,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   String _titleForMessages(List<AgentMessage> messages) {
-    final first = messages.where((m) => m.role == 'user').firstOrNull;
-    if (first == null) return 'محادثة جديدة';
-    final text = first.content.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    final userMessages = messages.where((m) => m.role == 'user');
+    if (userMessages.isEmpty) return 'محادثة جديدة';
+    final first = userMessages.first;
+    final text = first.content.replaceAll(RegExp(r'\s+'), ' ').trim();
     return text.length > 34 ? '${text.substring(0, 34)}…' : text;
   }
 
@@ -259,8 +260,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
     if (selectedId == null || selectedId == _activeSessionId || !mounted) return;
     await _persistConversation();
-    final session = _sessions.where((s) => s.id == selectedId).firstOrNull;
-    if (session == null) return;
+    final matchingSessions = _sessions.where((s) => s.id == selectedId);
+    if (matchingSessions.isEmpty) return;
+    final session = matchingSessions.first;
     setState(() {
       _activeSessionId = session.id;
       _messages
