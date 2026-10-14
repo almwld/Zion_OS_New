@@ -194,7 +194,7 @@ class ZionLocalKaliBootstrap {
           }
           final mode = entry.mode & 0x1ff;
           if (entry.isDirectory) {
-            await destination.create(recursive: true);
+            await Directory(destination.path).create(recursive: true);
             if (mode != 0 && mode != 0x1ed) (modePaths[mode] ??= <String>[]).add(destination.path);
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
