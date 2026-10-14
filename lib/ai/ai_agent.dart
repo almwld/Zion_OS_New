@@ -115,6 +115,12 @@ class AIAgent {
     return RiskLevel.safe;
   }
 
+  void restoreHistory(Iterable<AgentMessage> messages) {
+    _history
+      ..clear()
+      ..addAll(messages.where((m) => m.role == 'user' || m.role == 'assistant').toList().reversed.take(20).toList().reversed);
+  }
+
   void clearHistory() => _history.clear();
   Future<void> dispose() => llama.unloadModel();
 }
