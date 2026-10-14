@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../widgets/toast_bar.dart';
 
 class SIAgentSettings extends StatefulWidget {
   const SIAgentSettings({super.key});
@@ -102,7 +103,7 @@ class _SIAgentSettingsState extends State<SIAgentSettings> {
   void _clearLearningData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('si_learning_data');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Learning data cleared')),
     );
   }
@@ -110,7 +111,7 @@ class _SIAgentSettingsState extends State<SIAgentSettings> {
   void _exportLearningData() async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('si_learning_data');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Learning data exported')),
     );
   }
