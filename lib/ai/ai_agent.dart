@@ -46,6 +46,9 @@ class AIAgent {
       temperature: temperature.clamp(0.0, 1.5).toDouble(),
     );
     final response = _cleanResponse(rawResponse);
+    if (response.isEmpty) {
+      return 'ERROR: لم ينتج النموذج نصاً. حاول مجدداً أو اختر نموذج محادثة متوافقاً.';
+    }
     if (!response.startsWith('ERROR:')) {
       _history
         ..add(AgentMessage(role: 'user', content: cleanMessage))
@@ -83,7 +86,7 @@ class AIAgent {
       cleaned = cleaned.replaceAll(marker, '');
     }
     final nextTurn = cleaned.indexOf(RegExp(r'\n\s*(User|Human|Assistant)\s*:', caseSensitive: false));
-    if (nextTurn > 0) cleaned = cleaned.substring(0, nextTurn);
+    if (nextTurn >= 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
   }
 
@@ -93,20 +96,22 @@ class AIAgent {
       ..writeln(_systemPrompt(_role))
       ..writeln('أجب عن الطلب الحالي فقط. لا تكرر رسالة الترحيب. إذا لم تعرف، صرّح بذلك.')
       ..writeln('<|im_end|>');
-    final recent = _history.length > 4
-        ? _history.sublist(_history.length - 4)
+    // The native Android context is deliberately bounded to 512 tokens.
+    // Keep one recent exchange so the prompt leaves room for a useful answer.
+    final recent = _history.length > 2
+        ? _history.sublist(_history.length - 2)
         : _history;
     for (final item in recent) {
-      final content = item.content.length > 280
-          ? item.content.substring(0, 280)
+      final content = item.content.length > 180
+          ? item.content.substring(0, 180)
           : item.content;
       b
         ..writeln('<|im_start|>${item.role}')
         ..writeln(content)
         ..writeln('<|im_end|>');
     }
-    final boundedMessage = message.length > 1200
-        ? message.substring(0, 1200)
+    final boundedMessage = message.length > 700
+        ? message.substring(0, 700)
         : message;
     b
       ..writeln('<|im_start|>user')
