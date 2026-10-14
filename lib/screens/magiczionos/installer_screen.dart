@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../widgets/toast_bar.dart';
 
 import '../../core/magiczionos/magiczionos_provider.dart';
 import 'root_terminal_screen.dart';
@@ -22,7 +23,7 @@ class MagiczionosInstallerScreen extends StatelessWidget {
           for (final distro in ZionRootfsDistro.values) Card(child: ListTile(
             title: Text(distro.name.toUpperCase()),
             subtitle: const Text('RootFS حقيقي — لا محاكاة'),
-            trailing: FilledButton(onPressed: provider.installing ? null : () async { final r = await provider.install(distro.name); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r.message))); }, child: const Text('تثبيت')),
+            trailing: FilledButton(onPressed: provider.installing ? null : () async { final r = await provider.install(distro.name); if (context.mounted) ToastBar.show(context, SnackBar(content: Text(r.message))); }, child: const Text('تثبيت')),
           )),
         ]),
       )),
