@@ -173,14 +173,17 @@ class KaliLoaderService {
   }
 
   static Future<Map<String, dynamic>> getStatus() async {
-    final installed = await _isInstalled();
+    final rootfsPath = await _resolveRootfsPath();
+    final installed = rootfsPath != null;
     final root = await hasRootAccess();
     final chroot = await hasChroot();
     final proot = await findProot();
     return {
       'installed': installed,
-      'path': await _resolveRootfsPath() ?? _installPath,
-      'rootfs_source': (await _resolveRootfsPath()) == _installPath ? 'zion-private' : 'configured-local',
+      'path': rootfsPath ?? _installPath,
+      'rootfs_source': rootfsPath == null
+          ? 'missing'
+          : (rootfsPath == _installPath ? 'zion-private' : 'configured-local'),
       'has_root': root,
       'use_chroot': chroot,
       'mode': chroot ? 'CHROOT' : (proot != null ? 'PROOT' : 'MISSING'),
