@@ -52,6 +52,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   double _fontSize = 13;
   String _fontFamily = 'monospace';
   bool _showToolbar = true;
+  bool _showArabicOverlay = true;
   bool _showQuickCommands = false;
   bool _isFullscreen = false;
   TerminalPalette _palette = TerminalPalette.zion;
@@ -282,6 +283,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
     tab.service.write(value);
   }
 
+  /// Returns the latest Arabic-containing lines for a readable Flutter overlay.
+  /// The raw bytes are still sent unchanged to xterm/PTY; Flutter's text engine
+  /// performs shaping and bidi layout in this separate view.
+  List<String> _arabicOverlayLines(_TerminalTab tab) {
+    final cleaned = ArabicShaper.readableText(tab.recentOutput);
+    return cleaned
+        .split('\n')
+        .map((line) => line.trimRight())
+        .where((line) => line.trim().isNotEmpty && ArabicShaper.isArabic(line))
+        .toList(growable: false)
+        .reversed
+        .take(5)
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
+  }
+
   Future<void> _copyOutput() async {
     final tab = _selectedTab;
     if (tab == null || tab.recentOutput.isEmpty) { _showTerminalNotice('لا توجد مخرجات حديثة لنسخها.'); return; }
@@ -393,6 +411,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
+      _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
       _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
       _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
@@ -955,6 +974,43 @@ $request''',
                       simulateScroll: false,
                     ),
                   ),
+                  // xterm2's cell grid cannot correctly shape Arabic or apply
+                  // per-line RTL. Keep the live terminal interactive and show
+                  // the latest Arabic output in a separate Flutter text overlay.
+                  if (_showArabicOverlay && ArabicShaper.isArabic(tab.recentOutput))
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: 8,
+                      child: IgnorePointer(
+                        child: Material(
+                          color: _palette.surface.withOpacity(0.96),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            constraints: const BoxConstraints(maxHeight: 136),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _palette.accent.withOpacity(0.65)),
+                            ),
+                            child: SingleChildScrollView(
+                              reverse: true,
+                              child: SelectableText(
+                                _arabicOverlayLines(tab).join('\n'),
+                                textDirection: TextDirection.rtl,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: _palette.foreground,
+                                  fontFamily: _fontFamily,
+                                  fontSize: _fontSize,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (_starting || !tab.service.isInteractiveRunning)
                     ColoredBox(
                       color: _palette.background.withOpacity(0.94),
