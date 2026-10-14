@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
 import '../services/preferences_service.dart';
@@ -16,16 +20,10 @@ class _RadarWidgetState extends State<RadarWidget> with SingleTickerProviderStat
   bool _isExpanded = false;
   String? _selectedPoint;
 
-  final List<RadarDataPoint> _points = [
-    RadarDataPoint(name: 'المنفذ 80 - HTTP', angle: 0, value: 85, color: Colors.green, activity: 'نشاط عالي', packets: 12450, responseTime: '23ms'),
-    RadarDataPoint(name: 'المنفذ 443 - HTTPS', angle: 45, value: 92, color: Colors.yellow, activity: 'نشاط عالي جداً', packets: 89200, responseTime: '45ms'),
-    RadarDataPoint(name: 'المنفذ 22 - SSH', angle: 90, value: 45, color: Colors.red, activity: 'نشاط متوسط', packets: 3200, responseTime: '12ms'),
-    RadarDataPoint(name: 'المنفذ 3306 - MySQL', angle: 135, value: 67, color: Colors.purple, activity: 'نشاط مرتفع', packets: 56700, responseTime: '67ms'),
-    RadarDataPoint(name: 'المنفذ 8080 - Proxy', angle: 180, value: 34, color: Colors.blue, activity: 'نشاط منخفض', packets: 890, responseTime: '234ms'),
-    RadarDataPoint(name: 'المنفذ 53 - DNS', angle: 225, value: 78, color: Colors.orange, activity: 'نشاط مرتفع', packets: 34500, responseTime: '8ms'),
-    RadarDataPoint(name: 'المنفذ 25 - SMTP', angle: 270, value: 23, color: Colors.white, activity: 'نشاط منخفض جداً', packets: 120, responseTime: '345ms'),
-    RadarDataPoint(name: 'المنفذ 161 - SNMP', angle: 315, value: 56, color: Colors.teal, activity: 'نشاط متوسط', packets: 8900, responseTime: '56ms'),
-  ];
+  List<RadarDataPoint> _points = <RadarDataPoint>[];
+  StreamSubscription<dynamic>? _radarSubscription;
+  Map<String, dynamic> _telemetry = <String, dynamic>{};
+  String? _telemetryError;
 
   @override
   void initState() {
@@ -35,11 +33,29 @@ class _RadarWidgetState extends State<RadarWidget> with SingleTickerProviderStat
       vsync: this,
     )..repeat();
     _scanRotation = Tween<double>(begin: 0, end: 360).animate(_scanAnimation);
+    _radarSubscription = const EventChannel('zion.os/network/radar')
+        .receiveBroadcastStream()
+        .listen((dynamic event) {
+      if (event is! Map || !mounted) return;
+      final data = Map<String, dynamic>.from(event);
+      if (!data.containsKey('rxBytesPerSec')) {
+        setState(() => _telemetry.addAll(data));
+        return;
+      }
+      setState(() {
+        _telemetry = data;
+        _points = _buildPoints(data);
+        _telemetryError = null;
+      });
+    }, onError: (Object error) {
+      if (mounted) setState(() => _telemetryError = 'تعذر استقبال بيانات الشبكة: $error');
+    });
   }
 
   @override
   void dispose() {
     _scanAnimation.dispose();
+    _radarSubscription?.cancel();
     super.dispose();
   }
 
@@ -80,7 +96,18 @@ class _RadarWidgetState extends State<RadarWidget> with SingleTickerProviderStat
               size: Size.infinite,
             ),
             
-            // Points
+            if (_points.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    _telemetryError ?? 'بانتظار بيانات الشبكة الحية من Android',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: prefs.isDarkMode ? Colors.white70 : Colors.black54, fontSize: 12 * prefs.fontScale),
+                  ),
+                ),
+              ),
+            // Points from native network telemetry only.
             ..._points.map((point) => Positioned(
               left: _getX(point.angle, _isExpanded ? MediaQuery.of(context).size.width * 0.9 : 180),
               top: _getY(point.angle, _isExpanded ? MediaQuery.of(context).size.height * 0.7 : 180),
@@ -182,25 +209,59 @@ class _RadarWidgetState extends State<RadarWidget> with SingleTickerProviderStat
     );
   }
 
+  List<RadarDataPoint> _buildPoints(Map<String, dynamic> data) {
+    final rx = (data['rxBytesPerSec'] as num?)?.toDouble();
+    final tx = (data['txBytesPerSec'] as num?)?.toDouble();
+    final rxPackets = (data['rxPacketsPerSec'] as num?)?.toDouble();
+    final txPackets = (data['txPacketsPerSec'] as num?)?.toDouble();
+    final down = (data['downstreamKbps'] as num?)?.toDouble();
+    final up = (data['upstreamKbps'] as num?)?.toDouble();
+    final rssi = (data['wifiRssi'] as num?)?.toDouble();
+    final raw = <({String name, double angle, double value, Color color, double actual, String unit})>[
+      if (rx != null && rx >= 0) (name: 'استقبال الشبكة', angle: 0, value: _normalize(rx, 5 * 1024 * 1024), color: Colors.green, actual: rx, unit: 'B/s'),
+      if (tx != null && tx >= 0) (name: 'إرسال الشبكة', angle: 60, value: _normalize(tx, 5 * 1024 * 1024), color: Colors.cyan, actual: tx, unit: 'B/s'),
+      if (rxPackets != null && rxPackets >= 0) (name: 'حزم مستقبلة', angle: 120, value: _normalize(rxPackets, 1000), color: Colors.teal, actual: rxPackets, unit: 'حزمة/ث'),
+      if (txPackets != null && txPackets >= 0) (name: 'حزم مرسلة', angle: 180, value: _normalize(txPackets, 1000), color: Colors.orange, actual: txPackets, unit: 'حزمة/ث'),
+      if (down != null && down >= 0) (name: 'سرعة التنزيل المعلنة', angle: 240, value: _normalize(down, 100000), color: Colors.blue, actual: down, unit: 'Kbps'),
+      if (up != null && up >= 0) (name: 'سرعة الرفع المعلنة', angle: 300, value: _normalize(up, 100000), color: Colors.purple, actual: up, unit: 'Kbps'),
+      if (rssi != null && rssi >= -120 && rssi <= 0) (name: 'قوة Wi-Fi', angle: 330, value: _normalize(rssi + 120, 120), color: Colors.yellow, actual: rssi, unit: 'dBm'),
+    ];
+    return raw.map((p) => RadarDataPoint(
+      name: p.name,
+      angle: p.angle,
+      value: p.value,
+      color: p.color,
+      activity: p.actual > 0 ? 'مرصود فعلياً' : 'لا يوجد نشاط مرصود',
+      packets: p.actual.round(),
+      responseTime: p.actual.toStringAsFixed(0) + ' ' + p.unit,
+    )).toList();
+  }
+
+  double _normalize(double value, double scale) =>
+      (value.abs() / scale).clamp(0.0, 1.0).toDouble() * 100;
+
+
   double _getX(double angle, double size) {
-    double center = size / 2;
-    double radius = size / 2 - 20;
-    return center + radius * (angle - 90) * 3.14159 / 180;
+    final center = size / 2;
+    final radius = size / 2 - 20;
+    final radians = angle * math.pi / 180;
+    return center + radius * math.cos(radians);
   }
 
   double _getY(double angle, double size) {
-    double center = size / 2;
-    double radius = size / 2 - 20;
-    return center + radius * angle * 3.14159 / 180;
+    final center = size / 2;
+    final radius = size / 2 - 20;
+    final radians = angle * math.pi / 180;
+    return center + radius * math.sin(radians);
   }
 
   List<String> _getPointData(String pointName) {
     final point = _points.firstWhere((p) => p.name == pointName);
     return [
-      'قوة الإشارة: ${point.value}%',
+      'مؤشر النشاط: ${point.value.toStringAsFixed(0)}%',
       'النشاط: ${point.activity}',
-      'عدد الحزم: ${point.packets}',
-      'سرعة الاستجابة: ${point.responseTime}',
+      'القيمة المرصودة: ${point.packets}',
+      'المعدل الحالي: ${point.responseTime}',
     ];
   }
 }
@@ -259,8 +320,8 @@ class RadarPainter extends CustomPainter {
     for (int i = 0; i < 8; i++) {
       double angle = i * 45 * 3.14159 / 180;
       Offset end = Offset(
-        center.dx + radius * (angle - 90),
-        center.dy + radius * angle,
+        center.dx + radius * math.cos(angle - math.pi / 2),
+        center.dy + radius * math.sin(angle - math.pi / 2),
       );
       canvas.drawLine(center, end, linePaint);
     }
@@ -275,12 +336,12 @@ class RadarPainter extends CustomPainter {
       Path path = Path();
       path.moveTo(center.dx, center.dy);
       path.lineTo(
-        center.dx + radius * (angle - 90),
-        center.dy + radius * angle,
+        center.dx + radius * math.cos(angle - math.pi / 2),
+        center.dy + radius * math.sin(angle - math.pi / 2),
       );
       path.lineTo(
-        center.dx + radius * (angle - 90) * 0.5,
-        center.dy + radius * angle * 0.5,
+        center.dx + radius * 0.5 * math.cos(angle - math.pi / 2),
+        center.dy + radius * 0.5 * math.sin(angle - math.pi / 2),
       );
       path.close();
       canvas.drawPath(path, scanPaint);

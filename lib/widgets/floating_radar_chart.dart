@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../src/core/services/system_metrics.dart';
 
 class FloatingRadarChart extends StatefulWidget {
   final VoidCallback onClose;
@@ -16,15 +21,17 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   double _width = 280;
   double _height = 280;
   Timer? _updateTimer;
+  final Battery _battery = Battery();
   final Map<String, double> _metrics = {
     'CPU': 0.0, 'RAM': 0.0, 'Storage': 0.0, 'Battery': 0.0,
-    'Network': 0.0, 'Temp': 0.0, 'Processes': 0.0, 'Uptime': 0.0,
-    'Disk I/O': 0.0, 'GPU': 0.0, 'Security': 0.0, 'Performance': 0.0,
+    'RX': 0.0, 'TX': 0.0, 'Temp': 0.0, 'Processes': 0.0, 'Uptime': 0.0,
   };
   final List<String> _titles = const [
-    'CPU', 'RAM', 'Storage', 'Battery', 'Network', 'Temp',
-    'Processes', 'Uptime', 'Disk I/O', 'GPU', 'Security', 'Performance'
+    'CPU', 'RAM', 'Storage', 'Battery', 'RX', 'TX', 'Temp', 'Processes', 'Uptime'
   ];
+  Map<String, dynamic> _network = <String, dynamic>{};
+  StreamSubscription<dynamic>? _networkSubscription;
+  DateTime? _lastUpdated;
 
   @override
   void initState() {
@@ -38,6 +45,12 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
           (size.height - _height - 100).clamp(0.0, double.infinity),
         );
       });
+      _networkSubscription = const EventChannel('zion.os/network/radar')
+          .receiveBroadcastStream()
+          .listen((dynamic event) {
+        if (event is! Map || !mounted) return;
+        setState(() => _network = Map<String, dynamic>.from(event));
+      }, onError: (_) {});
       _startRealTimeUpdates();
     });
   }
@@ -45,37 +58,57 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
   @override
   void dispose() {
     _updateTimer?.cancel();
+    _networkSubscription?.cancel();
     super.dispose();
   }
 
   void _startRealTimeUpdates() {
     _updateTimer?.cancel();
-    _updateTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+    _updateTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
       _updateMetrics();
     });
   }
 
-  void _updateMetrics() {
+  Future<void> _updateMetrics() async {
     if (!mounted) return;
-    final now = DateTime.now();
-    setState(() {
-      _metrics['CPU'] = 0.3 + (now.millisecond % 50) / 100;
-      _metrics['RAM'] = 0.45;
-      _metrics['Storage'] = 0.6;
-      _metrics['Battery'] = 0.75;
-      _metrics['Network'] = 0.2 + (now.second % 80) / 100;
-      _metrics['Temp'] = 0.45;
-      _metrics['Processes'] = 0.5;
-      _metrics['Uptime'] = 0.1;
-      _metrics['Disk I/O'] = 0.15 + (now.millisecond % 30) / 100;
-      _metrics['GPU'] = 0.2 + (now.second % 50) / 100;
-      _metrics['Security'] = 0.85;
-      _metrics['Performance'] = 0.7;
-      for (final key in _metrics.keys) {
-        _metrics[key] = _metrics[key]!.clamp(0.0, 1.0);
-      }
-    });
+    try {
+      final metrics = await SystemMetrics.read();
+      int? batteryLevel;
+      try {
+        batteryLevel = await _battery.batteryLevel;
+      } catch (_) {}
+      final rx = (_network['rxBytesPerSec'] as num?)?.toDouble() ?? 0.0;
+      final tx = (_network['txBytesPerSec'] as num?)?.toDouble() ?? 0.0;
+      double rateScale(double value) =>
+          (math.log(1 + value.clamp(0.0, 1000000000.0)) / math.log(1 + 5 * 1024 * 1024))
+              .clamp(0.0, 1.0).toDouble();
+      if (!mounted) return;
+      setState(() {
+        _metrics['CPU'] = metrics.cpuPercent / 100;
+        _metrics['RAM'] = metrics.memoryPercent / 100;
+        _metrics['Storage'] = metrics.storagePercent / 100;
+        _metrics['Battery'] = (batteryLevel ?? 0) / 100;
+        _metrics['RX'] = rateScale(rx);
+        _metrics['TX'] = rateScale(tx);
+        _metrics['Temp'] = metrics.temperatureCelsius <= 0
+            ? 0.0
+            : ((metrics.temperatureCelsius - 20) / 60).clamp(0.0, 1.0).toDouble();
+        _metrics['Processes'] = (metrics.processCount / 500).clamp(0.0, 1.0).toDouble();
+        _metrics['Uptime'] = (metrics.uptime.inSeconds / 86400).clamp(0.0, 1.0).toDouble();
+        _lastUpdated = DateTime.now();
+      });
+    } catch (_) {
+      // Leave the last valid telemetry visible; never replace it with invented data.
+    }
+  }
+
+  String _rateLabel(String key) {
+    final value = (_network[key] as num?)?.toDouble();
+    if (value == null || value < 0) return 'غير متاح';
+    if (value >= 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+    if (value >= 1024) return '${(value / 1024).toStringAsFixed(1)} KB/s';
+    return '${value.toStringAsFixed(0)} B/s';
   }
 
   List<RadarEntry> _getRadarEntries() =>
@@ -126,7 +159,7 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
                       const SizedBox(width: 8),
                       const Icon(Icons.radar, color: Color(0xFF00BCD4), size: 18),
                       const SizedBox(width: 8),
-                      const Text('Radar Monitor', style: TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
+                      const Text('Live system telemetry', style: TextStyle(color: Color(0xFF00BCD4), fontSize: 12)),
                       const Spacer(),
                       GestureDetector(
                         onTap: () => setState(() { _width = 48; _height = 48; }),
@@ -140,6 +173,16 @@ class _FloatingRadarChartState extends State<FloatingRadarChart> {
                       const SizedBox(width: 8),
                     ],
                   ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                child: Text(
+                  'CPU ${(_metrics['CPU']! * 100).round()}%  RAM ${(_metrics['RAM']! * 100).round()}%  RX ${_rateLabel('rxBytesPerSec')}  TX ${_rateLabel('txBytesPerSec')}' +
+                      (_lastUpdated == null ? '  • بانتظار القياسات' : '  • ${_lastUpdated!.hour.toString().padLeft(2, '0')}:${_lastUpdated!.minute.toString().padLeft(2, '0')}'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 9),
                 ),
               ),
               Expanded(
