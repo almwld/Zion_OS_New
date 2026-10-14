@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 
 import 'zion_bootstrap.dart';
 import 'zion_bootstrap_endpoint.dart';
@@ -17,6 +18,7 @@ class ZionUserlandInstaller {
   const ZionUserlandInstaller();
 
   static const _maxDownloadBytes = 256 * 1024 * 1024;
+  static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
   static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
   static Future<ZionUserlandInstallResult>? _installFuture;
   static bool _installCompleted = false;
@@ -150,6 +152,24 @@ class ZionUserlandInstaller {
     // Restore the uncompressed Termux usr backup directly first. Do not
     // package it as ZIP/TAR: archive metadata and executable bits matter.
     const backupPath = '/storage/emulated/0/Download/termux_usr_backup';
+    if (!await Directory(backupPath).exists()) {
+      onProgress?.call('[Userland] Checking Android access to the local backup...');
+      var granted = false;
+      try {
+        granted = await _storageChannel
+                .invokeMethod<bool>('ensureAllFilesAccess')
+                .timeout(const Duration(minutes: 5)) ??
+            false;
+      } catch (e) {
+        onProgress?.call('[Userland] Android storage access check failed: $e');
+      }
+      if (!granted) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'Android 11+ requires one-time All files access for the local Download backup. Allow access in Android settings, then reopen Terminal; Zion cannot bypass this system restriction.',
+        );
+      }
+    }
     if (await Directory(backupPath).exists()) {
       onProgress?.call('[Userland] Restoring direct directory backup: $backupPath');
       final restored = await _installFromDirectory(backupPath, onProgress: onProgress);
