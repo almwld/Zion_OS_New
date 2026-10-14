@@ -124,11 +124,37 @@ class TerminalService {
     return null;
   }
 
+  Future<String?> _findUsableUserlandShell() async {
+    final prefix = '/data/data/com.zion.os/files/usr';
+    for (final name in const <String>['bash', 'sh', 'dash']) {
+      final path = '$prefix/bin/$name';
+      try {
+        if (!await File(path).exists()) continue;
+        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+        if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
+          _output.add('[Userland] Using verified shell: $path\r\n');
+          return path;
+        }
+        _output.add('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+      } catch (error) {
+        _output.add('[Userland] Cannot execute $path: $error\r\n');
+      }
+    }
+    return null;
+  }
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
+      // A usable sh/dash may remain after an incomplete backup restore. Check
+      // it before invoking the installer so each app launch does not recopy
+      // the entire Userland tree just because bash is absent.
+      final existingUserlandShell = await _findUsableUserlandShell();
+      if (existingUserlandShell != null) return existingUserlandShell;
       if (await _userlandInstaller.isInstalled(
         onProgress: (message) => _output.add('$message\r\n'),
-      )) return _userlandBash;
+      )) {
+        final shell = await _findUsableUserlandShell();
+        if (shell != null) return shell;
+      }
       if (installIfMissing) {
         _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
@@ -138,7 +164,13 @@ class TerminalService {
           _output.add('[Terminal] ✓ Userland ready\r\n');
           return _userlandBash;
         }
-        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
+        _output.add('[Terminal] Userland unavailable: ${result.message}.\r\n');
+        final recoveredShell = await _findUsableUserlandShell();
+        if (recoveredShell != null) {
+          _output.add('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
+          return recoveredShell;
+        }
+        _output.add('[Terminal] Falling back to /system/bin/sh.\r\n');
       }
     } catch (e) {
       _output.add('[Terminal] Userland check/install failed: $e\r\n');
@@ -339,49 +371,43 @@ class TerminalService {
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
     if (isInteractiveRunning && kaliRootfsPath == null) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null) {
+      await stopInteractive();
+    }
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
-    // Kali is a selectable PTY profile, not a Userland installation step.
-    // Its rootfs remains at the caller-supplied path; Zion only supplies PRoot.
+    // Kali uses the already-installed Zion PRoot runtime and a local rootfs;
+    // it must not trigger Userland restore or copy the selected rootfs.
     await _ensureTerminalEnvironment();
     String? shell;
     if (kaliRootfsPath != null) {
-      final rootfsPath = kaliRootfsPath.trim();
-      if (!rootfsPath.startsWith('/') ||
-          rootfsPath.contains('|') ||
-          rootfsPath.contains('\n') ||
-          rootfsPath.contains('\r') ||
-          rootfsPath.contains('\u0000')) {
-        _output.add('[Kali] مسار rootfs غير صالح؛ استخدم مسارًا مطلقًا دون أسطر جديدة.\r\n');
+      final path = kaliRootfsPath.trim();
+      if (!path.startsWith('/') ||
+          path.contains('|') ||
+          path.contains('\\n') ||
+          path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _output.add('[Kali] Invalid local rootfs path.\\r\\n');
         return false;
       }
-      final rootfs = Directory(rootfsPath);
+      final rootfs = Directory(path);
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
       final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
       if (!await rootfs.exists() ||
-          !await File('$rootfsPath/bin/bash').exists() ||
-          !await File('$rootfsPath/bin/sh').exists()) {
-        _output.add('[Kali] لم يُعثر على rootfs صالح في: $rootfsPath (المطلوب bin/bash وbin/sh). لم يتم نسخ الملفات.\r\n');
+          !await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _output.add('[Kali] Invalid rootfs: expected bin/bash and bin/sh at $path. No files were copied.\\r\\n');
         return false;
       }
       if (!await proot.exists() || !await loader.exists()) {
-        _output.add('[Kali] أدوات Zion PRoot غير مكتملة؛ ثبّت/أصلح PRoot داخل Zion Userland أولًا. لم تتم محاولة تنزيل Kali أو نسخه.\r\n');
+        _output.add('[Kali] Zion PRoot/loader is missing. Restore Userland PRoot before launching Kali.\\r\\n');
         return false;
       }
-      try {
-        final mode = (await proot.stat()).mode;
-        if ((mode & 0x49) == 0) {
-          _output.add('[Kali] ملف PRoot موجود لكنه غير قابل للتنفيذ: ${proot.path}\r\n');
-          return false;
-        }
-      } catch (_) {
-        _output.add('[Kali] تعذر فحص صلاحية تشغيل PRoot.\r\n');
-        return false;
-      }
-      shell = 'zion-kali@$rootfsPath';
+      shell = 'zion-kali@$path';
+      _output.add('[Kali] Starting local rootfs without copying it: $path\\r\\n');
     } else {
       shell = await _findShell(installIfMissing: true);
     }
@@ -397,11 +423,9 @@ class TerminalService {
       );
       return false;
     }
-    _output.add(kaliRootfsPath != null
-        ? '[Kali] تشغيل مباشر من المسار المحلي: ${kaliRootfsPath.trim()}\r\n'
-        : (shell == _userlandBash
-            ? 'Userland Bash ready: $shell\r\n'
-            : 'Android shell ready: $shell\r\n'));
+    _output.add(shell == _userlandBash
+        ? 'Userland Bash ready: $shell\r\n'
+        : 'Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -429,11 +453,9 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(kaliRootfsPath != null
-          ? '[Kali] Connected directly to local rootfs • native PTY\r\n'
-          : (shell == _userlandBash
-              ? 'Connected to Userland: bash • native PTY\r\n'
-              : 'Connected to Android system shell: $shell • native PTY\r\n'));
+      _output.add(shell == _userlandBash
+          ? 'Connected to Userland: bash • native PTY\r\n'
+          : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
