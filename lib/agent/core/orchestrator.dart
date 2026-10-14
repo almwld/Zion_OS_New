@@ -120,7 +120,7 @@ class AgentOrchestrator {
         final started = DateTime.now();
         StepResult r;
         try {
-          r = await tool.execute(step.params).timeout(stepTimeout);
+          r = await tool.execute(_paramsWithContext(step, results)).timeout(stepTimeout);
         } on TimeoutException {
           r = StepResult.failure(
             'انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية.',
@@ -314,6 +314,29 @@ class AgentOrchestrator {
     if(!await ai.nativeLoaded)return null;
     final response=await ai.generate('الخطوة الفاشلة: '+step.description+'\nالأداة: '+step.tool+'\nالخطأ: '+error+'\nاقترح خطوة دفاعية بديلة JSON فقط.',maxTokens:500,temperature:0.1);
     final p=_parsePlan(response);return p?.steps.isNotEmpty==true?p!.steps.first:null;
+  }
+
+  Map<String, dynamic> _paramsWithContext(
+    AgentStep step,
+    List<StepResult> previousResults,
+  ) {
+    if (step.tool != 'ai' || previousResults.isEmpty) return step.params;
+    final recent = previousResults.length > 5
+        ? previousResults.sublist(previousResults.length - 5)
+        : previousResults;
+    final evidence = recent.asMap().entries.map((entry) {
+      final result = entry.value;
+      final index = previousResults.length - recent.length + entry.key + 1;
+      return '$index. ${result.success ? 'نجاح' : 'فشل'}: ${result.summary}'
+          '${result.error == null ? '' : '\nالخطأ: ${result.error}'}'
+          '${result.data == null ? '' : '\nالبيانات الفعلية: ${_compactData(result.data)}'}';
+    }).join('\n\n');
+    final originalPrompt = (step.params['prompt'] ?? '').toString();
+    return <String, dynamic>{
+      ...step.params,
+      'prompt': '$originalPrompt\n\nنتائج الخطوات السابقة (مخرجات فعلية وليست افتراضات):\n'
+          '$evidence\n\nاعتمد على هذه النتائج فقط، وصرّح بوضوح إذا كانت غير كافية.',
+    };
   }
 
   Future<String> _report(String task, List<StepResult> results) async {
