@@ -24,6 +24,10 @@ void main() {
     }
   });
 
+  test('declares only read-only web retrieval as an approval-free network capability', () {
+    expect(BrowserTool().supportsReadOnlyWebRetrieval, isTrue);
+  });
+
   test('rejects non-HTTP schemes and embedded URL credentials', () async {
     final tool = BrowserTool();
     final fileUrl = await tool.execute({'action': 'fetch', 'url': 'file:///etc/passwd'});
