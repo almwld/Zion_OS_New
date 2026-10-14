@@ -58,6 +58,8 @@ class SlowBrowserTool extends AgentTool {
 }
 
 class NetworkBrowserTool extends AgentTool {
+  Map<String, dynamic>? lastParams;
+
   @override
   String get name => 'browser';
 
@@ -72,8 +74,10 @@ class NetworkBrowserTool extends AgentTool {
       const {AgentPermission.network};
 
   @override
-  Future<StepResult> execute(Map<String, dynamic> params) async =>
-      StepResult.success('network tool completed');
+  Future<StepResult> execute(Map<String, dynamic> params) async {
+    lastParams = Map<String, dynamic>.from(params);
+    return StepResult.success('network tool completed');
+  }
 }
 
 void main() {
@@ -95,14 +99,17 @@ void main() {
   });
 
   test('read-only web retrieval respects the registered tool permission contract', () async {
+    final browser = NetworkBrowserTool();
     final orchestrator = AgentOrchestrator(
-      tools: ToolRegistry(customTools: [NetworkBrowserTool()]),
+      tools: ToolRegistry(customTools: [browser]),
       policy: const AgentPolicy(),
     );
     final result = await orchestrator.executeTask('ابحث عن معلومات');
     expect(result.success, isTrue);
     expect(result.steps, hasLength(1));
     expect(result.steps.single.summary, 'network tool completed');
+    expect(browser.lastParams?['action'], 'search');
+    expect(browser.lastParams?['query'], 'معلومات');
     expect(orchestrator.state, AgentState.completed);
     orchestrator.dispose();
   });
