@@ -47,10 +47,10 @@ class ShellTool extends AgentTool {
       if (useUserland) 'LD_LIBRARY_PATH': '$_prefix/lib:$_prefix/lib64',
     };
 
-    Process? process;
     try {
+      late final Process runningProcess;
       try {
-        process = await Process.start(
+        runningProcess = await Process.start(
           shell,
           ['-c', command],
           environment: environment,
@@ -61,7 +61,7 @@ class ShellTool extends AgentTool {
         // Keep diagnostics available even if the local Bash binary or one of
         // its linked libraries is not usable yet.
         if (!useUserland) rethrow;
-        process = await Process.start(
+        runningProcess = await Process.start(
           _fallbackShell,
           ['-c', command],
           environment: environment,
@@ -74,7 +74,7 @@ class ShellTool extends AgentTool {
       final stderr = StringBuffer();
       final stdoutDone = Completer<void>();
       final stderrDone = Completer<void>();
-      process.stdout.transform(SystemEncoding().decoder).listen(
+      runningProcess.stdout.transform(SystemEncoding().decoder).listen(
         (chunk) {
           if (stdout.length < 24000) {
             final remaining = 24000 - stdout.length;
@@ -88,7 +88,7 @@ class ShellTool extends AgentTool {
           if (!stdoutDone.isCompleted) stdoutDone.completeError(error);
         },
       );
-      process.stderr.transform(SystemEncoding().decoder).listen(
+      runningProcess.stderr.transform(SystemEncoding().decoder).listen(
         (chunk) {
           if (stderr.length < 12000) {
             final remaining = 12000 - stderr.length;
@@ -104,10 +104,10 @@ class ShellTool extends AgentTool {
       );
 
       final started = DateTime.now();
-      final code = await process.exitCode.timeout(
+      final code = await runningProcess.exitCode.timeout(
         Duration(seconds: timeoutSeconds),
         onTimeout: () {
-          process?.kill(ProcessSignal.sigterm);
+          runningProcess.kill(ProcessSignal.sigterm);
           return 124;
         },
       );
