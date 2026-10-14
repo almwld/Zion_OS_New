@@ -23,6 +23,7 @@ void main() {
       expect(bootstrap, contains('ZionLocalKaliConfig.expectedSize'));
       expect(bootstrap, contains('XZDecoder().decodeStream'));
       expect(bootstrap, contains('entry.mode & 0x1ff'));
+      expect(bootstrap, contains('Directory(destination.path).create(recursive: true)'));
       expect(bootstrap, contains("'/system/bin/chmod'"));
       expect(bootstrap, contains('finalRootfs.rename(backup.path)'));
     });
