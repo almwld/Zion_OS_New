@@ -358,7 +358,7 @@ class ZionUserlandInstaller {
     try {
       final count = await Process.run(
         '/system/bin/sh',
-        <String>['-c', 'find "$1" -mindepth 1 -print 2>/dev/null | wc -l', 'zion-copy-count', sourcePath],
+        <String>['-c', r'find "$1" -mindepth 1 -print 2>/dev/null | wc -l', 'zion-copy-count', sourcePath],
         runInShell: false,
       ).timeout(const Duration(minutes: 2));
       totalEntries = int.tryParse(count.stdout.toString().trim()) ?? 0;
