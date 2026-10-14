@@ -198,7 +198,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(null) }
                         }
                     }
-                    "isLoaded" -> result.success(try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false })
+                    "isLoaded" -> aiExecutor.execute {
+                        // Native readiness takes g_mutex; never block the Android UI
+                        // thread while model loading or inference owns that lock.
+                        val loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                        runOnUiThread { result.success(loaded) }
+                    }
                     "version" -> result.success(try { llamaBridge.nativeVersion() } catch (_: Throwable) { "unavailable" })
                     else -> result.notImplemented()
                 }
