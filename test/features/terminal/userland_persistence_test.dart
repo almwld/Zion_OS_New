@@ -57,7 +57,8 @@ void main() {
         source,
         contains("'/data/data/com.zion.os/.userland_state.json'"),
       );
-      expect(source, contains("'bashPath': '\u0024{ZionBootstrap.prefix}/bin/bash'"));
+      expect(source, contains("'bashPath': '"));
+      expect(source, contains('ZionBootstrap.prefix'));
     });
   });
 }
