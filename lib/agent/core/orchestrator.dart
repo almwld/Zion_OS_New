@@ -39,14 +39,14 @@ class AgentOrchestrator {
     if (_running) return AgentResult.error(clean, 'Zion Agent مشغول بمهمة أخرى.');
     _running = true;
     _state = AgentState.planning;
-    _log('🎯 بدء المهمة: $clean');
+    _log('بدء المهمة: $clean');
     final results = <StepResult>[];
     try {
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean);
-      _log('📋 الخطة: ${plan.steps.length} خطوة.');
+      _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
-        _log('🔐 تم تجاهل خيار تجاوز الموافقات العام؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
+        _log('تم تجاهل خيار تجاوز الموافقات العام؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
       }
       _state = AgentState.executing;
 
@@ -64,30 +64,37 @@ class AgentOrchestrator {
         // effective permission from the registered tool implementation too.
         final requiredPermissions = tool.requiredPermissions(step.params);
         final toolRequiresApproval = tool.requiresApproval(step.params);
+        final isReadOnlyHttpGet = step.tool == 'http' &&
+            (step.params['method']?.toString() ?? 'GET').toUpperCase() == 'GET';
         final requiresSensitiveApproval =
-            requiredPermissions.any((permission) => permission != AgentPermission.readOnly) ||
+            requiredPermissions.any((permission) =>
+                permission != AgentPermission.readOnly &&
+                !(isReadOnlyHttpGet && permission == AgentPermission.network)) ||
             toolRequiresApproval;
+        final modelDeclaredSensitivePermission =
+            step.permission != AgentPermission.readOnly &&
+            !(isReadOnlyHttpGet && step.permission == AgentPermission.network);
         final decision = step.risk == AgentRisk.blocked
             ? const AgentPolicyDecision(risk: AgentRisk.blocked, reason: 'الخطوة مصنفة محظورة من مخطط Zion Agent.', requiresApproval: false)
             : (step.risk == AgentRisk.review ||
-                    step.permission != AgentPermission.readOnly ||
+                    modelDeclaredSensitivePermission ||
                     step.requiresApproval ||
                     requiresSensitiveApproval)
                 ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
                 : policyDecision;
-        _log('▶️ [${i + 1}/${plan.steps.length}] ${step.description}');
+        _log('[${i + 1}/${plan.steps.length}] ${step.description}');
 
         if (decision.risk == AgentRisk.blocked) {
           final r = StepResult.failure(decision.reason);
           results.add(r);
-          _log('⛔ ${decision.reason}');
+          _log('محظور: ${decision.reason}');
           return AgentResult(success: false, task: clean, steps: results, error: decision.reason);
         }
 
         if (decision.requiresApproval) {
           _state = AgentState.waitingApproval;
           _pendingApprovalStepId = step.id;
-          _log('🔐 بانتظار موافقتك: ${decision.reason}');
+          _log('بانتظار موافقتك: ${decision.reason}');
           final approved = await _waitForApproval(
             cancellationToken,
             step.description,
@@ -97,7 +104,7 @@ class AgentOrchestrator {
             _state = AgentState.failed;
             final r = StepResult.failure('تم رفض تنفيذ الخطوة: ${step.description}');
             results.add(r);
-            _log('🚫 تم رفض الخطوة.');
+            _log('تم رفض الخطوة.');
             return AgentResult(
               success: false,
               task: clean,
@@ -106,7 +113,7 @@ class AgentOrchestrator {
             );
           }
           _state = AgentState.executing;
-          _log('✅ تمت الموافقة على الخطوة.');
+          _log('تمت الموافقة على الخطوة.');
         }
 
         cancellationToken?.throwIfCancelled();
@@ -126,7 +133,7 @@ class AgentOrchestrator {
           text: step.description,
           metadata: {'tool': step.tool, 'success': r.success},
         );
-        _log(r.success ? '  ✅ ${r.summary}' : '  ❌ ${r.error ?? r.summary}');
+        _log(r.success ? 'نجاح: ${r.summary}' : 'فشل: ${r.error ?? r.summary}');
 
         if (!r.success) {
           _state = AgentState.evaluating;
@@ -150,7 +157,7 @@ class AgentOrchestrator {
             // Recovery is automatic only for explicitly safe, read-only steps.
             // A model-generated alternative must not bypass the approval gate.
             if (d.risk != AgentRisk.safe || d.requiresApproval || altNeedsApproval) {
-              _log('🔐 البديل يحتاج موافقة أو محظور.');
+              _log('البديل يحتاج موافقة أو محظور.');
               break;
             }
             cancellationToken?.throwIfCancelled();
@@ -166,7 +173,7 @@ class AgentOrchestrator {
             }
             results.add(ar);
             recovered = ar.success;
-            _log('🔄 المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
+            _log('المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
           }
           if (!recovered) {
             _state = AgentState.failed;
@@ -183,15 +190,15 @@ class AgentOrchestrator {
 
       _state = AgentState.completed;
       final report = await _report(clean, results);
-      _log('✅ اكتملت المهمة.');
+      _log('اكتملت المهمة.');
       return AgentResult(success: true, task: clean, steps: results, report: report);
     } on AgentCancelledException {
       _state = AgentState.cancelled;
-      _log('⏹️ تم إلغاء المهمة.');
+      _log('تم إلغاء المهمة.');
       return AgentResult(success: false, task: clean, steps: results, error: 'تم إلغاء المهمة.');
     } catch (e) {
       _state = AgentState.failed;
-      _log('❌ ${e.toString()}');
+      _log('خطأ: ${e.toString()}');
       return AgentResult(success: false, task: clean, steps: results, error: e.toString());
     } finally {
       _running = false;
