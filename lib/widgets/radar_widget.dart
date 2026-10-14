@@ -139,11 +139,25 @@ class _RadarWidgetState extends State<RadarWidget>
         color: Colors.pinkAccent,
         detail: 'تقدير واجهة الشبكة: ${up.toStringAsFixed(0)} Kbit/s',
       ),
+      RadarDataPoint(
+        name: 'استقبال Zion OS',
+        angle: 255,
+        value: _normalize(_number('appRxBytesPerSec'), 2 * 1024 * 1024),
+        color: Colors.lightGreenAccent,
+        detail: 'استهلاك التطبيق الفعلي: ${_fmtRate('appRxBytesPerSec')}',
+      ),
+      RadarDataPoint(
+        name: 'إرسال Zion OS',
+        angle: 285,
+        value: _normalize(_number('appTxBytesPerSec'), 1024 * 1024),
+        color: Colors.deepOrangeAccent,
+        detail: 'استهلاك التطبيق الفعلي: ${_fmtRate('appTxBytesPerSec')}',
+      ),
     ];
     if (transport == 'wifi' && rssiValue is num) {
       points.add(RadarDataPoint(
         name: 'إشارة Wi-Fi',
-        angle: 270,
+        angle: 305,
         value: _normalize((rssiValue.toDouble() + 100).clamp(0, 70), 70),
         color: Colors.yellowAccent,
         detail: 'RSSI: ${rssiValue.toStringAsFixed(0)} dBm'
@@ -152,7 +166,7 @@ class _RadarWidgetState extends State<RadarWidget>
     }
     points.add(RadarDataPoint(
       name: 'اتصال الإنترنت',
-      angle: 315,
+      angle: 330,
       value: _telemetry['validated'] == true ? 1 : 0,
       color: _telemetry['validated'] == true ? Colors.green : Colors.redAccent,
       detail: 'النقل: $transport • '
@@ -196,10 +210,13 @@ class _RadarWidgetState extends State<RadarWidget>
         child: Stack(
           children: [
             Positioned.fill(
-              child: CustomPaint(
-                painter: RadarPainter(
-                  scanRotation: _scanRotation.value,
-                  showSweep: !_isExpanded,
+              child: AnimatedBuilder(
+                animation: _scanAnimation,
+                builder: (context, _) => CustomPaint(
+                  painter: RadarPainter(
+                    scanRotation: _scanAnimation.value * math.pi * 2,
+                    showSweep: !_isExpanded,
+                  ),
                 ),
               ),
             ),
@@ -306,7 +323,8 @@ class _RadarWidgetState extends State<RadarWidget>
                 bottom: selected == null ? 8 : 58,
                 child: Text(
                   'RX ${_fmtRate('rxBytesPerSec')}   •   TX ${_fmtRate('txBytesPerSec')}\n'
-                  'الواجهة: ${_telemetry['interface'] ?? '—'}   •   IP: ${_telemetry['ipAddress'] ?? '—'}',
+                  'Zion OS: RX ${_fmtRate('appRxBytesPerSec')} • TX ${_fmtRate('appTxBytesPerSec')}\\n'
+                  'الواجهة: ${_telemetry['interface'] ?? '—'} • IP: ${_telemetry['ipAddress'] ?? '—'}',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: prefs.isDarkMode ? Colors.white70 : Colors.black54,
