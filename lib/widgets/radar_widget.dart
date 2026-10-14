@@ -240,11 +240,6 @@ class _RadarWidgetState extends State<RadarWidget> with SingleTickerProviderStat
   double _normalize(double value, double scale) =>
       (value.abs() / scale).clamp(0.0, 1.0).toDouble() * 100;
 
-  String _formatRate(double value) {
-    if (value >= 1024 * 1024) return '${(value / (1024 * 1024)).toStringAsFixed(1)} MB/s';
-    if (value >= 1024) return '${(value / 1024).toStringAsFixed(1)} KB/s';
-    return '${value.toStringAsFixed(0)} B/s';
-  }
 
   double _getX(double angle, double size) {
     final center = size / 2;
