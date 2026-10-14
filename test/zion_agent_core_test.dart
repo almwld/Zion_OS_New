@@ -10,6 +10,7 @@ class RecordingLlamaService extends LlamaService {
   double lastTemperature = 0;
   int generateCalls = 0;
   String reply = 'local reply';
+  bool loadResult = true;
 
   @override
   Future<bool> loadModel(
@@ -17,7 +18,7 @@ class RecordingLlamaService extends LlamaService {
     int threads = 4,
     String? loraPath,
     double loraScale = 1.0,
-  }) async => true;
+  }) async => loadResult;
 
   @override
   Future<String> generate(
@@ -80,6 +81,26 @@ void main(){
   expect(await agent.initialize(modelPath: 'test.gguf', role: AgentRole.codingAssistant), isTrue);
   expect(await agent.chat('say hello'), 'Hello');
   await agent.dispose();
+ });
+ test('failed model replacement clears agent readiness',() async {
+  final llama = RecordingLlamaService();
+  final agent = AIAgent(llama: llama);
+  expect(await agent.initialize(modelPath: 'first.gguf', role: AgentRole.codingAssistant), isTrue);
+  expect(agent.isInitialized, isTrue);
+  llama.loadResult = false;
+  expect(await agent.initialize(modelPath: 'second.gguf', role: AgentRole.codingAssistant), isFalse);
+  expect(agent.isInitialized, isFalse);
+  await agent.dispose();
+ });
+ test('GGUF metadata safely parses numeric size strings',() {
+  final model = LlamaModel.fromMap({
+    'name': 'test-instruct.gguf',
+    'path': '/local/test-instruct.gguf',
+    'sizeBytes': '1048576',
+    'readable': true,
+  });
+  expect(model.sizeBytes, 1048576);
+  expect(model.readable, isTrue);
  });
  test('agent policy blocks destructive shell and requests approval for writes',(){
   const policy=AgentPolicy();
