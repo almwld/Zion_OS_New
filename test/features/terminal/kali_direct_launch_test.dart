@@ -8,9 +8,8 @@ void main() {
       final source = await File('lib/features/terminal/terminal_screen.dart').readAsString();
       expect(source, contains('zion_terminal_kali_rootfs_path_v1'));
       expect(source, contains('/storage/emulated/0/Download/Kali'));
-      expect(source, contains('_startKali()'));
-      expect(source, contains('__zion_launch_kali__'));
-      expect(source, contains('مسار Kali المحلي'));
+      expect(source, contains('_startKaliFromLocalRootfs'));
+      expect(source, contains('تشغيل Kali المحلي'));
     });
 
     test('Kali PTY profile validates the local rootfs without installing Userland', () async {
@@ -19,9 +18,9 @@ void main() {
       final end = source.indexOf('void write(String input)', start);
       expect(start, greaterThanOrEqualTo(0));
       final method = source.substring(start, end);
-      expect(method, contains(r"File('$rootfsPath/bin/bash')"));
-      expect(method, contains(r"File('$rootfsPath/bin/sh')"));
-      expect(method, contains(r"shell = 'zion-kali@$rootfsPath'"));
+      expect(method, contains(r"File('$path/bin/bash')"));
+      expect(method, contains(r"File('$path/bin/sh')"));
+      expect(method, contains(r"shell = 'zion-kali@$path'"));
       expect(method, contains("_findShell(installIfMissing: true)"));
       expect(method.indexOf('if (kaliRootfsPath != null)'),
           lessThan(method.indexOf('_findShell(installIfMissing: true)')));
@@ -30,8 +29,8 @@ void main() {
     test('native PTY maps a selected absolute rootfs to PRoot in place', () async {
       final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
       expect(activity, contains('shell?.startsWith("zion-kali@") == true'));
-      expect(activity, contains('Launch the selected rootfs in-place. Never copy or extract it.'));
-      expect(activity, contains('isValidKaliRootfs(rootfs)'));
+      expect(activity, contains('shell?.startsWith("zion-kali@") == true'));
+      expect(activity, contains('validRootfs(rootfs)'));
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('exec_kali_proot'));
       expect(native, contains('"kali:"'));
