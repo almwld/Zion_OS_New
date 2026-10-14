@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import '../../core/services/camera_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class CameraCenter extends StatefulWidget {
   const CameraCenter({super.key});
@@ -31,7 +32,7 @@ class _CameraCenterState extends State<CameraCenter> {
     final photo = await _cameraService.captureImage();
     if (photo != null) {
       await _loadPhotos();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Photo saved successfully'), backgroundColor: Color(0xFF00BCD4)),
       );
     }
@@ -40,7 +41,7 @@ class _CameraCenterState extends State<CameraCenter> {
   Future<void> _pickImages() async {
     final images = await _cameraService.pickImages();
     if (images.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('${images.length} images selected'), backgroundColor: Color(0xFF00BCD4)),
       );
     }
@@ -63,7 +64,7 @@ class _CameraCenterState extends State<CameraCenter> {
     if (confirmed == true) {
       await _cameraService.deletePhoto(photo['path']);
       await _loadPhotos();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Photo deleted'), backgroundColor: Color(0xFF00BCD4)),
       );
     }
