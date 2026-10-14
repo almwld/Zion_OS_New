@@ -337,16 +337,54 @@ class TerminalService {
     }
   }
 
-  Future<bool> startInteractive() async {
-    if (isInteractiveRunning) return true;
+  Future<bool> startInteractive({String? kaliRootfsPath}) async {
+    if (isInteractiveRunning && kaliRootfsPath == null) return true;
     if (!_authorized('<interactive-shell>')) {
       _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
-    // Ensure private home/tmp exist before automatic Userland installation.
+    // Kali is a selectable PTY profile, not a Userland installation step.
+    // Its rootfs remains at the caller-supplied path; Zion only supplies PRoot.
     await _ensureTerminalEnvironment();
-    final shell = await _findShell(installIfMissing: true);
+    String? shell;
+    if (kaliRootfsPath != null) {
+      final rootfsPath = kaliRootfsPath.trim();
+      if (!rootfsPath.startsWith('/') ||
+          rootfsPath.contains('|') ||
+          rootfsPath.contains('\\n') ||
+          rootfsPath.contains('\\r') ||
+          rootfsPath.contains('\\u0000')) {
+        _output.add('[Kali] مسار rootfs غير صالح؛ استخدم مسارًا مطلقًا دون أسطر جديدة.\\r\\n');
+        return false;
+      }
+      final rootfs = Directory(rootfsPath);
+      final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
+      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
+      if (!await rootfs.exists() ||
+          !await File('$rootfsPath/bin/bash').exists() ||
+          !await File('$rootfsPath/bin/sh').exists()) {
+        _output.add('[Kali] لم يُعثر على rootfs صالح في: $rootfsPath (المطلوب bin/bash وbin/sh). لم يتم نسخ الملفات.\\r\\n');
+        return false;
+      }
+      if (!await proot.exists() || !await loader.exists()) {
+        _output.add('[Kali] أدوات Zion PRoot غير مكتملة؛ ثبّت/أصلح PRoot داخل Zion Userland أولًا. لم تتم محاولة تنزيل Kali أو نسخه.\\r\\n');
+        return false;
+      }
+      try {
+        final mode = (await proot.stat()).mode;
+        if ((mode & 0x49) == 0) {
+          _output.add('[Kali] ملف PRoot موجود لكنه غير قابل للتنفيذ: ${proot.path}\\r\\n');
+          return false;
+        }
+      } catch (_) {
+        _output.add('[Kali] تعذر فحص صلاحية تشغيل PRoot.\\r\\n');
+        return false;
+      }
+      shell = 'zion-kali@$rootfsPath';
+    } else {
+      shell = await _findShell(installIfMissing: true);
+    }
     if (shell == null) {
       _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
       _audit(
