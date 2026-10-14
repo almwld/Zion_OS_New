@@ -21,24 +21,33 @@ class ZionUserlandInstaller {
   static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
   static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
   static Future<ZionUserlandInstallResult>? _installFuture;
-  static bool _installCompleted = false;
 
-  /// A valid Bash executable is authoritative; the state file prevents repeat
-  /// copies, but a stale/missing marker never forces a 1.4 GB recopy by itself.
+  /// The on-disk marker is authoritative across app restarts and new tabs.
+  /// Never gate this check on the process-local cache: Dart statics reset when
+  /// the app process is recreated, while /files/usr is the shared system Userland.
+  /// A healthy marked installation must not be probed by launching Bash or copied
+  /// again just because a new TerminalService was created.
   Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
-    if (_installCompleted) {
-      try {
-        final state = jsonDecode(await File(_stateFilePath).readAsString());
-        if (state is Map && state['installed'] == true && state['bashPath'] == bashPath && await File(bashPath).exists()) {
+    final bashFile = File(bashPath);
+    final stateFile = File(_stateFilePath);
+
+    try {
+      if (await bashFile.exists() && await stateFile.exists()) {
+        final state = jsonDecode(await stateFile.readAsString());
+        if (state is Map &&
+            state['installed'] == true &&
+            state['bashPath'] == bashPath) {
           return true;
         }
-      } catch (_) {
-        _installCompleted = false;
       }
+    } catch (_) {
+      // A corrupt/missing marker is handled as a one-time legacy migration
+      // below. It must never invalidate or recopy a working marked install.
     }
+
     try {
-      if (!await File(bashPath).exists()) return false;
+      if (!await bashFile.exists()) return false;
       final result = await Process.run(
         bashPath,
         const <String>['-c', 'printf ZION_USERLAND_BASH_OK'],
@@ -80,7 +89,6 @@ class ZionUserlandInstaller {
         if (!await _hasCompatibleShell()) return false;
         await _writeState(source: 'existing-userland', sizeBytes: 0);
       }
-      _installCompleted = true;
       return true;
     } catch (e) {
       print('[Userland] installed check failed: $e');
@@ -108,7 +116,6 @@ class ZionUserlandInstaller {
   Future<void> uninstallState() async {
     final file = File(_stateFilePath);
     if (await file.exists()) await file.delete();
-    _installCompleted = false;
   }
 
   Future<ZionUserlandInstallResult> installLatest({
@@ -118,7 +125,6 @@ class ZionUserlandInstaller {
     if (active != null) return active;
     final future = _installLatestInternal(onProgress: onProgress).then((result) async {
       if (result.success) {
-        _installCompleted = true;
         final stateFile = File(_stateFilePath);
         if (!await stateFile.exists()) {
           await _writeState(source: 'zion-userland-install', sizeBytes: 0);
@@ -185,9 +191,7 @@ class ZionUserlandInstaller {
     // network endpoint. Only verified Zion bootstrap ZIPs are accepted here;
     // a Kali rootfs tarball must not be unpacked into the Zion prefix.
     const localCandidates = <String>[
-      // User-provided Kali rootfs archive at the shared-storage root. Detect it
-      // explicitly so it is never mistaken for a missing Zion bootstrap and
-      // never triggers an unnecessary network download.
+      // Detect the existing shared-storage Kali tarball; never unpack it as Zion usr.
       '/storage/emulated/0/kali-arm64.tar',
       '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
       '/storage/emulated/0/Download/bootstrap-aarch64.zip',
@@ -360,7 +364,11 @@ class ZionUserlandInstaller {
       await _createOtherSymlinks('${targetDir.path}/bin');
 
       if (!await _hasCompatibleShell()) {
-        return const ZionUserlandInstallResult(success: false, message: 'تم النسخ، لكن Bash لا يعمل؛ تحقق من الصلاحيات ومكتبات التشغيل.');
+        await _diagnoseShellCandidates(onProgress: onProgress);
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'تم النسخ لكن لا توجد صدفة صالحة داخل usr/bin؛ سُجلت محتويات bin/ ونتائج فحص المرشحين. ستستخدم الطرفية /system/bin/sh.',
+        );
       }
       // Termux usr is useful as a Bash environment even when PRoot is absent.
       // PRoot is an optional tool, not a prerequisite for launching Bash.
@@ -496,7 +504,14 @@ class ZionUserlandInstaller {
     }
 
     final bash = File('${root.path}/bin/bash');
-    if (!await bash.exists()) throw StateError('bash missing after Userland copy');
+    if (!await bash.exists()) {
+      // A backup may contain a usable sh/dash but omit Bash. Do not throw
+      // before diagnostics run: preserve the copied tree and let TerminalService
+      // select the verified fallback shell without repeating a large restore.
+      await _diagnoseShellCandidates();
+      print('[Permissions] Bash is missing; preserving Userland for sh/dash fallback.');
+      return;
+    }
     final test = await Process.run(
       bash.path, const <String>['-c', 'printf BASH_OK'],
       runInShell: false,
@@ -573,6 +588,52 @@ class ZionUserlandInstaller {
     }
   }
 
+  /// Diagnose missing/broken shells after restoring a local Userland backup.
+  Future<void> _diagnoseShellCandidates({void Function(String message)? onProgress}) async {
+    final usrDir = ZionBootstrap.prefix;
+    final candidates = <String>['$usrDir/bin/bash', '$usrDir/bin/sh', '$usrDir/bin/busybox', '$usrDir/bin/dash', '/system/bin/sh'];
+    var found = false;
+    for (final path in candidates) {
+      try {
+        if (!await File(path).exists()) continue;
+        found = true;
+        final heading = '[Userland] Found shell candidate: $path';
+        print(heading); onProgress?.call(heading);
+        final args = path.endsWith('/busybox') ? <String>['sh', '-c', 'printf ZION_SHELL_DIAGNOSTIC_OK'] : <String>['-c', 'printf ZION_SHELL_DIAGNOSTIC_OK'];
+        final result = await Process.run(path, args, runInShell: false, environment: _shellDiagnosticEnvironment()).timeout(const Duration(seconds: 3));
+        final detail = '[Userland] Test $path: exit=${result.exitCode}; stdout=${result.stdout}; stderr=${result.stderr}';
+        print(detail); onProgress?.call(detail);
+        break;
+      } catch (error) {
+        final detail = '[Userland] Shell candidate check failed for $path: $error';
+        print(detail); onProgress?.call(detail);
+      }
+    }
+    if (!found) {
+      const message = '[Userland] No bash/sh/busybox/dash found in usr/bin; TerminalService should use /system/bin/sh.';
+      print(message); onProgress?.call(message);
+    }
+    final binDir = Directory('$usrDir/bin');
+    if (await binDir.exists()) {
+      try {
+        final entries = await binDir.list(followLinks: false).toList();
+        final heading = '[Userland] bin/ contains ${entries.length} entries:';
+        print(heading); onProgress?.call(heading);
+        for (final entry in entries.take(30)) { final line = '  ${entry.path}'; print(line); onProgress?.call(line); }
+      } catch (error) { final line = '[Userland] Unable to list bin/: $error'; print(line); onProgress?.call(line); }
+    } else {
+      const message = '[Userland] Expected usr/bin directory is missing.';
+      print(message); onProgress?.call(message);
+    }
+  }
+
+  Map<String, String> _shellDiagnosticEnvironment() => <String, String>{
+    ...Platform.environment,
+    'HOME': ZionBootstrap.home, 'PREFIX': ZionBootstrap.prefix, 'TMPDIR': ZionBootstrap.tmp,
+    'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
+    'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
+    'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+  };
   Future<bool> _hasCompatibleShell() async {
     const candidates = <String>[
       '${ZionBootstrap.prefix}/bin/bash',
