@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/logging_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class LoggingCenter extends StatefulWidget {
   const LoggingCenter({super.key});
@@ -351,7 +352,7 @@ class _LoggingCenterState extends State<LoggingCenter> with SingleTickerProvider
     
     if (confirmed == true) {
       await service.clearLogs();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Logs cleared'), backgroundColor: Color(0xFF00BCD4)),
       );
     }
@@ -360,7 +361,7 @@ class _LoggingCenterState extends State<LoggingCenter> with SingleTickerProvider
   Future<void> _exportLogs() async {
     final service = Provider.of<LoggingService>(context, listen: false);
     await service.exportLogs();
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Logs exported'), backgroundColor: Color(0xFF00BCD4)),
     );
   }
