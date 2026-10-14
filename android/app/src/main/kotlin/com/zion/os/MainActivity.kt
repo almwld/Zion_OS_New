@@ -392,6 +392,12 @@ class MainActivity : FlutterFragmentActivity() {
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
     }
+    private fun isValidKaliRootfs(rootfs: File): Boolean {
+        return rootfs.isDirectory &&
+            File(rootfs, "bin/bash").exists() &&
+            File(rootfs, "bin/sh").exists()
+    }
+
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
         synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
 
@@ -399,15 +405,29 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             ensureTerminalEnvironment()
             if (!nativePtyAvailable()) return 0
-            val nativeShell = if (shell == "zion-kali") {
-                val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
-                // PRoot and its loader are shipped by the verified Zion Userland
-                // package, not as JNI libraries in nativeLibraryDir.
-                val proot = File(filesDir, "usr/bin/proot")
-                val loader = File(filesDir, "usr/libexec/proot")
-                if (!rootfs.exists() || !proot.canExecute() || !loader.exists()) return 0
-                "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
-            } else shell
+            val nativeShell = when {
+                shell == "zion-kali" -> {
+                    val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
+                    // PRoot and its loader are shipped by Zion Userland.
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!isValidKaliRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                shell?.startsWith("zion-kali@") == true -> {
+                    // Launch the selected rootfs in-place. Never copy or extract it.
+                    val rootfsPath = shell.removePrefix("zion-kali@").trim()
+                    if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
+                        rootfsPath.contains("|") || rootfsPath.contains("\\n") ||
+                        rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
+                    val rootfs = File(rootfsPath)
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!isValidKaliRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                else -> shell
+            }
 
             val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
