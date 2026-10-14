@@ -5,79 +5,79 @@ import 'package:flutter/material.dart';
 import '../../ai/llama_service.dart';
 
 class KaliAgentLoopScreen extends StatefulWidget {
-  final LlamaService ai;
-  const KaliAgentLoopScreen({super.key, required this.ai});
-  @override State<KaliAgentLoopScreen> createState() => _KaliAgentLoopScreenState();
+ final LlamaService ai;
+ const KaliAgentLoopScreen({super.key, required this.ai});
+ @override State<KaliAgentLoopScreen> createState() => _KaliAgentLoopScreenState();
 }
 
 class _KaliAgentLoopScreenState extends State<KaliAgentLoopScreen> {
-  final _target = TextEditingController();
-  final _scroll = ScrollController();
-  final _log = <String>[];
-  bool _running = false, _modelReady = false;
-  String _modelStatus = 'التحقق من النموذج المحلي…';
-  int _iteration = 0;
-  static const int _maxIterations = 6, _maxOutput = 3000;
+ final _target = TextEditingController();
+ final _scroll = ScrollController();
+ final _log = <String>[];
+ bool _running = false, _modelReady = false;
+ String _modelStatus = 'التحقق من النموذج المحلي…';
+ int _iteration = 0;
+ static const int _maxIterations = 6, _maxOutput = 3000;
 
-  @override void initState() { super.initState(); _syncModel(); }
+ @override void initState() { super.initState(); _syncModel(); }
 
-  Future<void> _syncModel() async {
-    try {
-      final ready = await widget.ai.nativeLoaded;
-      if (mounted) setState(() {
-        _modelReady = ready && widget.ai.isLoaded;
-        _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'حمّل GGUF من شاشة Zion Agent أولاً.';
-      });
-    } catch (_) {
-      if (mounted) setState(() { _modelReady = widget.ai.isLoaded; _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'تعذر التحقق من النموذج.'; });
-    }
-  }
+ Future<void> _syncModel() async {
+ try {
+ final ready = await widget.ai.nativeLoaded;
+ if (mounted) setState(() {
+ _modelReady = ready && widget.ai.isLoaded;
+ _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'حمّل GGUF من شاشة Zion Agent أولاً.';
+ });
+ } catch (_) {
+ if (mounted) setState(() { _modelReady = widget.ai.isLoaded; _modelStatus = _modelReady ? 'النموذج المحلي جاهز' : 'تعذر التحقق من النموذج.'; });
+ }
+ }
 
-  void _add(String s) {
-    if (!mounted) return;
-    setState(() => _log.add(s));
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 160), curve: Curves.easeOut);
-    });
-  }
+ void _add(String s) {
+ if (!mounted) return;
+ setState(() => _log.add(s));
+ WidgetsBinding.instance.addPostFrameCallback((_) {
+ if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 160), curve: Curves.easeOut);
+ });
+ }
 
-  String? _validTarget(String raw) {
-    final v = raw.trim().toLowerCase().replaceFirst(RegExp(r'\.$'), '');
-    final ip = RegExp(r'^(?:\d{1,3}\.){3}\d{1,3}$');
-    final host = RegExp(r'^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$');
-    if (v.isEmpty || v.length > 253 || (!ip.hasMatch(v) && !host.hasMatch(v))) return null;
-    if (ip.hasMatch(v) && v.split('.').map(int.parse).any((n) => n > 255)) return null;
-    return v;
-  }
+ String? _validTarget(String raw) {
+ final v = raw.trim().toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+ final ip = RegExp(r'^(?:\d{1,3}\.){3}\d{1,3}$');
+ final host = RegExp(r'^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$');
+ if (v.isEmpty || v.length > 253 || (!ip.hasMatch(v) && !host.hasMatch(v))) return null;
+ if (ip.hasMatch(v) && v.split('.').map(int.parse).any((n) => n > 255)) return null;
+ return v;
+ }
 
-  Future<bool> _approve(String command, String reason) async {
-    return await showDialog<bool>(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
-      title: const Text('موافقة قبل تشغيل أداة Kali'),
-      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(reason), const SizedBox(height: 10), SelectableText(command, textDirection: TextDirection.ltr),
-        const SizedBox(height: 10), const Text('تأكد أن لديك إذناً صريحاً لفحص هذا الهدف.'),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('رفض')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('موافقة وتنفيذ')),
-      ],
-    )) ?? false;
-  }
+ Future<bool> _approve(String command, String reason) async {
+ return await showDialog<bool>(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
+ title: const Text('موافقة قبل تشغيل أداة Kali'),
+ content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+ Text(reason), const SizedBox(height: 10), SelectableText(command, textDirection: TextDirection.ltr),
+ const SizedBox(height: 10), const Text('تأكد أن لديك إذناً صريحاً لفحص هذا الهدف.'),
+ ]),
+ actions: [
+ TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('رفض')),
+ FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('موافقة وتنفيذ')),
+ ],
+ )) ?? false;
+ }
 
-  Future<void> _startLoop() async {
-    if (_running || !_modelReady) return;
-    final target = _validTarget(_target.text);
-    if (target == null) { _add('⛔ أدخل نطاقاً أو عنوان IPv4 صحيحاً واحداً.'); return; }
-    setState(() { _running = true; _iteration = 0; _log.clear(); });
-    _add('🎯 بدء الحلقة للهدف: ' + target);
-    _add('🔐 كل أمر يتطلب موافقتك؛ الأدوات محدودة.');
-    final history = <String>[];
-    final seen = <String>{};
-    try {
-      for (var i = 1; i <= _maxIterations; i++) {
-        if (!mounted) break;
-        _iteration = i;
-        final prompt = '''
+ Future<void> _startLoop() async {
+ if (_running || !_modelReady) return;
+ final target = _validTarget(_target.text);
+ if (target == null) { _add(' أدخل نطاقاً أو عنوان IPv4 صحيحاً واحداً.'); return; }
+ setState(() { _running = true; _iteration = 0; _log.clear(); });
+ _add(' بدء الحلقة للهدف: ' + target);
+ _add(' كل أمر يتطلب موافقتك؛ الأدوات محدودة.');
+ final history = <String>[];
+ final seen = <String>{};
+ try {
+ for (var i = 1; i <= _maxIterations; i++) {
+ if (!mounted) break;
+ _iteration = i;
+ final prompt = '''
 أنت مساعد استطلاع دفاعي داخل Zion OS. الهدف الوحيد: $target
 اختر أداة واحدة فقط من nmap, whois, dig, nslookup. ممنوع الاستغلال وكلمات المرور وbrute force وsqlmap وhydra وnikto وmasscan وأي أوامر shell مركبة.
 whois/dig/nslookup يجب أن يستعملوا الهدف نفسه فقط.
@@ -90,131 +90,131 @@ REASONING: سبب مختصر
 الخطوة: $i/$_maxIterations
 السجل:
 ''' + history.join('\n').substring(0, 3500);
-        final response = await widget.ai.generate(prompt, maxTokens: 180, temperature: 0.15);
-        if (response.startsWith('ERROR:')) { _add('❌ تعذر توليد الخطوة: ' + response); break; }
-        final action = RegExp(r'ACTION\s*:\s*(RUN|THINK|DONE)', caseSensitive: false).firstMatch(response)?.group(1)?.toUpperCase();
-        final reason = RegExp(r'REASONING\s*:\s*([^\r\n]+)', caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? 'لا يوجد تفسير.';
-        _add('💭 ' + reason);
-        history.add('الخطوة ' + i.toString() + ': ' + reason);
-        if (action == 'DONE') { _add('✅ قرر Qwen أن المهمة اكتملت.'); break; }
-        if (action == 'THINK') { _add('ℹ️ إعادة تقييم دون تنفيذ.'); continue; }
-        if (action != 'RUN') { _add('⛔ رد غير مفهوم؛ أوقفت الحلقة.'); break; }
-        final command = RegExp(r'^\s*COMMAND\s*:\s*([^\r\n]+)', multiLine: true, caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? '';
-        final parsed = _parseCommand(command, target);
-        if (parsed == null) { _add('⛔ رفضت بوابة الأمان الأمر: ' + command); history.add('أمر مرفوض من بوابة الأمان.'); continue; }
-        if (!seen.add(command)) { _add('⛔ تكرار الأمر؛ إيقاف الحلقة.'); break; }
-        if (!await _approve(command, reason)) { _add('🚫 رفض المستخدم الأمر؛ توقفت الحلقة.'); break; }
-        final result = await _executeKali(parsed.$1, parsed.$2);
-        final out = result.output.length > _maxOutput ? result.output.substring(0, _maxOutput) + '\n… اقتطعت المخرجات.' : result.output;
-        _add((result.ok ? '📄 ' : '⚠️ ') + command + '\n' + out);
-        history.add('COMMAND: ' + command + '\nEXIT: ' + result.code.toString() + '\nOUTPUT: ' + out.substring(0, out.length > 800 ? 800 : out.length));
-        if (result.code == 127) { _add('ℹ️ تحقق من تثبيت الأداة وتجهيز Kali Userland.'); break; }
-      }
-      if (_iteration >= _maxIterations) _add('ℹ️ وصلنا إلى الحد الأقصى (' + _maxIterations.toString() + ').');
-    } catch (e) { _add('❌ خطأ أثناء الحلقة: ' + e.toString()); }
-    finally { if (mounted) setState(() => _running = false); }
-  }
+ final response = await widget.ai.generate(prompt, maxTokens: 180, temperature: 0.15);
+ if (response.startsWith('ERROR:')) { _add(' تعذر توليد الخطوة: ' + response); break; }
+ final action = RegExp(r'ACTION\s*:\s*(RUN|THINK|DONE)', caseSensitive: false).firstMatch(response)?.group(1)?.toUpperCase();
+ final reason = RegExp(r'REASONING\s*:\s*([^\r\n]+)', caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? 'لا يوجد تفسير.';
+ _add(' ' + reason);
+ history.add('الخطوة ' + i.toString() + ': ' + reason);
+ if (action == 'DONE') { _add(' قرر Qwen أن المهمة اكتملت.'); break; }
+ if (action == 'THINK') { _add('ℹ إعادة تقييم دون تنفيذ.'); continue; }
+ if (action != 'RUN') { _add(' رد غير مفهوم؛ أوقفت الحلقة.'); break; }
+ final command = RegExp(r'^\s*COMMAND\s*:\s*([^\r\n]+)', multiLine: true, caseSensitive: false).firstMatch(response)?.group(1)?.trim() ?? '';
+ final parsed = _parseCommand(command, target);
+ if (parsed == null) { _add(' رفضت بوابة الأمان الأمر: ' + command); history.add('أمر مرفوض من بوابة الأمان.'); continue; }
+ if (!seen.add(command)) { _add(' تكرار الأمر؛ إيقاف الحلقة.'); break; }
+ if (!await _approve(command, reason)) { _add(' رفض المستخدم الأمر؛ توقفت الحلقة.'); break; }
+ final result = await _executeKali(parsed.$1, parsed.$2);
+ final out = result.output.length > _maxOutput ? result.output.substring(0, _maxOutput) + '\n… اقتطعت المخرجات.' : result.output;
+ _add((result.ok ? 'نجاح: ' : 'تحذير: ') + command + '\n' + out);
+ history.add('COMMAND: ' + command + '\nEXIT: ' + result.code.toString() + '\nOUTPUT: ' + out.substring(0, out.length > 800 ? 800 : out.length));
+ if (result.code == 127) { _add('ℹ تحقق من تثبيت الأداة وتجهيز Kali Userland.'); break; }
+ }
+ if (_iteration >= _maxIterations) _add('ℹ وصلنا إلى الحد الأقصى (' + _maxIterations.toString() + ').');
+ } catch (e) { _add(' خطأ أثناء الحلقة: ' + e.toString()); }
+ finally { if (mounted) setState(() => _running = false); }
+ }
 
-  (String, List<String>)? _parseCommand(String command, String target) {
-    if (command.isEmpty || command.length > 240 || RegExp(r'[;&|<>$()\r\n]').hasMatch(command)) return null;
-    final p = command.split(RegExp(r'\s+'));
-    final tool = p.first, args = p.skip(1).toList();
-    if (args.any((a) => a.contains('/') || a.contains('*') || a.startsWith('-o') || a.startsWith('--script'))) return null;
-    if (tool == 'whois' || tool == 'dig' || tool == 'nslookup') {
-      if (args.length != 1 || args.single.toLowerCase().replaceFirst(RegExp(r'\.$'), '') != target) return null;
-      return (tool, args);
-    }
-    if (tool != 'nmap') return null;
-    final out = <String>[];
-    const flags = {'-sT', '-Pn', '-n', '-sV'};
-    var i = 0, hasTarget = false, hasPorts = false;
-    while (i < args.length) {
-      final a = args[i];
-      if (a.toLowerCase().replaceFirst(RegExp(r'\.$'), '') == target) {
-        if (hasTarget || i != args.length - 1) return null;
-        hasTarget = true; out.add(target); i++; continue;
-      }
-      if (flags.contains(a)) { out.add(a); i++; continue; }
-      if ((a == '--top-ports' || a == '-p' || a == '--max-retries') && i + 1 < args.length) {
-        final value = args[i + 1];
-        if (a == '--top-ports') {
-          final n = int.tryParse(value); if (n == null || n < 1 || n > 100) return null;
-          hasPorts = true;
-        } else if (a == '-p') {
-          if (!RegExp(r'^\d{1,5}(?:,\d{1,5}){0,9}$').hasMatch(value) || value.split(',').any((s) => int.parse(s) < 1 || int.parse(s) > 65535)) return null;
-          hasPorts = true;
-        } else {
-          final n = int.tryParse(value); if (n == null || n < 0 || n > 2) return null;
-        }
-        out.addAll([a, value]); i += 2; continue;
-      }
-      return null;
-    }
-    if (!hasTarget) return null;
-    if (!hasPorts) out.insertAll(0, ['--top-ports', '20']);
-    return (tool, out);
-  }
+ (String, List<String>)? _parseCommand(String command, String target) {
+ if (command.isEmpty || command.length > 240 || RegExp(r'[;&|<>$()\r\n]').hasMatch(command)) return null;
+ final p = command.split(RegExp(r'\s+'));
+ final tool = p.first, args = p.skip(1).toList();
+ if (args.any((a) => a.contains('/') || a.contains('*') || a.startsWith('-o') || a.startsWith('--script'))) return null;
+ if (tool == 'whois' || tool == 'dig' || tool == 'nslookup') {
+ if (args.length != 1 || args.single.toLowerCase().replaceFirst(RegExp(r'\.$'), '') != target) return null;
+ return (tool, args);
+ }
+ if (tool != 'nmap') return null;
+ final out = <String>[];
+ const flags = {'-sT', '-Pn', '-n', '-sV'};
+ var i = 0, hasTarget = false, hasPorts = false;
+ while (i < args.length) {
+ final a = args[i];
+ if (a.toLowerCase().replaceFirst(RegExp(r'\.$'), '') == target) {
+ if (hasTarget || i != args.length - 1) return null;
+ hasTarget = true; out.add(target); i++; continue;
+ }
+ if (flags.contains(a)) { out.add(a); i++; continue; }
+ if ((a == '--top-ports' || a == '-p' || a == '--max-retries') && i + 1 < args.length) {
+ final value = args[i + 1];
+ if (a == '--top-ports') {
+ final n = int.tryParse(value); if (n == null || n < 1 || n > 100) return null;
+ hasPorts = true;
+ } else if (a == '-p') {
+ if (!RegExp(r'^\d{1,5}(?:,\d{1,5}){0,9}$').hasMatch(value) || value.split(',').any((s) => int.parse(s) < 1 || int.parse(s) > 65535)) return null;
+ hasPorts = true;
+ } else {
+ final n = int.tryParse(value); if (n == null || n < 0 || n > 2) return null;
+ }
+ out.addAll([a, value]); i += 2; continue;
+ }
+ return null;
+ }
+ if (!hasTarget) return null;
+ if (!hasPorts) out.insertAll(0, ['--top-ports', '20']);
+ return (tool, out);
+ }
 
-  Future<_KaliResult> _executeKali(String tool, List<String> args) async {
-    const proot = '/data/data/com.zion.os/files/usr/bin/proot';
-    const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
-    if (!await File(proot).exists() || !await File('$rootfs/bin/sh').exists()) return const _KaliResult(false, 127, 'Kali PRoot/rootfs غير متاح.');
-    String? executable;
-    for (final path in ['/usr/bin/$tool', '/usr/sbin/$tool', '/bin/$tool', '/sbin/$tool']) {
-      if (await File(rootfs + path).exists()) { executable = path; break; }
-    }
-    if (executable == null) return _KaliResult(false, 127, 'الأداة ' + tool + ' غير مثبتة داخل Kali.');
-    Process? process;
-    final stdout = StringBuffer(), stderr = StringBuffer();
-    try {
-      process = await Process.start(proot, [
-        '--link2symlink', '-0', '-r', rootfs,
-        '-b', '/dev', '-b', '/proc', '-b', '/sys', '-b', '/storage/emulated/0',
-        '-b', '/data/data/com.zion.os/files/home:/root', '-w', '/root', executable, ...args,
-      ], runInShell: false, environment: const {
-        'HOME': '/root', 'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-        'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
-        'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
-      });
-      final so = process.stdout.transform(utf8.decoder).listen((s) { if (stdout.length < _maxOutput * 2) stdout.write(s); });
-      final se = process.stderr.transform(utf8.decoder).listen((s) { if (stderr.length < _maxOutput) stderr.write(s); });
-      var code = -1;
-      try {
-        code = await process.exitCode.timeout(const Duration(seconds: 45), onTimeout: () { process?.kill(ProcessSignal.sigterm); return 124; });
-      } finally { await so.cancel(); await se.cancel(); }
-      final text = [stdout.toString().trim(), stderr.toString().trim()].where((s) => s.isNotEmpty).join('\n');
-      return _KaliResult(code == 0, code, text.isEmpty ? 'لا توجد مخرجات (exit code ' + code.toString() + ').' : text);
-    } catch (e) { return _KaliResult(false, -1, 'تعذر تشغيل أداة Kali: ' + e.toString()); }
-  }
+ Future<_KaliResult> _executeKali(String tool, List<String> args) async {
+ const proot = '/data/data/com.zion.os/files/usr/bin/proot';
+ const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+ if (!await File(proot).exists() || !await File('$rootfs/bin/sh').exists()) return const _KaliResult(false, 127, 'Kali PRoot/rootfs غير متاح.');
+ String? executable;
+ for (final path in ['/usr/bin/$tool', '/usr/sbin/$tool', '/bin/$tool', '/sbin/$tool']) {
+ if (await File(rootfs + path).exists()) { executable = path; break; }
+ }
+ if (executable == null) return _KaliResult(false, 127, 'الأداة ' + tool + ' غير مثبتة داخل Kali.');
+ Process? process;
+ final stdout = StringBuffer(), stderr = StringBuffer();
+ try {
+ process = await Process.start(proot, [
+ '--link2symlink', '-0', '-r', rootfs,
+ '-b', '/dev', '-b', '/proc', '-b', '/sys', '-b', '/storage/emulated/0',
+ '-b', '/data/data/com.zion.os/files/home:/root', '-w', '/root', executable, ...args,
+ ], runInShell: false, environment: const {
+ 'HOME': '/root', 'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+ 'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+ 'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+ });
+ final so = process.stdout.transform(utf8.decoder).listen((s) { if (stdout.length < _maxOutput * 2) stdout.write(s); });
+ final se = process.stderr.transform(utf8.decoder).listen((s) { if (stderr.length < _maxOutput) stderr.write(s); });
+ var code = -1;
+ try {
+ code = await process.exitCode.timeout(const Duration(seconds: 45), onTimeout: () { process?.kill(ProcessSignal.sigterm); return 124; });
+ } finally { await so.cancel(); await se.cancel(); }
+ final text = [stdout.toString().trim(), stderr.toString().trim()].where((s) => s.isNotEmpty).join('\n');
+ return _KaliResult(code == 0, code, text.isEmpty ? 'لا توجد مخرجات (exit code ' + code.toString() + ').' : text);
+ } catch (e) { return _KaliResult(false, -1, 'تعذر تشغيل أداة Kali: ' + e.toString()); }
+ }
 
-  @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Zion Agent Loop · Kali'), actions: [
-      IconButton(onPressed: _running ? null : _syncModel, icon: const Icon(Icons.refresh), tooltip: 'فحص النموذج'),
-    ]),
-    body: Column(children: [
-      Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Icon(_modelReady ? Icons.memory : Icons.warning_amber, color: _modelReady ? Colors.green : Colors.orange), const SizedBox(width: 8), Expanded(child: Text(_modelStatus))]),
-        const SizedBox(height: 8),
-        TextField(controller: _target, enabled: !_running, autocorrect: false, textDirection: TextDirection.ltr,
-          decoration: const InputDecoration(labelText: 'الهدف المصرح به (نطاق أو IPv4)', hintText: '127.0.0.1 أو example.org', border: OutlineInputBorder())),
-        const SizedBox(height: 8),
-        const Text('Qwen يخطط ← موافقتك ← أداة Kali ← تحليل النتيجة ← الخطوة التالية. لا يوجد تنفيذ تلقائي.', style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 8),
-        SizedBox(width: double.infinity, child: FilledButton.icon(
-          onPressed: !_running && _modelReady ? _startLoop : null,
-          icon: _running ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.loop),
-          label: Text(_running ? 'الحلقة تعمل…' : 'بدء Agent Loop'))),
-      ])),
-      const Divider(height: 1),
-      Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _log.length,
-        itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: SelectableText(_log[i])))),
-    ]),
-  );
+ @override Widget build(BuildContext context) => Scaffold(
+ appBar: AppBar(title: const Text('Zion Agent Loop · Kali'), actions: [
+ IconButton(onPressed: _running ? null : _syncModel, icon: const Icon(Icons.refresh), tooltip: 'فحص النموذج'),
+ ]),
+ body: Column(children: [
+ Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+ Row(children: [Icon(_modelReady ? Icons.memory : Icons.warning_amber, color: _modelReady ? Colors.green : Colors.orange), const SizedBox(width: 8), Expanded(child: Text(_modelStatus))]),
+ const SizedBox(height: 8),
+ TextField(controller: _target, enabled: !_running, autocorrect: false, textDirection: TextDirection.ltr,
+ decoration: const InputDecoration(labelText: 'الهدف المصرح به (نطاق أو IPv4)', hintText: '127.0.0.1 أو example.org', border: OutlineInputBorder())),
+ const SizedBox(height: 8),
+ const Text('Qwen يخطط ← موافقتك ← أداة Kali ← تحليل النتيجة ← الخطوة التالية. لا يوجد تنفيذ تلقائي.', style: TextStyle(fontSize: 12)),
+ const SizedBox(height: 8),
+ SizedBox(width: double.infinity, child: FilledButton.icon(
+ onPressed: !_running && _modelReady ? _startLoop : null,
+ icon: _running ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.loop),
+ label: Text(_running ? 'الحلقة تعمل…' : 'بدء Agent Loop'))),
+ ])),
+ const Divider(height: 1),
+ Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _log.length,
+ itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: SelectableText(_log[i])))),
+ ]),
+ );
 
-  @override void dispose() { _target.dispose(); _scroll.dispose(); super.dispose(); }
+ @override void dispose() { _target.dispose(); _scroll.dispose(); super.dispose(); }
 }
 
 class _KaliResult {
-  final bool ok; final int code; final String output;
-  const _KaliResult(this.ok, this.code, this.output);
+ final bool ok; final int code; final String output;
+ const _KaliResult(this.ok, this.code, this.output);
 }
