@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm2/xterm.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../ai/llama_service.dart';
 
@@ -55,6 +56,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _showQuickCommands = false;
   bool _isFullscreen = false;
   TerminalPalette _palette = TerminalPalette.zion;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -63,6 +66,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    unawaited(_loadKaliRootfsPath());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
@@ -385,6 +389,104 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (mounted) setState(() => _isFullscreen = next);
   }
 
+  Future<void> _loadKaliRootfsPath() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+      if (mounted && saved != null && saved.startsWith('/')) {
+        setState(() => _kaliRootfsPath = saved);
+      }
+    } catch (_) {
+      // The default local Download path remains available without preferences.
+    }
+  }
+
+  Future<void> _configureKaliRootfsPath({bool launchAfterSave = false}) async {
+    final controller = TextEditingController(text: _kaliRootfsPath);
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('مسار Kali Linux المحلي'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.text,
+          textDirection: TextDirection.ltr,
+          decoration: const InputDecoration(
+            labelText: 'مسار rootfs',
+            hintText: '/storage/emulated/0/Download/Kali',
+            helperText: 'المجلد الذي يحتوي bin/bash وbin/sh. لن تُنسخ الملفات.',
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('حفظ المسار'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (selected == null || selected.trim().isEmpty) return;
+    final path = selected.trim();
+    if (!path.startsWith('/') || path.contains('|') || path.contains('\n') || path.contains('\r')) {
+      _showTerminalNotice('المسار غير صالح. أدخل مسارًا مطلقًا مثل /storage/emulated/0/Download/Kali.');
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _kaliRootfsPath = path);
+    _showTerminalNotice('تم حفظ مسار Kali دون نسخ ملفات النظام.');
+    if (launchAfterSave) await _startKali(rootfsOverride: path);
+  }
+
+  Future<void> _startKali({String? rootfsOverride}) async {
+    final tab = _selectedTab;
+    if (tab == null || _starting) return;
+    final path = (rootfsOverride ?? _kaliRootfsPath).trim();
+    final rootfsReady = await File('$path/bin/bash').exists() &&
+        await File('$path/bin/sh').exists();
+    if (!rootfsReady) {
+      await _configureKaliRootfsPath(launchAfterSave: true);
+      return;
+    }
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+    try {
+      if (tab.service.isInteractiveRunning) {
+        await tab.service.stopInteractive();
+      }
+      tab.name = 'kali-\${tab.id}';
+      tab.terminal.write('\r\n[Zion] Starting Kali directly from $path (no rootfs copy)...\r\n');
+      final connected = await tab.service.startInteractive(kaliRootfsPath: path);
+      if (!mounted) return;
+      setState(() {
+        tab.connected = connected;
+        if (!connected) {
+          _startupError = 'تعذر تشغيل Kali من المسار المحلي. راجع مخرجات الطرفية: يلزم rootfs صالح وPRoot مع loader داخل Zion Userland.';
+        }
+      });
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while launching Kali directly from local rootfs'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تشغيل Kali: $error');
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
   Widget _buildToolbar() => Container(
     height: 42, color: _palette.surface,
     child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -416,6 +518,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       {'label':'العمليات','command':'ps','icon':Icons.list_alt},
       {'label':'الشبكات','command':'ip addr','icon':Icons.lan},
       {'label':'Android','command':'getprop','icon':Icons.phone_android},
+      {'label':'Kali','command':'__zion_launch_kali__','icon':Icons.terminal},
     ];
     return Container(height: 70, color: _palette.surface, padding: const EdgeInsets.symmetric(vertical: 7),
       child: ListView.separated(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -424,6 +527,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
           final item = commands[index];
           return Material(color: _palette.background, borderRadius: BorderRadius.circular(9),
             child: InkWell(borderRadius: BorderRadius.circular(9), onTap: () {
+              if (item['command'] == '__zion_launch_kali__') {
+                unawaited(_startKali());
+                return;
+              }
               final tab = _selectedTab;
               if (tab == null || !tab.service.isInteractiveRunning) { _showTerminalNotice('شغّل جلسة PTY أولاً.'); return; }
               tab.service.write(item['command'].toString() + '\n');
@@ -772,6 +879,16 @@ $request''',
                 : () => unawaited(_openAiAssistant()),
           ),
           IconButton(
+            tooltip: 'تشغيل Kali من المسار المحلي',
+            icon: const Icon(Icons.terminal),
+            onPressed: tab == null || _starting ? null : () => unawaited(_startKali()),
+          ),
+          IconButton(
+            tooltip: 'مسار Kali المحلي',
+            icon: const Icon(Icons.folder_open),
+            onPressed: _starting ? null : () => unawaited(_configureKaliRootfsPath()),
+          ),
+          IconButton(
             tooltip: 'Zion Agent Loop — Qwen + Kali',
             icon: const Icon(Icons.psychology_alt),
             onPressed: tab == null
@@ -813,6 +930,8 @@ $request''',
                 case 'copy': unawaited(_copyOutput()); break;
                 case 'paste': unawaited(_paste()); break;
                 case 'history': unawaited(_showHistorySearch()); break;
+                case 'kali-path': unawaited(_configureKaliRootfsPath()); break;
+                case 'kali-start': unawaited(_startKali()); break;
                 case 'theme': unawaited(_showThemeSelector()); break;
                 case 'settings': unawaited(_showSettings()); break;
                 case 'quick': setState(() => _showQuickCommands = !_showQuickCommands); break;
@@ -838,6 +957,8 @@ $request''',
               PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
               PopupMenuItem(value: 'paste', child: Text('لصق من الحافظة')),
               PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
+              PopupMenuItem(value: 'kali-path', child: Text('تحديد مسار Kali المحلي')),
+              PopupMenuItem(value: 'kali-start', child: Text('تشغيل Kali الآن')),
               PopupMenuItem(value: 'theme', child: Text('تغيير الثيم')),
               PopupMenuItem(value: 'settings', child: Text('إعدادات الطرفية')),
               PopupMenuItem(value: 'quick', child: Text('إظهار/إخفاء الأوامر السريعة')),
