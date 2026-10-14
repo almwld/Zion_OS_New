@@ -23,22 +23,33 @@ class ZionUserlandInstaller {
   static Future<ZionUserlandInstallResult>? _installFuture;
   static bool _installCompleted = false;
 
-  /// A valid Bash executable is authoritative; the state file prevents repeat
-  /// copies, but a stale/missing marker never forces a 1.4 GB recopy by itself.
+  /// The on-disk marker is authoritative across app restarts and new tabs.
+  /// Never gate this check on the process-local cache: Dart statics reset when
+  /// the app process is recreated, while /files/usr is the shared system Userland.
+  /// A healthy marked installation must not be probed by launching Bash or copied
+  /// again just because a new TerminalService was created.
   Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
-    if (_installCompleted) {
-      try {
-        final state = jsonDecode(await File(_stateFilePath).readAsString());
-        if (state is Map && state['installed'] == true && state['bashPath'] == bashPath && await File(bashPath).exists()) {
+    final bashFile = File(bashPath);
+    final stateFile = File(_stateFilePath);
+
+    try {
+      if (await bashFile.exists() && await stateFile.exists()) {
+        final state = jsonDecode(await stateFile.readAsString());
+        if (state is Map &&
+            state['installed'] == true &&
+            state['bashPath'] == bashPath) {
+          _installCompleted = true;
           return true;
         }
-      } catch (_) {
-        _installCompleted = false;
       }
+    } catch (_) {
+      // A corrupt/missing marker is handled as a one-time legacy migration
+      // below. It must never invalidate or recopy a working marked install.
     }
+
     try {
-      if (!await File(bashPath).exists()) return false;
+      if (!await bashFile.exists()) return false;
       final result = await Process.run(
         bashPath,
         const <String>['-c', 'printf ZION_USERLAND_BASH_OK'],
