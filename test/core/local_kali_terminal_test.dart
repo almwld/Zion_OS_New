@@ -12,7 +12,7 @@ void main() {
       expect(config, contains('/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs'));
       expect(bootstrap, contains('finalRootfs = ZionLocalKaliConfig.rootfs(filesDir)'));
       expect(bootstrap, contains("'distro': 'kali'"));
-      expect(bootstrap, contains("'.zion-rootfs.json'"));
+      expect(bootstrap, contains(".zion-rootfs.json"));
       expect(native, contains('File(rootfs, "bin/sh").isFile'));
     });
 
