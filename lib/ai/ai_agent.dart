@@ -77,7 +77,7 @@ class AIAgent {
   );
 
   String _cleanResponse(String response, {required String userMessage}) {
-    var cleaned = response.replaceAll('\\r\\n', '\\n');
+    var cleaned = response.replaceAll('\r\n', '\n');
     for (final marker in const [
       '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
       '<|user|>', '<|assistant|>', '<|system|>', '<end>', '<user>',
