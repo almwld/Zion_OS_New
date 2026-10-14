@@ -259,7 +259,7 @@ class AgentOrchestrator {
   }
 
   AgentPlan? _parsePlan(String response){
-    try{final s=response.indexOf('{'),e=response.lastIndexOf('}');if(s<0||e<=s)return null;final j=jsonDecode(response.substring(s,e+1));final list=j['steps'];if(list is! List)return null;
+    try{final s=response.indexOf('{'),e=response.lastIndexOf('}');if(s<0||e<=s)return null;final j=jsonDecode(response.substring(s,e+1));final list=j['steps'];if(list is! List||list.isEmpty||list.length>12)return null;
       return AgentPlan(task: '', steps:list.whereType<Map>().map((x)=>AgentStep(id:x['id']?.toString()??DateTime.now().microsecondsSinceEpoch.toString(),description:x['description']?.toString()??'خطوة',tool:x['tool']?.toString()??'ai',params:Map<String,dynamic>.from(x['params'] is Map?x['params']:{},),requiresEvaluation:x['requiresEvaluation']==true,requiresApproval:x['requiresApproval']==true || _permissionFrom(x['permission']) != AgentPermission.readOnly,permission:_permissionFrom(x['permission']),risk:_riskFrom(x['risk']))).toList());
     }catch(_){return null;}
   }
@@ -280,13 +280,6 @@ class AgentOrchestrator {
           permission:AgentPermission.process,
           risk:AgentRisk.review,
           requiresApproval:true,
-          requiresEvaluation:true,
-        ),
-        AgentStep(
-          id:'2',
-          description:'تلخيص نتيجة الأمر',
-          tool:'ai',
-          params:{'prompt':'اشرح نتيجة تنفيذ الأمر التالي باختصار وبالعربية: $command'},
           requiresEvaluation:true,
         ),
       ]);
@@ -339,8 +332,16 @@ class AgentOrchestrator {
   }
 
   Future<String> _report(String task,List<StepResult> results) async {
-    final summary=results.map((r)=>r.success?'نجاح: '+r.summary:'فشل: '+(r.error??r.summary)).join('\n');
-    if(await _nativeAiAvailable()){final r=await ai.generate('المهمة: '+task+'\nالنتائج:\n'+summary+'\nاكتب تقريراً مختصراً.',maxTokens:700,temperature:0.2);if(!r.startsWith('ERROR:'))return r;}
+    final summary=results.asMap().entries.map((entry) {
+      final result = entry.value;
+      final details = result.data == null ? '' : '\\nالمخرجات: ' + _stepOutput(result);
+      final status = result.success ? 'نجاح: ' + result.summary : 'فشل: ' + (result.error ?? result.summary);
+      return 'الخطوة ${entry.key + 1}: ' + status + details;
+    }).join('\\n');
+    if(await _nativeAiAvailable()){
+      final response=await ai.generate('المهمة: '+task+'\\nالنتائج الفعلية:\\n'+summary+'\\nاكتب تقريراً مختصراً بالعربية يميز بين ما تم تنفيذه وما لم يتم، ولا تدّع نجاح خطوة فاشلة.',maxTokens:700,temperature:0.2);
+      if(!response.startsWith('ERROR:'))return response;
+    }
     return summary;
   }
 
