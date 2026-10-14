@@ -418,7 +418,16 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _cancelRequested = true;
       _status = 'جارٍ إيقاف التوليد المحلي...';
     });
-    await _agent.llama.cancelGeneration();
+
+    // The native request may still be queued behind the readiness check on the
+    // single AI executor. Retry briefly until JNI reports an active generation
+    // or this send operation finishes; a single early cancel can otherwise be
+    // lost just before native inference starts.
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final cancelled = await _agent.llama.cancelGeneration();
+      if (cancelled || !mounted || !_generating) return;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   Future<void> _send() async {
