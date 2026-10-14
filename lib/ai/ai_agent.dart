@@ -16,10 +16,20 @@ class AIAgent {
   AIAgent({LlamaService? llama}) : llama = llama ?? LlamaService();
   bool get isInitialized => _initialized;
 
-  Future<bool> initialize({required String modelPath, required AgentRole role, int nThreads = 4}) async {
+  Future<bool> initialize({required String modelPath, required AgentRole role, int nThreads = 2}) async {
+    // A native model replacement first releases the previous model. Clear the
+    // Dart readiness flag before crossing the platform channel so a failed
+    // replacement can never leave the agent claiming that inference is ready.
+    final previousModel = llama.currentModel;
+    _initialized = false;
     final loaded = await llama.loadModel(modelPath, threads: nThreads);
     if (!loaded) return false;
-    _role = role; _initialized = true; return true;
+    if (previousModel != null && previousModel != modelPath) {
+      _history.clear();
+    }
+    _role = role;
+    _initialized = true;
+    return true;
   }
 
   Future<String> chat(
