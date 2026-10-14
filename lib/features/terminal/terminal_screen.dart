@@ -453,6 +453,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final rootfsReady = await File('$path/bin/bash').exists() &&
         await File('$path/bin/sh').exists();
     if (!rootfsReady) {
+      if (rootfsOverride != null) {
+        _showTerminalNotice('المسار المحدد لا يحتوي rootfs صالحًا (يلزم bin/bash وbin/sh). لم يتم نسخ أي ملفات.');
+        return;
+      }
       await _configureKaliRootfsPath(launchAfterSave: true);
       return;
     }
