@@ -35,22 +35,21 @@ void main() {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(source, isNot(contains('TERMUX_HOME')));
       expect(source, contains('ZION_TERMINAL'));
-      expect(source, isNot(contains('/system/bin/sh')));
+      expect(source, contains('/system/bin/sh'));
       expect(source, isNot(contains('android-posix')));
       expect(source, contains('"-b", "/data/data/com.zion.os/files/home:/root"'));
     });
 
-    test('terminal never silently falls back to Android host shell', () async {
+    test('terminal uses Android system shell without a Userland prerequisite', () async {
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
       final capabilities = await File('lib/features/terminal/terminal_capabilities.dart').readAsString();
-      expect(service, isNot(contains("const androidShell = '/system/bin/sh'")));
-      expect(service, isNot(contains("shell = '/system/bin/sh'")));
-      expect(service, contains("'PREFIX': '/data/data/com.zion.os/files/usr'"));
-      expect(service, contains("'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64'"));
-      expect(service, contains('environment: _userlandEnvironment'));
-      expect(service, contains('_scheduleUserlandInstall()'));
-      expect(capabilities, contains('NO HOST-SHELL FALLBACK'));
-      expect(capabilities, isNot(contains('FALLBACK: Android /system/bin/sh')));
+      expect(service, contains("const shell = '/system/bin/sh'"));
+      expect(service, contains("'/system/bin:/system/xbin:/vendor/bin'"));
+      expect(service, contains('environment: _androidEnvironment'));
+      expect(service, isNot(contains('_scheduleUserlandInstall')));
+      expect(service, isNot(contains("if (shell == 'zion-kali')")));
+      expect(capabilities, contains('PRIMARY: Android system POSIX shell'));
+      expect(capabilities, contains('NO BOOTSTRAP REQUIRED'));
     });
 
     test('PRoot strategy drains both pipes and enforces command timeouts', () async {
@@ -92,7 +91,7 @@ void main() {
 
     test('Zion Pkg uses Userland libraries and never shells out for host command lookup', () async {
       final pkg = await File('lib/core/userland/zion_pkg.dart').readAsString();
-      expect(pkg, contains("'LD_LIBRARY_PATH': prefix + '/lib:' + prefix + '/lib64'"));
+      expect(pkg, contains(r"'LD_LIBRARY_PATH': '$prefix/lib:$prefix/lib64'"));
       expect(pkg, contains("'DEBIAN_FRONTEND': 'noninteractive'"));
       expect(pkg, isNot(contains("Process.run('/system/bin/sh'")));
       expect(pkg, contains("const <String>['/system/bin', '/system/xbin']"));
@@ -118,10 +117,9 @@ void main() {
       expect(installer, contains('--link2symlink'));
       expect(installer, isNot(contains("_repo = 'proot-rs'")));
       expect(installer, isNot(contains('releases/download')));
-      expect(userland, isNot(contains('_hasCompatibleProot()')));
-      expect(userland, isNot(contains('--root-id')));
-      expect(userland, isNot(contains('--link2symlink')));
-      expect(userland, contains('_hasCompatibleShell()'));
+      expect(userland, contains('_hasCompatibleProot()'));
+      expect(userland, contains('--root-id'));
+      expect(userland, contains('--link2symlink'));
     });
 
     test('unified Linux installer prepares Zion Userland before checking PRoot', () async {
@@ -182,18 +180,15 @@ void main() {
       }
     });
 
-    test('interactive Kali session and installer share the canonical rootfs path', () async {
-      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+    test('Kali rootfs management remains available outside the default Android terminal', () async {
       final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
       final loader = await File('lib/core/services/kali_loader_service.dart').readAsString();
-      expect(service, contains('/home/.zion/dists/kali/rootfs'));
       expect(activity, contains('home/.zion/dists/kali/rootfs'));
       expect(loader, contains('/home/.zion/dists/kali/rootfs'));
       expect(loader, isNot(contains('/data/local/kali')));
-      expect(service, contains("if (shell == 'zion-kali')"));
-      expect(service, contains("'--link2symlink', '-0', '-r', rootfs"));
-      expect(service, contains("'-b', '/data/data/com.zion.os/files/home:/root'"));
-      expect(service, contains("'/bin/sh', '-lc', command"));
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      expect(service, contains("const shell = '/system/bin/sh'"));
+      expect(service, isNot(contains("if (shell == 'zion-kali')")));
     });
 
     test('bootstrap fails closed when extracted file permissions cannot be applied', () async {
