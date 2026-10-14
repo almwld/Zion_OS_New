@@ -943,6 +943,8 @@ $request''',
                       tab.terminal,
                       controller: tab.controller,
                       autofocus: tab.service.isInteractiveRunning,
+                      // Terminals should start with lowercase and must not autocorrect shell commands.
+                      keyboardType: TextInputType.visiblePassword,
                       backgroundOpacity: 0.75,
                       cursorType: TerminalCursorType.block,
                       theme: _palette.toXtermTheme(),
