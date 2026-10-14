@@ -23,6 +23,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _modelLoading=false;
   bool _modelReady=false;
   bool _submitting=false;
+  bool _historyReady=false;
   static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
@@ -69,8 +70,12 @@ class _AgentScreenState extends State<AgentScreen> {
       });
       _scrollEnd();
     } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_historyKey);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_historyKey);
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _historyReady = true);
     }
   }
 
@@ -166,7 +171,7 @@ class _AgentScreenState extends State<AgentScreen> {
 
   Future<void> _run() async {
     final task = _input.text.trim();
-    if (task.isEmpty || _runtime.canCancel || _submitting) return;
+    if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
     // uses the local GGUF model when it is available.
     setState(() {
@@ -213,7 +218,7 @@ class _AgentScreenState extends State<AgentScreen> {
       title:const Row(children:[Icon(Icons.auto_awesome,color:Color(0xFF00FF41)),SizedBox(width:8),Text('Zion Super Agent')]),
       actions:[
         IconButton(
-          onPressed: (_runtime.canCancel || _submitting) ? null : () {
+          onPressed: (!_historyReady || _runtime.canCancel || _submitting) ? null : () {
             setState(() {
               _messages
                 ..clear()
@@ -344,7 +349,7 @@ class _AgentScreenState extends State<AgentScreen> {
       padding:const EdgeInsets.fromLTRB(10,8,10,10),
       child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
         Expanded(child:TextField(
-          enabled:!_runtime.canCancel && !_submitting,
+          enabled:_historyReady && !_runtime.canCancel && !_submitting,
           controller:_input,
           minLines:1,maxLines:5,
           onSubmitted:(_)=>_run(),
@@ -357,7 +362,7 @@ class _AgentScreenState extends State<AgentScreen> {
           ),
         )),
         const SizedBox(width:8),
-        IconButton.filled(onPressed:(_runtime.canCancel || _submitting)?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
+        IconButton.filled(onPressed:(!_historyReady || _runtime.canCancel || _submitting)?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
       ]),
     ),
   );
