@@ -464,7 +464,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       if (tab.service.isInteractiveRunning) {
         await tab.service.stopInteractive();
       }
-      tab.name = 'kali-\${tab.id}';
+      tab.name = 'kali-${tab.id}';
       tab.terminal.write('\r\n[Zion] Starting Kali directly from $path (no rootfs copy)...\r\n');
       final connected = await tab.service.startInteractive(kaliRootfsPath: path);
       if (!mounted) return;
