@@ -408,7 +408,10 @@ ${jsonEncode(relevantMemory)}
     }
     if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
       final query = task.replaceFirst(
-        RegExp(r'^(?:من فضلك\s*)?(?:ابحث|بحث|search|تحقق من|آخر الأخبار)\s*', caseSensitive: false),
+        RegExp(
+          r'^(?:من فضلك\s*)?(?:(?:ابحث|بحث)\s*(?:عن\s*)?|search\s*(?:for\s*)?|تحقق من\s*|آخر الأخبار\s*)',
+          caseSensitive: false,
+        ),
         '',
       ).trim();
       return AgentPlan(task: task, steps: [
