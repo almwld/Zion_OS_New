@@ -123,6 +123,7 @@ class AgentOrchestrator {
             duration: DateTime.now().difference(started),
           );
         }
+        cancellationToken?.throwIfCancelled();
         results.add(r);
         await memory.remember(
           kind: 'agent-step',
@@ -168,6 +169,7 @@ class AgentOrchestrator {
                 duration: DateTime.now().difference(alternativeStarted),
               );
             }
+            cancellationToken?.throwIfCancelled();
             results.add(ar);
             recovered = ar.success;
             _log('المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
