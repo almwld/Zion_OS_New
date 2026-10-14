@@ -514,6 +514,8 @@ class MainActivity : FlutterFragmentActivity() {
             var lastTx = TrafficStats.getTotalTxBytes()
             var lastRxPackets = TrafficStats.getTotalRxPackets()
             var lastTxPackets = TrafficStats.getTotalTxPackets()
+            var lastAppRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+            var lastAppTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
             var lastTime = System.nanoTime()
             while (radarRunning) {
                 val now = System.nanoTime()
@@ -522,17 +524,24 @@ class MainActivity : FlutterFragmentActivity() {
                 val tx = TrafficStats.getTotalTxBytes()
                 val rxPackets = TrafficStats.getTotalRxPackets()
                 val txPackets = TrafficStats.getTotalTxPackets()
+                val appRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+                val appTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
                 radarSink?.success(readNetworkRadar(
                     rx, tx, rxPackets, txPackets,
                     ((rx - lastRx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((tx - lastTx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((rxPackets - lastRxPackets).coerceAtLeast(0L) / elapsed).toLong(),
-                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong()
+                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong(),
+                    appRx, appTx,
+                    ((appRx - lastAppRx).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((appTx - lastAppTx).coerceAtLeast(0L) / elapsed).toLong()
                 ))
                 lastRx = rx
                 lastTx = tx
                 lastRxPackets = rxPackets
                 lastTxPackets = txPackets
+                lastAppRx = appRx
+                lastAppTx = appTx
                 lastTime = now
                 try { Thread.sleep(750) } catch (_: InterruptedException) { break }
             }
@@ -565,7 +574,11 @@ class MainActivity : FlutterFragmentActivity() {
         radarNetworkCallback = null
     }
 
-    private fun readNetworkRadar(rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long, rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long): Map<String, Any?> {
+    private fun readNetworkRadar(
+        rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long,
+        rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long,
+        appRxBytes: Long, appTxBytes: Long, appRxRate: Long, appTxRate: Long
+    ): Map<String, Any?> {
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivity.activeNetwork
         val caps = network?.let { connectivity.getNetworkCapabilities(it) }
@@ -603,6 +616,11 @@ class MainActivity : FlutterFragmentActivity() {
             "txBytesPerSec" to txRate,
             "rxPacketsPerSec" to rxPacketRate,
             "txPacketsPerSec" to txPacketRate,
+            // Per-UID counters describe Zion OS itself, separate from whole-device traffic.
+            "appRxBytes" to appRxBytes,
+            "appTxBytes" to appTxBytes,
+            "appRxBytesPerSec" to appRxRate,
+            "appTxBytesPerSec" to appTxRate,
         )
     }
 
