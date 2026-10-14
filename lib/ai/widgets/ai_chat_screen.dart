@@ -64,6 +64,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _loading = true;
   bool _loadingModel = false;
   bool _generating = false;
+  bool _cancelRequested = false;
   String? _error;
   String? _status;
   double _temperature = 0.25;
@@ -410,6 +411,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
     await prefs.setDouble(_temperatureKey, _temperature);
   }
 
+  Future<void> _cancelGeneration() async {
+    if (!_generating || _cancelRequested) return;
+    setState(() {
+      _cancelRequested = true;
+      _status = 'جارٍ إيقاف التوليد المحلي...';
+    });
+    await _agent.llama.cancelGeneration();
+  }
+
   Future<void> _send() async {
     final text = _input.text.trim();
     if (text.isEmpty || _generating) return;
@@ -420,19 +430,40 @@ class _AIChatScreenState extends State<AIChatScreen> {
       )));
       return;
     }
-    setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
+    setState(() {
+      _messages.add(AgentMessage(role: 'user', content: text));
+      _input.clear();
+      _generating = true;
+      _cancelRequested = false;
+      _status = null;
+    });
     await _persistConversation();
     _scrollToEnd();
     try {
-      final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
-      if (mounted) { setState(() => _messages.add(AgentMessage(role: 'assistant', content: response))); await _persistConversation(); }
+      if (_cancelRequested) {
+        if (mounted) setState(() => _messages.add(const AgentMessage(
+          role: 'assistant',
+          content: 'تم إيقاف التوليد قبل بدء الاستدلال.',
+        )));
+      } else {
+        final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
+        final shownResponse = _cancelRequested && response.isNotEmpty
+            ? 'تم إيقاف التوليد.\\n$response'
+            : response;
+        if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: shownResponse)));
+      }
     } catch (e) {
       if (mounted) setState(() => _messages.add(AgentMessage(
         role: 'assistant',
         content: 'فشل الاستدلال المحلي: ' + e.toString(),
       )));
     } finally {
-      if (mounted) setState(() => _generating = false);
+      if (mounted) setState(() {
+        _generating = false;
+        _cancelRequested = false;
+        if (_status == 'جارٍ إيقاف التوليد المحلي...') _status = null;
+      });
+      await _persistConversation();
       _scrollToEnd();
     }
   }
@@ -456,7 +487,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
           return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [SelectableText(m.content), if (!user) Align(alignment: AlignmentDirectional.centerEnd, child: IconButton(visualDensity: VisualDensity.compact, tooltip: 'نسخ الرد', icon: const Icon(Icons.copy, size: 16), onPressed: () => Clipboard.setData(ClipboardData(text: m.content))))])));
         })),
         if (_generating) const LinearProgressIndicator(),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, maxLength: 2000, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder(), counterText: ''))), const SizedBox(width: 8), IconButton.filled(onPressed: _generating || _loadingModel ? null : _send, icon: const Icon(Icons.send))])))
+        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(controller: _input, minLines: 1, maxLines: 5, maxLength: 2000, onSubmitted: (_) => _send(), decoration: const InputDecoration(hintText: 'اكتب رسالتك...', border: OutlineInputBorder(), counterText: ''))), const SizedBox(width: 8), IconButton.filled(
+          onPressed: _loadingModel ? null : (_generating ? _cancelGeneration : _send),
+          tooltip: _generating ? 'إيقاف التوليد' : 'إرسال الرسالة',
+          icon: Icon(_generating ? Icons.stop : Icons.send),
+        )])))
       ]),
     );
   }
