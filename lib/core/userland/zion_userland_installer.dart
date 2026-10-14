@@ -1,11 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
-import 'package:archive/archive_io.dart';
-
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 
-import 'local_kali_config.dart';
 import 'zion_bootstrap.dart';
 import 'zion_bootstrap_endpoint.dart';
 
@@ -17,19 +16,228 @@ class ZionUserlandInstallResult {
 class ZionUserlandInstaller {
   const ZionUserlandInstaller();
 
+  static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
+  static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
+  static Future<ZionUserlandInstallResult>? _installFuture;
+
+  /// The on-disk marker is authoritative across app restarts and new tabs.
+  /// Never gate this check on the process-local cache: Dart statics reset when
+  /// the app process is recreated, while /files/usr is the shared system Userland.
+  /// A healthy marked installation must not be probed by launching Bash or copied
+  /// again just because a new TerminalService was created.
+  Future<bool> isInstalled({void Function(String message)? onProgress}) async {
+    final bashPath = '${ZionBootstrap.prefix}/bin/bash';
+    final bashFile = File(bashPath);
+    final stateFile = File(_stateFilePath);
+
+    try {
+      if (await bashFile.exists() && await stateFile.exists()) {
+        final state = jsonDecode(await stateFile.readAsString());
+        if (state is Map &&
+            state['installed'] == true &&
+            state['bashPath'] == bashPath) {
+          return true;
+        }
+      }
+    } catch (_) {
+      // A corrupt/missing marker is handled as a one-time legacy migration
+      // below. It must never invalidate or recopy a working marked install.
+    }
+
+    try {
+      if (!await bashFile.exists()) return false;
+      final result = await Process.run(
+        bashPath,
+        const <String>['-c', 'printf ZION_USERLAND_BASH_OK'],
+        runInShell: false,
+        environment: <String, String>{
+          ...Platform.environment,
+          'HOME': ZionBootstrap.home,
+          'PREFIX': ZionBootstrap.prefix,
+          'TMPDIR': ZionBootstrap.tmp,
+          'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
+          'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
+          'TERM': 'xterm-256color',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+        },
+      ).timeout(const Duration(seconds: 4));
+      if (result.exitCode != 0 || !result.stdout.toString().contains('ZION_USERLAND_BASH_OK')) return false;
+
+      final stateFile = File(_stateFilePath);
+      var stateIsValid = false;
+      if (await stateFile.exists()) {
+        try {
+          final state = jsonDecode(await stateFile.readAsString());
+          stateIsValid = state is Map && state['installed'] == true && state['bashPath'] == bashPath;
+        } catch (_) {
+          // Rebuild a corrupt marker below; do not recopy a working Userland.
+        }
+      }
+      if (!stateIsValid) {
+        // A Bash that predates the marker may be a partially repaired restore.
+        // Repair it in place and restore command links; never recopy 1.4 GB just
+        // because the marker is absent or corrupt.
+        onProgress?.call('[Userland] Existing Bash found; repairing permissions without recopy...');
+        await _repairPermissions(Directory(ZionBootstrap.prefix));
+        onProgress?.call('[Userland] Creating symlinks...');
+        await _recreateCoreutilsSymlinks('${ZionBootstrap.prefix}/bin');
+        await _createOtherSymlinks('${ZionBootstrap.prefix}/bin');
+        await ZionBootstrap.initializeRuntime();
+        if (!await _hasCompatibleShell()) return false;
+        await _writeState(source: 'existing-userland', sizeBytes: 0);
+      }
+      return true;
+    } catch (e) {
+      print('[Userland] installed check failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> _writeState({required String source, required int sizeBytes}) async {
+    final file = File(_stateFilePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(<String, Object>{
+      'installed': true,
+      'installedAt': DateTime.now().toUtc().toIso8601String(),
+      'bashPath': '${ZionBootstrap.prefix}/bin/bash',
+      'version': '1.0',
+      'source': source,
+      'sizeBytes': sizeBytes,
+    }), flush: true);
+    try {
+      await Process.run('/system/bin/chmod', <String>['600', _stateFilePath], runInShell: false);
+    } catch (_) {}
+    print('[Userland] state saved: $_stateFilePath');
+  }
+
+  Future<void> uninstallState() async {
+    final file = File(_stateFilePath);
+    if (await file.exists()) await file.delete();
+  }
+
   Future<ZionUserlandInstallResult> installLatest({
     void Function(String message)? onProgress,
+  }) {
+    final active = _installFuture;
+    if (active != null) return active;
+    final future = _installLatestInternal(onProgress: onProgress).then((result) async {
+      if (result.success) {
+        final stateFile = File(_stateFilePath);
+        if (!await stateFile.exists()) {
+          await _writeState(source: 'zion-userland-install', sizeBytes: 0);
+        }
+      }
+      return result;
+    });
+    _installFuture = future;
+    return future.whenComplete(() {
+      if (identical(_installFuture, future)) _installFuture = null;
+    });
+  }
+
+  Future<ZionUserlandInstallResult> _installLatestInternal({
+    void Function(String message)? onProgress,
   }) async {
+    if (await isInstalled(onProgress: onProgress)) {
+      onProgress?.call('[Userland] Already installed; skipping copy.');
+      return const ZionUserlandInstallResult(success: true, message: 'Userland already installed; no copy needed.');
+    }
     final abi = ZionBootstrapEndpoint.currentAbi();
-    onProgress?.call('اكتشاف معمارية الجهاز: ' + abi + '...');
+    onProgress?.call('اكتشاف معمارية الجهاز: $abi...');
 
     if (!ZionBootstrap.isSupportedAndroidAbi()) {
       return ZionUserlandInstallResult(
         success: false,
-        message: 'معمارية Android غير مدعومة حاليًا: ' + abi,
+        message: 'معمارية Android غير مدعومة حاليًا: $abi',
       );
     }
 
+    // Restore the uncompressed Termux usr backup directly first. Do not
+    // package it as ZIP/TAR: archive metadata and executable bits matter.
+    const backupPath = '/storage/emulated/0/Download/termux_usr_backup';
+    if (!await Directory(backupPath).exists()) {
+      onProgress?.call('[Userland] Checking Android access to the local backup...');
+      var granted = false;
+      try {
+        granted = await _storageChannel
+                .invokeMethod<bool>('ensureAllFilesAccess')
+                .timeout(const Duration(minutes: 5)) ??
+            false;
+      } catch (e) {
+        onProgress?.call('[Userland] Android storage access check failed: $e');
+      }
+      if (!granted) {
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'Android 11+ requires one-time All files access for the local Download backup. Allow access in Android settings, then reopen Terminal; Zion cannot bypass this system restriction.',
+        );
+      }
+    }
+    if (await Directory(backupPath).exists()) {
+      onProgress?.call('[Userland] Restoring direct directory backup: $backupPath');
+      final restored = await _installFromDirectory(backupPath, onProgress: onProgress);
+      if (restored.success) {
+        return restored;
+      }
+      onProgress?.call('تعذرت استعادة النسخة المحلية مباشرة: ${restored.message}');
+      // Do not silently replace a failed direct restore with a network fetch.
+      return restored;
+    }
+
+    // Offline-first: inspect local package locations before considering any
+    // network endpoint. Only verified Zion bootstrap ZIPs are accepted here;
+    // a Kali rootfs tarball must not be unpacked into the Zion prefix.
+    const localCandidates = <String>[
+      // Detect the existing shared-storage Kali tarball; never unpack it as Zion usr.
+      '/storage/emulated/0/kali-arm64.tar',
+      '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
+      '/storage/emulated/0/Download/bootstrap-aarch64.zip',
+      '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
+    ];
+    var localArchiveSeen = false;
+    for (final localPath in localCandidates) {
+      final file = File(localPath);
+      try {
+        if (!await file.exists()) continue;
+        localArchiveSeen = true;
+        onProgress?.call('[Userland] Found local package: $localPath');
+        if (!localPath.toLowerCase().endsWith('.zip')) {
+          onProgress?.call('Kali rootfs موجود محليًا، لكنه ليس حزمة Zion Bootstrap؛ لن يُفك داخل usr حتى لا يتلف بيئة Zion.');
+          continue;
+        }
+        final result = await ZionBootstrap().installFromArchive(
+          localPath,
+          onProgress: (progress, message) => onProgress?.call(
+            '[${(progress * 100).round()}%] $message',
+          ),
+        );
+        if (result.success &&
+            await ZionBootstrap.isInstalled() &&
+            await _hasCompatibleProot() &&
+            await _hasCompatibleShell()) {
+          await ZionBootstrap.initializeRuntime();
+          return ZionUserlandInstallResult(
+            success: true,
+            message: 'تم تثبيت Zion Userland من الملف المحلي: ${file.uri.pathSegments.last}',
+            releaseTag: await ZionBootstrap.currentRelease(),
+          );
+        }
+        onProgress?.call('تعذر اعتماد الحزمة المحلية: ${result.error ?? 'فشل التحقق النهائي من Userland.'}');
+      } catch (e) {
+        onProgress?.call('تعذر استخدام الملف المحلي $localPath: $e');
+      }
+    }
+    if (localArchiveSeen) {
+      return const ZionUserlandInstallResult(
+        success: false,
+        message: 'عُثر على ملفات محلية، لكن لم توجد حزمة Zion ZIP صالحة تحتوي manifest وملفات متوافقة. لم تتم محاولة التنزيل عبر الإنترنت.',
+      );
+    }
+
+    // A release marker and a working PRoot do not prove that the shell
+    // executable is present. This was allowing a damaged/incomplete prefix
+    // to be reported as "already installed", after which PTY startup failed.
     if (await ZionBootstrap.isInstalled() &&
         await _hasCompatibleProot() &&
         await _hasCompatibleShell()) {
@@ -41,63 +249,9 @@ class ZionUserlandInstaller {
       );
     }
 
-    if (await _hasKaliRootfs() && await _hasCompatibleProot()) {
-      return const ZionUserlandInstallResult(
-        success: true,
-        message: 'بيئة Kali المحلية موجودة وقابلة للتشغيل عبر PRoot.',
-      );
-    }
-
-    // Use only local sources. Kali rootfs is installed under the canonical
-    // PRoot path, never over the usr prefix.
-    const localCandidates = <String>[
-      '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
-      '/storage/emulated/0/Download/bootstrap-aarch64.zip',
-      '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
-    ];
-    var foundLocalFile = false;
-    String? localFailure;
-    for (final path in localCandidates) {
-      try {
-        final file = File(path);
-        if (!await file.exists()) continue;
-        foundLocalFile = true;
-        onProgress?.call('[Userland] Found local package: ' + path);
-        final result = await _installFromFile(path, onProgress: onProgress);
-        if (result.success) return result;
-        localFailure = result.message;
-        onProgress?.call('تعذر استخدام ' + path + ': ' + result.message);
-      } catch (error) {
-        localFailure = 'تعذر فحص الملف المحلي ' + path + ': ' + error.toString();
-      }
-    }
-
-    final backupPath = '/storage/emulated/0/Download/termux_usr_backup';
-    final backupDir = Directory(backupPath);
-    if (await backupDir.exists()) {
-      foundLocalFile = true;
-      onProgress?.call('[Userland] Using local termux_usr_backup');
-      final restored = await _installFromBackup(backupPath);
-      if (restored.success && await _hasCompatibleProot() &&
-          await _hasCompatibleShell()) {
-        return restored;
-      }
-      localFailure = restored.success
-          ? 'تم نسخ النسخة الاحتياطية لكن فشل التحقق من Bash أو PRoot.'
-          : restored.message;
-    }
-
-    // Do not hit DNS when a local archive exists but is invalid or unsupported.
-    if (foundLocalFile) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: localFailure ??
-            'وُجدت ملفات محلية، لكن لم تنجح أي حزمة في تجهيز بيئة قابلة للتشغيل.',
-      );
-    }
-
-    // Last local fallback: restore Zion's own internal backup only after
-    // the user's explicit Download packages and Termux backup were attempted.
+    // Prefer a known-good local backup before downloading a full runtime.
+    // Never treat a successful restore call alone as proof; revalidate both
+    // the shell and PRoot before returning.
     if (await ZionBootstrap.restoreLatestBackup() &&
         await ZionBootstrap.isInstalled() &&
         await _hasCompatibleProot() &&
@@ -105,636 +259,338 @@ class ZionUserlandInstaller {
       await ZionBootstrap.initializeRuntime();
       return ZionUserlandInstallResult(
         success: true,
-        message: 'تمت استعادة نسخة Zion Userland سليمة محليًا.',
+        message: 'تم استعادة نسخة Zion Userland سليمة محليًا.',
         releaseTag: await ZionBootstrap.currentRelease(),
       );
     }
 
-    // If there are no readable local packages but the existing prefix is
-    // already usable, keep the terminal available without network access.
-    if (!foundLocalFile &&
-        await _hasCompatibleProot() &&
-        await _hasCompatibleShell()) {
-      return const ZionUserlandInstallResult(
-        success: true,
-        message: 'بيئة الطرفية المحلية جاهزة بالفعل؛ لم يلزم تنزيل أي ملف.',
-      );
-    }
-
-    // This repair is intentionally offline-only: never contact the endpoint or
-    // trigger DNS when local storage is empty or inaccessible.
-    return ZionUserlandInstallResult(
+    return const ZionUserlandInstallResult(
       success: false,
-      message: foundLocalFile
-          ? (localFailure ?? 'تعذر تجهيز Userland من الملفات المحلية.')
-          : 'لم أتمكن من قراءة أي حزمة محلية. تحقق من صلاحية الوصول إلى Download ثم أعد المحاولة؛ لم يتم الاتصال بالإنترنت.',
+      message: 'لم يتم العثور على Userland صالح في النسخ المحلية أو النسخة الداخلية. لم تتم محاولة الاتصال بالإنترنت؛ تحقق من وجود Download/termux_usr_backup ومنح إذن الوصول إلى الملفات.',
     );
   }
 
-  Future<ZionUserlandInstallResult> _installFromFile(
+  Future<ZionUserlandInstallResult> _installFromDirectory(
     String sourcePath, {
     void Function(String message)? onProgress,
   }) async {
-    final fileName = sourcePath.split('/').last;
     try {
-      if (fileName.endsWith('.tar.xz')) {
-        final source = File(sourcePath);
-        final length = await source.length();
-        if (length != ZionLocalKaliConfig.expectedSize) {
-          return ZionUserlandInstallResult(
-            success: false,
-            message: 'حجم أرشيف Kali لا يطابق الملف المحلي المتوقع: ' +
-                length.toString() + ' بايت.',
-          );
-        }
-        onProgress?.call('التحقق من بصمة SHA-256 لملف Kali المحلي...');
-        final localDigest =
-            (await sha256.bind(source.openRead()).first).toString();
-        if (localDigest.toLowerCase() !=
-            ZionLocalKaliConfig.expectedSha256.toLowerCase()) {
-          return const ZionUserlandInstallResult(
-            success: false,
-            message: 'فشل تحقق SHA-256 لملف Kali المحلي؛ لم يتم فك الأرشيف.',
-          );
-        }
+      final sourceDir = Directory(sourcePath);
+      if (!await sourceDir.exists()) {
+        return const ZionUserlandInstallResult(success: false, message: 'مجلد النسخة الاحتياطية غير موجود.');
+      }
+      final targetDir = Directory(ZionBootstrap.prefix);
+      await targetDir.create(recursive: true);
 
-        final distsDir = Directory(ZionBootstrap.home + '/.zion/dists/kali');
-        await distsDir.create(recursive: true);
-        final staging = Directory(
-          distsDir.path + '/.rootfs-staging-' +
-              DateTime.now().microsecondsSinceEpoch.toString(),
-        );
-        final rootfs = Directory(distsDir.path + '/rootfs');
-        final backupDir = Directory(
-          '/storage/emulated/0/Download/termux_usr_backup',
-        );
-
-        try {
-          await staging.create(recursive: true);
-          final tarFile = File(staging.path + '.tar');
-          try {
-            onProgress?.call('فك ضغط XZ محليًا باستخدام محرك الأرشيف المدمج...');
-            final xzInput = InputFileStream(sourcePath);
-            final tarOutput = OutputFileStream(tarFile.path);
-            try {
-              XZDecoder().decodeStream(
-                xzInput,
-                tarOutput,
-                verify: true,
-                throwOnError: true,
-              );
-            } finally {
-              await xzInput.close();
-              await tarOutput.close();
-            }
-
-            onProgress?.call('استخراج ملفات Kali إلى مساحة مؤقتة...');
-            final tarInput = InputFileStream(tarFile.path);
-            Archive tarArchive;
-            try {
-              tarArchive = TarDecoder().decodeStream(
-                tarInput,
-                callback: (entry) {
-                  final name = entry.name.replaceAll(r'\', '/');
-                  if (name.startsWith('/') ||
-                      name.split('/').any((part) => part == '..')) {
-                    throw const FormatException('Unsafe path in Kali tar archive.');
-                  }
-                },
-              );
-            } finally {
-              await tarInput.close();
-            }
-
-            String normalizeTarName(String raw) {
-              var name = raw.replaceAll(r'\', '/');
-              while (name.startsWith('./')) {
-                name = name.substring(2);
-              }
-              return name;
-            }
-
-            final normalizedNames = tarArchive.files
-                .map((entry) => normalizeTarName(entry.name))
-                .toList(growable: false);
-            String rootPrefix = '';
-            for (final name in normalizedNames) {
-              if (name == 'bin/sh' || name == 'bin/bash') {
-                rootPrefix = '';
-                break;
-              }
-              final marker = '/bin/sh';
-              final index = name.lastIndexOf(marker);
-              if (index > 0) {
-                rootPrefix = name.substring(0, index + 1);
-                break;
-              }
-            }
-
-            final modeGroups = <int, List<String>>{};
-            final links = <ArchiveFile>[];
-            var extractedFiles = 0;
-            for (var index = 0; index < tarArchive.files.length; index++) {
-              final entry = tarArchive.files[index];
-              var relative = normalizeTarName(entry.name);
-              if (rootPrefix.isNotEmpty) {
-                if (!relative.startsWith(rootPrefix)) continue;
-                relative = relative.substring(rootPrefix.length);
-              }
-              if (relative.isEmpty || relative == '.') continue;
-              final parts = relative.split('/');
-              if (relative.startsWith('/') ||
-                  parts.any((part) => part == '..' || part == '.')) {
-                throw const FormatException('Unsafe relative path in Kali rootfs.');
-              }
-              if (relative == 'dev' || relative.startsWith('dev/')) continue;
-              final destinationPath = staging.path + '/' + relative;
-              if (entry.isSymbolicLink) {
-                links.add(entry);
-                continue;
-              }
-              if (entry.isDirectory) {
-                await Directory(destinationPath).create(recursive: true);
-              } else if (entry.isFile) {
-                final destination = File(destinationPath);
-                await destination.parent.create(recursive: true);
-                await destination.writeAsBytes(
-                  List<int>.from(entry.content as List<int>),
-                  flush: false,
-                );
-                final mode = entry.unixPermissions & 0x1ff;
-                if (mode != 0) {
-                  modeGroups.putIfAbsent(mode, () => <String>[]).add(destinationPath);
-                }
-                extractedFiles++;
-              }
-              if (index % 500 == 0) {
-                onProgress?.call(
-                  'استخراج Kali: ' + extractedFiles.toString() + ' ملفًا',
-                );
-              }
-            }
-
-            bool safeLinkTarget(String linkPath, String target) {
-              if (target.isEmpty || target.contains(r'\')) return false;
-              final components = <String>[
-                if (!target.startsWith('/'))
-                  ...(linkPath.split('/')..removeLast()),
-                ...target.split('/'),
-              ];
-              var depth = 0;
-              for (final component in components) {
-                if (component.isEmpty || component == '.') continue;
-                if (component == '..') {
-                  depth--;
-                  if (depth < 0) return false;
-                } else {
-                  depth++;
-                }
-              }
-              return true;
-            }
-
-            for (final entry in links) {
-              var relative = normalizeTarName(entry.name);
-              if (rootPrefix.isNotEmpty) {
-                if (!relative.startsWith(rootPrefix)) continue;
-                relative = relative.substring(rootPrefix.length);
-              }
-              if (relative.isEmpty || relative == '.') continue;
-              final target = entry.symbolicLink ?? '';
-              if (!safeLinkTarget(relative, target)) {
-                throw const FormatException('Unsafe symbolic link in Kali rootfs.');
-              }
-              final link = Link(staging.path + '/' + relative);
-              await link.parent.create(recursive: true);
-              if (await link.exists()) await link.delete();
-              await link.create(target);
-            }
-
-            // Restore Unix executable bits without spawning one process per
-            // archive entry. Batches keep installation practical on phones.
-            for (final group in modeGroups.entries) {
-              for (var offset = 0; offset < group.value.length; offset += 100) {
-                final batch = group.value.skip(offset).take(100).toList();
-                try {
-                  await Process.run(
-                    '/system/bin/chmod',
-                    <String>[group.key.toRadixString(8), ...batch],
-                    runInShell: false,
-                  );
-                } catch (_) {}
-              }
-            }
-            if (!await File(staging.path + '/bin/sh').exists()) {
-              throw const FormatException(
-                'Kali archive does not contain a usable rootfs/bin/sh.',
-              );
-            }
-          } catch (error) {
-            return ZionUserlandInstallResult(
-              success: false,
-              message: 'تعذر فك أرشيف Kali محليًا: ' + error.toString(),
-            );
-          } finally {
-            try {
-              if (await tarFile.exists()) await tarFile.delete();
-            } catch (_) {}
-          }
-
-          var extractedRoot = staging;
-          if (!await File(extractedRoot.path + '/bin/sh').exists()) {
-            final children = await staging.list(followLinks: false)
-                .where((entity) => entity is Directory)
-                .cast<Directory>().toList();
-            for (final child in children) {
-              if (await File(child.path + '/bin/sh').exists()) {
-                extractedRoot = child;
-                break;
-              }
+      onProgress?.call('[Userland] Checking private storage...');
+      final df = await Process.run('/system/bin/df', <String>['-k', targetDir.path], runInShell: false);
+      if (df.exitCode == 0) {
+        final lines = df.stdout.toString().trim().split('\n');
+        if (lines.length >= 2) {
+          final columns = lines.last.trim().split(RegExp(r'\s+'));
+          if (columns.length >= 4) {
+            final availableKb = int.tryParse(columns[3]);
+            if (availableKb != null && availableKb < 1800 * 1024) {
+              return const ZionUserlandInstallResult(success: false, message: 'المساحة الحرة غير كافية؛ يلزم نحو 1.8 GB على الأقل داخل مساحة التطبيق.');
             }
           }
-          if (!await File(extractedRoot.path + '/bin/sh').exists()) {
-            return const ZionUserlandInstallResult(
-              success: false,
-              message: 'فُك أرشيف Kali لكن لم يُعثر على bin/sh؛ لم يتم تفعيل الجذر.',
-            );
-          }
-
-          if (extractedRoot.path != staging.path) {
-            final normalized = Directory(staging.path + '-normalized');
-            await extractedRoot.rename(normalized.path);
-            if (await staging.exists()) await staging.delete(recursive: true);
-            await normalized.rename(staging.path);
-          }
-
-          final oldRoot = Directory(
-            distsDir.path + '/.rootfs-old-' +
-                DateTime.now().microsecondsSinceEpoch.toString(),
-          );
-          if (await rootfs.exists()) await rootfs.rename(oldRoot.path);
-          try {
-            await staging.rename(rootfs.path);
-            if (await oldRoot.exists()) await oldRoot.delete(recursive: true);
-          } catch (_) {
-            if (!await rootfs.exists() && await oldRoot.exists()) {
-              await oldRoot.rename(rootfs.path);
-            }
-            rethrow;
-          }
-
-          await Directory(ZionBootstrap.home).create(recursive: true);
-          await Directory(ZionBootstrap.tmp).create(recursive: true);
-          if (!await _hasCompatibleProot() && await backupDir.exists()) {
-            final seeded = await _installFromBackup(backupDir.path);
-            if (!seeded.success) {
-              return ZionUserlandInstallResult(
-                success: false,
-                message: 'تم تثبيت جذر Kali محليًا، لكن تجهيز PRoot من النسخة الاحتياطية فشل: ' +
-                    seeded.message,
-              );
-            }
-          }
-          if (!await _hasKaliRootfs() || !await _hasCompatibleProot()) {
-            return const ZionUserlandInstallResult(
-              success: false,
-              message: 'تم فك جذر Kali محليًا، لكن PRoot غير جاهز؛ لم يتم إعلان الطرفية قابلة للتشغيل.',
-            );
-          }
-          onProgress?.call('تم تثبيت Kali rootfs محليًا في ' + rootfs.path + '.');
-          return ZionUserlandInstallResult(
-            success: true,
-            message: 'تم تثبيت Kali Userland من الملف المحلي: ' + fileName,
-          );
-        } finally {
-          try {
-            if (await staging.exists()) await staging.delete(recursive: true);
-          } catch (_) {}
         }
       }
 
-      if (fileName.endsWith('.zip')) {
-        final result = await ZionBootstrap().installFromArchive(
-          sourcePath,
-          onProgress: (progress, message) => onProgress?.call(
-            '[' + (progress * 100).round().toString() + '%] ' + message,
-          ),
-        );
-        if (result.success) {
-          if (!await ZionBootstrap.isInstalled() ||
-              !await _hasCompatibleProot() ||
-              !await _hasCompatibleShell()) {
-            return const ZionUserlandInstallResult(
-              success: false,
-              message: 'تم فك ZIP لكن فشل التحقق من Bash أو PRoot.',
-            );
-          }
-          return ZionUserlandInstallResult(
-            success: true,
-            message: 'تم تثبيت Zion Userland من الملف المحلي: ' + fileName,
-            releaseTag: await ZionBootstrap.currentRelease(),
-          );
-        }
-
-        // The Download ZIP may be a standard Termux bootstrap rather than a
-        // Zion release archive. Support it offline after the signed/manifest
-        // format has been rejected by the Zion-specific installer.
-        final generic = await _installGenericZip(sourcePath, onProgress: onProgress);
-        if (generic.success) return generic;
-        return ZionUserlandInstallResult(
-          success: false,
-          message: (result.error ?? 'ZIP ليس حزمة Zion Userland.') +
-              '؛ وفشل تثبيت Bootstrap المحلي أيضًا: ' + generic.message,
-        );
-      }
-
-      return const ZionUserlandInstallResult(
-        success: false,
-        message: 'نوع الحزمة المحلية غير معروف.',
-      );
-    } catch (error) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: 'فشل التثبيت من الملف المحلي ' + fileName + ': ' + error.toString(),
-      );
-    }
-  }
-
-  Future<ZionUserlandInstallResult> _installFromBackup(
-    String backupPath,
-  ) async {
-    try {
-      final backup = Directory(backupPath);
-      if (!await backup.exists()) {
+      onProgress?.call('[Userland] Copying files...');
+      final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
+      if (result.exitCode == 124) {
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'مجلد النسخة الاحتياطية غير موجود.',
+          message: 'انتهت مهلة نسخ Userland؛ تُركت الملفات المنسوخة لاستكمال التشخيص دون بدء نسخة ثانية تلقائيًا.',
         );
       }
-      final usrDir = Directory(ZionBootstrap.prefix);
-      await usrDir.create(recursive: true);
-      final entities = await backup.list(followLinks: false).toList();
-      for (final entity in entities) {
-        final name = entity.path.split('/').last;
-        final targetPath = usrDir.path + '/' + name;
-        if (entity is Directory) {
-          await _copyDirectory(entity, Directory(targetPath));
-        } else if (entity is File) {
-          await entity.copy(targetPath);
-        } else if (entity is Link) {
-          final link = Link(targetPath);
-          await link.parent.create(recursive: true);
-          if (await link.exists()) await link.delete();
-          await link.create(await entity.target());
+      if (result.exitCode != 0) {
+        onProgress?.call('cp -a failed (exit ${result.exitCode}): ${result.stderr}. Trying Dart copy fallback.');
+        try {
+          await _manualCopy(sourceDir, targetDir);
+        } catch (e) {
+          return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${result.stderr}; fallback: $e');
         }
       }
 
-      await Directory(usrDir.path + '/bin').create(recursive: true);
-      try {
-        await Process.run(
-          '/system/bin/chmod',
-          <String>['-R', '755', usrDir.path + '/bin'],
-          runInShell: false,
-        );
-      } catch (_) {}
-      await Directory(ZionBootstrap.home).create(recursive: true);
-      await Directory(ZionBootstrap.tmp).create(recursive: true);
+      onProgress?.call('[Userland] Setting permissions (best-effort; root-owned files are tolerated)...');
+      await _repairPermissions(targetDir);
+      onProgress?.call('[Userland] Creating symlinks...');
+      await _recreateCoreutilsSymlinks('${targetDir.path}/bin');
+      await _createOtherSymlinks('${targetDir.path}/bin');
 
       if (!await _hasCompatibleShell()) {
+        await _diagnoseShellCandidates(onProgress: onProgress);
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'نُسخت النسخة الاحتياطية لكن لم يتمكن Bash المحلي من العمل.',
+          message: 'تم النسخ لكن لا توجد صدفة صالحة داخل usr/bin؛ سُجلت محتويات bin/ ونتائج فحص المرشحين. ستستخدم الطرفية /system/bin/sh.',
         );
       }
-      return const ZionUserlandInstallResult(
-        success: true,
-        message: 'تم تجهيز الصدفة محليًا من termux_usr_backup؛ لم يتم تنزيل أي ملف.',
-      );
-    } catch (error) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: 'فشل استعادة النسخة الاحتياطية المحلية: ' + error.toString(),
-      );
+      // Termux usr is useful as a Bash environment even when PRoot is absent.
+      // PRoot is an optional tool, not a prerequisite for launching Bash.
+      await ZionBootstrap.initializeRuntime();
+      await _writeState(source: sourcePath, sizeBytes: 1400000000);
+      onProgress?.call('[Userland] ✓ Ready');
+      return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
+    } catch (e) {
+      return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
   }
 
-  Future<void> _copyDirectory(Directory source, Directory target) async {
-    await target.create(recursive: true);
-    await for (final entity in source.list(followLinks: false)) {
-      final name = entity.path.substring(source.path.length + 1);
-      final destination = target.path + '/' + name;
-      if (entity is Directory) {
-        await _copyDirectory(entity, Directory(destination));
-      } else if (entity is File) {
-        await File(destination).parent.create(recursive: true);
-        await entity.copy(destination);
-      } else if (entity is Link) {
-        await Link(destination).parent.create(recursive: true);
-        final link = Link(destination);
-        if (await link.exists()) await link.delete();
-        await link.create(await entity.target());
-      }
-    }
-  }
-
-  Future<bool> _hasKaliRootfs() async {
-    final root = Directory(ZionBootstrap.home + '/.zion/dists/kali/rootfs');
-    return await File(root.path + '/bin/sh').exists() &&
-        await File(root.path + '/etc/os-release').exists();
-  }
-
-  Future<ZionUserlandInstallResult> _installGenericZip(
-    String sourcePath, {
+  Future<({int exitCode, String stderr})> _copyDirectoryWithProgress(
+    String sourcePath,
+    String targetPath, {
     void Function(String message)? onProgress,
   }) async {
-    Directory? staging;
-    Directory? oldPrefix;
+    var totalEntries = 0;
     try {
-      final source = File(sourcePath);
-      final length = await source.length();
-      if (length <= 0 || length > 512 * 1024 * 1024) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message: 'حجم Bootstrap ZIP غير مسموح به.',
-        );
-      }
-      final archive = ZipDecoder().decodeBytes(await source.readAsBytes(), verify: true);
-      if (archive.files.isEmpty || archive.files.length > 50000) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message: 'أرشيف Bootstrap فارغ أو يتجاوز حد الملفات.',
-        );
-      }
+      final count = await Process.run(
+        '/system/bin/sh',
+        <String>['-c', r'find "$1" -mindepth 1 -print 2>/dev/null | wc -l', 'zion-copy-count', sourcePath],
+        runInShell: false,
+      ).timeout(const Duration(minutes: 2));
+      totalEntries = int.tryParse(count.stdout.toString().trim()) ?? 0;
+    } catch (_) {
+      // Copy still proceeds if the platform find implementation is limited.
+    }
 
-      final base = Directory(ZionBootstrap.base);
-      staging = Directory(base.path + '/.usr-local-stage-' +
-          DateTime.now().microsecondsSinceEpoch.toString());
-      await staging.create(recursive: true);
-      final links = <ArchiveFile>[];
-      var extracted = 0;
-
-      for (final entry in archive.files) {
-        final normalized = _normalizeLocalArchivePath(entry.name);
-        if (normalized == null) {
-          if (entry.name.endsWith('/')) continue;
-          return const ZionUserlandInstallResult(
-            success: false,
-            message: 'مسار غير آمن داخل Bootstrap ZIP.',
-          );
-        }
-        if (normalized.isEmpty) continue;
-        final targetPath = staging.path + '/' + normalized;
-        if (entry.isSymbolicLink) {
-          links.add(entry);
-          continue;
-        }
-        if (!entry.isFile) {
-          await Directory(targetPath).create(recursive: true);
-          continue;
-        }
-        final target = File(targetPath);
-        await target.parent.create(recursive: true);
-        await target.writeAsBytes(List<int>.from(entry.content as List<int>), flush: false);
-        final mode = entry.unixPermissions & 0x1ff;
-        if (mode != 0) {
-          try {
-            await Process.run('/system/bin/chmod',
-                <String>[mode.toRadixString(8), target.path],
-                runInShell: false);
-          } catch (_) {}
-        }
-        extracted++;
-        if (extracted % 300 == 0) {
-          onProgress?.call('استخراج Bootstrap محليًا: ' + extracted.toString() + ' ملفًا');
+    final process = await Process.start(
+      '/system/bin/cp',
+      <String>['-av', '$sourcePath/.', '$targetPath/'],
+      runInShell: false,
+    );
+    final stderr = StringBuffer();
+    var copiedEntries = 0;
+    var lastPercent = -1;
+    final watch = Stopwatch()..start();
+    final stdoutSubscription = process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen((line) {
+      copiedEntries++;
+      if (totalEntries > 0) {
+        final percent = ((copiedEntries * 100) ~/ totalEntries).clamp(0, 99);
+        if (percent >= lastPercent + 5) {
+          lastPercent = percent;
+          onProgress?.call('[Userland] Copying files... $percent%');
         }
       }
-
-      for (final entry in links) {
-        final normalized = _normalizeLocalArchivePath(entry.name);
-        if (normalized == null || normalized.isEmpty) {
-          return const ZionUserlandInstallResult(
-            success: false,
-            message: 'رابط رمزي غير آمن داخل Bootstrap ZIP.',
-          );
-        }
-        final targetValue = entry.symbolicLink ?? '';
-        if (!_isSafeLocalLink(normalized, targetValue)) {
-          return const ZionUserlandInstallResult(
-            success: false,
-            message: 'رابط رمزي خارج Bootstrap prefix مرفوض.',
-          );
-        }
-        final link = Link(staging.path + '/' + normalized);
-        await link.parent.create(recursive: true);
-        if (await link.exists()) await link.delete();
-        await link.create(targetValue);
-      }
-
-      // Standard bootstrap archives commonly wrap files in a usr/ directory.
-      var stagedPrefix = staging;
-      if (!await File(staging.path + '/bin/bash').exists()) {
-        final usr = Directory(staging.path + '/usr');
-        if (await File(usr.path + '/bin/bash').exists()) {
-          stagedPrefix = usr;
-        }
-      }
-      if (!await File(stagedPrefix.path + '/bin/bash').exists()) {
-        return const ZionUserlandInstallResult(
-          success: false,
-          message: 'Bootstrap ZIP لا يحتوي bin/bash بعد استخراج المسارات.',
-        );
-      }
-
-      for (final directory in <String>['bin', 'sbin', 'lib', 'lib64', 'libexec']) {
-        final path = stagedPrefix.path + '/' + directory;
-        if (await Directory(path).exists() &&
-            (directory == 'bin' || directory == 'sbin' || directory == 'libexec')) {
-          try {
-            await Process.run('/system/bin/chmod',
-                <String>['-R', '755', path], runInShell: false);
-          } catch (_) {}
-        }
-      }
-
-      final prefix = Directory(ZionBootstrap.prefix);
-      oldPrefix = Directory(base.path + '/.usr-local-old-' +
-          DateTime.now().microsecondsSinceEpoch.toString());
-      if (await prefix.exists()) await prefix.rename(oldPrefix.path);
-      try {
-        await stagedPrefix.rename(prefix.path);
-        if (!await _hasCompatibleShell()) {
-          throw StateError('الصدفة المستخرجة لا تعمل على هذا الجهاز.');
-        }
-        if (await oldPrefix.exists()) await oldPrefix.delete(recursive: true);
-      } catch (_) {
-        if (await prefix.exists()) await prefix.delete(recursive: true);
-        if (await oldPrefix.exists()) await oldPrefix.rename(prefix.path);
-        rethrow;
-      }
-      await Directory(ZionBootstrap.home).create(recursive: true);
-      await Directory(ZionBootstrap.tmp).create(recursive: true);
-      return ZionUserlandInstallResult(
-        success: true,
-        message: 'تم تجهيز Bootstrap ZIP محليًا دون اتصال: ' +
-            sourcePath.split('/').last,
-      );
-    } catch (error) {
-      return ZionUserlandInstallResult(
-        success: false,
-        message: 'تعذر استخراج Bootstrap ZIP المحلي: ' + error.toString(),
+    });
+    final stderrSubscription = process.stderr
+        .transform(utf8.decoder)
+        .listen(stderr.write);
+    final ticker = Timer.periodic(const Duration(seconds: 10), (_) {
+      onProgress?.call('[Userland] Copying files... still running (${watch.elapsed.inSeconds}s)');
+    });
+    var exitCode = 124;
+    try {
+      exitCode = await process.exitCode.timeout(
+        const Duration(minutes: 10),
+        onTimeout: () {
+          process.kill(ProcessSignal.sigkill);
+          return 124;
+        },
       );
     } finally {
+      ticker.cancel();
+      await stdoutSubscription.cancel();
+      await stderrSubscription.cancel();
+      watch.stop();
+    }
+    if (exitCode == 0) onProgress?.call('[Userland] Copying files... 100%');
+    return (exitCode: exitCode, stderr: stderr.toString());
+  }
+
+  /// Repair permissions without allowing a few root-owned shared libraries to
+  /// abort the restore. Directories stay traversable; Bash is verified afterward.
+  Future<void> _repairPermissions(Directory root) async {
+    Future<void> recursiveChmod(String path, String mode, {bool critical = false}) async {
+      if (!await Directory(path).exists()) return;
       try {
-        if (staging != null && await staging.exists()) {
-          await staging.delete(recursive: true);
+        final result = await Process.run(
+          '/system/bin/chmod', <String>['-R', mode, path],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        print('[Permissions] $path: exit=${result.exitCode}');
+        if (critical && result.exitCode != 0) {
+          print('[Permissions] $path had partial chmod failures; verifying executable instead of aborting.');
         }
-      } catch (_) {}
-    }
-  }
-
-  String? _normalizeLocalArchivePath(String rawPath) {
-    var value = rawPath.replaceAll(r'\', '/');
-    while (value.startsWith('./')) {
-      value = value.substring(2);
-    }
-    if (value.startsWith('/') || value.contains('\u0000')) return null;
-    final termuxMarker = 'data/data/com.termux/files/usr/';
-    final zionMarker = 'data/data/com.zion.os/files/usr/';
-    final termuxIndex = value.indexOf(termuxMarker);
-    final zionIndex = value.indexOf(zionMarker);
-    if (termuxIndex >= 0) {
-      value = value.substring(termuxIndex + termuxMarker.length);
-    } else if (zionIndex >= 0) {
-      value = value.substring(zionIndex + zionMarker.length);
-    } else if (value.startsWith('usr/')) {
-      value = value.substring(4);
-    } else if (value == 'usr') {
-      return '';
-    }
-    final parts = value.split('/');
-    if (parts.any((part) => part == '..' || part == '.')) return null;
-    return parts.where((part) => part.isNotEmpty).join('/');
-  }
-
-  bool _isSafeLocalLink(String linkPath, String target) {
-    if (target.isEmpty || target.startsWith('/') || target.contains(r'\')) return false;
-    final parts = <String>[
-      ...(linkPath.split('/')..removeLast()),
-      ...target.split('/'),
-    ];
-    var depth = 0;
-    for (final part in parts) {
-      if (part.isEmpty || part == '.') continue;
-      if (part == '..') {
-        depth--;
-        if (depth < 0) return false;
-      } else {
-        depth++;
+      } catch (e) {
+        print('[Permissions] $path ignored: $e');
       }
     }
-    return true;
+
+    await recursiveChmod('${root.path}/bin', '755', critical: true);
+    await recursiveChmod('${root.path}/libexec', '755', critical: true);
+
+    // Never chmod -R 644 on a directory tree: that removes execute/traverse
+    // bits from directories. find changes files only and leaves directory modes.
+    for (final entry in <({String name, String mode})>[
+      (name: 'lib', mode: '644'),
+      (name: 'share', mode: '644'),
+      (name: 'etc', mode: '644'),
+    ]) {
+      final path = '${root.path}/${entry.name}';
+      if (!await Directory(path).exists()) continue;
+      try {
+        final dirs = await Process.run(
+          '/system/bin/find', <String>[path, '-type', 'd', '-exec', 'chmod', '755', '{}', '+'],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        final files = await Process.run(
+          '/system/bin/find', <String>[path, '-type', 'f', '-exec', 'chmod', entry.mode, '{}', '+'],
+          runInShell: false,
+        ).timeout(const Duration(minutes: 2));
+        print('[Permissions] $path: dirs=${dirs.exitCode}, files=${files.exitCode} (non-fatal)');
+      } catch (e) {
+        print('[Permissions] $path (ignored): $e');
+      }
+    }
+
+    // Restore execution bits on known entry points if ownership allows it.
+    for (final path in <String>[
+      '${root.path}/bin/bash',
+      '${root.path}/bin/coreutils',
+      '${root.path}/bin/gawk',
+      '${root.path}/bin/vim',
+    ]) {
+      try {
+        await Process.run('/system/bin/chmod', <String>['755', path], runInShell: false);
+      } catch (_) {}
+    }
+
+    final bash = File('${root.path}/bin/bash');
+    if (!await bash.exists()) {
+      // A backup may contain a usable sh/dash but omit Bash. Do not throw
+      // before diagnostics run: preserve the copied tree and let TerminalService
+      // select the verified fallback shell without repeating a large restore.
+      await _diagnoseShellCandidates();
+      print('[Permissions] Bash is missing; preserving Userland for sh/dash fallback.');
+      return;
+    }
+    final test = await Process.run(
+      bash.path, const <String>['-c', 'printf BASH_OK'],
+      runInShell: false,
+      environment: <String, String>{
+        ...Platform.environment,
+        'HOME': ZionBootstrap.home,
+        'PREFIX': ZionBootstrap.prefix,
+        'TMPDIR': ZionBootstrap.tmp,
+        'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
+        'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
+        'TERM': 'xterm-256color',
+        'LANG': 'C.UTF-8',
+        'LC_ALL': 'C.UTF-8',
+      },
+    ).timeout(const Duration(seconds: 5));
+    if (test.exitCode != 0 || !test.stdout.toString().contains('BASH_OK')) {
+      throw StateError('bash verification failed (exit=${test.exitCode}): ${test.stderr}');
+    }
+    print('[Permissions] ✓ Critical Bash check passed; non-critical chmod errors were tolerated.');
   }
 
+  Future<void> _recreateCoreutilsSymlinks(String binDir) async {
+    if (!await File('$binDir/coreutils').exists()) {
+      print('[Symlinks] coreutils multicall binary not found; preserving existing commands.');
+      return;
+    }
+    const tools = <String>[
+      'ls','cat','cp','mv','rm','mkdir','rmdir','chmod','chown','ln','touch','echo','pwd','whoami','id','true','false','yes','env','basename','dirname','head','tail','wc','sort','uniq','cut','tr','tee','sleep','seq','shuf','readlink','realpath','stat','du','df','date','hostname','uname','nproc','printenv','printf','test','timeout','kill','unlink','install','mkfifo','mknod','od','base64','basenc','cksum','comm','csplit','dd','dir','dircolors','expand','expr','factor','fmt','fold','groups','join','link','logname','md5sum','sha1sum','sha256sum','nl','nohup','numfmt','paste','pathchk','pr','ptx','runcon','split','stdbuf','sum','sync','tac','truncate','tsort','tty','unexpand','users','vdir','chcon',
+    ];
+    for (final tool in tools) {
+      await _createLinkIfMissing('$binDir/$tool', 'coreutils');
+    }
+  }
+
+  Future<void> _createOtherSymlinks(String binDir) async {
+    const mappings = <String, String>{'sh':'bash','awk':'gawk','nawk':'gawk','vi':'vim','editor':'nano','nc':'netcat','python':'python3','pip':'pip3'};
+    for (final entry in mappings.entries) {
+      await _createLinkIfMissing('$binDir/${entry.key}', entry.value);
+    }
+  }
+
+  Future<void> _createLinkIfMissing(String linkPath, String targetName) async {
+    final targetPath = '${File(linkPath).parent.path}/$targetName';
+    if (!await File(targetPath).exists() && !await Link(targetPath).exists()) return;
+    // Preserve existing real commands and avoid self-links such as bash -> bash.
+    if (await File(linkPath).exists() || await Link(linkPath).exists()) return;
+    try {
+      await Link(linkPath).create(targetName);
+    } catch (e) {
+      print('[Symlinks] ${linkPath.split('/').last} failed: $e');
+    }
+  }
+
+  Future<void> _manualCopy(Directory source, Directory target) async {
+    await target.create(recursive: true);
+    await for (final entity in source.list(followLinks: false)) {
+      final name = entity.uri.pathSegments.isNotEmpty
+          ? entity.uri.pathSegments[entity.uri.pathSegments.length - 1]
+          : entity.path.split('/').last;
+      final destination = '${target.path}/$name';
+
+      if (entity is Link) {
+        final linkTarget = await entity.target();
+        final link = Link(destination);
+        if (await link.exists()) {
+          await link.delete();
+        }
+        await link.create(linkTarget);
+      } else if (entity is Directory) {
+        await _manualCopy(entity, Directory(destination));
+      } else if (entity is File) {
+        await entity.copy(destination);
+      }
+    }
+  }
+
+  /// Diagnose missing/broken shells after restoring a local Userland backup.
+  Future<void> _diagnoseShellCandidates({void Function(String message)? onProgress}) async {
+    final usrDir = ZionBootstrap.prefix;
+    final candidates = <String>['$usrDir/bin/bash', '$usrDir/bin/sh', '$usrDir/bin/busybox', '$usrDir/bin/dash', '/system/bin/sh'];
+    var found = false;
+    for (final path in candidates) {
+      try {
+        if (!await File(path).exists()) continue;
+        found = true;
+        final heading = '[Userland] Found shell candidate: $path';
+        print(heading); onProgress?.call(heading);
+        final args = path.endsWith('/busybox') ? <String>['sh', '-c', 'printf ZION_SHELL_DIAGNOSTIC_OK'] : <String>['-c', 'printf ZION_SHELL_DIAGNOSTIC_OK'];
+        final result = await Process.run(path, args, runInShell: false, environment: _shellDiagnosticEnvironment()).timeout(const Duration(seconds: 3));
+        final detail = '[Userland] Test $path: exit=${result.exitCode}; stdout=${result.stdout}; stderr=${result.stderr}';
+        print(detail); onProgress?.call(detail);
+        break;
+      } catch (error) {
+        final detail = '[Userland] Shell candidate check failed for $path: $error';
+        print(detail); onProgress?.call(detail);
+      }
+    }
+    if (!found) {
+      const message = '[Userland] No bash/sh/busybox/dash found in usr/bin; TerminalService should use /system/bin/sh.';
+      print(message); onProgress?.call(message);
+    }
+    final binDir = Directory('$usrDir/bin');
+    if (await binDir.exists()) {
+      try {
+        final entries = await binDir.list(followLinks: false).toList();
+        final heading = '[Userland] bin/ contains ${entries.length} entries:';
+        print(heading); onProgress?.call(heading);
+        for (final entry in entries.take(30)) { final line = '  ${entry.path}'; print(line); onProgress?.call(line); }
+      } catch (error) { final line = '[Userland] Unable to list bin/: $error'; print(line); onProgress?.call(line); }
+    } else {
+      const message = '[Userland] Expected usr/bin directory is missing.';
+      print(message); onProgress?.call(message);
+    }
+  }
+
+  Map<String, String> _shellDiagnosticEnvironment() => <String, String>{
+    ...Platform.environment,
+    'HOME': ZionBootstrap.home, 'PREFIX': ZionBootstrap.prefix, 'TMPDIR': ZionBootstrap.tmp,
+    'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
+    'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
+    'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+  };
   Future<bool> _hasCompatibleShell() async {
     const candidates = <String>[
       '${ZionBootstrap.prefix}/bin/bash',
@@ -826,6 +682,5 @@ class ZionUserlandInstaller {
       return false;
     }
   }
-
 
 }
