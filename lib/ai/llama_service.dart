@@ -9,7 +9,7 @@ class LlamaModel {
   factory LlamaModel.fromMap(Map<dynamic, dynamic> map) => LlamaModel(
     name: map['name']?.toString() ?? 'GGUF',
     path: map['path']?.toString() ?? '',
-    sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
+    sizeBytes: num.tryParse(map['sizeBytes']?.toString() ?? '')?.toInt() ?? 0,
     readable: map['readable'] == true,
   );
 }
@@ -80,19 +80,30 @@ class LlamaService {
 
   Future<bool> loadModel(
     String path, {
-    int threads = 4,
+    int threads = 2,
     String? loraPath,
     double loraScale = 1.0,
   }) async {
-    final ok = await _channel.invokeMethod<bool>('loadModel', {
-      'path': path,
-      'threads': threads,
-      if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
-      'loraScale': loraScale > 0 ? loraScale : 1.0,
-    }) ?? false;
-    _loaded = ok;
-    _modelPath = ok ? path : null;
-    return ok;
+    if (path.trim().isEmpty) return false;
+    // The native bridge releases the previous model before loading a new one.
+    // Clear cached state first so an exception cannot leave stale "loaded" data.
+    _loaded = false;
+    _modelPath = null;
+    try {
+      final ok = await _channel.invokeMethod<bool>('loadModel', {
+        'path': path,
+        'threads': threads.clamp(1, 2),
+        if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
+        'loraScale': loraScale > 0 ? loraScale : 1.0,
+      }) ?? false;
+      _loaded = ok;
+      _modelPath = ok ? path : null;
+      return ok;
+    } catch (_) {
+      _loaded = false;
+      _modelPath = null;
+      rethrow;
+    }
   }
 
   /// Synchronize this service instance with the native singleton. The model may
