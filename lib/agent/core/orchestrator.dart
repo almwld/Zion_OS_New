@@ -271,16 +271,29 @@ class AgentOrchestrator {
     String description,
   ) async {
     final completer = Completer<bool>();
+    StreamSubscription<void>? cancellationSubscription;
     _approvalCompleter = completer;
     try {
       if (cancellationToken == null) return await completer.future;
+      if (cancellationToken.isCancelled) {
+        throw const AgentCancelledException();
+      }
+      final cancelled = Completer<bool>();
+      cancellationSubscription = cancellationToken.onCancel.listen((_) {
+        if (!cancelled.isCompleted) {
+          cancelled.completeError(const AgentCancelledException());
+        }
+      });
+      // Close the small race between the pre-check and stream subscription.
+      if (cancellationToken.isCancelled && !cancelled.isCompleted) {
+        cancelled.completeError(const AgentCancelledException());
+      }
       return await Future.any<bool>([
         completer.future,
-        cancellationToken.onCancel.first.then<bool>((_) {
-          throw const AgentCancelledException();
-        }),
+        cancelled.future,
       ]);
     } finally {
+      await cancellationSubscription?.cancel();
       if (identical(_approvalCompleter, completer)) {
         _approvalCompleter = null;
       }
