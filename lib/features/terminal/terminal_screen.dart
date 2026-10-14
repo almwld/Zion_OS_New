@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
@@ -12,6 +14,7 @@ import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
@@ -48,13 +51,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
   bool _aiLoading = false;
   bool _aiReady = false;
   String? _startupError;
-  String _startupProgress = '';
   double _fontSize = 13;
   String _fontFamily = 'monospace';
   bool _showToolbar = true;
+  bool _showArabicOverlay = true;
+  Timer? _arabicOverlayRefreshTimer;
   bool _showQuickCommands = false;
   bool _isFullscreen = false;
   TerminalPalette _palette = TerminalPalette.zion;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -110,7 +116,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           const SnackBar(content: Text('تم الوصول إلى الحد الأقصى: 8 جلسات PTY.')),
         );
       }
@@ -138,24 +144,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // A tab can be closed while native PTY output is still in flight.
       // Do not write to a disposed terminal or let late output crash the UI.
       if (!mounted || !_tabs.contains(tab)) return;
-      // Surface installer phases above the terminal while the 1.4 GB copy is
-      // running; the terminal output itself remains untouched for PTY fidelity.
-      if (_starting) {
-        final statusLines = data
-            .split(RegExp(r'[\r\n]+'))
-            .map((line) => line.trim())
-            .where((line) =>
-                line.startsWith('[Terminal]') || line.startsWith('[Userland]'))
-            .toList(growable: false);
-        if (statusLines.isNotEmpty && statusLines.last != _startupProgress) {
-          setState(() => _startupProgress = statusLines.last);
-        }
-      }
       // Retain only recent PTY text for local AI context; xterm2 keeps the full scrollback.
       tab.recentOutput += data;
       if (tab.recentOutput.length > 8000) {
         tab.recentOutput =
             tab.recentOutput.substring(tab.recentOutput.length - 8000);
+      }
+      // Rebuild only for installer/status messages, not every terminal byte,
+      // so first-run copy progress stays visible without making typing janky.
+      if (data.contains('[Userland]') || data.contains('[Terminal]')) {
+        setState(() {});
+      } else if (_showArabicOverlay && ArabicShaper.isArabic(data)) {
+        // Coalesce bursty PTY chunks so the overlay updates without rebuilding
+        // the whole terminal for every byte.
+        _arabicOverlayRefreshTimer?.cancel();
+        _arabicOverlayRefreshTimer = Timer(const Duration(milliseconds: 120), () {
+          if (mounted) setState(() {});
+        });
       }
       try {
         terminal.write(data);
@@ -175,12 +180,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     });
 
     if (autoStart) {
-      if (mounted) {
-        setState(() {
-          _starting = true;
-          _startupProgress = 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…';
-        });
-      }
+      if (mounted) setState(() => _starting = true);
       try {
         tab.connected = await service.startInteractive();
         if (!tab.connected) {
@@ -203,12 +203,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
           context: ErrorDescription('while starting an interactive PTY session'),
         ));
       } finally {
-        if (mounted) {
-          setState(() {
-            _starting = false;
-            _startupProgress = '';
-          });
-        }
+        if (mounted) setState(() => _starting = false);
       }
     }
     return tab;
@@ -300,6 +295,23 @@ class _TerminalScreenState extends State<TerminalScreen> {
     tab.service.write(value);
   }
 
+  /// Returns the latest Arabic-containing lines for a readable Flutter overlay.
+  /// The raw bytes are still sent unchanged to xterm/PTY; Flutter's text engine
+  /// performs shaping and bidi layout in this separate view.
+  List<String> _arabicOverlayLines(_TerminalTab tab) {
+    final cleaned = ArabicShaper.forRtlDisplay(tab.recentOutput);
+    return cleaned
+        .split('\n')
+        .map((line) => line.trimRight())
+        .where((line) => line.trim().isNotEmpty && ArabicShaper.isArabic(line))
+        .toList(growable: false)
+        .reversed
+        .take(5)
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
+  }
+
   Future<void> _copyOutput() async {
     final tab = _selectedTab;
     if (tab == null || tab.recentOutput.isEmpty) { _showTerminalNotice('لا توجد مخرجات حديثة لنسخها.'); return; }
@@ -309,7 +321,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   void _showTerminalNotice(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+    ToastBar.show(context, SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
   }
 
   Future<void> _showHistorySearch() async {
@@ -338,7 +350,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
                       title: Text(history[index], style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 12)),
                       onTap: () {
                         Navigator.pop(dialogContext);
-                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index]); }
+                        if (tab.service.isInteractiveRunning) { tab.service.write(history[index] + '\n'); }
                         else { _showTerminalNotice('شغّل جلسة PTY أولاً.'); }
                       },
                     ))),
@@ -397,6 +409,92 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
+  Future<void> _startKaliFromLocalRootfs() async {
+    final tab = _selectedTab;
+    if (tab == null || _starting) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+    if (saved != null && saved.startsWith('/')) _kaliRootfsPath = saved;
+
+    final controller = TextEditingController(text: _kaliRootfsPath);
+    var path = _kaliRootfsPath;
+    if (!await File('$path/bin/bash').exists() ||
+        !await File('$path/bin/sh').exists()) {
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('مسار Kali Linux المحلي'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textDirection: TextDirection.ltr,
+            decoration: const InputDecoration(
+              labelText: 'مسار rootfs',
+              hintText: '/storage/emulated/0/Download/Kali',
+              helperText: 'اختر مجلدًا يحتوي bin/bash وbin/sh. لن يتم نسخ الملفات.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('تشغيل'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (selected == null || selected.isEmpty) return;
+      path = selected;
+      if (!path.startsWith('/') || path.contains('|') ||
+          path.contains('\\n') || path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _showTerminalNotice('مسار Kali غير صالح.');
+        return;
+      }
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+      if (!await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _showTerminalNotice('لم يتم العثور على bin/bash وbin/sh في المسار المحدد. تحقق من صلاحية الوصول إلى الملفات.');
+        return;
+      }
+    } else {
+      controller.dispose();
+    }
+
+    setState(() {
+      _starting = true;
+      _startupError = null;
+    });
+    try {
+      if (tab.service.isInteractiveRunning) await tab.service.stopInteractive();
+      tab.name = 'kali-' + tab.id.toString();
+      tab.terminal.write('\\r\\n[Zion] تشغيل Kali من rootfs المحلي دون نسخ الملفات: $path\\r\\n');
+      final connected = await tab.service.startInteractive(kaliRootfsPath: path);
+      if (mounted) {
+        setState(() {
+          tab.connected = connected;
+          if (!connected) {
+            _startupError = 'تعذر تشغيل Kali. تحقق من وجود PRoot وloader داخل Zion Userland ومن صلاحية الوصول إلى rootfs.';
+          }
+        });
+      }
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while launching local Kali rootfs'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تشغيل Kali: $error');
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
   Future<void> _toggleFullscreen() async {
     final next = !_isFullscreen;
     await SystemChrome.setEnabledSystemUIMode(next ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
@@ -410,7 +508,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.content_paste, 'لصق', _paste),
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
+      _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
+      _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
       _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
       _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
@@ -535,7 +635,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final loaded = await _ensureAiLoaded();
       if (!loaded) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ToastBar.show(context, 
             const SnackBar(
               content: Text('النموذج المحلي غير محمّل. افتح Offline AI وحمّل نموذجاً صغيراً أولاً.'),
             ),
@@ -719,7 +819,7 @@ $request''',
   Future<void> _showReadableOutput() async {
     final tab = _selectedTab;
     if (tab == null) return;
-    final text = ArabicShaper.shape(ArabicShaper.readableText(tab.recentOutput));
+    final text = ArabicShaper.readableText(tab.recentOutput);
     final hasArabic = ArabicShaper.isArabic(text);
     await showDialog<void>(
       context: context,
@@ -749,6 +849,7 @@ $request''',
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _arabicOverlayRefreshTimer?.cancel();
     if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
@@ -763,6 +864,13 @@ $request''',
   @override
   Widget build(BuildContext context) {
     final tab = _selectedTab;
+    final startupProgress = tab == null
+        ? const <String>[]
+        : tab.recentOutput
+            .split(RegExp(r'[\r\n]+'))
+            .where((line) => line.contains('[Userland]') || line.contains('[Terminal]'))
+            .where((line) => line.trim().isNotEmpty)
+            .toList();
     return Scaffold(
       backgroundColor: _palette.background,
       appBar: AppBar(
@@ -895,24 +1003,51 @@ $request''',
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Zion's splash mark stays behind the terminal cells. The
+                  // terminal renderer remains interactive and the mark is
+                  // intentionally subtle to preserve text contrast.
                   Positioned.fill(
                     child: IgnorePointer(
-                      child: ColoredBox(
-                        color: _palette.background.withOpacity(0.78),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: Opacity(
-                          opacity: 0.16,
-                          child: Image.asset(
-                            'assets/icons/app_icon.png',
-                            width: 220,
-                            height: 220,
-                            fit: BoxFit.contain,
-                            semanticLabel: 'Zion OS',
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: _palette.background),
+                        child: Center(
+                          child: Opacity(
+                            opacity: 0.14,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 180,
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _palette.accent,
+                                      width: 3,
+                                    ),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Z',
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontSize: 128,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'ZION OS',
+                                  style: TextStyle(
+                                    color: _palette.foreground,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 5,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -927,7 +1062,9 @@ $request''',
                       tab.terminal,
                       controller: tab.controller,
                       autofocus: tab.service.isInteractiveRunning,
-                      backgroundOpacity: 0.0,
+                      // Terminals should start with lowercase and must not autocorrect shell commands.
+                      keyboardType: TextInputType.visiblePassword,
+                      backgroundOpacity: 0.75,
                       cursorType: TerminalCursorType.block,
                       theme: _palette.toXtermTheme(),
                       textStyle: TerminalStyle(
@@ -937,9 +1074,46 @@ $request''',
                       simulateScroll: false,
                     ),
                   ),
+                  // xterm2's cell grid cannot correctly shape Arabic or apply
+                  // per-line RTL. Keep the live terminal interactive and show
+                  // the latest Arabic output in a separate Flutter text overlay.
+                  if (_showArabicOverlay && ArabicShaper.isArabic(tab.recentOutput))
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: 8,
+                      child: IgnorePointer(
+                        child: Material(
+                          color: _palette.surface.withOpacity(0.96),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            constraints: const BoxConstraints(maxHeight: 136),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: _palette.accent.withOpacity(0.65)),
+                            ),
+                            child: SingleChildScrollView(
+                              reverse: true,
+                              child: SelectableText(
+                                _arabicOverlayLines(tab).join('\n'),
+                                textDirection: TextDirection.rtl,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  color: _palette.foreground,
+                                  fontFamily: _fontFamily,
+                                  fontSize: _fontSize,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (_starting || !tab.service.isInteractiveRunning)
                     ColoredBox(
-                      color: _palette.background.withOpacity(0.64),
+                      color: _palette.background.withOpacity(0.94),
                       child: Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
@@ -951,23 +1125,10 @@ $request''',
                                 size: 42,
                                 color: _palette.accent,
                               ),
-                              if (_starting) ...[
-                                const SizedBox(height: 12),
-                                SizedBox(
-                                  width: 190,
-                                  child: LinearProgressIndicator(
-                                    backgroundColor: _palette.surface,
-                                    color: _palette.accent,
-                                    minHeight: 3,
-                                  ),
-                                ),
-                              ],
                               const SizedBox(height: 12),
                               Text(
                                 _starting
-                                    ? (_startupProgress.isEmpty
-                                        ? 'جارٍ فحص Bash المحلي وتجهيز Userland تلقائياً…'
-                                        : _startupProgress)
+                                    ? 'جارٍ تجهيز Userland وفتح جلسة PTY…'
                                     : 'جلسة الطرفية غير متصلة. لن تُفقد الأوامر بسبب إدخالها في جلسة متوقفة.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
@@ -975,6 +1136,30 @@ $request''',
                                   fontSize: 14,
                                 ),
                               ),
+                              if (_starting && startupProgress.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  constraints: const BoxConstraints(maxWidth: 520),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _palette.surface.withOpacity(0.92),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: _palette.accent.withOpacity(0.55)),
+                                  ),
+                                  child: Text(
+                                    startupProgress.reversed.take(5).toList().reversed.join('\n'),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                    textDirection: TextDirection.ltr,
+                                    style: TextStyle(
+                                      color: _palette.foreground,
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (!_starting) ...[
                                 const SizedBox(height: 16),
                                 FilledButton.icon(
