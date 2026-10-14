@@ -410,15 +410,29 @@ class MainActivity : FlutterFragmentActivity() {
         return try {
             ensureTerminalEnvironment()
             if (!nativePtyAvailable()) return 0
-            val nativeShell = if (shell == "zion-kali") {
-                val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
-                // PRoot and its loader are shipped by the verified Zion Userland
-                // package, not as JNI libraries in nativeLibraryDir.
-                val proot = File(filesDir, "usr/bin/proot")
-                val loader = File(filesDir, "usr/libexec/proot")
-                if (!File(rootfs, "bin/sh").isFile || !proot.canExecute() || !loader.isFile) return 0
-                "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
-            } else shell
+            fun validRootfs(rootfs: File): Boolean =
+                rootfs.isDirectory && File(rootfs, "bin/sh").isFile && File(rootfs, "bin/bash").isFile
+            val nativeShell = when {
+                shell == "zion-kali" -> {
+                    val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                shell?.startsWith("zion-kali@") == true -> {
+                    val rootfsPath = shell.removePrefix("zion-kali@").trim()
+                    if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
+                        rootfsPath.contains("|") || rootfsPath.contains("\\n") ||
+                        rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
+                    val rootfs = File(rootfsPath)
+                    val proot = File(filesDir, "usr/bin/proot")
+                    val loader = File(filesDir, "usr/libexec/proot")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
+                }
+                else -> shell
+            }
 
             val handle = nativeStartPty(rows, cols, nativeShell)
             if (handle <= 0) return 0
