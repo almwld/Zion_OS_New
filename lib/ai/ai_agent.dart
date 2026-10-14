@@ -54,8 +54,8 @@ class AIAgent {
     if (cleanMessage.isEmpty) return '';
     final rawResponse = await llama.generate(
       _buildPrompt(cleanMessage),
-      maxTokens: maxTokens.clamp(1, 256),
-      temperature: temperature.clamp(0.0, 1.5),
+      maxTokens: maxTokens.clamp(1, 256).toInt(),
+      temperature: temperature.clamp(0.0, 1.5).toDouble(),
     );
     final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
