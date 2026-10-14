@@ -84,6 +84,12 @@ class TerminalService {
   final StreamController<String> _output = StreamController<String>.broadcast();
   String _interactiveInputBuffer = '';
 
+  void _emitOutput(String event) {
+    // Installation can outlive a tab/service. Ignore late progress/output events
+    // after dispose instead of throwing StateError on a closed StreamController.
+    if (!_output.isClosed) _output.add(event);
+  }
+
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
   bool get isInteractiveRunning => _pty.isRunning;
@@ -127,21 +133,21 @@ class TerminalService {
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
       if (await _userlandInstaller.isInstalled(
-        onProgress: (message) => _output.add('$message\r\n'),
+        onProgress: (message) => _emitOutput('$message\r\n'),
       )) return _userlandBash;
       if (installIfMissing) {
-        _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
+        _emitOutput('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
-          onProgress: (message) => _output.add('$message\r\n'),
+          onProgress: (message) => _emitOutput('$message\r\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          _output.add('[Terminal] ✓ Userland ready\r\n');
+          _emitOutput('[Terminal] ✓ Userland ready\r\n');
           return _userlandBash;
         }
-        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
+        _emitOutput('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
       }
     } catch (e) {
-      _output.add('[Terminal] Userland check/install failed: $e\r\n');
+      _emitOutput('[Terminal] Userland check/install failed: $e\r\n');
     }
 
     const shell = '/system/bin/sh';
@@ -285,7 +291,7 @@ class TerminalService {
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'zion-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
-      _output.add('\x1b[2J\x1b[H');
+      _emitOutput('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
     }
     if (value == 'history') return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
@@ -340,7 +346,7 @@ class TerminalService {
   Future<bool> startInteractive() async {
     if (isInteractiveRunning) return true;
     if (!_authorized('<interactive-shell>')) {
-      _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
+      _emitOutput('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
@@ -348,7 +354,7 @@ class TerminalService {
     await _ensureTerminalEnvironment();
     final shell = await _findShell(installIfMissing: true);
     if (shell == null) {
-      _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
+      _emitOutput('No usable Userland Bash or Android system shell is available on this device.\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'unavailable',
@@ -359,7 +365,7 @@ class TerminalService {
       );
       return false;
     }
-    _output.add(shell == _userlandBash
+    _emitOutput(shell == _userlandBash
         ? 'Userland Bash ready: $shell\r\n'
         : 'Android shell ready: $shell\r\n');
 
@@ -370,14 +376,14 @@ class TerminalService {
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
-        _output.add('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
+        _emitOutput('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
         return false;
       }
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = _pty.output.listen(_output.add);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start Android shell PTY: $shell\r\n');
+        _emitOutput('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -389,7 +395,7 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(shell == _userlandBash
+      _emitOutput(shell == _userlandBash
           ? 'Connected to Userland: bash • native PTY\r\n'
           : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
@@ -402,7 +408,7 @@ class TerminalService {
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -413,7 +419,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: $e\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: $e\r\n');
       return false;
     }
   }
@@ -424,7 +430,7 @@ class TerminalService {
       // TerminalView sends one callback for every typed character. Report the
       // stopped session on Enter only, not on every keypress.
       if (input.contains('\n') || input.contains('\r')) {
-        _output.add(
+        _emitOutput(
           '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
           '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
         );
