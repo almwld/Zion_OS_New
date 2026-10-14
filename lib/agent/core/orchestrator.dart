@@ -329,6 +329,10 @@ class AgentOrchestrator {
   }
 
   Future<bool> _nativeAiAvailable() async {
+    // The Super Agent and its AI tool share this exact service instance.
+    // Avoid probing a native MethodChannel when this session has not loaded a
+    // model; in headless/test environments that channel may have no handler.
+    if (!ai.isLoaded) return false;
     try {
       return await ai.nativeLoaded.timeout(
         const Duration(milliseconds: 500),
