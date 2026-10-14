@@ -162,6 +162,16 @@ class LlamaService {
     }
   }
 
+  Future<bool> cancelGeneration() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelGeneration') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<void> unloadModel() async {
     try {
       await _channel.invokeMethod<void>('freeModel');
