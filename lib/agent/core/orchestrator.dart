@@ -79,7 +79,8 @@ class AgentOrchestrator {
                 permission == AgentPermission.externalSideEffect ||
                 (permission == AgentPermission.network && !isReadOnlyWeb)) ||
             toolRequiresApproval;
-        final declaredReview = step.risk == AgentRisk.review ||
+        final declaredReview =
+            (step.risk == AgentRisk.review && !isReadOnlyWeb) ||
             step.requiresApproval ||
             (step.permission != AgentPermission.readOnly &&
                 !(isReadOnlyWeb && step.permission == AgentPermission.network));
