@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
+import '../../widgets/toast_bar.dart';
 
 import '../../core/theme/zion_colors.dart';
 import '../../providers/theme_provider.dart';
@@ -353,7 +354,7 @@ class _SettingsAppState extends State<SettingsApp> {
             onPressed: () async {
               final ok = await tp.changePin(oldCtrl.text, newCtrl.text);
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastBar.show(context, 
                 SnackBar(
                   content: Text(
                     ok ? 'PIN changed successfully' : 'Invalid PIN',
