@@ -277,17 +277,32 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   );
 
-  IconData _eventIcon(AgentEvent e){
-    if(e.message.contains('⛔')||e.message.contains('❌'))return Icons.block;
-    if(e.message.contains('🔐'))return Icons.lock_outline;
-    if(e.message.contains('✅'))return Icons.check_circle_outline;
+  IconData _eventIcon(AgentEvent e) {
+    final message = e.message;
+    if (message.contains('محظور') || message.contains('فشل') || message.contains('خطأ')) {
+      return Icons.error_outline;
+    }
+    if (message.contains('موافقة') || message.contains('مراجعة')) {
+      return Icons.lock_outline;
+    }
+    if (message.contains('نجاح') || message.contains('اكتملت المهمة')) {
+      return Icons.check_circle_outline;
+    }
+    if (message.contains('البحث') || message.contains('HTTP')) return Icons.travel_explore;
     return Icons.bolt;
   }
 
-  Color _eventColor(AgentEvent e){
-    if(e.message.contains('⛔')||e.message.contains('❌'))return Colors.redAccent;
-    if(e.message.contains('🔐'))return Colors.orangeAccent;
-    if(e.message.contains('✅'))return Colors.greenAccent;
+  Color _eventColor(AgentEvent e) {
+    final message = e.message;
+    if (message.contains('محظور') || message.contains('فشل') || message.contains('خطأ')) {
+      return Colors.redAccent;
+    }
+    if (message.contains('موافقة') || message.contains('مراجعة')) {
+      return Colors.orangeAccent;
+    }
+    if (message.contains('نجاح') || message.contains('اكتملت المهمة')) {
+      return Colors.greenAccent;
+    }
     return Colors.white54;
   }
 
