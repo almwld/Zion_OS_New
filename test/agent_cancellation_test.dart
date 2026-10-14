@@ -37,9 +37,9 @@ class ReviewPolicy extends AgentPolicy {
       );
 }
 
-class SlowHttpTool extends AgentTool {
+class SlowBrowserTool extends AgentTool {
   final Duration delay;
-  SlowHttpTool(this.delay);
+  SlowBrowserTool(this.delay);
 
   @override
   String get name => 'browser';
@@ -57,7 +57,7 @@ class SlowHttpTool extends AgentTool {
   }
 }
 
-class NetworkHttpTool extends AgentTool {
+class NetworkBrowserTool extends AgentTool {
   @override
   String get name => 'browser';
 
@@ -96,7 +96,7 @@ void main() {
 
   test('read-only web retrieval respects the registered tool permission contract', () async {
     final orchestrator = AgentOrchestrator(
-      tools: ToolRegistry(customTools: [NetworkHttpTool()]),
+      tools: ToolRegistry(customTools: [NetworkBrowserTool()]),
       policy: const AgentPolicy(),
     );
     final result = await orchestrator.executeTask('ابحث عن معلومات');
@@ -181,7 +181,7 @@ void main() {
   });
 
   test('Orchestrator enforces the central step timeout', () async {
-    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 250))]);
+    final tools = ToolRegistry(customTools: [SlowBrowserTool(const Duration(milliseconds: 250))]);
     final orchestrator = AgentOrchestrator(
       tools: tools,
       policy: const AgentPolicy(),
@@ -198,7 +198,7 @@ void main() {
   });
 
   test('AgentRuntime cancellation interrupts an active orchestration', () async {
-    final tools = ToolRegistry(customTools: [SlowHttpTool(const Duration(milliseconds: 500))]);
+    final tools = ToolRegistry(customTools: [SlowBrowserTool(const Duration(milliseconds: 500))]);
     final runtime = AgentRuntime(
       orchestrator: AgentOrchestrator(tools: tools),
     );
