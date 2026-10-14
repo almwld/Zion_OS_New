@@ -53,6 +53,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   String _fontFamily = 'monospace';
   bool _showToolbar = true;
   bool _showArabicOverlay = true;
+  Timer? _arabicOverlayRefreshTimer;
   bool _showQuickCommands = false;
   bool _isFullscreen = false;
   TerminalPalette _palette = TerminalPalette.zion;
@@ -149,6 +150,13 @@ class _TerminalScreenState extends State<TerminalScreen> {
       // so first-run copy progress stays visible without making typing janky.
       if (data.contains('[Userland]') || data.contains('[Terminal]')) {
         setState(() {});
+      } else if (_showArabicOverlay && ArabicShaper.isArabic(data)) {
+        // Coalesce bursty PTY chunks so the overlay updates without rebuilding
+        // the whole terminal for every byte.
+        _arabicOverlayRefreshTimer?.cancel();
+        _arabicOverlayRefreshTimer = Timer(const Duration(milliseconds: 120), () {
+          if (mounted) setState(() {});
+        });
       }
       try {
         terminal.write(data);
@@ -750,6 +758,7 @@ $request''',
   @override
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _arabicOverlayRefreshTimer?.cancel();
     if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
