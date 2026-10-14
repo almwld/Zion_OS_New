@@ -515,6 +515,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
   }
 
+  @override void dispose() {
+    if (_generating) unawaited(_agent.llama.cancelGeneration());
+    _input.dispose();
+    _inputFocus.dispose();
+    _scroll.dispose();
+    unawaited(_agent.dispose());
+    super.dispose();
+  }
+}
 
 class _TypingDots extends StatefulWidget {
   const _TypingDots();
@@ -576,12 +585,3 @@ class _TypingDotsState extends State<_TypingDots>
   }
 }
 
-  @override void dispose() {
-    if (_generating) unawaited(_agent.llama.cancelGeneration());
-    _input.dispose();
-    _inputFocus.dispose();
-    _scroll.dispose();
-    unawaited(_agent.dispose());
-    super.dispose();
-  }
-}
