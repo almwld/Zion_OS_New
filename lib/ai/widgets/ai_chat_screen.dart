@@ -19,6 +19,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _loading = true;
   bool _loadingModel = false;
   bool _generating = false;
+  int _maxTokens = 128;
+  double _temperature = 0.25;
   String? _error;
 
   @override void initState() {
@@ -115,7 +117,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
     try {
-      final response = await _agent.chat(text, maxTokens: 128);
+      final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
       if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: response)));
     } catch (e) {
       if (mounted) setState(() => _messages.add(AgentMessage(
@@ -133,7 +135,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
       appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
-        if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
+        if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'محمل محلياً' : 'غير محمل'))),
+        if (_agent.isInitialized)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Column(children: [
+              Row(children: [const Expanded(child: Text('طول الإجابة')), Text('$_maxTokens رمز')]),
+              Slider(value: _maxTokens.toDouble(), min: 32, max: 256, divisions: 7, label: '$_maxTokens', onChanged: _generating ? null : (v) => setState(() => _maxTokens = v.round())),
+              Row(children: [const Expanded(child: Text('تنوع الإجابة')), Text(_temperature.toStringAsFixed(2))]),
+              Slider(value: _temperature, min: 0, max: 1, divisions: 20, label: _temperature.toStringAsFixed(2), onChanged: _generating ? null : (v) => setState(() => _temperature = v)),
+            ]),
+          ),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
         Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
           final m = _messages[i]; final user = m.role == 'user';
