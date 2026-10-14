@@ -16,7 +16,7 @@ void main() {
     });
 
     test('removes ANSI formatting and normalizes line endings', () {
-      const text = '\x1B[32mمرحبا\x1B[0m\r\n$ pwd\r';
+      const text = '\u001B[32mمرحبا\u001B[0m\r\n$ pwd\r';
       expect(ArabicShaper.readableText(text), 'مرحبا\n$ pwd\n');
     });
   });
