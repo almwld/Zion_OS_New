@@ -212,10 +212,20 @@ class _AgentScreenState extends State<AgentScreen> {
       backgroundColor:const Color(0xFF0B120E),
       title:const Row(children:[Icon(Icons.auto_awesome,color:Color(0xFF00FF41)),SizedBox(width:8),Text('Zion Super Agent')]),
       actions:[
-        IconButton(onPressed:_runtime.canCancel?null:()=>setState((){
-          _messages..clear()..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
-          _events.clear();_result=null;
-        },).alsoPlaceholdericon:const Icon(Icons.add_comment_outlined),tooltip:'محادثة جديدة'),
+        IconButton(
+          onPressed: (_runtime.canCancel || _submitting) ? null : () {
+            setState(() {
+              _messages
+                ..clear()
+                ..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
+              _events.clear();
+              _result = null;
+            });
+            unawaited(_persistMessages());
+          },
+          icon: const Icon(Icons.add_comment_outlined),
+          tooltip: 'محادثة جديدة',
+        ),
         IconButton(
           onPressed: _runtime.canCancel ? null : () {
             Navigator.of(context).push(MaterialPageRoute<void>(
