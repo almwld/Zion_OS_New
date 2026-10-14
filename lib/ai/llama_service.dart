@@ -9,7 +9,7 @@ class LlamaModel {
   factory LlamaModel.fromMap(Map<dynamic, dynamic> map) => LlamaModel(
     name: map['name']?.toString() ?? 'GGUF',
     path: map['path']?.toString() ?? '',
-    sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
+    sizeBytes: num.tryParse(map['sizeBytes']?.toString() ?? '')?.toInt() ?? 0,
     readable: map['readable'] == true,
   );
 }
@@ -22,22 +22,48 @@ class LlamaService {
   String? get currentModel => _modelPath;
 
   Future<List<LlamaModel>> discoverModels() async {
-    final value = await _channel.invokeMethod<List<dynamic>>('discoverModels');
-    return (value ?? const []).map((e) => LlamaModel.fromMap(Map<dynamic, dynamic>.from(e as Map))).toList();
+    try {
+      final value = await _channel.invokeMethod<List<dynamic>>('discoverModels');
+      return (value ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((e) => LlamaModel.fromMap(Map<dynamic, dynamic>.from(e)))
+          .toList(growable: false);
+    } on PlatformException {
+      return const <LlamaModel>[];
+    } on MissingPluginException {
+      return const <LlamaModel>[];
+    } on FormatException {
+      return const <LlamaModel>[];
+    }
   }
 
   Future<LlamaModel?> pickAndImportModel() async {
-    final value = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickModel');
-    if (value?['status'] != 'IMPORTED') return null;
-    return LlamaModel.fromMap(value!);
+    try {
+      final value = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickModel');
+      if (value?['status'] != 'IMPORTED') return null;
+      return LlamaModel.fromMap(value!);
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Discover every readable GGUF exposed by the Android bridge and choose a
   /// practical chat/instruct model automatically. Preference is given to
   /// instruction/chat-tuned names, then to a moderate model size.
-  Future<LlamaModel?> autoLoadBestModel({int threads = 4}) async {
+  Future<LlamaModel?> autoLoadBestModel({
+    int threads = 2,
+    int maxModelBytes = 2 * 1024 * 1024 * 1024,
+  }) async {
     final models = (await discoverModels())
-        .where((m) => m.readable && m.path.isNotEmpty)
+        .where((m) =>
+            m.readable &&
+            m.path.isNotEmpty &&
+            m.sizeBytes > 0 &&
+            m.sizeBytes <= maxModelBytes)
         .toList();
     if (models.isEmpty) return null;
 
@@ -51,11 +77,11 @@ class LlamaService {
       if (n.contains('llama')) s += 45;
       if (n.contains('tinyllama')) s += 35;
       if (n.contains('base')) s -= 25;
-      // Prefer models in a mobile-friendly range without making size a hard
-      // requirement; the native loader remains the final compatibility check.
+      // Oversized models are filtered before scoring to reduce avoidable
+      // low-memory process deaths on Android devices.
       final gb = m.sizeBytes / (1024 * 1024 * 1024);
-      if (gb >= 1.0 && gb <= 5.0) s += 25;
-      if (gb > 8.0) s -= 20;
+      if (gb >= 0.5 && gb <= 2.0) s += 25;
+      if (gb > 1.5) s -= 10;
       return s;
     }
 
@@ -73,15 +99,23 @@ class LlamaService {
 
   Future<bool> loadModel(
     String path, {
-    int threads = 4,
+    int threads = 2,
     String? loraPath,
     double loraScale = 1.0,
   }) async {
-    if (path.trim().isEmpty) return false;
+    if (path.trim().isEmpty || threads < 1) {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    }
+    // The native bridge frees its old model before loading a replacement.
+    // Reset cached state before the call to avoid stale readiness on failures.
+    _loaded = false;
+    _modelPath = null;
     try {
       final ok = await _channel.invokeMethod<bool>('loadModel', {
         'path': path,
-        'threads': threads.clamp(1, 4),
+        'threads': threads.clamp(1, 2).toInt(),
         if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
         'loraScale': loraScale > 0 ? loraScale : 1.0,
       }) ?? false;
@@ -99,30 +133,52 @@ class LlamaService {
     }
   }
 
-  Future<String> generate(String prompt, {int maxTokens = 512, double temperature = 0.7}) async {
-    if (!_loaded) return 'ERROR: النموذج المحلي غير محمل.';
-    final input = prompt.length > 6000 ? prompt.substring(0, 6000) : prompt;
-    final tokenLimit = maxTokens.clamp(1, 256);
+  /// Synchronize this service instance with the native singleton. The model may
+  /// have been loaded from the Offline AI screen using another Dart service instance.
+  Future<bool> refreshLoadedState() async {
+    try {
+      final loaded = await nativeLoaded;
+      _loaded = loaded;
+      if (!loaded) _modelPath = null;
+      return loaded;
+    } catch (_) {
+      return _loaded;
+    }
+  }
+
+  Future<String> generate(String prompt, {int maxTokens = 128, double temperature = 0.25}) async {
+    if (prompt.trim().isEmpty) return '';
+    if (!await refreshLoadedState()) return 'ERROR: النموذج المحلي غير محمل.';
     try {
       return (await _channel.invokeMethod<String>('generate', {
-        'prompt': input,
-        'maxTokens': tokenLimit,
-        'temperature': temperature.clamp(0.0, 1.0),
+        'prompt': prompt,
+        'maxTokens': maxTokens.clamp(1, 256).toInt(),
+        'temperature': temperature.clamp(0.0, 1.5).toDouble(),
       })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
-    } on PlatformException catch (error) {
-      return 'ERROR: تعذرت المعالجة المحلية: ${error.message ?? error.code}';
+    } on PlatformException catch (e) {
+      return 'ERROR: تعذر تشغيل النموذج المحلي: ${e.message ?? e.code}';
     } on MissingPluginException {
-      return 'ERROR: محرك الذكاء الاصطناعي المحلي غير متاح في هذا البناء.';
+      return 'ERROR: محرك الذكاء الاصطناعي المحلي غير متاح على هذا البناء.';
+    }
+  }
+
+  Future<bool> cancelGeneration() async {
+    try {
+      return await _channel.invokeMethod<bool>('cancelGeneration') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 
   Future<void> unloadModel() async {
     try {
-      await _channel.invokeMethod('freeModel');
+      await _channel.invokeMethod<void>('freeModel');
     } on PlatformException {
-      // The engine may already have been released during activity teardown.
+      // Native cleanup may already have happened during Activity teardown.
     } on MissingPluginException {
-      // Unit tests and unsupported runtimes have no native AI bridge.
+      // Keep teardown idempotent if the native AI bridge is not present.
     } finally {
       _loaded = false;
       _modelPath = null;
