@@ -67,14 +67,25 @@ class AgentOrchestrator {
         // effective permission from the registered tool implementation too.
         final requiredPermissions = tool.requiredPermissions(params);
         final toolRequiresApproval = tool.requiresApproval(params);
+        // Read-only web retrieval is a normal agent capability. Mutations and
+        // local/process side effects still require explicit approval.
+        final isReadOnlyWeb = tool.name == 'browser' &&
+            (params['action']?.toString() == 'search' ||
+                params['action']?.toString() == 'fetch');
         final requiresSensitiveApproval =
-            requiredPermissions.any((permission) => permission != AgentPermission.readOnly) ||
+            requiredPermissions.any((permission) =>
+                permission == AgentPermission.localWrite ||
+                permission == AgentPermission.process ||
+                permission == AgentPermission.externalSideEffect ||
+                (permission == AgentPermission.network && !isReadOnlyWeb)) ||
             toolRequiresApproval;
+        final declaredReview = step.risk == AgentRisk.review ||
+            step.requiresApproval ||
+            (step.permission != AgentPermission.readOnly &&
+                !(isReadOnlyWeb && step.permission == AgentPermission.network));
         final decision = step.risk == AgentRisk.blocked
             ? const AgentPolicyDecision(risk: AgentRisk.blocked, reason: 'الخطوة مصنفة محظورة من مخطط Zion Agent.', requiresApproval: false)
-            : (step.risk == AgentRisk.review ||
-                    step.permission != AgentPermission.readOnly ||
-                    step.requiresApproval ||
+            : (declaredReview ||
                     requiresSensitiveApproval)
                 ? AgentPolicyDecision(risk: policyDecision.risk == AgentRisk.blocked ? AgentRisk.blocked : AgentRisk.review, reason: policyDecision.risk == AgentRisk.blocked ? policyDecision.reason : 'الخطوة تتطلب مراجعة صلاحياتها قبل التنفيذ.', requiresApproval: true)
                 : policyDecision;
@@ -291,7 +302,18 @@ class AgentOrchestrator {
         ),
       ]);
     }
-    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات عبر الويب',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)})]);
+    if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
+      final query = task.replaceFirst(RegExp(r'^(?:من فضلك\\s*)?(?:ابحث|بحث|search|تحقق من|آخر الأخبار)\\s*', caseSensitive: false), '').trim();
+      return AgentPlan(steps:[
+        AgentStep(
+          id:'1',
+          description:'البحث الفعلي على الويب عن: ' + (query.isEmpty ? task : query),
+          tool:'browser',
+          params:{'action':'search','query':query.isEmpty ? task : query},
+          permission:AgentPermission.network,
+        ),
+      ]);
+    }
     if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
     return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
   }
@@ -350,17 +372,17 @@ class AgentOrchestrator {
   }
 
   Future<String> _report(String task,List<StepResult> results) async {
-    final summary=results.asMap().entries.map((entry) {
+    // Keep the final response evidence-based: show tool output, not a second
+    // model-generated narrative that could overstate what actually happened.
+    return results.asMap().entries.map((entry) {
+      final index = entry.key + 1;
       final result = entry.value;
-      final details = result.data == null ? '' : '\nالمخرجات: ' + _stepOutput(result);
-      final status = result.success ? 'نجاح: ' + result.summary : 'فشل: ' + (result.error ?? result.summary);
-      return 'الخطوة ${entry.key + 1}: ' + status + details;
-    }).join('\n');
-    if(await _nativeAiAvailable()){
-      final response=await ai.generate('المهمة: '+task+'\nالنتائج الفعلية:\n'+summary+'\nاكتب تقريراً مختصراً بالعربية يميز بين ما تم تنفيذه وما لم يتم، ولا تدّع نجاح خطوة فاشلة.',maxTokens:700,temperature:0.2);
-      if(!response.startsWith('ERROR:'))return response;
-    }
-    return summary;
+      final status = result.success ? 'نجاح' : 'فشل';
+      final details = result.data == null ? '' : '\\nالمخرجات الفعلية: ' + _stepOutput(result);
+      final error = result.error == null ? '' : '\\nالخطأ: ' + result.error!;
+      final duration = result.duration.inMilliseconds;
+      return 'الخطوة $index — $status\\n' + result.summary + details + error + '\\nالمدة: ' + duration.toString() + 'ms';
+    }).join('\\n\\n');
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));

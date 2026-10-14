@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
@@ -148,7 +149,7 @@ class _AgentScreenState extends State<AgentScreen> {
     backgroundColor:const Color(0xFF070B08),
     appBar:AppBar(
       backgroundColor:const Color(0xFF0B120E),
-      title:const Row(children:[Icon(Icons.auto_awesome,color:Color(0xFF00FF41)),SizedBox(width:8),Text('Zion Super Agent')]),
+      title:const Row(children:[Icon(Icons.smart_toy_outlined,color:Color(0xFF00FF41)),SizedBox(width:8),Text('Zion Super Agent')]),
       actions:[
         IconButton(onPressed:_runtime.canCancel?null:()=>setState((){
           _messages..clear()..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
@@ -241,17 +242,49 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   );
 
-  Widget _resultCard()=>Card(
-    color:const Color(0xFF101812),
-    child:Padding(
-      padding:const EdgeInsets.all(14),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[Icon(_result!.success?Icons.task_alt:Icons.error_outline,color:_result!.success?Colors.greenAccent:Colors.redAccent),const SizedBox(width:8),const Text('النتيجة النهائية')]),
-        const SizedBox(height:8),
-        SelectableText(_result!.report??_result!.error??'لا توجد نتيجة.',style:const TextStyle(color:Colors.white70,height:1.4)),
-      ]),
-    ),
-  );
+  Widget _resultCard() {
+    final result = _result!;
+    final evidence = result.steps.map((step) {
+      final output = step.data == null
+          ? ''
+          : (step.data is String ? step.data.toString() : step.data.toString());
+      return <String>[
+        step.success ? 'نجاح' : 'فشل',
+        step.summary,
+        if (output.isNotEmpty) output,
+        if (step.error != null) 'الخطأ: ${step.error}',
+        'المدة: ${step.duration.inMilliseconds} ms',
+      ].join('\\n');
+    }).join('\\n\\n');
+    final visibleResult = evidence.isNotEmpty
+        ? evidence
+        : (result.error ?? result.report ?? 'لم ترجع الأداة أي مخرجات.');
+    return Card(
+      color: const Color(0xFF101812),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(result.success ? Icons.task_alt : Icons.error_outline,
+                  color: result.success ? Colors.greenAccent : Colors.redAccent),
+              const SizedBox(width: 8),
+              Expanded(child: Text(result.success ? 'نتائج التنفيذ الفعلية' : 'نتيجة التنفيذ')),
+              IconButton(
+                tooltip: 'نسخ النتائج',
+                onPressed: () => Clipboard.setData(ClipboardData(text: visibleResult)),
+                icon: const Icon(Icons.copy_outlined, size: 18),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            SelectableText(visibleResult,
+                style: const TextStyle(color: Colors.white70, height: 1.4)),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _composer()=>SafeArea(
     child:Padding(
