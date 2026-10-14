@@ -275,10 +275,22 @@ class ZionUserlandInstaller {
     void Function(String message)? onProgress,
   }) async {
     try {
-      final sourceDir = Directory(sourcePath);
-      if (!await sourceDir.exists()) {
+      final requestedSourceDir = Directory(sourcePath);
+      if (!await requestedSourceDir.exists()) {
         return const ZionUserlandInstallResult(success: false, message: 'مجلد النسخة الاحتياطية غير موجود.');
       }
+      // Some backup tools wrap the actual Termux prefix in folders such as
+      // termux_usr_backup/usr. Resolve the real prefix before copying; otherwise
+      // a successful copy can still leave usr/bin empty.
+      final sourceDir = await _resolveBackupUsrRoot(requestedSourceDir, onProgress: onProgress);
+      if (sourceDir == null) {
+        await _diagnoseBackupLayout(requestedSourceDir, onProgress: onProgress);
+        return const ZionUserlandInstallResult(
+          success: false,
+          message: 'لم يُعثر داخل النسخة الاحتياطية على مجلد bin غير فارغ. لم تُنسخ بنية غير معروفة إلى usr؛ راجع تشخيص بنية النسخة الاحتياطية.',
+        );
+      }
+      onProgress?.call('[Userland] Resolved backup root: ${sourceDir.path}');
       final targetDir = Directory(ZionBootstrap.prefix);
       await targetDir.create(recursive: true);
 
@@ -335,6 +347,85 @@ class ZionUserlandInstaller {
       return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
     } catch (e) {
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
+    }
+  }
+
+  /// Finds the actual Termux prefix in backups that may be wrapped in
+  /// one or more folders. An empty bin/ is never accepted as a valid prefix.
+  Future<Directory?> _resolveBackupUsrRoot(
+    Directory requestedRoot, {
+    void Function(String message)? onProgress,
+  }) async {
+    final queue = <({Directory dir, int depth})>[(dir: requestedRoot, depth: 0)];
+    final visited = <String>{};
+    Directory? best;
+    var bestScore = -1;
+    while (queue.isNotEmpty) {
+      final current = queue.removeAt(0);
+      if (!visited.add(current.dir.path) || current.depth > 4) continue;
+      final bin = Directory('${current.dir.path}/bin');
+      if (await bin.exists()) {
+        try {
+          final entries = await bin.list(followLinks: false).take(10000).toList();
+          if (entries.isNotEmpty) {
+            var score = entries.length > 100 ? 100 : entries.length;
+            for (final marker in <String>['bash', 'sh', 'coreutils', 'apt', 'proot']) {
+              if (await File('${bin.path}/$marker').exists() ||
+                  await Link('${bin.path}/$marker').exists()) {
+                score += marker == 'bash' ? 1000 : 20;
+              }
+            }
+            if (score > bestScore) {
+              best = current.dir;
+              bestScore = score;
+            }
+          }
+        } catch (e) {
+          onProgress?.call('[Userland] Could not inspect ${bin.path}: $e');
+        }
+      }
+      if (current.depth == 4) continue;
+      try {
+        await for (final entity in current.dir.list(followLinks: false)) {
+          if (entity is Directory) {
+            final name = entity.path.split('/').last;
+            if (name == 'proc' || name == 'sys' || name == 'dev') continue;
+            queue.add((dir: entity, depth: current.depth + 1));
+          }
+        }
+      } catch (e) {
+        onProgress?.call('[Userland] Could not scan ${current.dir.path}: $e');
+      }
+    }
+    return best;
+  }
+
+  Future<void> _diagnoseBackupLayout(
+    Directory root, {
+    void Function(String message)? onProgress,
+  }) async {
+    const maxDepth = 3;
+    final queue = <({Directory dir, int depth})>[(dir: root, depth: 0)];
+    var shown = 0;
+    while (queue.isNotEmpty && shown < 80) {
+      final current = queue.removeAt(0);
+      if (current.depth > maxDepth) continue;
+      try {
+        final entries = await current.dir.list(followLinks: false).take(40).toList();
+        final line = '[Userland] Backup layout: ${current.dir.path} (${entries.length} entries)';
+        print(line);
+        onProgress?.call(line);
+        shown++;
+        if (current.depth < maxDepth) {
+          for (final entry in entries) {
+            if (entry is Directory) {
+              queue.add((dir: entry, depth: current.depth + 1));
+            }
+          }
+        }
+      } catch (e) {
+        onProgress?.call('[Userland] Cannot inspect ${current.dir.path}: $e');
+      }
     }
   }
 
