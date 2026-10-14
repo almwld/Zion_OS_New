@@ -43,6 +43,7 @@ void main() {
       expect(source, contains('static Future<String?> _resolveRootfsPath()'));
       expect(source, contains("'-r', rootfsPath"));
       expect(source, contains('no copy performed'));
+      expect(source, contains('rootfsPath == _installPath && await hasChroot()'));
     });
   });
 }
