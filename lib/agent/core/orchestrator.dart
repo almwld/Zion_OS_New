@@ -318,7 +318,7 @@ class AgentOrchestrator {
   String _stepOutput(StepResult result) {
     final value = result.data ?? result.summary;
     final output = value is String ? value : jsonEncode(value);
-    return output.length > 12000 ? '${output.substring(0, 12000)}…[تم اقتطاع المخرجات]' : output;
+    return output.length > 3000 ? '${output.substring(0, 3000)}…[تم اقتطاع المخرجات]' : output;
   }
 
   Future<bool> _nativeAiAvailable() async {
@@ -334,12 +334,12 @@ class AgentOrchestrator {
   Future<String> _report(String task,List<StepResult> results) async {
     final summary=results.asMap().entries.map((entry) {
       final result = entry.value;
-      final details = result.data == null ? '' : '\\nالمخرجات: ' + _stepOutput(result);
+      final details = result.data == null ? '' : '\nالمخرجات: ' + _stepOutput(result);
       final status = result.success ? 'نجاح: ' + result.summary : 'فشل: ' + (result.error ?? result.summary);
       return 'الخطوة ${entry.key + 1}: ' + status + details;
-    }).join('\\n');
+    }).join('\n');
     if(await _nativeAiAvailable()){
-      final response=await ai.generate('المهمة: '+task+'\\nالنتائج الفعلية:\\n'+summary+'\\nاكتب تقريراً مختصراً بالعربية يميز بين ما تم تنفيذه وما لم يتم، ولا تدّع نجاح خطوة فاشلة.',maxTokens:700,temperature:0.2);
+      final response=await ai.generate('المهمة: '+task+'\nالنتائج الفعلية:\n'+summary+'\nاكتب تقريراً مختصراً بالعربية يميز بين ما تم تنفيذه وما لم يتم، ولا تدّع نجاح خطوة فاشلة.',maxTokens:700,temperature:0.2);
       if(!response.startsWith('ERROR:'))return response;
     }
     return summary;
