@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/services/backup_service.dart';
+import '../../../widgets/toast_bar.dart';
 
 class BackupManager extends StatefulWidget {
   const BackupManager({super.key});
@@ -30,7 +31,7 @@ class _BackupManagerState extends State<BackupManager> {
             final name=controller.text.trim().isEmpty?'Zion':controller.text.trim();
             final result=await _service.createBackup(name);
             if(ctx.mounted)Navigator.pop(ctx);
-            if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Real backup created':'Backup failed: '+(result['error']??'unknown error').toString())));
+            if(mounted)ToastBar.show(context, SnackBar(content:Text(result['success']==true?'Real backup created':'Backup failed: '+(result['error']??'unknown error').toString())));
             await _load();
           },child:const Text('Create')),
         ],
@@ -40,7 +41,7 @@ class _BackupManagerState extends State<BackupManager> {
   }
   Future<void> _restore(String path) async {
     final result=await _service.restoreBackup(path);
-    if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result['success']==true?'Restored '+(result['restored_items']??0).toString()+' settings':'Restore failed: '+(result['error']??'unknown error').toString())));
+    if(mounted)ToastBar.show(context, SnackBar(content:Text(result['success']==true?'Restored '+(result['restored_items']??0).toString()+' settings':'Restore failed: '+(result['error']??'unknown error').toString())));
   }
   Future<void> _delete(String path) async{await _service.deleteBackup(path);await _load();}
   @override Widget build(BuildContext context){
