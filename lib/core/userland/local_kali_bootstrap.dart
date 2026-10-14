@@ -68,7 +68,7 @@ class ZionLocalKaliBootstrap {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       if (json['state'] == 'READY' &&
           json['sha256'] == ZionLocalKaliConfig.expectedSha256 &&
-          await File('${ZionLocalKaliConfig.rootfs(filesDir).path}/bin/sh').exists()) {
+          await ZionLocalKaliConfig.rootfs(filesDir).exists()) {
         return ZionKaliInstallState.ready;
       }
     } catch (_) {}
@@ -124,13 +124,10 @@ class ZionLocalKaliBootstrap {
           progress(ZionKaliInstallState.copying, p, 'نسخ الحزمة...');
         });
       } else {
-        final copied = await _storage.invokeMethod<bool>('copyDocumentToPrivate', <String, Object>{
+        await _storage.invokeMethod<void>('copyDocumentToPrivate', <String, Object>{
           'uri': discovered.first['uri'] as String,
           'destination': internal.path,
         });
-        if (copied != true) {
-          throw StateError('تعذر نسخ الحزمة المختارة إلى مساحة Zion الخاصة.');
-        }
         progress(ZionKaliInstallState.copying, 100, 'تم نسخ الحزمة.');
       }
 
@@ -148,13 +145,12 @@ class ZionLocalKaliBootstrap {
       }
       progress(ZionKaliInstallState.verifying, 100, 'SHA-256 صحيح.');
 
-      // Extract into a staging directory and only replace the active rootfs after
-      // extraction, permissions, and shell validation all succeed.
-      final finalRootfs = ZionLocalKaliConfig.rootfs(filesDir);
+      final targetRootfs = ZionLocalKaliConfig.rootfs(filesDir);
+      await targetRootfs.parent.create(recursive: true);
       final rootfs = Directory(
-        '${finalRootfs.parent.path}/.rootfs-staging-${DateTime.now().microsecondsSinceEpoch}',
+        targetRootfs.path + '.staging-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
       );
-      if (await rootfs.exists()) await rootfs.delete(recursive: true);
       await rootfs.create(recursive: true);
 
       progress(ZionKaliInstallState.decompressing, 10, 'فك ضغط tar.xz...');
@@ -182,36 +178,17 @@ class ZionLocalKaliBootstrap {
           },
         );
         final prefix = '${ZionLocalKaliConfig.rootfsName}/';
-        String normalizeArchiveName(String name) {
-          var value = name;
-          while (value.startsWith('./')) {
-            value = value.substring(2);
-          }
-          return value;
-        }
-        // NetHunter builds have appeared both with and without a top-level
-        // kali-arm64/ directory. Accept either archive layout, but never escape
-        // the staging root or trust a path supplied by the archive.
-        final hasTopLevelRoot = archive.any(
-          (entry) => normalizeArchiveName(entry.name).startsWith(prefix),
-        );
-        final modePaths = <int, List<String>>{};
         for (var i = 0; i < archive.length; i++) {
           final entry = archive[i];
-          final normalizedName = normalizeArchiveName(entry.name);
-          if (hasTopLevelRoot && !normalizedName.startsWith(prefix)) continue;
-          final relative = hasTopLevelRoot
-              ? normalizedName.substring(prefix.length)
-              : normalizedName;
-          if (relative.isEmpty || relative == '.') continue;
+          if (!entry.name.startsWith(prefix)) continue;
+          final relative = entry.name.substring(prefix.length);
+          if (relative.isEmpty) continue;
           final destination = File('${rootfs.path}/$relative');
           if (!destination.absolute.path.startsWith('${rootfs.absolute.path}/')) {
             throw SecurityException('Tar traversal: ${entry.name}');
           }
-          final mode = entry.mode & 0x1ff;
           if (entry.isDirectory) {
-            await Directory(destination.path).create(recursive: true);
-            if (mode != 0 && mode != 0x1ed) (modePaths[mode] ??= <String>[]).add(destination.path);
+            await destination.create(recursive: true);
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
             try { await Link(destination.path).delete(); } catch (_) {}
@@ -220,7 +197,6 @@ class ZionLocalKaliBootstrap {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
             await destination.writeAsBytes(entry.content, flush: false);
-            if (mode != 0 && mode != 0x1a4) (modePaths[mode] ??= <String>[]).add(destination.path);
           }
           if (i % 250 == 0) {
             progress(
@@ -230,72 +206,42 @@ class ZionLocalKaliBootstrap {
             );
           }
         }
-        // Preserve executable bits from the tar metadata. Batch paths to avoid
-        // spawning one chmod process for every file in a multi-gigabyte rootfs.
-        for (final group in modePaths.entries) {
-          for (var start = 0; start < group.value.length; start += 128) {
-            final end = (start + 128).clamp(0, group.value.length);
-            final changed = await Process.run(
-              '/system/bin/chmod',
-              <String>[group.key.toRadixString(8), ...group.value.sublist(start, end)],
-              runInShell: false,
-            );
-            if (changed.exitCode != 0) {
-              throw StateError('تعذر استعادة صلاحيات ملفات Kali: ${changed.stderr}');
-            }
-          }
-        }
       } finally {
         await tarInput.close();
       }
 
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
-      if (!await File('${rootfs.path}/bin/sh').exists()) {
-        throw StateError('حزمة Kali لم تنتج rootfs صالحًا: /bin/sh غير موجود.');
+      if (!await File('${rootfs.path}/bin/sh').exists() ||
+          !await File('${rootfs.path}/bin/bash').exists()) {
+        throw StateError('Kali rootfs extraction did not produce bin/sh and bin/bash.');
       }
       progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
 
-      await finalRootfs.parent.create(recursive: true);
-      final distroDirectory = finalRootfs.parent;
-      final marker = File('${distroDirectory.path}/.zion-rootfs.json');
-      final backup = Directory('${distroDirectory.path}/.rootfs-backup-${DateTime.now().microsecondsSinceEpoch}');
-      var movedPrevious = false;
-      if (await finalRootfs.exists()) {
-        await finalRootfs.rename(backup.path);
-        movedPrevious = true;
-      }
+      final oldRootfs = Directory(
+        targetRootfs.path + '.old-' +
+            DateTime.now().microsecondsSinceEpoch.toString(),
+      );
+      if (await targetRootfs.exists()) await targetRootfs.rename(oldRootfs.path);
       try {
-        await rootfs.rename(finalRootfs.path);
-        await marker.writeAsString(jsonEncode({
-          'distro': 'kali',
-          'source': 'local-verified-archive',
-          'archive': ZionLocalKaliConfig.expectedFilename,
-          'sha256': ZionLocalKaliConfig.expectedSha256,
-          'installedAt': DateTime.now().toUtc().toIso8601String(),
-        }), flush: true);
+        await rootfs.rename(targetRootfs.path);
+        if (await oldRootfs.exists()) await oldRootfs.delete(recursive: true);
       } catch (_) {
-        if (await finalRootfs.exists()) {
-          try { await finalRootfs.delete(recursive: true); } catch (_) {}
-        }
-        if (movedPrevious && await backup.exists()) {
-          try { await backup.rename(finalRootfs.path); } catch (_) {}
+        if (!await targetRootfs.exists() && await oldRootfs.exists()) {
+          await oldRootfs.rename(targetRootfs.path);
         }
         rethrow;
-      }
-      if (movedPrevious && await backup.exists()) {
-        try { await backup.delete(recursive: true); } catch (_) {}
       }
 
       await _saveState(filesDir, 'READY', extra: <String, Object>{
         'sha256': ZionLocalKaliConfig.expectedSha256,
-        'size_bytes': await _directorySize(finalRootfs),
-        'rootfs_path': finalRootfs.path,
+        'size_bytes': await _directorySize(targetRootfs),
+        'rootfs_path': 'home/.zion/dists/kali/rootfs',
       });
       try { await File(tarPath).delete(); } catch (_) {}
       try { await internal.delete(); } catch (_) {}
       progress(ZionKaliInstallState.ready, 100, 'Kali جاهز للتشغيل.');
-      return ZionKaliInstallResult.success(rootfs);
+      return ZionKaliInstallResult.success(targetRootfs);
     } catch (e) {
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
       return ZionKaliInstallResult.failure(e);
