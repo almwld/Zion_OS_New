@@ -171,7 +171,7 @@ class _RadarWidgetState extends State<RadarWidget>
     final width = _isExpanded ? screen.width * 0.9 : 180.0;
     final height = _isExpanded ? screen.height * 0.68 : 180.0;
     final points = _points;
-    final selected = points.where((p) => p.name == _selectedPoint).firstOrNull;
+    RadarDataPoint? selected;\n    for (final point in points) {\n      if (point.name == _selectedPoint) {\n        selected = point;\n        break;\n      }\n    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
