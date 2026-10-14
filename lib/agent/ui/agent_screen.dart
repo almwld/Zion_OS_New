@@ -254,8 +254,8 @@ class _AgentScreenState extends State<AgentScreen> {
         if (output.isNotEmpty) output,
         if (step.error != null) 'الخطأ: ${step.error}',
         'المدة: ${step.duration.inMilliseconds} ms',
-      ].join('\\n');
-    }).join('\\n\\n');
+      ].join('\n');
+    }).join('\n\n');
     final visibleResult = evidence.isNotEmpty
         ? evidence
         : (result.error ?? result.report ?? 'لم ترجع الأداة أي مخرجات.');

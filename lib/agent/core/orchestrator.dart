@@ -378,11 +378,11 @@ class AgentOrchestrator {
       final index = entry.key + 1;
       final result = entry.value;
       final status = result.success ? 'نجاح' : 'فشل';
-      final details = result.data == null ? '' : '\\nالمخرجات الفعلية: ' + _stepOutput(result);
-      final error = result.error == null ? '' : '\\nالخطأ: ' + result.error!;
+      final details = result.data == null ? '' : '\nالمخرجات الفعلية: ' + _stepOutput(result);
+      final error = result.error == null ? '' : '\nالخطأ: ' + result.error!;
       final duration = result.duration.inMilliseconds;
-      return 'الخطوة $index — $status\\n' + result.summary + details + error + '\\nالمدة: ' + duration.toString() + 'ms';
-    }).join('\\n\\n');
+      return 'الخطوة $index — $status\\n' + result.summary + details + error + '\nالمدة: ' + duration.toString() + 'ms';
+    }).join('\n\\n');
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));

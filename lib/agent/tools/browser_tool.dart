@@ -25,7 +25,26 @@ class BrowserTool extends AgentTool {
   }
 
   bool _isPrivateOrLocalHost(String rawHost) {
-    final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\\.$'), '');
+    final host = rawHost.toLowerCase().replaceFirst(RegExp(r'\.), '');
+    if (host == 'localhost' || host.endsWith('.localhost') ||
+        host.endsWith('.local') || host == '::1' || host == '[::1]') {
+      return true;
+    }
+    final parts = host.split('.');
+    if (parts.length == 4) {
+      final octets = parts.map(int.tryParse).toList();
+      if (octets.every((value) => value != null && value >= 0 && value <= 255)) {
+        final a = octets[0]!, c = octets[1]!;
+        return a == 0 || a == 10 || a == 127 ||
+            (a == 169 && c == 254) ||
+            (a == 172 && c >= 16 && c <= 31) ||
+            (a == 192 && c == 168) || a >= 224;
+      }
+    }
+    return false;
+  }
+}
+), '');
     if (host == 'localhost' || host.endsWith('.localhost') ||
         host.endsWith('.local') || host == '::1' || host == '[::1]') {
       return true;
