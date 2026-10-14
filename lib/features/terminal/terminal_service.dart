@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import '../../core/userland/zion_userland_installer.dart';
-import '../../core/userland/local_kali_bootstrap.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
@@ -83,6 +82,10 @@ class TerminalService {
   StreamSubscription<String>? _ptyOutputSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
+  void _emitOutput(String event) {
+    // Async install/progress work may finish after a terminal tab is disposed.
+    if (!_output.isClosed) _output.add(event);
+  }
   String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
@@ -125,24 +128,56 @@ class TerminalService {
     return null;
   }
 
+  Future<String?> _findUsableUserlandShell() async {
+    final prefix = '/data/data/com.zion.os/files/usr';
+    for (final name in const <String>['bash', 'sh', 'dash']) {
+      final path = '$prefix/bin/$name';
+      try {
+        if (!await File(path).exists()) continue;
+        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+        if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
+          _emitOutput('[Userland] Using verified shell: $path\r\n');
+          return path;
+        }
+        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+      } catch (error) {
+        _emitOutput('[Userland] Cannot execute $path: $error\r\n');
+      }
+    }
+    return null;
+  }
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
+      // A usable sh/dash may remain after an incomplete backup restore. Check
+      // it before invoking the installer so each app launch does not recopy
+      // the entire Userland tree just because bash is absent.
+      final existingUserlandShell = await _findUsableUserlandShell();
+      if (existingUserlandShell != null) return existingUserlandShell;
       if (await _userlandInstaller.isInstalled(
-        onProgress: (message) => _output.add('$message\r\n'),
-      )) return _userlandBash;
+        onProgress: (message) => _emitOutput('$message\r\n'),
+      )) {
+        final shell = await _findUsableUserlandShell();
+        if (shell != null) return shell;
+      }
       if (installIfMissing) {
-        _output.add('[Terminal] First run: installing Userland from local storage...\r\n');
+        _emitOutput('[Terminal] First run: installing Userland from local storage...\r\n');
         final result = await _userlandInstaller.installLatest(
-          onProgress: (message) => _output.add('$message\r\n'),
+          onProgress: (message) => _emitOutput('$message\r\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          _output.add('[Terminal] ✓ Userland ready\r\n');
+          _emitOutput('[Terminal] ✓ Userland ready\r\n');
           return _userlandBash;
         }
-        _output.add('[Terminal] Userland unavailable: ${result.message}. Falling back to Android shell.\r\n');
+        _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
+        final recoveredShell = await _findUsableUserlandShell();
+        if (recoveredShell != null) {
+          _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
+          return recoveredShell;
+        }
+        _emitOutput('[Terminal] Falling back to /system/bin/sh.\r\n');
       }
     } catch (e) {
-      _output.add('[Terminal] Userland check/install failed: $e\r\n');
+      _emitOutput('[Terminal] Userland check/install failed: $e\r\n');
     }
 
     const shell = '/system/bin/sh';
@@ -286,7 +321,7 @@ class TerminalService {
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'zion-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
-      _output.add('\x1b[2J\x1b[H');
+      _emitOutput('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
     }
     if (value == 'history') return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
@@ -338,83 +373,79 @@ class TerminalService {
     }
   }
 
-  Future<bool> startInteractive({bool kali = false}) async {
-    if (isInteractiveRunning) return true;
+  Future<bool> startInteractive({String? kaliRootfsPath}) async {
+    if (isInteractiveRunning && kaliRootfsPath == null) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null) {
+      await stopInteractive();
+    }
     if (!_authorized('<interactive-shell>')) {
-      _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
+      _emitOutput('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
+    // Kali uses the already-installed Zion PRoot runtime and a local rootfs;
+    // it must not trigger Userland restore or copy the selected rootfs.
     await _ensureTerminalEnvironment();
-
     String? shell;
-    if (kali) {
-      const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
-      const proot = '/data/data/com.zion.os/files/usr/bin/proot';
-      const loader = '/data/data/com.zion.os/files/usr/libexec/proot';
-      final rootfsReady = await File('$rootfs/bin/sh').exists();
-      if (!rootfsReady) {
-        _output.add('[Kali] لم يتم العثور على rootfs صالح في المسار المشترك؛ أبحث عن الحزمة المحلية.\r\n');
-        var lastKaliProgress = -1;
-        final installed = await const ZionLocalKaliBootstrap().install(
-          onProgress: (progress) {
-            // Emit only meaningful percentage changes so a large archive does
-            // not flood the PTY stream or rebuild the terminal for every file.
-            if (progress.percent != lastKaliProgress ||
-                progress.state == ZionKaliInstallState.ready ||
-                progress.state == ZionKaliInstallState.error) {
-              lastKaliProgress = progress.percent;
-              _output.add('[Kali] ${progress.percent}% — ${progress.message}\r\n');
-            }
-          },
-        );
-        if (!installed.isSuccess) {
-          _output.add('[Kali] فشل تثبيت الحزمة المحلية: ${installed.error}\r\n');
-          return false;
-        }
-      }
-      if (!await File('$rootfs/bin/sh').exists()) {
-        _output.add('[Kali] لم يكتمل تثبيت rootfs المحلي؛ لم يتم تشغيل جلسة فارغة.\r\n');
+    if (kaliRootfsPath != null) {
+      final path = kaliRootfsPath.trim();
+      if (!path.startsWith('/') ||
+          path.contains('|') ||
+          path.contains('\\n') ||
+          path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _emitOutput('[Kali] Invalid local rootfs path.\\r\\n');
         return false;
       }
-      if (!await File(proot).exists() || !await File(loader).exists()) {
-        _output.add('[Kali] rootfs موجود، لكن PRoot أو loader غير موجود داخل Zion Userland. أصلح تثبيت Userland أولاً.\r\n');
+      final rootfs = Directory(path);
+      final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
+      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
+      if (!await rootfs.exists() ||
+          !await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _emitOutput('[Kali] Invalid rootfs: expected bin/bash and bin/sh at $path. No files were copied.\\r\\n');
         return false;
       }
-      shell = 'zion-kali';
-      _output.add('[Kali] تم العثور على rootfs محلي صالح؛ بدء جلسة Kali عبر PRoot وPTY الأصلي.\r\n');
+      if (!await proot.exists() || !await loader.exists()) {
+        _emitOutput('[Kali] Zion PRoot/loader is missing. Restore Userland PRoot before launching Kali.\\r\\n');
+        return false;
+      }
+      shell = 'zion-kali@$path';
+      _emitOutput('[Kali] Starting local rootfs without copying it: $path\\r\\n');
     } else {
       shell = await _findShell(installIfMissing: true);
-      if (shell == null) {
-        _output.add('No usable Userland Bash or Android system shell is available on this device.\r\n');
-        _audit(
-          command: '<interactive-start>',
-          outcome: 'unavailable',
-          exitCode: 127,
-          shell: 'unavailable',
-          duration: DateTime.now().difference(started),
-          interactive: false,
-        );
-        return false;
-      }
-      _output.add(shell == _userlandBash
-          ? 'Userland Bash ready: $shell\r\n'
-          : 'Android shell ready: $shell\r\n');
     }
+    if (shell == null) {
+      _emitOutput('No usable Userland Bash or Android system shell is available on this device.\r\n');
+      _audit(
+        command: '<interactive-start>',
+        outcome: 'unavailable',
+        exitCode: 127,
+        shell: 'unavailable',
+        duration: DateTime.now().difference(started),
+        interactive: false,
+      );
+      return false;
+    }
+    _emitOutput(shell == _userlandBash
+        ? 'Userland Bash ready: $shell\r\n'
+        : 'Android shell ready: $shell\r\n');
 
-    // Both Android and Kali use the native PTY so interactive programs,
-    // job control, and terminal resizing work in the same terminal widget.
+    // The interactive terminal must use the native PTY. A pipe-backed
+    // Process.start() session is not a terminal: it cannot provide job
+    // control, TTY ioctls, correct resize semantics, or reliable interactive
+    // programs such as vim/top/nano.
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
-        _output.add('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
+        _emitOutput('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
         return false;
       }
       await _ptyOutputSub?.cancel();
-      _ptyOutputSub = _pty.output.listen(_output.add);
+      _ptyOutputSub = _pty.output.listen(_emitOutput);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start terminal PTY: $shell\r\n');
+        _emitOutput('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -426,22 +457,20 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(kali
-          ? 'Connected to Kali Linux • PRoot • native PTY\r\n'
-          : shell == _userlandBash
-              ? 'Connected to Userland: bash • native PTY\r\n'
-              : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _emitOutput(shell == _userlandBash
+          ? 'Connected to Userland: bash • native PTY\r\n'
+          : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
         exitCode: 0,
-        shell: kali ? 'kali-proot-pty' : shell,
+        shell: shell,
         duration: DateTime.now().difference(started),
         interactive: true,
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start terminal PTY: ${e.message}\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -452,7 +481,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start terminal PTY: $e\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: $e\r\n');
       return false;
     }
   }
@@ -463,15 +492,18 @@ class TerminalService {
       // TerminalView sends one callback for every typed character. Report the
       // stopped session on Enter only, not on every keypress.
       if (input.contains('\n') || input.contains('\r')) {
-        _output.add(
+        _emitOutput(
           '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
           '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
         );
       }
       return;
     }
-    unawaited(_pty.write(input));
-    final parts = (_interactiveInputBuffer + input).split('\n');
+    // Android keyboards may submit Enter as CR, LF, or CRLF. Normalize
+    // before forwarding to the PTY and before updating command history.
+    final normalizedInput = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    unawaited(_pty.write(normalizedInput));
+    final parts = (_interactiveInputBuffer + normalizedInput).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
