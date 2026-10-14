@@ -114,6 +114,15 @@ class AIAgent {
       RegExp(r'^كيف يمكنني مساعدتك اليوم؟[\s.!؟]*', caseSensitive: false),
       '',
     );
+    // The greeting can precede an echoed request, so check once more after
+    // removing the greeting from the start of the generated text.
+    cleaned = cleaned.trimLeft();
+    if (echoedUserMessage.isNotEmpty && cleaned.startsWith(echoedUserMessage)) {
+      final remainder = cleaned.substring(echoedUserMessage.length);
+      if (remainder.isEmpty || remainder.startsWith('\n') || remainder.startsWith(':') || remainder.startsWith('：')) {
+        cleaned = remainder.replaceFirst(RegExp(r'^[\s:：-]+'), '');
+      }
+    }
     final nextTurn = cleaned.indexOf(RegExp(r'\n\s*(User|Human|Assistant)\s*:', caseSensitive: false));
     if (nextTurn >= 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
