@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class NotesBackupApp extends StatefulWidget {
   const NotesBackupApp({super.key});
@@ -102,12 +103,12 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await backupFile.writeAsString(jsonEncode(backupData), flush: true);
       await _loadBackups();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('Notes backup created successfully')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
       );
     } finally {
@@ -145,12 +146,12 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await _loadNotes();
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(content: Text('Restored ${restored.length} notes successfully')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
       );
     }
@@ -175,7 +176,7 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await _loadBackups();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red),
       );
     }

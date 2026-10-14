@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class LogViewer extends StatefulWidget {
   const LogViewer({super.key});
@@ -49,7 +50,7 @@ class _LogViewerState extends State<LogViewer> {
     await logFile.writeAsString('');
     _loadLogs();
     
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Logs cleared')),
     );
   }

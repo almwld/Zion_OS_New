@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:project_zion/services/toast_service.dart';
 
 class SystemCleaner extends StatefulWidget {
   const SystemCleaner({super.key});
@@ -42,7 +43,7 @@ class _SystemCleanerState extends State<SystemCleaner> {
       _totalJunk = 0;
       _isScanning = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('تم التنظيف بنجاح'), backgroundColor: Color(0xFF00FF41)),
     );
   }

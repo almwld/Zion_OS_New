@@ -6,6 +6,7 @@ import '../../core/theme/zion_colors.dart';
 import '../../providers/theme_provider.dart';
 import '../system_capabilities_screen.dart';
 import 'runtime_intelligence.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class SettingsApp extends StatefulWidget {
   const SettingsApp({super.key});
@@ -353,7 +354,7 @@ class _SettingsAppState extends State<SettingsApp> {
             onPressed: () async {
               final ok = await tp.changePin(oldCtrl.text, newCtrl.text);
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastService.showSnackBar(context, 
                 SnackBar(
                   content: Text(
                     ok ? 'PIN changed successfully' : 'Invalid PIN',

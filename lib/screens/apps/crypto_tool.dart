@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class CryptoToolApp extends StatefulWidget {
   const CryptoToolApp({super.key});
@@ -50,7 +51,7 @@ class _CryptoToolAppState extends State<CryptoToolApp> {
     if (_output.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: _output));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Digest copied to clipboard')));
+      ToastService.showSnackBar(context, const SnackBar(content: Text('Digest copied to clipboard')));
     }
   }
 

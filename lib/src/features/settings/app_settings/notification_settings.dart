@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class NotificationSettings extends StatefulWidget {
   const NotificationSettings({super.key});
@@ -111,7 +112,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   }
 
   void _testNotification() {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('🔔 Test notification received!')),
     );
   }

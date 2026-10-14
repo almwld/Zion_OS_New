@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class WifiSettings extends StatefulWidget {
   const WifiSettings({super.key});
@@ -94,7 +95,7 @@ class _WifiSettingsState extends State<WifiSettings> {
   void _clearSavedPasswords() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('wifi_saved_passwords');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Saved passwords cleared')),
     );
   }

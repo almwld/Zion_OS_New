@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class NetworkSettings extends StatefulWidget {
   const NetworkSettings({super.key});
@@ -116,7 +117,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
   }
 
   void _testConnection() {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Testing connection...')),
     );
   }
@@ -127,7 +128,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
     await prefs.remove('net_proxy_host');
     await prefs.remove('net_proxy_port');
     _loadSettings();
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Network settings reset')),
     );
   }

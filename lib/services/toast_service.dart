@@ -20,8 +20,38 @@ class ToastService {
     ZionToastTone tone = ZionToastTone.info,
     Duration duration = const Duration(seconds: 2),
   }) {
+    if (message.trim().isEmpty) return;
+    _showContent(Text(message), tone: tone, duration: duration);
+  }
+
+  /// Compatibility bridge while the app migrates away from ScaffoldMessenger.
+  /// SnackBar content is rendered in the non-blocking toast overlay instead.
+  static void showSnackBar(BuildContext context, SnackBar snackBar) {
+    if (!context.mounted) return;
+    final background = snackBar.backgroundColor;
+    final tone = background == Colors.red ||
+            (background != null && background.red > background.green * 1.5)
+        ? ZionToastTone.error
+        : background == Colors.orange ||
+                (background != null && background.red > background.green * 1.15)
+            ? ZionToastTone.warning
+            : background != null &&
+                    background.green > background.red * 1.25
+                ? ZionToastTone.success
+                : ZionToastTone.info;
+    final duration = snackBar.duration == const Duration(seconds: 4)
+        ? const Duration(seconds: 2)
+        : snackBar.duration;
+    _showContent(snackBar.content, tone: tone, duration: duration);
+  }
+
+  static void _showContent(
+    Widget content, {
+    required ZionToastTone tone,
+    required Duration duration,
+  }) {
     final overlay = navigatorKey.currentState?.overlay;
-    if (overlay == null || message.trim().isEmpty) return;
+    if (overlay == null) return;
 
     _timer?.cancel();
     _entry?.remove();
@@ -87,15 +117,14 @@ class ToastService {
                           Icon(icon, color: color, size: 21),
                           const SizedBox(width: 10),
                           Flexible(
-                            child: Text(
-                              message,
-                              textDirection: Directionality.of(context),
+                            child: DefaultTextStyle.merge(
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
                                 height: 1.35,
                                 fontWeight: FontWeight.w500,
                               ),
+                              child: content,
                             ),
                           ),
                         ],

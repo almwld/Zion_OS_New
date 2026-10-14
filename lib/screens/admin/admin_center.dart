@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/admin_service.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class AdminCenter extends StatefulWidget {
   const AdminCenter({super.key});
@@ -30,7 +31,7 @@ class _AdminCenterState extends State<AdminCenter> with SingleTickerProviderStat
 
   void _addUser(AdminService service) {
     if (_usernameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('Please enter username'), backgroundColor: Colors.orange),
       );
       return;
@@ -38,7 +39,7 @@ class _AdminCenterState extends State<AdminCenter> with SingleTickerProviderStat
     
     service.addUser(_usernameController.text, _selectedRole, _selectedPermissions, true);
     _usernameController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('User added successfully'), backgroundColor: Color(0xFF00BCD4)),
     );
   }

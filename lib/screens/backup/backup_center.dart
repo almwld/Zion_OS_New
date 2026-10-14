@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/services/backup_service.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class BackupCenter extends StatefulWidget {
   const BackupCenter({super.key});
@@ -34,7 +35,7 @@ class _BackupCenterState extends State<BackupCenter> {
 
   Future<void> _createBackup() async {
     if (_backupNameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('Enter backup name'), backgroundColor: Colors.orange),
       );
       return;
@@ -49,14 +50,14 @@ class _BackupCenterState extends State<BackupCenter> {
     if (result['success']) {
       _backupNameController.clear();
       await _loadBackups();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(
           content: Text('Backup created: ${_backupService.formatSize(result['size'])}'),
           backgroundColor: Colors.green,
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         SnackBar(content: Text('Error: ${result['error']}'), backgroundColor: Colors.red),
       );
     }
@@ -84,14 +85,14 @@ class _BackupCenterState extends State<BackupCenter> {
       setState(() => _isLoading = false);
       
       if (result['success']) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           SnackBar(
             content: Text('Restored ${result['restored_items']} items'),
             backgroundColor: Colors.green,
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           SnackBar(content: Text('Error: ${result['error']}'), backgroundColor: Colors.red),
         );
       }
@@ -115,7 +116,7 @@ class _BackupCenterState extends State<BackupCenter> {
     if (confirmed == true) {
       await _backupService.deleteBackup(backup['path']);
       await _loadBackups();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('Backup deleted'), backgroundColor: Color(0xFF00BCD4)),
       );
     }

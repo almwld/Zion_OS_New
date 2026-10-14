@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'package:project_zion/services/toast_service.dart';
 
 class AlarmsClockApp extends StatefulWidget {
   const AlarmsClockApp({super.key});
@@ -108,7 +109,7 @@ class _AlarmsClockAppState extends State<AlarmsClockApp> with SingleTickerProvid
   }
 
   void _showAlarmNotification(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(
         content: Text('🔔 Alarm: $label'),
         backgroundColor: const Color(0xFF00BCD4),

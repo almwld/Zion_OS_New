@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class DesktopSettings extends StatefulWidget {
   const DesktopSettings({super.key});
@@ -117,7 +118,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('desktop_layout');
     _loadSettings();
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Desktop layout reset')),
     );
   }

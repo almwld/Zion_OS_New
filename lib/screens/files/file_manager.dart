@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:project_zion/services/toast_service.dart';
 
 class FileManager extends StatefulWidget {
   const FileManager({super.key});
@@ -92,7 +93,7 @@ class _FileManagerState extends State<FileManager> {
       _selectedItems.clear();
       _isSelecting = false;
       _loadItems();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('Deleted successfully'), backgroundColor: Color(0xFF00BCD4)),
       );
     }
@@ -126,7 +127,7 @@ class _FileManagerState extends State<FileManager> {
       if (!newDir.existsSync()) {
         newDir.createSync();
         _loadItems();
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           const SnackBar(content: Text('Folder created'), backgroundColor: Color(0xFF00BCD4)),
         );
       }
@@ -346,7 +347,7 @@ class _FileManagerState extends State<FileManager> {
 
   void _openFile(FileSystemEntity item) {
     // استعراض الملف (يمكن إضافة عارض مدمج لاحقاً)
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(content: Text('Open: ${item.path.split('/').last}'), backgroundColor: Color(0xFF00BCD4)),
     );
   }

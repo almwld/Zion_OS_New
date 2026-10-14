@@ -12,6 +12,7 @@ import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
@@ -109,7 +110,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Future<_TerminalTab?> _createTab({bool autoStart = true}) async {
     if (_tabs.length >= _maxSessions) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           const SnackBar(content: Text('تم الوصول إلى الحد الأقصى: 8 جلسات PTY.')),
         );
       }
@@ -290,7 +291,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   void _showTerminalNotice(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+    ToastService.showSnackBar(context, SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
   }
 
   Future<void> _showHistorySearch() async {
@@ -516,7 +517,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final loaded = await _ensureAiLoaded();
       if (!loaded) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ToastService.showSnackBar(context, 
             const SnackBar(
               content: Text('النموذج المحلي غير محمّل. افتح Offline AI وحمّل نموذجاً صغيراً أولاً.'),
             ),

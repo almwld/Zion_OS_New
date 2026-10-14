@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
+import 'package:project_zion/services/toast_service.dart';
 
 class CleanerApp extends StatefulWidget {
   const CleanerApp({super.key});
@@ -59,7 +60,7 @@ class _CleanerAppState extends State<CleanerApp> {
       _isCleaning = false;
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(
         content: Text('Cleaned ${(_freedSpace / 1024).toStringAsFixed(2)} MB successfully'),
         backgroundColor: const Color(0xFF00BCD4),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class VPNManagerApp extends StatefulWidget {
   const VPNManagerApp({super.key});
@@ -53,7 +54,7 @@ class _VPNManagerAppState extends State<VPNManagerApp> {
         _vpnStatus = 'Connected';
         _vpnConnected = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(content: Text('VPN Connected'), backgroundColor: Color(0xFF00BCD4)),
       );
     });
@@ -68,7 +69,7 @@ class _VPNManagerAppState extends State<VPNManagerApp> {
       _dataSent = 0;
       _dataReceived = 0;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('VPN Disconnected'), backgroundColor: Colors.orange),
     );
   }

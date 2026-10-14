@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/backup_service.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class BackupManagerApp extends StatefulWidget {
   const BackupManagerApp({super.key});
@@ -54,12 +55,12 @@ class _BackupManagerAppState extends State<BackupManagerApp> {
       if (!mounted) return;
       if (result['success'] == true) {
         await _reload();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup created successfully')));
+        ToastService.showSnackBar(context, const SnackBar(content: Text('Backup created successfully')));
       } else {
         throw StateError(result['error']?.toString() ?? 'Backup failed');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red));
+      if (mounted) ToastService.showSnackBar(context, SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isBackingUp = false);
     }
@@ -83,12 +84,12 @@ class _BackupManagerAppState extends State<BackupManagerApp> {
       final result = await _service.restoreBackup(path);
       if (!mounted) return;
       if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored ${result['restored_items'] ?? 0} settings successfully')));
+        ToastService.showSnackBar(context, SnackBar(content: Text('Restored ${result['restored_items'] ?? 0} settings successfully')));
       } else {
         throw StateError(result['error']?.toString() ?? 'Restore failed');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red));
+      if (mounted) ToastService.showSnackBar(context, SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -109,7 +110,7 @@ class _BackupManagerAppState extends State<BackupManagerApp> {
       await _service.deleteBackup(backup['path'] as String);
       await _reload();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
+      if (mounted) ToastService.showSnackBar(context, SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red));
     }
   }
 

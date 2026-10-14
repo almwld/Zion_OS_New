@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:project_zion/services/toast_service.dart';
 
 class CalculatorApp extends StatefulWidget {
   const CalculatorApp({super.key});
@@ -57,19 +58,19 @@ class _CalculatorAppState extends State<CalculatorApp> {
         _expression += exp(1).toStringAsFixed(8);
       } else if (value == 'M+') {
         _memory += double.tryParse(_result.isNotEmpty ? _result : '0') ?? 0;
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           const SnackBar(content: Text('Added to memory'), backgroundColor: Color(0xFF00BCD4)),
         );
       } else if (value == 'M-') {
         _memory -= double.tryParse(_result.isNotEmpty ? _result : '0') ?? 0;
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           const SnackBar(content: Text('Subtracted from memory'), backgroundColor: Color(0xFF00BCD4)),
         );
       } else if (value == 'MR') {
         _expression += _memory.toString();
       } else if (value == 'MC') {
         _memory = 0;
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastService.showSnackBar(context, 
           const SnackBar(content: Text('Memory cleared'), backgroundColor: Color(0xFF00BCD4)),
         );
       } else {
@@ -178,7 +179,7 @@ class _CalculatorAppState extends State<CalculatorApp> {
           IconButton(
             icon: const Icon(Icons.history, color: Color(0xFF00BCD4)),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastService.showSnackBar(context, 
                 SnackBar(content: Text('History: $_history'), backgroundColor: const Color(0xFF00BCD4)),
               );
             },

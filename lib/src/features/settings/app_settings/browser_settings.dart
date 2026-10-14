@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class BrowserSettings extends StatefulWidget {
   const BrowserSettings({super.key});
@@ -107,7 +108,7 @@ class _BrowserSettingsState extends State<BrowserSettings> {
   void _clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('browser_history');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Browsing history cleared')),
     );
   }

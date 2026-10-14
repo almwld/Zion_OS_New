@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class FirewallApp extends StatefulWidget {
   const FirewallApp({super.key});
@@ -33,7 +34,7 @@ class _FirewallAppState extends State<FirewallApp> {
     setState(() {
       _firewallEnabled = !_firewallEnabled;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(
         content: Text(_firewallEnabled ? 'Firewall enabled' : 'Firewall disabled'),
         backgroundColor: _firewallEnabled ? Colors.green : Colors.red,
@@ -136,7 +137,7 @@ class _FirewallAppState extends State<FirewallApp> {
                   });
                 });
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastService.showSnackBar(context, 
                   const SnackBar(content: Text('Rule added'), backgroundColor: Color(0xFF00BCD4)),
                 );
               }
@@ -152,7 +153,7 @@ class _FirewallAppState extends State<FirewallApp> {
     setState(() {
       _rules.removeAt(index);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Rule deleted'), backgroundColor: Color(0xFF00BCD4)),
     );
   }

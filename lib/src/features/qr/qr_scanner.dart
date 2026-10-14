@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 /// QR UI without fabricated scan results. Camera decoding requires a dedicated
 /// barcode scanner implementation and is reported as unavailable until wired.
@@ -22,7 +23,7 @@ class _QRScannerState extends State<QRScanner> {
   }
 
   void _showScannerUnavailable() {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('ماسح QR بالكاميرا غير مهيأ بعد؛ لن يتم إنشاء نتيجة وهمية.')),
     );
   }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/advanced_theme.dart';
 import '../../../providers/theme_provider.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class MainSettings extends StatefulWidget {
   const MainSettings({super.key});
@@ -333,7 +334,7 @@ class _MainSettingsState extends State<MainSettings> {
   void _resetWindowPositions() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('window_positions');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('Window positions reset')),
     );
   }
@@ -342,7 +343,7 @@ class _MainSettingsState extends State<MainSettings> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     _loadSettings();
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(content: Text('All data cleared')),
     );
   }

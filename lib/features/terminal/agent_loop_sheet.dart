@@ -9,6 +9,7 @@ import '../../ai/llama_service.dart';
 import 'agent_loop_validator.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 /// Local Qwen -> Kali tool -> observation loop. Commands run through Zion's
 /// existing TerminalService so the installed Kali PRoot environment is reused.
@@ -310,7 +311,7 @@ Choose the next step.
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ToastService.showSnackBar(context, SnackBar(content: Text(message)));
   }
 
   Color get _fg => widget.palette.foreground;

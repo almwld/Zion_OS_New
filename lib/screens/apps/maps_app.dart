@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class MapsApp extends StatefulWidget {
   const MapsApp({super.key});
@@ -69,7 +70,7 @@ class _MapsAppState extends State<MapsApp> {
       _showSaved = true;
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(
         content: Text('📍 $name selected'),
         backgroundColor: const Color(0xFF00BCD4),
@@ -82,7 +83,7 @@ class _MapsAppState extends State<MapsApp> {
       setState(() {
         _savedLocations.add({'name': name, 'lat': lat, 'lng': lng});
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastService.showSnackBar(context, 
         const SnackBar(
           content: Text('Location saved'),
           backgroundColor: Color(0xFF00BCD4),
@@ -99,7 +100,7 @@ class _MapsAppState extends State<MapsApp> {
 
   void _openInBrowser(String lat, String lng) {
     // Open in Google Maps (would use url_launcher in production)
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       const SnackBar(
         content: Text('Opening in Google Maps...'),
         backgroundColor: Color(0xFF00BCD4),
@@ -189,7 +190,7 @@ class _MapsAppState extends State<MapsApp> {
                 IconButton(
                   icon: const Icon(Icons.my_location, color: Color(0xFF00BCD4)),
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ToastService.showSnackBar(context, 
                       const SnackBar(
                         content: Text('Getting your location...'),
                         backgroundColor: Color(0xFF00BCD4),

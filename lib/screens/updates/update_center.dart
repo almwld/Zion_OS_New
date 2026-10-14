@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../zion_ota_system.dart';
+import 'package:project_zion/services/toast_service.dart';
 
 class UpdateCenter extends StatefulWidget {
   const UpdateCenter({super.key});
@@ -44,7 +45,7 @@ class _UpdateCenterState extends State<UpdateCenter> {
   Future<void> _checkForUpdates() async {
     await _ota.checkForUpdates();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastService.showSnackBar(context, 
       SnackBar(content: Text(_status), backgroundColor: const Color(0xFF00BCD4)),
     );
   }
