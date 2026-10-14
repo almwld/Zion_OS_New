@@ -22,9 +22,17 @@ class AIAgent {
     _role = role; _initialized = true; return true;
   }
 
-  Future<String> chat(String message, {int maxTokens = 128}) async {
+  Future<String> chat(
+    String message, {
+    int maxTokens = 128,
+    double temperature = 0.25,
+  }) async {
     if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
-    final rawResponse = await llama.generate(_buildPrompt(message), maxTokens: maxTokens, temperature: 0.25);
+    final rawResponse = await llama.generate(
+      _buildPrompt(message),
+      maxTokens: maxTokens.clamp(1, 256),
+      temperature: temperature.clamp(0.0, 2.0),
+    );
     final response = _cleanResponse(rawResponse);
     if (!response.startsWith('ERROR:')) {
       _history
@@ -54,7 +62,6 @@ class AIAgent {
   );
 
   String _cleanResponse(String response) {
-    // Small models occasionally print boundary tokens instead of stopping.
     var cleaned = response;
     for (final marker in const [
       '<|im_start|>', '<|im_end|>', '<|endoftext|>', '<|fim_suffix|>',
@@ -66,8 +73,6 @@ class AIAgent {
   }
 
   String _buildPrompt(String message) {
-    // Qwen2.5-Instruct is trained on ChatML. Role tags such as <|system|>
-    // and <|end|> are not equivalent and can cause role leakage/repetition.
     final b = StringBuffer()
       ..writeln('<|im_start|>system')
       ..writeln(_systemPrompt(_role))
@@ -95,6 +100,7 @@ class AIAgent {
       ..writeln('<|im_start|>assistant');
     return b.toString();
   }
+
   String _systemPrompt(AgentRole role) => switch (role) {
     AgentRole.terminalAssistant => 'أنت مساعد طرفية محلي داخل Zion OS. أجب بالعربية، وفسّر الأوامر والأخطاء وقدّم خطوات آمنة.',
     AgentRole.securityExpert => 'أنت مساعد أمن دفاعي محلي. حلل الإعدادات والسجلات والأوامر بهدف التشخيص والحماية فقط.',
