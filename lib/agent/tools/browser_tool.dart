@@ -1,8 +1,17 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:http/http.dart' as http;
+
 import '../core/agent_models.dart';
 import 'tool.dart';
 
 class BrowserTool extends AgentTool {
+  static const int _maxBodyBytes = 120000;
+  static const int _maxRedirects = 5;
+  static const Duration _requestTimeout = Duration(seconds: 15);
+
   @override
   String get name => 'browser';
 
@@ -18,47 +27,124 @@ class BrowserTool extends AgentTool {
       const {'action': 'fetch | search', 'url': 'string', 'query': 'string'};
 
   @override
-  Future<StepResult> execute(Map<String, dynamic> p) async {
-    final action = p['action']?.toString() ?? 'fetch';
-    final target = action == 'search'
-        ? 'https://html.duckduckgo.com/html/?q=${Uri.encodeComponent(p['query']?.toString() ?? '')}'
-        : p['url']?.toString() ?? '';
-    final uri = Uri.tryParse(target);
-    if (uri == null || !{'http', 'https'}.contains(uri.scheme)) {
-      return StepResult.failure('رابط غير صالح.');
+  Future<StepResult> execute(Map<String, dynamic> params) async {
+    final action = params['action']?.toString() ?? 'fetch';
+    if (action != 'fetch' && action != 'search') {
+      return StepResult.failure('إجراء المتصفح غير مدعوم.');
     }
-    if (uri.userInfo.isNotEmpty || _isPrivateOrLocalHost(uri.host)) {
-      return StepResult.failure('تم رفض عنوان محلي أو خاص لحماية بيانات الجهاز.');
+    final target = action == 'search'
+        ? 'https://html.duckduckgo.com/html/?q=${Uri.encodeComponent(params['query']?.toString() ?? '')}'
+        : params['url']?.toString() ?? '';
+    var uri = Uri.tryParse(target);
+    if (uri == null || !_isAllowedUri(uri)) {
+      return StepResult.failure('رابط غير صالح أو محظور لأسباب أمنية.');
     }
 
+    final client = http.Client();
     try {
-      final response = await http.get(
-        uri,
-        headers: const {'User-Agent': 'Zion-Agent/1.0'},
-      ).timeout(const Duration(seconds: 15));
-      if (response.statusCode < 200 || response.statusCode >= 400) {
-        return StepResult.failure('HTTP ${response.statusCode}');
+      for (var redirects = 0; redirects <= _maxRedirects; redirects++) {
+        final safe = await _validateDestination(uri);
+        if (!safe) {
+          return StepResult.failure(
+            'تم رفض عنوان محلي أو خاص لحماية بيانات الجهاز.',
+          );
+        }
+
+        final request = http.Request('GET', uri)
+          ..followRedirects = false
+          ..headers['User-Agent'] = 'Zion-Agent/1.0'
+          ..headers['Accept'] = 'text/html,text/plain,application/xhtml+xml';
+
+        final response = await client.send(request).timeout(_requestTimeout);
+        if (_isRedirect(response.statusCode)) {
+          final location = response.headers['location'];
+          await response.stream.listen((_) {}).cancel();
+          if (location == null || redirects == _maxRedirects) {
+            return StepResult.failure('تعذر إكمال إعادة توجيه الصفحة بأمان.');
+          }
+          final next = Uri.tryParse(location);
+          if (next == null) {
+            return StepResult.failure('رابط إعادة التوجيه غير صالح.');
+          }
+          uri = uri.resolveUri(next);
+          if (!_isAllowedUri(uri)) {
+            return StepResult.failure('تم رفض إعادة توجيه إلى عنوان غير آمن.');
+          }
+          continue;
+        }
+
+        if (response.statusCode < 200 || response.statusCode >= 400) {
+          await response.stream.listen((_) {}).cancel();
+          return StepResult.failure('HTTP ${response.statusCode}');
+        }
+
+        final bytes = await _readLimited(response.stream)
+            .timeout(_requestTimeout);
+        final content = utf8.decode(bytes, allowMalformed: true);
+        return StepResult.success(
+          'تم جلب ${bytes.length} بايت من الصفحة.',
+          data: {
+            'url': uri.toString(),
+            'status': response.statusCode,
+            'content': content,
+            'truncated': bytes.length >= _maxBodyBytes,
+          },
+        );
       }
-      final body = response.body;
-      final content = body.length > 120000 ? body.substring(0, 120000) : body;
-      return StepResult.success(
-        'تم جلب ${content.length} حرف.',
-        data: {'url': uri.toString(), 'status': response.statusCode, 'content': content},
-      );
+      return StepResult.failure('تم تجاوز الحد المسموح لإعادة التوجيه.');
+    } on TimeoutException {
+      return StepResult.failure('انتهت مهلة الاتصال بالصفحة بعد 15 ثانية.');
     } catch (error) {
       return StepResult.failure('فشل جلب الصفحة: $error');
+    } finally {
+      client.close();
     }
   }
 
+  bool _isRedirect(int status) =>
+      status == 301 || status == 302 || status == 303 ||
+      status == 307 || status == 308;
+
+  bool _isAllowedUri(Uri uri) =>
+      (uri.scheme == 'http' || uri.scheme == 'https') &&
+      uri.host.isNotEmpty &&
+      uri.userInfo.isEmpty &&
+      !_isPrivateOrLocalHost(uri.host);
+
+  Future<bool> _validateDestination(Uri uri) async {
+    if (!_isAllowedUri(uri)) return false;
+    final literal = InternetAddress.tryParse(uri.host);
+    if (literal != null) return !_isPrivateAddress(literal);
+
+    // Check DNS answers before connecting. This blocks common hostname-based
+    // SSRF attempts, including private destinations hidden behind DNS names.
+    try {
+      final addresses = await InternetAddress.lookup(uri.host)
+          .timeout(const Duration(seconds: 3));
+      return addresses.isNotEmpty && addresses.every(_isPublicAddress);
+    } on SocketException {
+      return false;
+    } on TimeoutException {
+      return false;
+    }
+  }
+
+  bool _isPublicAddress(InternetAddress address) =>
+      !_isPrivateAddress(address);
+
   bool _isPrivateOrLocalHost(String rawHost) {
-    final host = rawHost.toLowerCase().endsWith('.') ? rawHost.toLowerCase().substring(0, rawHost.length - 1) : rawHost.toLowerCase();
+    final host = rawHost.toLowerCase().endsWith('.')
+        ? rawHost.toLowerCase().substring(0, rawHost.length - 1)
+        : rawHost.toLowerCase();
     if (host == 'localhost' ||
         host.endsWith('.localhost') ||
         host.endsWith('.local') ||
-        host == '::1' ||
-        host == '[::1]') {
+        host == 'metadata.google.internal' ||
+        host.endsWith('.internal')) {
       return true;
     }
+    final address = InternetAddress.tryParse(host);
+    if (address != null) return _isPrivateAddress(address);
 
     final parts = host.split('.');
     if (parts.length == 4) {
@@ -66,15 +152,67 @@ class BrowserTool extends AgentTool {
       if (octets.every((value) => value != null && value >= 0 && value <= 255)) {
         final a = octets[0]!;
         final b = octets[1]!;
-        return a == 0 ||
-            a == 10 ||
-            a == 127 ||
+        return a == 0 || a == 10 || a == 127 ||
             (a == 169 && b == 254) ||
             (a == 172 && b >= 16 && b <= 31) ||
             (a == 192 && b == 168) ||
+            (a == 100 && b >= 64 && b <= 127) ||
+            (a == 192 && b == 0) ||
+            (a == 198 && (b == 18 || b == 19)) ||
             a >= 224;
       }
     }
     return false;
+  }
+
+  bool _isPrivateAddress(InternetAddress address) {
+    final bytes = address.rawAddress;
+    if (address.type == InternetAddressType.IPv4) {
+      final a = bytes[0];
+      final b = bytes[1];
+      return a == 0 || a == 10 || a == 127 ||
+          (a == 169 && b == 254) ||
+          (a == 172 && b >= 16 && b <= 31) ||
+          (a == 192 && b == 168) ||
+          (a == 100 && b >= 64 && b <= 127) ||
+          (a == 192 && b == 0) ||
+          (a == 198 && (b == 18 || b == 19)) ||
+          a >= 224;
+    }
+    if (address.type == InternetAddressType.IPv6) {
+      final allZero = bytes.every((byte) => byte == 0);
+      final loopback = allZero && bytes.last == 1;
+      final first = bytes.first;
+      final linkLocal = first == 0xfe && (bytes[1] & 0xc0) == 0x80;
+      final uniqueLocal = (first & 0xfe) == 0xfc;
+      final multicast = first == 0xff;
+      final mappedIpv4 = bytes.take(10).every((byte) => byte == 0) &&
+          bytes[10] == 0xff && bytes[11] == 0xff;
+      if (mappedIpv4) {
+        final mapped = InternetAddress.fromRawAddress(bytes.sublist(12));
+        return _isPrivateAddress(mapped);
+      }
+      return allZero || loopback || linkLocal || uniqueLocal || multicast;
+    }
+    return true;
+  }
+
+  Future<List<int>> _readLimited(Stream<List<int>> stream) async {
+    final iterator = StreamIterator<List<int>>(stream);
+    final output = BytesBuilder(copy: false);
+    var length = 0;
+    try {
+      while (length < _maxBodyBytes && await iterator.moveNext()) {
+        final chunk = iterator.current;
+        final take = (_maxBodyBytes - length).clamp(0, chunk.length);
+        if (take > 0) {
+          output.add(take == chunk.length ? chunk : chunk.sublist(0, take));
+          length += take;
+        }
+      }
+    } finally {
+      await iterator.cancel();
+    }
+    return output.takeBytes();
   }
 }
