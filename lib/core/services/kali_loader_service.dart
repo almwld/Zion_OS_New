@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../magiczionos/installers/proot_installer.dart';
 import 'kali_chroot_service.dart';
 import '../magiczionos/installers/rootfs_downloader.dart';
@@ -10,6 +11,32 @@ import '../magiczionos/installers/rootfs_downloader.dart';
 /// exposed here; defensive discovery can use the safe Nmap adapter below.
 class KaliLoaderService {
   static const String _installPath = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+  static const String _localRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+
+  /// Prefer the user's configured rootfs in shared storage without copying it.
+  /// The managed private rootfs remains the fallback for existing installations.
+  static Future<String?> _resolveRootfsPath() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final configured = prefs.getString(_localRootfsPreferenceKey)?.trim();
+      if (configured != null && configured.startsWith('/')) {
+        final rootfs = Directory(configured);
+        if (await rootfs.exists() &&
+            await File('$configured/bin/sh').exists() &&
+            await File('$configured/bin/bash').exists()) {
+          return configured;
+        }
+      }
+    } catch (_) {
+      // Shared preferences are optional; fall back to the managed rootfs.
+    }
+    if (await File('$_installPath/bin/sh').exists() &&
+        await File('$_installPath/bin/bash').exists() &&
+        await File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists()) {
+      return _installPath;
+    }
+    return null;
+  }
 
   static String? _prootPath;
   static bool _hasRootCache = false;
@@ -69,7 +96,8 @@ class KaliLoaderService {
   static Future<bool> hasChroot() async => await hasRootAccess() && await Directory(_installPath).exists();
 
   static Future<String> install() async {
-    if (await _isInstalled()) return 'REAL: Kali filesystem is already installed.';
+    final existingRootfs = await _resolveRootfsPath();
+    if (existingRootfs != null) return 'REAL: Kali filesystem is already available at $existingRootfs; no copy performed.';
     try {
       final result = await RootfsDownloader().install(ZionRootfsDistro.kali);
       if (!result.success) return 'FAILED: ' + result.message;
@@ -83,7 +111,8 @@ class KaliLoaderService {
   /// Generic command execution is intentionally restricted to harmless
   /// diagnostics. High-risk tooling is exposed as BLOCKED instead.
   static Future<Map<String, dynamic>> execute(String command) async {
-    if (!await _isInstalled()) return {'success': false, 'status': 'UNAVAILABLE', 'error': 'Kali is not installed.'};
+    final rootfsPath = await _resolveRootfsPath();
+    if (rootfsPath == null) return {'success': false, 'status': 'UNAVAILABLE', 'error': 'No valid local Kali rootfs was found. Configure the path in Zion Terminal.'};
     final normalized = command.trim().toLowerCase();
     const blocked = <String>[
       'msfconsole', 'hydra ', 'aircrack', 'john ', 'sqlmap', 'wpscan', 'ettercap',
@@ -97,17 +126,17 @@ class KaliLoaderService {
     }
     final prootPath = await findProot();
     if (prootPath == null) return {'success': false, 'status': 'UNAVAILABLE', 'error': 'PRoot runtime is unavailable.'};
-    return _executeProot(command, prootPath);
+    return _executeProot(command, prootPath, rootfsPath);
   }
 
   static bool _isSafeDiagnosticCommand(String command) {
     return RegExp(r'^(id|uname|whoami|pwd|date|hostname|cat /etc/os-release|which nmap|nmap\s+-sn\s+[^;&|`]+)$').hasMatch(command);
   }
 
-  static Future<Map<String, dynamic>> _executeProot(String command, String prootPath) async {
+  static Future<Map<String, dynamic>> _executeProot(String command, String prootPath, String rootfsPath) async {
     try {
       final result = await Process.run(prootPath, [
-        '-r', _installPath,
+        '-r', rootfsPath,
         '-b', '/dev:/dev',
         '-b', '/proc:/proc',
         '-b', '/sys:/sys',
@@ -134,9 +163,7 @@ class KaliLoaderService {
     return result['stdout']?.toString() ?? result['stderr']?.toString() ?? result['error']?.toString() ?? 'FAILED';
   }
 
-  static Future<bool> _isInstalled() async =>
-      await File(_installPath + '/bin/sh').exists() &&
-      await File('/data/data/com.zion.os/files/home/.zion/dists/kali/.zion-rootfs.json').exists();
+  static Future<bool> _isInstalled() async => await _resolveRootfsPath() != null;
 
 
   static Future<void> _setupEnvironment() async {
@@ -152,7 +179,8 @@ class KaliLoaderService {
     final proot = await findProot();
     return {
       'installed': installed,
-      'path': _installPath,
+      'path': await _resolveRootfsPath() ?? _installPath,
+      'rootfs_source': (await _resolveRootfsPath()) == _installPath ? 'zion-private' : 'configured-local',
       'has_root': root,
       'use_chroot': chroot,
       'mode': chroot ? 'CHROOT' : (proot != null ? 'PROOT' : 'MISSING'),
