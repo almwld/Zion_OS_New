@@ -284,7 +284,7 @@ class AgentOrchestrator {
         ),
       ]);
     }
-    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات عبر الويب',tool:'browser',params:{'action':'search','query':task},permission:AgentPermission.network,risk:AgentRisk.review,requiresApproval:true)]);
+    if(lower.contains('ابحث')||lower.contains('search'))return AgentPlan(steps:[AgentStep(id:'1',description:'البحث عن المعلومات عبر الويب',tool:'http',params:{'method':'GET','url':'https://html.duckduckgo.com/html/?q='+Uri.encodeComponent(task)})]);
     if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
     return AgentPlan(steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
   }
