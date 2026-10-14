@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../widgets/toast_bar.dart';
 
 class SecuritySettings extends StatefulWidget {
   const SecuritySettings({super.key});
@@ -158,7 +159,7 @@ class _SecuritySettingsState extends State<SecuritySettings> {
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastBar.show(context, 
                 const SnackBar(content: Text('All data wiped')),
               );
             },
