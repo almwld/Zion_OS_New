@@ -355,7 +355,7 @@ class TerminalService {
           rootfsPath.contains('\\n') ||
           rootfsPath.contains('\\r') ||
           rootfsPath.contains('\\u0000')) {
-        _output.add('[Kali] مسار rootfs غير صالح؛ استخدم مسارًا مطلقًا دون أسطر جديدة.\\r\\n');
+        _output.add('[Kali] مسار rootfs غير صالح؛ استخدم مسارًا مطلقًا دون أسطر جديدة.\r\n');
         return false;
       }
       final rootfs = Directory(rootfsPath);
@@ -364,21 +364,21 @@ class TerminalService {
       if (!await rootfs.exists() ||
           !await File('$rootfsPath/bin/bash').exists() ||
           !await File('$rootfsPath/bin/sh').exists()) {
-        _output.add('[Kali] لم يُعثر على rootfs صالح في: $rootfsPath (المطلوب bin/bash وbin/sh). لم يتم نسخ الملفات.\\r\\n');
+        _output.add('[Kali] لم يُعثر على rootfs صالح في: $rootfsPath (المطلوب bin/bash وbin/sh). لم يتم نسخ الملفات.\r\n');
         return false;
       }
       if (!await proot.exists() || !await loader.exists()) {
-        _output.add('[Kali] أدوات Zion PRoot غير مكتملة؛ ثبّت/أصلح PRoot داخل Zion Userland أولًا. لم تتم محاولة تنزيل Kali أو نسخه.\\r\\n');
+        _output.add('[Kali] أدوات Zion PRoot غير مكتملة؛ ثبّت/أصلح PRoot داخل Zion Userland أولًا. لم تتم محاولة تنزيل Kali أو نسخه.\r\n');
         return false;
       }
       try {
         final mode = (await proot.stat()).mode;
         if ((mode & 0x49) == 0) {
-          _output.add('[Kali] ملف PRoot موجود لكنه غير قابل للتنفيذ: ${proot.path}\\r\\n');
+          _output.add('[Kali] ملف PRoot موجود لكنه غير قابل للتنفيذ: ${proot.path}\r\n');
           return false;
         }
       } catch (_) {
-        _output.add('[Kali] تعذر فحص صلاحية تشغيل PRoot.\\r\\n');
+        _output.add('[Kali] تعذر فحص صلاحية تشغيل PRoot.\r\n');
         return false;
       }
       shell = 'zion-kali@$rootfsPath';
@@ -397,9 +397,11 @@ class TerminalService {
       );
       return false;
     }
-    _output.add(shell == _userlandBash
-        ? 'Userland Bash ready: $shell\r\n'
-        : 'Android shell ready: $shell\r\n');
+    _output.add(kaliRootfsPath != null
+        ? '[Kali] تشغيل مباشر من المسار المحلي: ${kaliRootfsPath.trim()}\r\n'
+        : (shell == _userlandBash
+            ? 'Userland Bash ready: $shell\r\n'
+            : 'Android shell ready: $shell\r\n'));
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -427,9 +429,11 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(shell == _userlandBash
-          ? 'Connected to Userland: bash • native PTY\r\n'
-          : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _output.add(kaliRootfsPath != null
+          ? '[Kali] Connected directly to local rootfs • native PTY\r\n'
+          : (shell == _userlandBash
+              ? 'Connected to Userland: bash • native PTY\r\n'
+              : 'Connected to Android system shell: $shell • native PTY\r\n'));
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
