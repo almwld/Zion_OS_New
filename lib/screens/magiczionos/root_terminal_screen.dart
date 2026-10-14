@@ -105,6 +105,10 @@ class _MagiczionosRootTerminalScreenState
                         Expanded(
                           child: TextField(
                             controller: _input,
+                            textCapitalization: TextCapitalization.none,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            keyboardType: TextInputType.visiblePassword,
                             decoration: const InputDecoration(
                               hintText: 'أمر آمن...',
                             ),
