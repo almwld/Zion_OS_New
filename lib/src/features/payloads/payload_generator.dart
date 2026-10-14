@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../widgets/toast_bar.dart';
 
 class PayloadGenerator extends StatefulWidget {
   const PayloadGenerator({super.key});
@@ -40,7 +41,7 @@ class _PayloadGeneratorState extends State<PayloadGenerator> {
   }
 
   void _copyToClipboard() {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Payload copied to clipboard')),
     );
   }
