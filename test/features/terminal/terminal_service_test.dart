@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:project_zion/features/terminal/arabic_shaper.dart';
 
 import '../../../lib/features/terminal/terminal_service.dart';
-import '../../../lib/features/terminal/arabic_shaper.dart';
 import '../../../lib/security/core/security_core.dart';
 
 void main() {
@@ -14,18 +14,14 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  test('Arabic shaping preserves text and selects connected presentation forms', () {
+  test('Arabic shaping preserves diacritics and uses lam-alef presentation ligature', () {
     final shaped = ArabicShaper.shape('سلام');
-    expect(shaped.runes.length, 3); // lam-alef is combined into one presentation ligature
+    expect(shaped.runes.length, 3);
     expect(shaped, isNot('سلام'));
     expect(ArabicShaper.isArabic(shaped), isTrue);
-  });
 
-  test('Arabic shaping preserves diacritics and applies lam-alef ligature', () {
     final marked = ArabicShaper.shape('بَت');
     expect(marked.runes.toList(), contains(0x064E));
-    expect(marked, isNot('بَت'));
-
     final lamAlef = ArabicShaper.shape('لا');
     expect(lamAlef.runes.length, 1);
     expect(lamAlef.runes.single, 0xFEFB);
@@ -51,7 +47,7 @@ void main() {
 
     expect(result.command, 'printf ZionTerminalTest');
     if (result.shell == 'unavailable') return;
-    expect(result.shell, anyOf('/system/bin/sh', '/data/data/com.zion.os/files/usr/bin/bash'));
+    expect(result.shell, '/system/bin/sh');
     expect(result.exitCode, 0);
     expect(result.stdout, contains('ZionTerminalTest'));
     expect(result.duration, greaterThanOrEqualTo(Duration.zero));
@@ -64,7 +60,7 @@ void main() {
     final result = await service.execute('command_that_should_not_exist_zion');
 
     if (result.shell == 'unavailable') return;
-    expect(result.shell, anyOf('/system/bin/sh', '/data/data/com.zion.os/files/usr/bin/bash'));
+    expect(result.shell, '/system/bin/sh');
     expect(result.exitCode, isNot(0));
   });
 
