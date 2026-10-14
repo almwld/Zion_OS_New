@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:async';
+import '../../widgets/toast_bar.dart';
 
 class TaskManagerApp extends StatefulWidget {
   const TaskManagerApp({super.key});
@@ -153,11 +154,11 @@ class _TaskManagerAppState extends State<TaskManagerApp> {
       try {
         await Process.run('kill', ['-9', pid], runInShell: true);
         _loadProcesses();
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           SnackBar(content: Text('Process $name terminated'), backgroundColor: const Color(0xFF00BCD4)),
         );
       } catch (_) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ToastBar.show(context, 
           const SnackBar(content: Text('Failed to terminate process'), backgroundColor: Colors.red),
         );
       }
@@ -168,7 +169,7 @@ class _TaskManagerAppState extends State<TaskManagerApp> {
     try {
       await Process.run('renice', ['-n', '19', '-p', process['pid']], runInShell: true);
       _loadProcesses();
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('Process ${process['name']} optimized'), backgroundColor: const Color(0xFF00BCD4)),
       );
     } catch (_) {}
