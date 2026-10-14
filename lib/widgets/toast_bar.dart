@@ -16,7 +16,11 @@ class ToastBar {
     if (overlay == null) return;
 
     _timer?.cancel();
-    _entry?.remove();
+    final previous = _entry;
+    if (previous != null) {
+      previous.remove();
+      previous.dispose();
+    }
     _entry = null;
 
     final media = MediaQuery.maybeOf(context);
@@ -97,6 +101,7 @@ class ToastBar {
     _timer = Timer(config.duration, () {
       if (identical(_entry, entry)) {
         entry.remove();
+        entry.dispose();
         _entry = null;
         _timer = null;
       }
