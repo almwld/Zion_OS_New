@@ -12,6 +12,8 @@ void main() {
       'http://192.168.1.1/',
       'http://169.254.169.254/latest/meta-data/',
       'http://[::1]/',
+      'http://[::ffff:192.168.1.1]/',
+      'http://[::192.168.1.1]/',
       'http://metadata.google.internal/',
     ]) {
       test('rejects local/private target: $address', () async {
