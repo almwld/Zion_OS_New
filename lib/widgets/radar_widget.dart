@@ -153,7 +153,7 @@ class _RadarWidgetState extends State<RadarWidget>
     points.add(RadarDataPoint(
       name: 'اتصال الإنترنت',
       angle: 315,
-      value: _telemetry['validated'] == true ? 1 : 0.12,
+      value: _telemetry['validated'] == true ? 1 : 0,
       color: _telemetry['validated'] == true ? Colors.green : Colors.redAccent,
       detail: 'النقل: $transport • '
           '${_telemetry['validated'] == true ? 'اتصال متحقق' : 'غير متحقق'}',
@@ -162,7 +162,7 @@ class _RadarWidgetState extends State<RadarWidget>
   }
 
   double _normalize(double value, double ceiling) =>
-      (value / ceiling).clamp(0.03, 1.0).toDouble();
+      (value / ceiling).clamp(0.0, 1.0).toDouble();
 
   @override
   Widget build(BuildContext context) {
