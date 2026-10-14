@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
@@ -20,6 +23,9 @@ class _AgentScreenState extends State<AgentScreen> {
   AgentResult? _result;
   bool _modelLoading=false;
   bool _modelReady=false;
+  bool _submitting=false;
+  bool _historyReady=false;
+  static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
   LlamaModel? _candidateModel;
@@ -37,8 +43,54 @@ class _AgentScreenState extends State<AgentScreen> {
       setState(()=>_events.add(e));
       _scrollEnd();
     });
+    unawaited(_restoreMessages());
   }
 
+
+  Future<void> _restoreMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyKey);
+      if (raw == null || raw.isEmpty) {
+        await _persistMessages();
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final restored = decoded.whereType<Map>().take(100).map((item) {
+        final role = item['role']?.toString();
+        final text = item['text']?.toString() ?? '';
+        if ((role != 'user' && role != 'assistant') || text.trim().isEmpty) return null;
+        return <String, String>{'role': role!, 'text': text};
+      }).whereType<Map<String, String>>().toList(growable: false);
+      if (!mounted || restored.isEmpty) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(restored);
+      });
+      _scrollEnd();
+    } catch (_) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_historyKey);
+      } catch (_) {}
+    } finally {
+      if (mounted) setState(() => _historyReady = true);
+    }
+  }
+
+  Future<void> _persistMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recent = _messages.length > 100
+          ? _messages.sublist(_messages.length - 100)
+          : _messages;
+      await prefs.setString(_historyKey, jsonEncode(recent));
+    } catch (_) {
+      // The agent remains usable when local history persistence is unavailable.
+    }
+  }
 
   Future<void> _discoverModel() async {
     if (mounted) setState(() {
@@ -118,26 +170,40 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  Future<void> _run(){
-    final task=_input.text.trim();
-    if(task.isEmpty||_runtime.canCancel)return Future.value();
-    // Deterministic tool tasks (for example, an explicitly requested local
-    // diagnostic command) can run without a loaded model. Tasks that need
-    // language reasoning will report clearly when local GGUF is unavailable.
-    _input.clear();
-    setState((){
-      _messages.add({'role':'user','text':task});
-      _result=null;
+  Future<void> _run() async {
+    final task = _input.text.trim();
+    if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
+    // Deterministic tool tasks can run without a loaded model. Complex planning
+    // uses the local GGUF model when it is available.
+    setState(() {
+      _submitting = true;
+      _input.clear();
+      _messages.add({'role': 'user', 'text': task});
+      _result = null;
     });
+    await _persistMessages();
     _scrollEnd();
-    return _runtime.run(task,approveReviewed:false).then((r){
-      if(!mounted)return;
-      setState((){
-        _result=r;
-        _messages.add({'role':'assistant','text':r.success?(r.report??'اكتملت المهمة بنجاح.'):'توقفت المهمة: '+(r.error??'خطأ غير معروف')});
+    try {
+      final result = await _runtime.run(task, approveReviewed: false);
+      if (!mounted) return;
+      setState(() {
+        _result = result;
+        _messages.add({
+          'role': 'assistant',
+          'text': _visibleResultSummary(result),
+        });
       });
+      await _persistMessages();
       _scrollEnd();
-    });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add({'role': 'assistant', 'text': 'تعذر إكمال المهمة: $error'});
+      });
+      await _persistMessages();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   void _scrollEnd()=>WidgetsBinding.instance.addPostFrameCallback((_){
@@ -150,10 +216,20 @@ class _AgentScreenState extends State<AgentScreen> {
       backgroundColor:const Color(0xFF0B120E),
       title:const Row(children:[Icon(Icons.auto_awesome,color:Color(0xFF00FF41)),SizedBox(width:8),Text('Zion Super Agent')]),
       actions:[
-        IconButton(onPressed:_runtime.canCancel?null:()=>setState((){
-          _messages..clear()..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
-          _events.clear();_result=null;
-        }),icon:const Icon(Icons.add_comment_outlined),tooltip:'محادثة جديدة'),
+        IconButton(
+          onPressed: (!_historyReady || _runtime.canCancel || _submitting) ? null : () {
+            setState(() {
+              _messages
+                ..clear()
+                ..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
+              _events.clear();
+              _result = null;
+            });
+            unawaited(_persistMessages());
+          },
+          icon: const Icon(Icons.add_comment_outlined),
+          tooltip: 'محادثة جديدة',
+        ),
         IconButton(
           onPressed: _runtime.canCancel ? null : () {
             Navigator.of(context).push(MaterialPageRoute<void>(
@@ -241,24 +317,132 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   );
 
-  Widget _resultCard()=>Card(
-    color:const Color(0xFF101812),
-    child:Padding(
-      padding:const EdgeInsets.all(14),
-      child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Row(children:[Icon(_result!.success?Icons.task_alt:Icons.error_outline,color:_result!.success?Colors.greenAccent:Colors.redAccent),const SizedBox(width:8),const Text('النتيجة النهائية')]),
-        const SizedBox(height:8),
-        SelectableText(_result!.report??_result!.error??'لا توجد نتيجة.',style:const TextStyle(color:Colors.white70,height:1.4)),
-      ]),
-    ),
-  );
+  Widget _resultCard() {
+    final result = _result!;
+    final actual = _visibleResultSummary(result);
+    return Card(
+      color: const Color(0xFF101812),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(result.success ? Icons.task_alt : Icons.error_outline,
+                  color: result.success ? Colors.greenAccent : Colors.redAccent),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('نتائج التنفيذ الفعلية')),
+              IconButton(
+                tooltip: 'نسخ النتائج',
+                onPressed: () => Clipboard.setData(ClipboardData(text: actual)),
+                icon: const Icon(Icons.copy, size: 18),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            SelectableText(actual, style: const TextStyle(color: Colors.white70, height: 1.45)),
+            if (result.steps.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              for (var i = 0; i < result.steps.length; i++) _stepResultTile(i + 1, result.steps[i]),
+            ],
+            if (!result.success) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: OutlinedButton.icon(
+                  onPressed: (_runtime.canCancel || _submitting) ? null : () {
+                    _input.text = result.task;
+                    _run();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('إعادة المحاولة'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stepResultTile(int index, StepResult step) {
+    final detail = _formatActualData(step.data);
+    final text = [
+      '$index. ${step.success ? 'نجاح' : 'فشل'} — ${step.summary}',
+      if (step.error != null && step.error!.trim().isNotEmpty) 'الخطأ: ${step.error}',
+      if (detail.isNotEmpty) 'المخرجات الفعلية:\n$detail',
+      'المدة: ${step.duration.inMilliseconds} ms',
+    ].join('\n');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: (step.success ? Colors.greenAccent : Colors.redAccent).withOpacity(.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(step.success ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 17, color: step.success ? Colors.greenAccent : Colors.redAccent),
+              const SizedBox(width: 7),
+              Expanded(child: Text('الخطوة $index', style: const TextStyle(fontWeight: FontWeight.w600))),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'نسخ نتيجة الخطوة',
+                onPressed: () => Clipboard.setData(ClipboardData(text: text)),
+                icon: const Icon(Icons.copy, size: 16),
+              ),
+            ]),
+            SelectableText(text, style: const TextStyle(color: Colors.white70, height: 1.4, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _visibleResultSummary(AgentResult result) {
+    if (result.steps.isEmpty) {
+      return result.success
+          ? 'اكتملت المهمة، لكن لم تُرجع الأدوات مخرجات تفصيلية.'
+          : 'لم تكتمل المهمة. السبب: ${result.error ?? 'لم يقدّم المحرك سبباً محدداً.'}';
+    }
+    final lines = result.steps.asMap().entries.map((entry) {
+      final step = entry.value;
+      final output = _formatActualData(step.data);
+      return [
+        '${entry.key + 1}. ${step.success ? 'نجاح' : 'فشل'} — ${step.summary}',
+        if (step.error != null && step.error!.trim().isNotEmpty) 'الخطأ: ${step.error}',
+        if (output.isNotEmpty) 'المخرجات الفعلية: $output',
+      ].join('\n');
+    }).join('\n\n');
+    return '${result.success ? 'اكتملت المهمة حسب نتائج الأدوات.' : 'لم تكتمل المهمة بنجاح.'}\nالمهمة: ${result.task}\n$lines${result.error == null ? '' : '\nالسبب النهائي: ${result.error}'}';
+  }
+
+  String _formatActualData(dynamic data) {
+    if (data == null) return '';
+    String value;
+    try {
+      value = data is String ? data : const JsonEncoder.withIndent('  ').convert(data);
+    } catch (_) {
+      value = data.toString();
+    }
+    const maxLength = 5000;
+    return value.length <= maxLength
+        ? value
+        : '${value.substring(0, maxLength)}\n… تم اختصار المخرجات المعروضة؛ انسخ النتيجة الكاملة من مصدر الأداة.';
+  }
 
   Widget _composer()=>SafeArea(
     child:Padding(
       padding:const EdgeInsets.fromLTRB(10,8,10,10),
       child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
         Expanded(child:TextField(
-          enabled:!_runtime.canCancel,
+          enabled:_historyReady && !_runtime.canCancel && !_submitting,
           controller:_input,
           minLines:1,maxLines:5,
           onSubmitted:(_)=>_run(),
@@ -271,7 +455,7 @@ class _AgentScreenState extends State<AgentScreen> {
           ),
         )),
         const SizedBox(width:8),
-        IconButton.filled(onPressed:_runtime.canCancel?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
+        IconButton.filled(onPressed:(!_historyReady || _runtime.canCancel || _submitting)?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
       ]),
     ),
   );
