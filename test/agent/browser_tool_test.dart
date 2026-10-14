@@ -11,6 +11,8 @@ void main() {
       'http://10.0.0.8/',
       'http://192.168.1.1/',
       'http://169.254.169.254/latest/meta-data/',
+      'http://[::1]/',
+      'http://metadata.google.internal/',
     ]) {
       test('rejects local/private target: $address', () async {
         final result = await tool.execute({'action': 'fetch', 'url': address});
@@ -18,5 +20,14 @@ void main() {
         expect(result.error, contains('محلي أو خاص'));
       });
     }
+  });
+
+  test('rejects non-HTTP schemes and embedded URL credentials', () async {
+    final fileUrl = await tool.execute({'action': 'fetch', 'url': 'file:///etc/passwd'});
+    final credentials = await tool.execute({'action': 'fetch', 'url': 'https://user:pass@example.com/'});
+    final invalidAction = await tool.execute({'action': 'delete'});
+    expect(fileUrl.success, isFalse);
+    expect(credentials.success, isFalse);
+    expect(invalidAction.success, isFalse);
   });
 }
