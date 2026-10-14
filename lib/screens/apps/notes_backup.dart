@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../widgets/toast_bar.dart';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -102,12 +103,12 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await backupFile.writeAsString(jsonEncode(backupData), flush: true);
       await _loadBackups();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Notes backup created successfully')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('Backup failed: $e'), backgroundColor: Colors.red),
       );
     } finally {
@@ -145,12 +146,12 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await _loadNotes();
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('Restored ${restored.length} notes successfully')),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red),
       );
     }
@@ -175,7 +176,7 @@ class _NotesBackupAppState extends State<NotesBackupApp> {
       await _loadBackups();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red),
       );
     }
