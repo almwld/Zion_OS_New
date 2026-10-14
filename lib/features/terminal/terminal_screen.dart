@@ -12,7 +12,7 @@ import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
-import 'package:project_zion/services/toast_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class TerminalScreen extends StatefulWidget {
   const TerminalScreen({super.key});
