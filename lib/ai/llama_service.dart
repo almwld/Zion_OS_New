@@ -115,7 +115,7 @@ class LlamaService {
     try {
       final ok = await _channel.invokeMethod<bool>('loadModel', {
         'path': path,
-        'threads': threads.clamp(1, 2),
+        'threads': threads.clamp(1, 2).toInt(),
         if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
         'loraScale': loraScale > 0 ? loraScale : 1.0,
       }) ?? false;
@@ -152,8 +152,8 @@ class LlamaService {
     try {
       return (await _channel.invokeMethod<String>('generate', {
         'prompt': prompt,
-        'maxTokens': maxTokens.clamp(1, 256),
-        'temperature': temperature.clamp(0.0, 1.5),
+        'maxTokens': maxTokens.clamp(1, 256).toInt(),
+        'temperature': temperature.clamp(0.0, 1.5).toDouble(),
       })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
     } on PlatformException catch (e) {
       return 'ERROR: تعذر تشغيل النموذج المحلي: ${e.message ?? e.code}';
