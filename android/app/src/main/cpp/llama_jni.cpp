@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -16,6 +17,19 @@ llama_model * g_model = nullptr;
 llama_context * g_ctx = nullptr;
 llama_sampler * g_sampler = nullptr;
 llama_adapter_lora * g_lora = nullptr;
+std::atomic<bool> g_generation_active{false};
+std::atomic<bool> g_cancel_requested{false};
+
+struct GenerationStateGuard {
+    GenerationStateGuard() {
+        g_cancel_requested.store(false, std::memory_order_relaxed);
+        g_generation_active.store(true, std::memory_order_release);
+    }
+    ~GenerationStateGuard() {
+        g_generation_active.store(false, std::memory_order_release);
+        g_cancel_requested.store(false, std::memory_order_relaxed);
+    }
+};
 
 void freeLocked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
@@ -107,6 +121,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
         env->ReleaseStringUTFChars(prompt, text);
         return env->NewStringUTF("ERROR: Model not loaded");
     }
+    GenerationStateGuard generationState;
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
@@ -171,6 +186,10 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     LOGE("Prompt tokenized: %d tokens; generation limit: %d", nTokens, limit);
 
     for (int i = 0; i < limit; ++i) {
+        if (g_cancel_requested.load(std::memory_order_acquire)) {
+            LOGE("Inference cancelled after %d generated tokens", i);
+            break;
+        }
         llama_token next = llama_sampler_sample(g_sampler, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
 
@@ -187,6 +206,13 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     }
     LOGE("Inference finished; generated %zu UTF-8 bytes", output.size());
     return env->NewStringUTF(output.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_zion_os_ai_LlamaBridge_nativeCancelGeneration(JNIEnv *, jobject) {
+    if (!g_generation_active.load(std::memory_order_acquire)) return JNI_FALSE;
+    g_cancel_requested.store(true, std::memory_order_release);
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
