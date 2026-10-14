@@ -177,6 +177,12 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(ok) }
                         }
                     }
+                    "cancelGeneration" -> {
+                        // This JNI method only sets an atomic flag; do not queue it
+                        // behind inference on aiExecutor or cancellation would be ineffective.
+                        val cancelled = try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false }
+                        result.success(cancelled)
+                    }
                     "generate" -> {
                         val prompt = call.argument<String>("prompt") ?: ""
                         val maxTokens = call.argument<Int>("maxTokens") ?: 512
