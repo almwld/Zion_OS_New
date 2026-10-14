@@ -22,14 +22,33 @@ class LlamaService {
   String? get currentModel => _modelPath;
 
   Future<List<LlamaModel>> discoverModels() async {
-    final value = await _channel.invokeMethod<List<dynamic>>('discoverModels');
-    return (value ?? const []).map((e) => LlamaModel.fromMap(Map<dynamic, dynamic>.from(e as Map))).toList();
+    try {
+      final value = await _channel.invokeMethod<List<dynamic>>('discoverModels');
+      return (value ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((e) => LlamaModel.fromMap(Map<dynamic, dynamic>.from(e)))
+          .toList(growable: false);
+    } on PlatformException {
+      return const <LlamaModel>[];
+    } on MissingPluginException {
+      return const <LlamaModel>[];
+    } on FormatException {
+      return const <LlamaModel>[];
+    }
   }
 
   Future<LlamaModel?> pickAndImportModel() async {
-    final value = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickModel');
-    if (value?['status'] != 'IMPORTED') return null;
-    return LlamaModel.fromMap(value!);
+    try {
+      final value = await _channel.invokeMethod<Map<dynamic, dynamic>>('pickModel');
+      if (value?['status'] != 'IMPORTED') return null;
+      return LlamaModel.fromMap(value!);
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    } on FormatException {
+      return null;
+    }
   }
 
   /// Discover every readable GGUF exposed by the Android bridge and choose a
@@ -77,15 +96,30 @@ class LlamaService {
     String? loraPath,
     double loraScale = 1.0,
   }) async {
-    final ok = await _channel.invokeMethod<bool>('loadModel', {
-      'path': path,
-      'threads': threads,
-      if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
-      'loraScale': loraScale > 0 ? loraScale : 1.0,
-    }) ?? false;
-    _loaded = ok;
-    _modelPath = ok ? path : null;
-    return ok;
+    if (path.trim().isEmpty || threads < 1) {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    }
+    try {
+      final ok = await _channel.invokeMethod<bool>('loadModel', {
+        'path': path,
+        'threads': threads.clamp(1, 8),
+        if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
+        'loraScale': loraScale > 0 ? loraScale : 1.0,
+      }) ?? false;
+      _loaded = ok;
+      _modelPath = ok ? path : null;
+      return ok;
+    } on PlatformException {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    } on MissingPluginException {
+      _loaded = false;
+      _modelPath = null;
+      return false;
+    }
   }
 
   /// Synchronize this service instance with the native singleton. The model may
@@ -102,18 +136,51 @@ class LlamaService {
   }
 
   Future<String> generate(String prompt, {int maxTokens = 128, double temperature = 0.25}) async {
+    if (prompt.trim().isEmpty) return '';
     if (!await refreshLoadedState()) return 'ERROR: النموذج المحلي غير محمل.';
-    return (await _channel.invokeMethod<String>('generate', {
-      'prompt': prompt, 'maxTokens': maxTokens, 'temperature': temperature,
-    })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
+    try {
+      return (await _channel.invokeMethod<String>('generate', {
+        'prompt': prompt,
+        'maxTokens': maxTokens.clamp(1, 2048),
+        'temperature': temperature.clamp(0.0, 2.0),
+      })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
+    } on PlatformException catch (e) {
+      return 'ERROR: تعذر تشغيل النموذج المحلي: ${e.message ?? e.code}';
+    } on MissingPluginException {
+      return 'ERROR: محرك الذكاء الاصطناعي المحلي غير متاح على هذا البناء.';
+    }
   }
 
   Future<void> unloadModel() async {
-    await _channel.invokeMethod('freeModel');
-    _loaded = false;
-    _modelPath = null;
+    try {
+      await _channel.invokeMethod<void>('freeModel');
+    } on PlatformException {
+      // Native cleanup may already have happened during Activity teardown.
+    } on MissingPluginException {
+      // Keep teardown idempotent if the native AI bridge is not present.
+    } finally {
+      _loaded = false;
+      _modelPath = null;
+    }
   }
 
-  Future<bool> get nativeLoaded async => await _channel.invokeMethod<bool>('isLoaded') ?? false;
-  Future<String> get engineVersion async => await _channel.invokeMethod<String>('version') ?? 'unknown';
+  Future<bool> get nativeLoaded async {
+    try {
+      return await _channel.invokeMethod<bool>('isLoaded') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<String> get engineVersion async {
+    try {
+      return await _channel.invokeMethod<String>('version') ?? 'unknown';
+    } on PlatformException {
+      return 'unavailable';
+    } on MissingPluginException {
+      return 'unavailable';
+    }
+  }
 }

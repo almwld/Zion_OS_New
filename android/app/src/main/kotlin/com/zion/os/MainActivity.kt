@@ -14,6 +14,7 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
+import android.os.Environment
 import android.net.TrafficStats
 import android.net.wifi.WifiInfo
 import android.content.ClipData
@@ -69,6 +70,7 @@ class MainActivity : FlutterFragmentActivity() {
     private lateinit var zionApiChannel: ZionApiChannel
     private lateinit var zionPkgChannel: MethodChannel
     private var pendingTreeResult: MethodChannel.Result? = null
+    private var pendingAllFilesAccessResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
@@ -199,6 +201,25 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "ensureAllFilesAccess" -> {
+                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+                            result.success(true)
+                        } else if (pendingAllFilesAccessResult != null) {
+                            result.error("BUSY", "Storage access settings are already open.", null)
+                        } else {
+                            pendingAllFilesAccessResult = result
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
+                            } catch (_: Throwable) {
+                                pendingAllFilesAccessResult = null
+                                result.success(false)
+                            }
+                        }
+                    }
                     "pickKaliPackage" -> {
                         if (pendingKaliResult != null) {
                             result.error("BUSY", "A Kali package picker is already open.", null)
@@ -361,8 +382,10 @@ class MainActivity : FlutterFragmentActivity() {
                 "export HOME=\"${home.absolutePath}\"\n" +
                 "export PREFIX=\"${prefix.absolutePath}\"\n" +
                 "export TMPDIR=\"${File(filesDir, "tmp").absolutePath}\"\n" +
-                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin\"\n" +
-                "export TERM=\"xterm-256color\"\n"
+                "export PATH=\"${prefix.absolutePath}/bin:${prefix.absolutePath}/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
+                "export LD_LIBRARY_PATH=\"${prefix.absolutePath}/lib:${prefix.absolutePath}/lib64\"\n" +
+                "export TERM=\"xterm-256color\"\n" +
+                "export PS1=\"$ \"\n"
             )
         }
         val bashrc = File(home, ".bashrc")
@@ -491,6 +514,8 @@ class MainActivity : FlutterFragmentActivity() {
             var lastTx = TrafficStats.getTotalTxBytes()
             var lastRxPackets = TrafficStats.getTotalRxPackets()
             var lastTxPackets = TrafficStats.getTotalTxPackets()
+            var lastAppRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+            var lastAppTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
             var lastTime = System.nanoTime()
             while (radarRunning) {
                 val now = System.nanoTime()
@@ -499,17 +524,24 @@ class MainActivity : FlutterFragmentActivity() {
                 val tx = TrafficStats.getTotalTxBytes()
                 val rxPackets = TrafficStats.getTotalRxPackets()
                 val txPackets = TrafficStats.getTotalTxPackets()
+                val appRx = TrafficStats.getUidRxBytes(applicationInfo.uid).coerceAtLeast(0L)
+                val appTx = TrafficStats.getUidTxBytes(applicationInfo.uid).coerceAtLeast(0L)
                 radarSink?.success(readNetworkRadar(
                     rx, tx, rxPackets, txPackets,
                     ((rx - lastRx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((tx - lastTx).coerceAtLeast(0L) / elapsed).toLong(),
                     ((rxPackets - lastRxPackets).coerceAtLeast(0L) / elapsed).toLong(),
-                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong()
+                    ((txPackets - lastTxPackets).coerceAtLeast(0L) / elapsed).toLong(),
+                    appRx, appTx,
+                    ((appRx - lastAppRx).coerceAtLeast(0L) / elapsed).toLong(),
+                    ((appTx - lastAppTx).coerceAtLeast(0L) / elapsed).toLong()
                 ))
                 lastRx = rx
                 lastTx = tx
                 lastRxPackets = rxPackets
                 lastTxPackets = txPackets
+                lastAppRx = appRx
+                lastAppTx = appTx
                 lastTime = now
                 try { Thread.sleep(750) } catch (_: InterruptedException) { break }
             }
@@ -542,7 +574,11 @@ class MainActivity : FlutterFragmentActivity() {
         radarNetworkCallback = null
     }
 
-    private fun readNetworkRadar(rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long, rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long): Map<String, Any?> {
+    private fun readNetworkRadar(
+        rxBytes: Long, txBytes: Long, rxPackets: Long, txPackets: Long,
+        rxRate: Long, txRate: Long, rxPacketRate: Long, txPacketRate: Long,
+        appRxBytes: Long, appTxBytes: Long, appRxRate: Long, appTxRate: Long
+    ): Map<String, Any?> {
         val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivity.activeNetwork
         val caps = network?.let { connectivity.getNetworkCapabilities(it) }
@@ -580,6 +616,11 @@ class MainActivity : FlutterFragmentActivity() {
             "txBytesPerSec" to txRate,
             "rxPacketsPerSec" to rxPacketRate,
             "txPacketsPerSec" to txPacketRate,
+            // Per-UID counters describe Zion OS itself, separate from whole-device traffic.
+            "appRxBytes" to appRxBytes,
+            "appTxBytes" to appTxBytes,
+            "appRxBytesPerSec" to appRxRate,
+            "appTxBytesPerSec" to appTxRate,
         )
     }
 
@@ -792,6 +833,14 @@ class MainActivity : FlutterFragmentActivity() {
         } catch (t: Throwable) {
             mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Model import failed."))
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pending = pendingAllFilesAccessResult ?: return
+        pendingAllFilesAccessResult = null
+        val granted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+        pending.success(granted)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
