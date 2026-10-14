@@ -13,22 +13,18 @@ class KaliLoaderService {
   static const String _installPath = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
   static const String _localRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
 
-  /// Prefer the user's configured rootfs in shared storage without copying it.
-  /// The managed private rootfs remains the fallback for existing installations.
   static Future<String?> _resolveRootfsPath() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final configured = prefs.getString(_localRootfsPreferenceKey)?.trim();
       if (configured != null && configured.startsWith('/')) {
-        final rootfs = Directory(configured);
-        if (await rootfs.exists() &&
-            await File('$configured/bin/sh').exists() &&
+        if (await File('$configured/bin/sh').exists() &&
             await File('$configured/bin/bash').exists()) {
           return configured;
         }
       }
     } catch (_) {
-      // Shared preferences are optional; fall back to the managed rootfs.
+      // The preference is optional; use the app-private rootfs if available.
     }
     if (await File('$_installPath/bin/sh').exists() &&
         await File('$_installPath/bin/bash').exists() &&
@@ -181,9 +177,7 @@ class KaliLoaderService {
     return {
       'installed': installed,
       'path': rootfsPath ?? _installPath,
-      'rootfs_source': rootfsPath == null
-          ? 'missing'
-          : (rootfsPath == _installPath ? 'zion-private' : 'configured-local'),
+      'rootfs_source': rootfsPath == null ? 'missing' : (rootfsPath == _installPath ? 'zion-private' : 'configured-local'),
       'has_root': root,
       'use_chroot': chroot,
       'mode': chroot ? 'CHROOT' : (proot != null ? 'PROOT' : 'MISSING'),
