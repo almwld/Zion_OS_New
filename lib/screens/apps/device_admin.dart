@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import '../../widgets/toast_bar.dart';
 
 class DeviceAdminApp extends StatefulWidget {
   const DeviceAdminApp({super.key});
@@ -273,7 +274,7 @@ class _DeviceAdminAppState extends State<DeviceAdminApp> {
           'Clear all app cache',
           Icons.cleaning_services,
           Colors.orange,
-          () => ScaffoldMessenger.of(context).showSnackBar(
+          () => ToastBar.show(context, 
             const SnackBar(content: Text('Cache cleared'), backgroundColor: Color(0xFF00BCD4)),
           ),
         ),
@@ -387,7 +388,7 @@ class _DeviceAdminAppState extends State<DeviceAdminApp> {
       ),
     );
     if (confirmed == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         SnackBar(content: Text(title), backgroundColor: const Color(0xFF00BCD4)),
       );
     }

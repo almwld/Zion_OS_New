@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../widgets/toast_bar.dart';
 
 class QRScannerApp extends StatefulWidget {
   const QRScannerApp({super.key});
@@ -59,7 +60,7 @@ class _QRScannerAppState extends State<QRScannerApp> {
 
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Copied to clipboard'), backgroundColor: Color(0xFF00BCD4)),
     );
   }

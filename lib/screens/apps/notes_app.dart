@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../../widgets/toast_bar.dart';
 
 class NotesApp extends StatefulWidget {
   const NotesApp({super.key});
@@ -130,7 +131,7 @@ class _NotesAppState extends State<NotesApp> {
                   _saveNotes();
                 });
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                ToastBar.show(context, 
                   const SnackBar(content: Text('Note added'), backgroundColor: Color(0xFF00BCD4)),
                 );
               }
@@ -214,7 +215,7 @@ class _NotesAppState extends State<NotesApp> {
                 _saveNotes();
               });
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastBar.show(context, 
                 const SnackBar(content: Text('Note updated'), backgroundColor: Color(0xFF00BCD4)),
               );
             },
@@ -241,7 +242,7 @@ class _NotesAppState extends State<NotesApp> {
                 _saveNotes();
               });
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
+              ToastBar.show(context, 
                 const SnackBar(content: Text('Note deleted'), backgroundColor: Color(0xFF00BCD4)),
               );
             },

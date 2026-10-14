@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/toast_bar.dart';
 
 class RadioApp extends StatefulWidget {
   const RadioApp({super.key});
@@ -46,7 +47,7 @@ class _RadioAppState extends State<RadioApp> {
       _selectedStation = index;
       _isPlaying = true;
     });
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       SnackBar(
         content: Text('Playing: ${_stations[index]['name']}'),
         backgroundColor: const Color(0xFF00BCD4),

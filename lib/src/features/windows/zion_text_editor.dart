@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../../../widgets/toast_bar.dart';
 
 class ZionTextEditor extends StatefulWidget {
   const ZionTextEditor({super.key});
@@ -30,7 +31,7 @@ class _ZionTextEditorState extends State<ZionTextEditor> {
     final file = File(_currentFile);
     await file.writeAsString(_controller.text);
     setState(() => _isModified = false);
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('File saved')),
     );
   }

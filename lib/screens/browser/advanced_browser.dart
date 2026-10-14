@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/browser_service.dart';
+import '../../widgets/toast_bar.dart';
 
 class AdvancedBrowser extends StatefulWidget {
   const AdvancedBrowser({super.key});
@@ -155,7 +156,7 @@ class _AdvancedBrowserState extends State<AdvancedBrowser> with SingleTickerProv
                   onPressed: () async {
                     await service.clearHistory();
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ToastBar.show(context, 
                       const SnackBar(content: Text('History cleared'), backgroundColor: Color(0xFF00BCD4)),
                     );
                   },
@@ -193,7 +194,7 @@ class _AdvancedBrowserState extends State<AdvancedBrowser> with SingleTickerProv
   void _addBookmark() {
     final service = Provider.of<BrowserService>(context, listen: false);
     service.addBookmark(_pageTitle, _currentUrl);
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Bookmark added'), backgroundColor: Color(0xFF00BCD4)),
     );
   }

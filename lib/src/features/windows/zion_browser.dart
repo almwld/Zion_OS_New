@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../widgets/toast_bar.dart';
 
 class ZionBrowser extends StatefulWidget {
   const ZionBrowser({super.key});
@@ -38,7 +39,7 @@ class _ZionBrowserState extends State<ZionBrowser> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ToastBar.show(context, 
         const SnackBar(content: Text('Could not launch URL')),
       );
     }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../../widgets/toast_bar.dart';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -310,7 +311,7 @@ Choose the next step.
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ToastBar.show(context, SnackBar(content: Text(message)));
   }
 
   Color get _fg => widget.palette.foreground;

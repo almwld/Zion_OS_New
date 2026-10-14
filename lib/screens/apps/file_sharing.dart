@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:share_plus/share_plus.dart';
+import '../../widgets/toast_bar.dart';
 
 class FileSharingApp extends StatefulWidget {
   const FileSharingApp({super.key});
@@ -34,13 +35,13 @@ class _FileSharingAppState extends State<FileSharingApp> {
 
   void _shareFile(Map<String, dynamic> file) {
     Share.share('Check out this file: ${file['name']}');
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       SnackBar(content: Text('Sharing ${file['name']}...'), backgroundColor: const Color(0xFF00BCD4)),
     );
   }
 
   void _sendFile(Map<String, dynamic> contact) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       SnackBar(content: Text('Sending file to ${contact['name']}...'), backgroundColor: const Color(0xFF00BCD4)),
     );
   }
@@ -78,7 +79,7 @@ class _FileSharingAppState extends State<FileSharingApp> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
+          ToastBar.show(context, 
             const SnackBar(content: Text('Select file to share...'), backgroundColor: Color(0xFF00BCD4)),
           );
         },

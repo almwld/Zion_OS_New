@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../widgets/toast_bar.dart';
 
 class TextAnalyzerApp extends StatefulWidget {
   const TextAnalyzerApp({super.key});
@@ -131,7 +132,7 @@ Reversed Text:
 $_reversedText
 ''';
     Clipboard.setData(ClipboardData(text: result));
-    ScaffoldMessenger.of(context).showSnackBar(
+    ToastBar.show(context, 
       const SnackBar(content: Text('Analysis copied to clipboard'), backgroundColor: Color(0xFF00BCD4)),
     );
   }
