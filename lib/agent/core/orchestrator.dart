@@ -383,7 +383,7 @@ class AgentOrchestrator {
       final error = result.error == null ? '' : '\nالخطأ: ' + result.error!;
       final duration = result.duration.inMilliseconds;
       return 'الخطوة $index — $status\n' + result.summary + details + error + '\nالمدة: ' + duration.toString() + 'ms';
-    }).join('\n\\n');
+    }).join('\n\n');
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
