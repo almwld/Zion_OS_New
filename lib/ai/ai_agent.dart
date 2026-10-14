@@ -142,5 +142,11 @@ class AIAgent {
   }
 
   void clearHistory() => _history.clear();
-  Future<void> dispose() => llama.unloadModel();
+
+  Future<void> unload() async {
+    _initialized = false;
+    await llama.unloadModel();
+  }
+
+  Future<void> dispose() => unload();
 }
