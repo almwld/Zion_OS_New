@@ -322,6 +322,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             : 'تعذر تحميل النموذج. اختر نموذج GGUF أصغر أو متوافقاً مع الجهاز.';
         if (ok) {
           _preferredModelPath = model.path;
+          _agent.restoreHistory(_messages);
         }
       });
       if (ok) {
