@@ -352,10 +352,8 @@ class TerminalService {
       const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
       const proot = '/data/data/com.zion.os/files/usr/bin/proot';
       const loader = '/data/data/com.zion.os/files/usr/libexec/proot';
-      final alreadyInstalled = await File('$rootfs/bin/sh').exists() &&
-          await File(proot).exists() &&
-          await File(loader).exists();
-      if (!alreadyInstalled) {
+      final rootfsReady = await File('$rootfs/bin/sh').exists();
+      if (!rootfsReady) {
         _output.add('[Kali] لم يتم العثور على rootfs صالح في المسار المشترك؛ أبحث عن الحزمة المحلية.\r\n');
         var lastKaliProgress = -1;
         final installed = await const ZionLocalKaliBootstrap().install(
@@ -375,10 +373,12 @@ class TerminalService {
           return false;
         }
       }
-      if (!await File('$rootfs/bin/sh').exists() ||
-          !await File(proot).exists() ||
-          !await File(loader).exists()) {
-        _output.add('[Kali] البيئة غير مكتملة. تحقق من Zion Userland وPRoot قبل التشغيل.\r\n');
+      if (!await File('$rootfs/bin/sh').exists()) {
+        _output.add('[Kali] لم يكتمل تثبيت rootfs المحلي؛ لم يتم تشغيل جلسة فارغة.\r\n');
+        return false;
+      }
+      if (!await File(proot).exists() || !await File(loader).exists()) {
+        _output.add('[Kali] rootfs موجود، لكن PRoot أو loader غير موجود داخل Zion Userland. أصلح تثبيت Userland أولاً.\r\n');
         return false;
       }
       shell = 'zion-kali';
