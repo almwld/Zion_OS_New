@@ -5,10 +5,9 @@ import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/userland/zion_userland_installer.dart';
-
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
+import '../../core/userland/zion_userland_installer.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
@@ -50,12 +49,6 @@ class TerminalService {
   static const _terminalAction = 'terminal.execute';
   static const _commandTimeout = Duration(seconds: 30);
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
-  static const MethodChannel _storageChannel = MethodChannel('zion.os/storage');
-  static const String _userlandPrefix = '/data/data/com.zion.os/files/usr';
-  static const String _userlandBash = '$_userlandPrefix/bin/bash';
-  static const String _localUserlandBackup = '/storage/emulated/0/Download/termux_usr_backup';
-  static Future<void>? _localUserlandInstallTask;
-
   static const Map<String, String> _androidEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
     'TMPDIR': '/data/data/com.zion.os/files/tmp',
@@ -65,24 +58,34 @@ class TerminalService {
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
   };
-
+  static const String _userlandBash = '/data/data/com.zion.os/files/usr/bin/bash';
   static const Map<String, String> _userlandEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
-    'PREFIX': _userlandPrefix,
+    'PREFIX': '/data/data/com.zion.os/files/usr',
     'TMPDIR': '/data/data/com.zion.os/files/tmp',
-    'PATH': '$_userlandPrefix/bin:$_userlandPrefix/sbin:/system/bin:/system/xbin:/vendor/bin',
-    'LD_LIBRARY_PATH': '$_userlandPrefix/lib:$_userlandPrefix/lib64',
+    'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin',
+    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
     'TERM': 'xterm-256color',
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
   };
+  static const ZionUserlandInstaller _userlandInstaller = ZionUserlandInstaller();
+
+  Map<String, String> _environmentFor(String shell) =>
+      shell == _userlandBash || shell.startsWith('/data/data/com.zion.os/files/usr/bin/')
+          ? _userlandEnvironment
+          : _androidEnvironment;
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
   StreamSubscription<String>? _ptyOutputSub;
   final List<String> _history = <String>[];
   final StreamController<String> _output = StreamController<String>.broadcast();
+  void _emitOutput(String event) {
+    // Async install/progress work may finish after a terminal tab is disposed.
+    if (!_output.isClosed) _output.add(event);
+  }
   String _interactiveInputBuffer = '';
 
   Stream<String> get output => _output.stream;
@@ -125,8 +128,58 @@ class TerminalService {
     return null;
   }
 
-  Future<String?> _findShell() async {
-    if (await _isUserlandBashUsable()) return _userlandBash;
+  Future<String?> _findUsableUserlandShell() async {
+    final prefix = '/data/data/com.zion.os/files/usr';
+    for (final name in const <String>['bash', 'sh', 'dash']) {
+      final path = '$prefix/bin/$name';
+      try {
+        if (!await File(path).exists()) continue;
+        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+        if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
+          _emitOutput('[Userland] Using verified shell: $path\r\n');
+          return path;
+        }
+        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+      } catch (error) {
+        _emitOutput('[Userland] Cannot execute $path: $error\r\n');
+      }
+    }
+    return null;
+  }
+  Future<String?> _findShell({bool installIfMissing = false}) async {
+    try {
+      // A usable sh/dash may remain after an incomplete backup restore. Check
+      // it before invoking the installer so each app launch does not recopy
+      // the entire Userland tree just because bash is absent.
+      final existingUserlandShell = await _findUsableUserlandShell();
+      if (existingUserlandShell != null) return existingUserlandShell;
+      if (await _userlandInstaller.isInstalled(
+        onProgress: (message) => _emitOutput('$message\r\n'),
+      )) {
+        final shell = await _findUsableUserlandShell();
+        if (shell != null) return shell;
+      }
+      if (installIfMissing) {
+        _emitOutput('[Terminal] First run: installing Userland from local storage...\r\n');
+        final result = await _userlandInstaller.installLatest(
+          onProgress: (message) => _emitOutput('$message\r\n'),
+        );
+        if (result.success && await _userlandInstaller.isInstalled()) {
+          _emitOutput('[Terminal] ✓ Userland ready\r\n');
+          return _userlandBash;
+        }
+        _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
+        final recoveredShell = await _findUsableUserlandShell();
+        if (recoveredShell != null) {
+          _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
+          return recoveredShell;
+        }
+        _emitOutput('[Terminal] Falling back to /system/bin/sh.\r\n');
+      }
+    } catch (e) {
+      _emitOutput('[Terminal] Userland check/install failed: $e\r\n');
+    }
+
     const shell = '/system/bin/sh';
     try {
       if (!await File(shell).exists()) return null;
@@ -139,125 +192,6 @@ class TerminalService {
       return result.exitCode == 0 ? shell : null;
     } catch (_) {
       return null;
-    }
-  }
-
-  Future<bool> _isUserlandBashUsable() async {
-    try {
-      if (!await File(_userlandBash).exists()) return false;
-      final result = await Process.run(
-        _userlandBash,
-        const <String>['-c', 'printf ZionBashReady'],
-        runInShell: false,
-        environment: _userlandEnvironment,
-      ).timeout(const Duration(seconds: 5));
-      return result.exitCode == 0 && result.stdout.toString().contains('ZionBashReady');
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> _ensureLocalBackupStorageAccess() async {
-    try {
-      final alreadyAllowed =
-          await _storageChannel.invokeMethod<bool>('hasAllFilesAccess') ?? false;
-      if (alreadyAllowed) return true;
-
-      _output.add(
-        '[Userland] Android requires one-time access to read the Download backup. Opening system permission settings…\r\n',
-      );
-      await _storageChannel.invokeMethod<bool>('requestAllFilesAccess');
-
-      // Android intentionally requires the user to grant this special access;
-      // the app cannot silently bypass scoped-storage protections. Once granted,
-      // installation resumes automatically without a separate terminal button.
-      final deadline = DateTime.now().add(const Duration(minutes: 2));
-      while (DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(seconds: 1));
-        final allowed =
-            await _storageChannel.invokeMethod<bool>('hasAllFilesAccess') ?? false;
-        if (allowed) {
-          _output.add('[Userland] Download storage access granted.\r\n');
-          return true;
-        }
-      }
-      _output.add(
-        '[Userland] Storage access was not granted; keeping Android shell available.\r\n',
-      );
-      return false;
-    } on PlatformException catch (error) {
-      _output.add(
-        '[Userland] Cannot check Android storage access: ${error.message ?? error.code}\r\n',
-      );
-      return false;
-    } on MissingPluginException {
-      _output.add(
-        '[Userland] Storage permission bridge is unavailable; cannot read the local backup safely.\r\n',
-      );
-      return false;
-    }
-  }
-
-  Future<void> _installLocalUserlandIfNeeded() async {
-    if (await _isUserlandBashUsable()) {
-      _output.add('[Terminal] Using Userland bash\r\n');
-      return;
-    }
-
-    // Multiple tabs can be created quickly. Share one restore task so two
-    // sessions never copy 1.4 GB into the same prefix at the same time.
-    final pending = _localUserlandInstallTask;
-    if (pending != null) {
-      await pending;
-      if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Using Userland bash\r\n');
-        return;
-      }
-    }
-
-    final completer = Completer<void>();
-    final task = completer.future;
-    _localUserlandInstallTask = task;
-    try {
-      // Recheck after acquiring the shared task: another tab may have
-      // completed a successful install while this tab was waiting.
-      if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Using Userland bash\r\n');
-        return;
-      }
-      if (!await Directory(_localUserlandBackup).exists()) {
-        final accessGranted = await _ensureLocalBackupStorageAccess();
-        if (!accessGranted ||
-            !await Directory(_localUserlandBackup).exists()) {
-          _output.add(
-            '[Terminal] Local Userland backup is missing or still inaccessible; using Android shell.\r\n',
-          );
-          return;
-        }
-      }
-
-      _output.add('[Terminal] First run: installing Userland...\r\n');
-      _output.add('[Userland] Installing from local storage...\r\n');
-      final result = await const ZionUserlandInstaller().installLocalBackup(
-        onProgress: (message) => _output.add('$message\r\n'),
-      );
-      if (!result.success) {
-        _output.add('[Userland] ✗ ${result.message}\r\n');
-        _output.add('[Terminal] Falling back to Android shell.\r\n');
-        return;
-      }
-      if (await _isUserlandBashUsable()) {
-        _output.add('[Terminal] Connected to Userland bash.\r\n');
-      } else {
-        _output.add(
-          '[Userland] ✗ Bash failed the runtime check; keeping Android shell fallback.\r\n',
-        );
-      }
-    } finally {
-      completer.complete();
-      if (identical(_localUserlandInstallTask, task)) {
-        _localUserlandInstallTask = null;
-      }
     }
   }
 
@@ -320,7 +254,7 @@ class TerminalService {
         shell,
         <String>['-c', command],
         runInShell: false,
-        environment: shell == _userlandBash ? _userlandEnvironment : _androidEnvironment,
+        environment: _environmentFor(shell),
       );
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
@@ -387,7 +321,7 @@ class TerminalService {
     if (value == 'capabilities') return _builtinResult(value, TerminalCapabilities.describe());
     if (value == 'zion-status') return _builtinResult(value, await TerminalCapabilities.describeRuntime());
     if (value == 'clear') {
-      _output.add('\x1b[2J\x1b[H');
+      _emitOutput('\x1b[2J\x1b[H');
       return _builtinResult(value, '');
     }
     if (value == 'history') return _builtinResult(value, List.generate(_history.length, (i) => '${i + 1}  ${_history[i]}').join('\n'));
@@ -439,20 +373,50 @@ class TerminalService {
     }
   }
 
-  Future<bool> startInteractive() async {
-    if (isInteractiveRunning) return true;
+  Future<bool> startInteractive({String? kaliRootfsPath}) async {
+    if (isInteractiveRunning && kaliRootfsPath == null) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null) {
+      await stopInteractive();
+    }
     if (!_authorized('<interactive-shell>')) {
-      _output.add('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
+      _emitOutput('ERROR: Interactive shell denied by Zion SecurityCore authorization policy.');
       return false;
     }
     final started = DateTime.now();
-    // Restore local Userland automatically on first entry; progress is streamed
-    // to the terminal while the asynchronous copy runs.
+    // Kali uses the already-installed Zion PRoot runtime and a local rootfs;
+    // it must not trigger Userland restore or copy the selected rootfs.
     await _ensureTerminalEnvironment();
-    await _installLocalUserlandIfNeeded();
-    final shell = await _findShell();
+    String? shell;
+    if (kaliRootfsPath != null) {
+      final path = kaliRootfsPath.trim();
+      if (!path.startsWith('/') ||
+          path.contains('|') ||
+          path.contains('\\n') ||
+          path.contains('\\r') ||
+          path.contains('\\u0000')) {
+        _emitOutput('[Kali] Invalid local rootfs path.\\r\\n');
+        return false;
+      }
+      final rootfs = Directory(path);
+      final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
+      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
+      if (!await rootfs.exists() ||
+          !await File('$path/bin/bash').exists() ||
+          !await File('$path/bin/sh').exists()) {
+        _emitOutput('[Kali] Invalid rootfs: expected bin/bash and bin/sh at $path. No files were copied.\\r\\n');
+        return false;
+      }
+      if (!await proot.exists() || !await loader.exists()) {
+        _emitOutput('[Kali] Zion PRoot/loader is missing. Restore Userland PRoot before launching Kali.\\r\\n');
+        return false;
+      }
+      shell = 'zion-kali@$path';
+      _emitOutput('[Kali] Starting local rootfs without copying it: $path\\r\\n');
+    } else {
+      shell = await _findShell(installIfMissing: true);
+    }
     if (shell == null) {
-      _output.add('Android system shell /system/bin/sh is unavailable on this device.\r\n');
+      _emitOutput('No usable Userland Bash or Android system shell is available on this device.\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'unavailable',
@@ -463,7 +427,9 @@ class TerminalService {
       );
       return false;
     }
-    _output.add(shell == _userlandBash ? '[Terminal] Connected to Userland: bash • PTY\r\n' : 'Android shell ready: $shell\r\n');
+    _emitOutput(shell == _userlandBash
+        ? 'Userland Bash ready: $shell\r\n'
+        : 'Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
@@ -472,14 +438,14 @@ class TerminalService {
     try {
       final ptyAvailable = await _pty.isAvailable();
       if (!ptyAvailable) {
-        _output.add('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
+        _emitOutput('ERROR: Native PTY is unavailable on this Android runtime.\r\n');
         return false;
       }
       await _ptyOutputSub?.cancel();
-      _ptyOutputSub = _pty.output.listen(_output.add);
+      _ptyOutputSub = _pty.output.listen(_emitOutput);
       final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
       if (!startedPty) {
-        _output.add('ERROR: Unable to start Android shell PTY: $shell\r\n');
+        _emitOutput('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(
           command: '<interactive-start>',
           outcome: 'process-error',
@@ -491,7 +457,9 @@ class TerminalService {
         return false;
       }
       _interactiveInputBuffer = '';
-      _output.add(shell == _userlandBash ? 'Connected to Userland: bash • PTY\r\n' : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _emitOutput(shell == _userlandBash
+          ? 'Connected to Userland: bash • native PTY\r\n'
+          : 'Connected to Android system shell: $shell • native PTY\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -502,7 +470,7 @@ class TerminalService {
       );
       return true;
     } on ProcessException catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: ${e.message}\r\n');
       _audit(
         command: '<interactive-start>',
         outcome: 'process-error',
@@ -513,7 +481,7 @@ class TerminalService {
       );
       return false;
     } catch (e) {
-      _output.add('ERROR: Unable to start Android shell PTY: $e\r\n');
+      _emitOutput('ERROR: Unable to start Android shell PTY: $e\r\n');
       return false;
     }
   }
@@ -524,15 +492,18 @@ class TerminalService {
       // TerminalView sends one callback for every typed character. Report the
       // stopped session on Enter only, not on every keypress.
       if (input.contains('\n') || input.contains('\r')) {
-        _output.add(
+        _emitOutput(
           '\r\n\x1b[33m⚠️ [PTY] الجلسة متوقفة.\r\n'
           '\x1b[36m💡 اضغط زر ▶ لبدء جلسة جديدة.\x1b[0m\r\n',
         );
       }
       return;
     }
-    unawaited(_pty.write(input));
-    final parts = (_interactiveInputBuffer + input).split('\n');
+    // Android keyboards may submit Enter as CR, LF, or CRLF. Normalize
+    // before forwarding to the PTY and before updating command history.
+    final normalizedInput = input.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    unawaited(_pty.write(normalizedInput));
+    final parts = (_interactiveInputBuffer + normalizedInput).split('\n');
     _interactiveInputBuffer = parts.removeLast();
     for (final rawCommand in parts) {
       final command = rawCommand.trim();
