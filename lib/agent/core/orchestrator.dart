@@ -69,7 +69,7 @@ class AgentOrchestrator {
         final toolRequiresApproval = tool.requiresApproval(params);
         // Read-only web retrieval is a normal agent capability. Mutations and
         // local/process side effects still require explicit approval.
-        final isReadOnlyWeb = tool.name == 'browser' &&
+        final isReadOnlyWeb = tool.supportsReadOnlyWebRetrieval &&
             (params['action']?.toString() == 'search' ||
                 params['action']?.toString() == 'fetch');
         final requiresSensitiveApproval =
