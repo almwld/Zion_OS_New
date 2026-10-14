@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import '../ai_agent.dart';
@@ -23,6 +25,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   String? _error;
   double _temperature = 0.25;
   int _maxTokens = 128;
+  static const _historyKey = 'zion_offline_ai_messages_v1';
 
   @override void initState() {
     super.initState();
@@ -35,6 +38,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   Future<void> _init() async {
     try {
+      await _restoreConversation();
       // Opening the app only discovers models. Native GGUF loading can consume
       // substantial RAM, so it must be an explicit user action.
       final models = await _agent.llama.discoverModels();
@@ -54,6 +58,56 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _error = 'تعذر فحص نماذج الذكاء المحلي: $e';
     }
     if (mounted) setState(() => _loading = false);
+    _scrollToEnd();
+  }
+
+  Future<void> _restoreConversation() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_historyKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _messages.addAll(decoded.whereType<Map>().take(100).map((item) => AgentMessage(
+        role: item['role'] == 'user' ? 'user' : 'assistant',
+        content: (item['content'] ?? '').toString(),
+      )).where((m) => m.content.isNotEmpty));
+    } catch (_) {
+      await prefs.remove(_historyKey);
+    }
+  }
+
+  Future<void> _persistConversation() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recent = _messages.length > 100 ? _messages.sublist(_messages.length - 100) : _messages;
+      await prefs.setString(_historyKey, jsonEncode(
+        recent.map((m) => {'role': m.role, 'content': m.content}).toList(),
+      ));
+    } catch (_) {
+      if (mounted) setState(() => _error = 'تعذر حفظ سجل المحادثة على الجهاز.');
+    }
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _clearConversation() async {
+    if (_generating || _loadingModel) return;
+    setState(() {
+      _messages.clear();
+      _agent.clearHistory();
+      _error = null;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_historyKey);
   }
 
   Future<void> _loadSelected() async {
@@ -146,9 +200,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
       return;
     }
     setState(() { _messages.add(AgentMessage(role: 'user', content: text)); _input.clear(); _generating = true; });
+    await _persistConversation();
+    _scrollToEnd();
     try {
       final response = await _agent.chat(text, maxTokens: _maxTokens, temperature: _temperature);
-      if (mounted) setState(() => _messages.add(AgentMessage(role: 'assistant', content: response)));
+      if (mounted) { setState(() => _messages.add(AgentMessage(role: 'assistant', content: response))); await _persistConversation(); }
     } catch (e) {
       if (mounted) setState(() => _messages.add(AgentMessage(
         role: 'assistant',
@@ -156,13 +212,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       )));
     } finally {
       if (mounted) setState(() => _generating = false);
+      _scrollToEnd();
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) { if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 180), curve: Curves.easeOut); });
   }
 
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: () => setState(() { _messages.clear(); _agent.clearHistory(); }), icon: const Icon(Icons.delete_outline))]),
+      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
       body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         if (_loadingModel) const LinearProgressIndicator(),
         if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
