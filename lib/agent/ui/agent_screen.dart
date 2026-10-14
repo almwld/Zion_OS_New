@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
@@ -20,6 +22,8 @@ class _AgentScreenState extends State<AgentScreen> {
   AgentResult? _result;
   bool _modelLoading=false;
   bool _modelReady=false;
+  bool _submitting=false;
+  static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
   LlamaModel? _candidateModel;
@@ -37,8 +41,50 @@ class _AgentScreenState extends State<AgentScreen> {
       setState(()=>_events.add(e));
       _scrollEnd();
     });
+    unawaited(_restoreMessages());
   }
 
+
+  Future<void> _restoreMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyKey);
+      if (raw == null || raw.isEmpty) {
+        await _persistMessages();
+        return;
+      }
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final restored = decoded.whereType<Map>().take(100).map((item) {
+        final role = item['role']?.toString();
+        final text = item['text']?.toString() ?? '';
+        if ((role != 'user' && role != 'assistant') || text.trim().isEmpty) return null;
+        return <String, String>{'role': role!, 'text': text};
+      }).whereType<Map<String, String>>().toList(growable: false);
+      if (!mounted || restored.isEmpty) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(restored);
+      });
+      _scrollEnd();
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_historyKey);
+    }
+  }
+
+  Future<void> _persistMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final recent = _messages.length > 100
+          ? _messages.sublist(_messages.length - 100)
+          : _messages;
+      await prefs.setString(_historyKey, jsonEncode(recent));
+    } catch (_) {
+      // The agent remains usable when local history persistence is unavailable.
+    }
+  }
 
   Future<void> _discoverModel() async {
     if (mounted) setState(() {
@@ -118,26 +164,42 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  Future<void> _run(){
-    final task=_input.text.trim();
-    if(task.isEmpty||_runtime.canCancel)return Future.value();
-    // Deterministic tool tasks (for example, an explicitly requested local
-    // diagnostic command) can run without a loaded model. Tasks that need
-    // language reasoning will report clearly when local GGUF is unavailable.
-    _input.clear();
-    setState((){
-      _messages.add({'role':'user','text':task});
-      _result=null;
+  Future<void> _run() async {
+    final task = _input.text.trim();
+    if (task.isEmpty || _runtime.canCancel || _submitting) return;
+    // Deterministic tool tasks can run without a loaded model. Complex planning
+    // uses the local GGUF model when it is available.
+    setState(() {
+      _submitting = true;
+      _input.clear();
+      _messages.add({'role': 'user', 'text': task});
+      _result = null;
     });
+    await _persistMessages();
     _scrollEnd();
-    return _runtime.run(task,approveReviewed:false).then((r){
-      if(!mounted)return;
-      setState((){
-        _result=r;
-        _messages.add({'role':'assistant','text':r.success?(r.report??'اكتملت المهمة بنجاح.'):'توقفت المهمة: '+(r.error??'خطأ غير معروف')});
+    try {
+      final result = await _runtime.run(task, approveReviewed: false);
+      if (!mounted) return;
+      setState(() {
+        _result = result;
+        _messages.add({
+          'role': 'assistant',
+          'text': result.success
+              ? (result.report ?? 'اكتملت المهمة بنجاح.')
+              : 'توقفت المهمة: ' + (result.error ?? 'خطأ غير معروف'),
+        });
       });
+      await _persistMessages();
       _scrollEnd();
-    });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add({'role': 'assistant', 'text': 'تعذر إكمال المهمة: $error'});
+      });
+      await _persistMessages();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   void _scrollEnd()=>WidgetsBinding.instance.addPostFrameCallback((_){
@@ -153,7 +215,7 @@ class _AgentScreenState extends State<AgentScreen> {
         IconButton(onPressed:_runtime.canCancel?null:()=>setState((){
           _messages..clear()..add(const {'role':'assistant','text':'محادثة جديدة جاهزة. ما الذي تريد إنجازه؟'});
           _events.clear();_result=null;
-        }),icon:const Icon(Icons.add_comment_outlined),tooltip:'محادثة جديدة'),
+        },).alsoPlaceholdericon:const Icon(Icons.add_comment_outlined),tooltip:'محادثة جديدة'),
         IconButton(
           onPressed: _runtime.canCancel ? null : () {
             Navigator.of(context).push(MaterialPageRoute<void>(
@@ -249,6 +311,20 @@ class _AgentScreenState extends State<AgentScreen> {
         Row(children:[Icon(_result!.success?Icons.task_alt:Icons.error_outline,color:_result!.success?Colors.greenAccent:Colors.redAccent),const SizedBox(width:8),const Text('النتيجة النهائية')]),
         const SizedBox(height:8),
         SelectableText(_result!.report??_result!.error??'لا توجد نتيجة.',style:const TextStyle(color:Colors.white70,height:1.4)),
+        if (!_result!.success) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: OutlinedButton.icon(
+              onPressed: (_runtime.canCancel || _submitting) ? null : () {
+                _input.text = _result!.task;
+                _run();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ),
+        ],
       ]),
     ),
   );
@@ -258,7 +334,7 @@ class _AgentScreenState extends State<AgentScreen> {
       padding:const EdgeInsets.fromLTRB(10,8,10,10),
       child:Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
         Expanded(child:TextField(
-          enabled:!_runtime.canCancel,
+          enabled:!_runtime.canCancel && !_submitting,
           controller:_input,
           minLines:1,maxLines:5,
           onSubmitted:(_)=>_run(),
@@ -271,7 +347,7 @@ class _AgentScreenState extends State<AgentScreen> {
           ),
         )),
         const SizedBox(width:8),
-        IconButton.filled(onPressed:_runtime.canCancel?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
+        IconButton.filled(onPressed:(_runtime.canCancel || _submitting)?null:_run,icon:const Icon(Icons.arrow_upward),tooltip:'إرسال'),
       ]),
     ),
   );
