@@ -127,8 +127,13 @@ class AgentOrchestrator {
         results.add(r);
         await memory.remember(
           kind: 'agent-step',
-          text: step.description,
-          metadata: {'tool': step.tool, 'success': r.success, 'stepId': step.id},
+          text: '${step.description}\n${r.success ? r.summary : (r.error ?? r.summary)}',
+          metadata: {
+            'tool': step.tool,
+            'success': r.success,
+            'stepId': step.id,
+            'durationMs': r.duration.inMilliseconds,
+          },
         );
         _log(r.success ? 'نجاح: ${r.summary}' : 'فشل: ${r.error ?? r.summary}');
 
@@ -195,8 +200,13 @@ class AgentOrchestrator {
             recovered = ar.success;
             await memory.remember(
               kind: 'agent-recovery',
-              text: alt.description,
-              metadata: {'tool': alt.tool, 'success': ar.success, 'stepId': alt.id},
+              text: '${alt.description}\n${ar.success ? ar.summary : (ar.error ?? ar.summary)}',
+              metadata: {
+                'tool': alt.tool,
+                'success': ar.success,
+                'stepId': alt.id,
+                'durationMs': ar.duration.inMilliseconds,
+              },
             );
             _log('المحاولة البديلة $recoveryAttempt/$maxRecoveryAttempts: ${ar.success ? 'نجحت' : 'فشلت'}');
           }
