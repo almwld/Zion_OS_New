@@ -85,6 +85,10 @@ class AIAgent {
     ]) {
       cleaned = cleaned.replaceAll(marker, '');
     }
+    cleaned = cleaned.replaceFirst(
+      RegExp(r'^\s*(assistant|system|user)\s*:?\s*\n', caseSensitive: false),
+      '',
+    );
     final nextTurn = cleaned.indexOf(RegExp(r'\n\s*(User|Human|Assistant)\s*:', caseSensitive: false));
     if (nextTurn >= 0) cleaned = cleaned.substring(0, nextTurn);
     return cleaned.trim();
