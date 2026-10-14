@@ -129,6 +129,27 @@ void main() {
     orchestrator.dispose();
   });
 
+  test('cancellation while waiting for approval releases the pending wait', () async {
+    final token = CancellationToken();
+    final orchestrator = AgentOrchestrator(
+      tools: ToolRegistry(customTools: [ReviewTool()]),
+      policy: ReviewPolicy(),
+    );
+    final future = orchestrator.executeTask(
+      'حلل المهمة',
+      cancellationToken: token,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(orchestrator.state, AgentState.waitingApproval);
+    token.cancel();
+    final result = await future;
+    expect(result.success, isFalse);
+    expect(result.error, 'تم إلغاء المهمة.');
+    expect(orchestrator.state, AgentState.cancelled);
+    orchestrator.dispose();
+    await token.dispose();
+  });
+
   test('Orchestrator denies a pending reviewed step', () async {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [ReviewTool()]),
