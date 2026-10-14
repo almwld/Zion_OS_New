@@ -17,6 +17,8 @@ void main() {
           throw PlatformException(code: 'NATIVE_UNLOAD_FAILED');
         case 'isLoaded':
           return false;
+        case 'cancelGeneration':
+          return true;
         case 'discoverModels':
           return <dynamic>[];
         default:
@@ -44,6 +46,12 @@ void main() {
     await expectLater(service.unloadModel(), completes);
     expect(service.isLoaded, isFalse);
     expect(service.currentModel, isNull);
+  });
+
+  test('generation cancellation is exposed without native model loading', () async {
+    final service = LlamaService();
+
+    expect(await service.cancelGeneration(), isTrue);
   });
 
   test('generation reports unloaded model as a normal result', () async {
