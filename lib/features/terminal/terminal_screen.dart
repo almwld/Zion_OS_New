@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
+import '../../core/userland/local_kali_bootstrap.dart';
 
 import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
@@ -409,6 +410,42 @@ class _TerminalScreenState extends State<TerminalScreen> {
     );
   }
 
+  Future<void> _installKaliFromLocalArchive() async {
+    if (_starting) return;
+    final tab = _selectedTab;
+    setState(() { _starting = true; _startupError = null; });
+    try {
+      tab?.terminal.write('[Kali] التحقق من أرشيف Kali المحلي...\\r\\n');
+      final result = await const ZionLocalKaliBootstrap().install(
+        onProgress: (progress) {
+          tab?.terminal.write('[Kali] ${progress.percent}% ${progress.message}\\r\\n');
+        },
+      );
+      if (!result.isSuccess || result.value == null) {
+        final message = 'تعذر تجهيز Kali من الأرشيف المحلي: ${result.error ?? 'لم يتم العثور على ملف صالح.'}';
+        if (mounted) setState(() => _startupError = message);
+        _showTerminalNotice(message);
+        return;
+      }
+      final path = result.value!.path;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kaliRootfsPreferenceKey, path);
+      _kaliRootfsPath = path;
+      if (mounted) setState(() => _starting = false);
+      await _startKaliFromLocalRootfs();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'Zion terminal',
+        context: ErrorDescription('while installing local Kali archive'),
+      ));
+      if (mounted) setState(() => _startupError = 'تعذر تجهيز Kali: $error');
+    } finally {
+      if (mounted && _starting) setState(() => _starting = false);
+    }
+  }
+
   Future<void> _startKaliFromLocalRootfs() async {
     final tab = _selectedTab;
     if (tab == null || _starting) return;
@@ -509,6 +546,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
       _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
+      _toolbarButton(Icons.archive_outlined, 'تثبيت Kali من الأرشيف المحلي', _installKaliFromLocalArchive),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
       _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
