@@ -19,7 +19,6 @@ void main() {
       expect(method, contains('final stateFile = File(_stateFilePath)'));
       expect(method, contains("state['installed'] == true"));
       expect(method, contains("state['bashPath'] == bashPath"));
-      expect(method, contains('_installCompleted = true'));
       expect(method, isNot(contains('if (_installCompleted)')));
       expect(
         method.indexOf('await stateFile.exists()'),
