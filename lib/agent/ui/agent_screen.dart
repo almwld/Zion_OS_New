@@ -232,13 +232,13 @@ Engineering loop:
 5. Verify the final state against the original task; diagnose and recover from failures within the granted scope.
 6. Report evidence, uncertainty, and remaining work honestly.
 ''' : rawTask;
-    if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
+    if (rawTask.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
     // uses the local GGUF model when it is available.
     setState(() {
       _submitting = true;
       _input.clear();
-      _appendMessage({'role': 'user', 'text': task});
+      _appendMessage({'role': 'user', 'text': rawTask});
       _result = null;
     });
     await _persistMessages();
