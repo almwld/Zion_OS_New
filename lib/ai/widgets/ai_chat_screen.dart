@@ -310,14 +310,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
     setState(() {
       _loadingModel = true;
-      _status = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق ذلك وقتاً حسب حجمه وذاكرة الجهاز.';
+      _status = 'جارٍ تحميل النموذج محلياً؛ قد يستغرق تحميل النماذج الكبيرة بضع دقائق.';
       _error = null;
     });
     try {
       final ok = await _agent.initialize(
         modelPath: model.path,
         role: widget.role,
-        nThreads: 2,
+        nThreads: 4,
       );
       if (!mounted) return;
       setState(() {
