@@ -44,6 +44,37 @@ class TerminalResult {
 class TerminalService {
   TerminalService(this._securityCore);
 
+  // The terminal UI and Super Agent share the selected live PTY service.
+  // This prevents the agent from silently opening a disconnected shell.
+  static TerminalService? _activeInteractiveService;
+  static TerminalService? get activeInteractiveService => _activeInteractiveService;
+
+  void activateForAgent() {
+    _activeInteractiveService = this;
+  }
+
+  int _agentLeases = 0;
+  bool _disposeRequested = false;
+  bool _disposed = false;
+
+  void retainForAgent() {
+    if (_disposed) throw StateError('TerminalService has already been disposed.');
+    _agentLeases++;
+  }
+
+  Future<void> releaseForAgent() async {
+    if (_agentLeases > 0) _agentLeases--;
+    if (_agentLeases == 0 && _disposeRequested) {
+      await _disposeNow();
+    }
+  }
+
+  void _releaseAgentTarget() {
+    if (identical(_activeInteractiveService, this)) {
+      _activeInteractiveService = null;
+    }
+  }
+
   static const _historyKey = 'zion_terminal_history_v1';
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
@@ -87,6 +118,10 @@ class TerminalService {
     if (!_output.isClosed) _output.add(event);
   }
   String _interactiveInputBuffer = '';
+  String? _interactiveShell;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  static const String _defaultKaliRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+  static String? _cachedKaliRootfsPath;
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
@@ -373,9 +408,82 @@ class TerminalService {
     }
   }
 
+  /// Prefer the configured/private Kali rootfs, then discover common local
+  /// rootfs locations on shared storage. This is discovery only: no network,
+  /// extraction, or file copying occurs while starting the agent runtime.
+  Future<String?> _resolveLocalKaliRootfs() async {
+    final cached = _cachedKaliRootfsPath;
+    if (cached != null &&
+        await File('$cached/bin/bash').exists() &&
+        await File('$cached/bin/sh').exists()) {
+      return cached;
+    }
+    final candidates = <String>[];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final configured = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+      if (configured != null && configured.startsWith('/')) candidates.add(configured);
+    } catch (_) {}
+    candidates.addAll(const <String>[
+      _defaultKaliRootfs,
+      '/storage/emulated/0/kali-rootfs',
+      '/storage/emulated/0/kali-arm64',
+      '/storage/emulated/0/kali/rootfs',
+      '/storage/emulated/0/Download/kali-rootfs',
+      '/storage/emulated/0/Download/kali-arm64',
+      '/storage/emulated/0/Download/kali/rootfs',
+      '/storage/emulated/0/Downloads/kali-rootfs',
+      '/storage/emulated/0/Downloads/kali-arm64',
+    ]);
+    for (final candidate in candidates.toSet()) {
+      if (await File('$candidate/bin/bash').exists() &&
+          await File('$candidate/bin/sh').exists()) {
+        _cachedKaliRootfsPath = candidate;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_kaliRootfsPreferenceKey, candidate);
+        } catch (_) {}
+        return candidate;
+      }
+    }
+
+    // Bounded directory discovery finds locally extracted systems whose
+    // directory name is not one of the common defaults.
+    for (final parentPath in const <String>[
+      '/storage/emulated/0',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Downloads',
+    ]) {
+      final parent = Directory(parentPath);
+      try {
+        if (!await parent.exists()) continue;
+        var inspected = 0;
+        await for (final entity in parent.list(followLinks: false)) {
+          if (entity is! Directory || inspected++ >= 200) continue;
+          final name = entity.path.split('/').last.toLowerCase();
+          if (!name.contains('kali') && !name.contains('rootfs') && !name.contains('linux')) continue;
+          final path = entity.path;
+          if (await File('$path/bin/bash').exists() &&
+              await File('$path/bin/sh').exists()) {
+            _cachedKaliRootfsPath = path;
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString(_kaliRootfsPreferenceKey, path);
+            } catch (_) {}
+            return path;
+          }
+        }
+      } catch (_) {
+        // Scoped storage or a missing directory is reported as unavailable.
+      }
+    }
+    return null;
+  }
+
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
-    if (isInteractiveRunning && kaliRootfsPath == null) return true;
-    if (isInteractiveRunning && kaliRootfsPath != null) {
+    if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null && _interactiveShell == 'zion-kali@$kaliRootfsPath') return true;
+    if (isInteractiveRunning) {
       await stopInteractive();
     }
     if (!_authorized('<interactive-shell>')) {
@@ -460,6 +568,8 @@ class TerminalService {
       _emitOutput(shell == _userlandBash
           ? 'Connected to Userland: bash • native PTY\r\n'
           : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _interactiveShell = shell;
+      _activeInteractiveService = this;
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -513,6 +623,194 @@ class TerminalService {
     }
   }
 
+
+  bool _agentCommandRunning = false;
+
+  /// Executes one command through Zion's native PTY and captures its exit code.
+  Future<TerminalResult> executeInInteractive(
+    String command, {
+    Duration timeout = const Duration(seconds: 30),
+    String runtime = 'auto',
+    String? rootfsPath,
+  }) async {
+    final value = command.trim();
+    if (value.isEmpty) {
+      return const TerminalResult(command: '', stdout: '', stderr: 'الأمر فارغ.',
+        exitCode: 2, duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (value.contains('\u0000')) {
+      return const TerminalResult(command: '', stdout: '', stderr: 'الأمر يحتوي على محرف غير صالح.',
+        exitCode: 2, duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (!_authorized(value)) {
+      final denied = TerminalResult(command: value, stdout: '',
+        stderr: 'رفضت Zion SecurityCore تنفيذ الأمر.', exitCode: 126,
+        duration: Duration.zero, shell: 'security-core');
+      _audit(command: value, outcome: 'denied', exitCode: denied.exitCode,
+        shell: denied.shell, duration: denied.duration, interactive: true);
+      return denied;
+    }
+    if (_agentCommandRunning) {
+      return const TerminalResult(command: '', stdout: '',
+        stderr: 'يوجد أمر وكيل قيد التنفيذ في جلسة PTY.', exitCode: 125,
+        duration: Duration.zero, shell: 'zion-native-pty');
+    }
+
+    if (!const {'auto', 'zion', 'kali', 'rootfs'}.contains(runtime)) {
+      return TerminalResult(command: value, stdout: '',
+        stderr: 'بيئة التنفيذ غير معروفة: $runtime', exitCode: 2,
+        duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (runtime == 'rootfs') {
+      final requestedPath = rootfsPath?.trim() ?? '';
+      final allowedLocalPath = requestedPath.startsWith('/storage/emulated/0/') ||
+          requestedPath.startsWith('/data/data/com.zion.os/files/home/.zion/dists/');
+      if (!allowedLocalPath ||
+          requestedPath.contains('..') ||
+          requestedPath.contains('|') ||
+          requestedPath.contains('\u0000') ||
+          !await File('$requestedPath/bin/bash').exists() ||
+          !await File('$requestedPath/bin/sh').exists()) {
+        return const TerminalResult(command: '', stdout: '',
+          stderr: 'مسار rootfs المحلي غير صالح أو لا يحتوي bin/bash وbin/sh.',
+          exitCode: 2, duration: Duration.zero, shell: 'rootfs-unavailable');
+      }
+      if (!isInteractiveRunning || _interactiveShell != 'zion-kali@$requestedPath') {
+        await stopInteractive();
+        if (!await startInteractive(kaliRootfsPath: requestedPath)) {
+          return TerminalResult(command: value, stdout: '',
+            stderr: 'تعذر تشغيل rootfs المحلي عبر Zion PRoot.',
+            exitCode: 127, duration: Duration.zero, shell: 'rootfs-unavailable');
+        }
+      }
+    } else if (runtime == 'kali') {
+      final rootfsPath = await _resolveLocalKaliRootfs();
+      if (rootfsPath == null) {
+        return const TerminalResult(command: '', stdout: '',
+          stderr: 'لم يُعثر على Kali rootfs محلي صالح. لم يتم تنزيل أي شيء.',
+          exitCode: 127, duration: Duration.zero, shell: 'kali-unavailable');
+      }
+      if (!isInteractiveRunning || _interactiveShell != 'zion-kali@$rootfsPath') {
+        await stopInteractive();
+        if (!await startInteractive(kaliRootfsPath: rootfsPath)) {
+          return TerminalResult(command: value, stdout: '',
+            stderr: 'تعذر تشغيل Kali المحلي عبر Zion PRoot.',
+            exitCode: 127, duration: Duration.zero, shell: 'kali-unavailable');
+        }
+      }
+    } else if (runtime == 'zion' &&
+        isInteractiveRunning &&
+        (_interactiveShell?.startsWith('zion-kali@') ?? false)) {
+      await stopInteractive();
+      if (!await startInteractive()) {
+        return TerminalResult(command: value, stdout: '',
+          stderr: 'تعذر العودة إلى Zion Userland.',
+          exitCode: 127, duration: Duration.zero, shell: 'zion-unavailable');
+      }
+    }
+    _agentCommandRunning = true;
+    final started = DateTime.now();
+    final marker = '@@DART_MARKER@@';
+    final output = StringBuffer();
+    final completed = Completer<int>();
+    StreamSubscription<String>? subscription;
+    Timer? timer;
+    Timer? interruptGraceTimer;
+    try {
+      if (!isInteractiveRunning && !await startInteractive()) {
+        return TerminalResult(command: value, stdout: '',
+          stderr: 'تعذر بدء جلسة Zion PTY.', exitCode: 127,
+          duration: DateTime.now().difference(started), shell: 'unavailable');
+      }
+      subscription = _output.stream.listen((chunk) {
+        if (completed.isCompleted) return;
+        output.write(chunk);
+        if (output.length > 100000) {
+          final current = output.toString();
+          output..clear()..write(current.substring(current.length - 100000));
+        }
+        final match = RegExp(
+          '(?:^|\\r?\\n)' + RegExp.escape(marker) + r':(-?\d+)(?:\r?\n|$)',
+        ).firstMatch(output.toString());
+        if (match != null && !completed.isCompleted) {
+          completed.complete(int.tryParse(match.group(1) ?? '') ?? 1);
+        }
+      });
+      final wrapped = "$value; __zion_agent_status=\$?; printf '\\n$marker:%s\\n' \"\$__zion_agent_status\"";
+      write('$wrapped\n');
+      _remember(value);
+      timer = Timer(timeout, () {
+        if (completed.isCompleted) return;
+        // Interrupt first. If the shell does not return to its prompt, recycle
+        // the PTY so a timed-out process cannot poison the next agent command.
+        write('\x03');
+        interruptGraceTimer = Timer(const Duration(seconds: 2), () async {
+          if (completed.isCompleted) return;
+          _audit(
+            command: value,
+            outcome: 'timeout-pty-restart',
+            exitCode: 124,
+            shell: 'zion-native-pty',
+            duration: DateTime.now().difference(started),
+            interactive: true,
+          );
+          try {
+            await stopInteractive();
+            await startInteractive();
+          } catch (restartError) {
+            _audit(
+              command: value,
+              outcome: 'timeout-pty-restart-failed',
+              exitCode: 124,
+              shell: 'zion-native-pty',
+              duration: DateTime.now().difference(started),
+              interactive: true,
+            );
+            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\\r\\n');
+          } finally {
+            if (!completed.isCompleted) completed.complete(124);
+          }
+        });
+      });
+      final code = await completed.future;
+      final raw = output.toString();
+      final markerIndex = raw.lastIndexOf(marker);
+      final captured = markerIndex >= 0 ? raw.substring(0, markerIndex) : raw;
+      final clean = captured
+          .replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '')
+          .replaceAll('\r', '')
+          .trim();
+      final result = TerminalResult(
+        command: value,
+        stdout: clean.length > 24000 ? clean.substring(clean.length - 24000) : clean,
+        stderr: code == 124 ? 'انتهت مهلة الأمر أو أُوقف بمقاطعة PTY.' : '',
+        exitCode: code,
+        duration: DateTime.now().difference(started),
+        shell: 'zion-native-pty',
+      );
+      _audit(command: value,
+        outcome: code == 0 ? 'success' : (code == 124 ? 'timeout-or-interrupt' : 'failed'),
+        exitCode: code, shell: result.shell, duration: result.duration, interactive: true);
+      return result;
+    } catch (error) {
+      final result = TerminalResult(command: value, stdout: '',
+        stderr: 'فشل تنفيذ الأمر عبر PTY: $error', exitCode: 126,
+        duration: DateTime.now().difference(started), shell: 'zion-native-pty');
+      _audit(command: value, outcome: 'process-error', exitCode: result.exitCode,
+        shell: result.shell, duration: result.duration, interactive: true);
+      return result;
+    } finally {
+      timer?.cancel();
+      interruptGraceTimer?.cancel();
+      await subscription?.cancel();
+      _agentCommandRunning = false;
+    }
+  }
+
+  Future<void> interruptInteractive() async {
+    if (isInteractiveRunning) await _pty.write('\x03');
+  }
+
   Future<bool> resizeInteractive({required int rows, required int cols}) async {
     if (!_pty.isRunning) return false;
     return _pty.resize(rows: rows, cols: cols);
@@ -526,9 +824,22 @@ class TerminalService {
     await _ptyOutputSub?.cancel();
     _ptyOutputSub = null;
     _interactiveInputBuffer = '';
+    _interactiveShell = null;
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    if (_agentLeases > 0) {
+      _disposeRequested = true;
+      return;
+    }
+    await _disposeNow();
+  }
+
+  Future<void> _disposeNow() async {
+    if (_disposed) return;
+    _disposed = true;
+    _releaseAgentTarget();
     await stopInteractive();
     await _pty.dispose();
     await _output.close();

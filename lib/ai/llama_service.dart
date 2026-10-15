@@ -152,7 +152,7 @@ class LlamaService {
     try {
       return (await _channel.invokeMethod<String>('generate', {
         'prompt': prompt,
-        'maxTokens': maxTokens.clamp(1, 256).toInt(),
+        'maxTokens': maxTokens.clamp(1, 2048).toInt(),
         'temperature': temperature.clamp(0.0, 1.5).toDouble(),
       })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
     } on PlatformException catch (e) {

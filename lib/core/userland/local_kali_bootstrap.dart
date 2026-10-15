@@ -178,6 +178,7 @@ class ZionLocalKaliBootstrap {
           },
         );
         final prefix = '${ZionLocalKaliConfig.rootfsName}/';
+        final modes = <({String path, int mode})>[];
         for (var i = 0; i < archive.length; i++) {
           final entry = archive[i];
           if (!entry.name.startsWith(prefix)) continue;
@@ -188,7 +189,10 @@ class ZionLocalKaliBootstrap {
             throw SecurityException('Tar traversal: ${entry.name}');
           }
           if (entry.isDirectory) {
-            await destination.create(recursive: true);
+            // The archive entry is a directory: creating it through File.create
+            // produces a regular file and makes subsequent child extraction fail.
+            await Directory(destination.path).create(recursive: true);
+            modes.add((path: destination.path, mode: entry.unixPermissions & 0x1ff));
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
             try { await Link(destination.path).delete(); } catch (_) {}
@@ -197,6 +201,7 @@ class ZionLocalKaliBootstrap {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
             await destination.writeAsBytes(entry.content, flush: false);
+            modes.add((path: destination.path, mode: entry.unixPermissions & 0x1ff));
           }
           if (i % 250 == 0) {
             progress(
@@ -204,6 +209,21 @@ class ZionLocalKaliBootstrap {
               ((i + 1) * 100 / archive.length).round(),
               'استخراج $relative',
             );
+          }
+        }
+        // Restore executable and directory modes from the verified tar archive.
+        // Apply in reverse order so parent directories are chmodded only after
+        // all child files have been written.
+        for (final item in modes.reversed) {
+          if (item.mode == 0) continue;
+          final chmod = await Process.run(
+            '/system/bin/chmod',
+            <String>[item.mode.toRadixString(8), item.path],
+            runInShell: false,
+          );
+          if (chmod.exitCode != 0 &&
+              (item.path.endsWith('/bin/bash') || item.path.endsWith('/bin/sh'))) {
+            throw StateError('تعذر ضبط صلاحيات صدفة Kali: ${item.path}: ${chmod.stderr}');
           }
         }
       } finally {

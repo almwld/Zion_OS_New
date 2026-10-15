@@ -62,10 +62,9 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     if (!g_model) return JNI_FALSE;
 
     auto ctxParams = llama_context_default_params();
-    // Conservative Android defaults: loading a GGUF may succeed while the
-    // first decode still triggers LMK/process death due to KV-cache/batch RAM.
-    // Keep inference bounded for low-memory devices.
-    ctxParams.n_ctx = 512;
+    // Keep the context bounded for Android memory, but large enough for the
+    // agent's real tool catalog, local inventory, and repair plans.
+    ctxParams.n_ctx = 2048;
     ctxParams.n_batch = 32;
     ctxParams.n_ubatch = 32;
     ctxParams.n_seq_max = 1;
@@ -182,7 +181,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     std::string output;
     // Bound generation to both the remaining context and a phone-safe limit.
     const int remaining = static_cast<int>(nCtx - tokens.size() - 1);
-    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 256), remaining);
+    const int limit = std::min(std::clamp(static_cast<int>(maxTokens), 1, 2048), remaining);
     LOGE("Prompt tokenized: %d tokens; generation limit: %d", nTokens, limit);
 
     for (int i = 0; i < limit; ++i) {

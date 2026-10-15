@@ -109,6 +109,47 @@ void main(){
   final review=policy.evaluate(tool:'file',params:{'action':'write','path':'note.txt'});
   expect(review.requiresApproval,isTrue);
  });
+ test('routine workspace diagnostics are auto-runnable without permitting compound commands',(){
+  const policy=AgentPolicy();
+  for (final command in [
+    'git status --short',
+    'git diff --check',
+    'git log --oneline -n 5',
+    'flutter --version',
+    'dart --version',
+    'command -v bash',
+  ]) {
+    final decision=policy.evaluate(tool:'shell',params:{'command':command});
+    expect(decision.risk,AgentRisk.safe,reason:command);
+    expect(decision.requiresApproval,isFalse,reason:command);
+  }
+  final compound=policy.evaluate(tool:'shell',params:{'command':'git status; echo done'});
+  expect(compound.requiresApproval,isTrue);
+ });
+ test('local Kali and storage discovery are automatic while Kali tools and su remain reviewable',(){
+  const policy=AgentPolicy();
+  for (final command in [
+    'find /storage/emulated/0 -maxdepth 2 -type d',
+    'find /storage/emulated/0 -maxdepth 4 -type f',
+    'find /data/data/com.zion.os/files/home/.zion/dists -maxdepth 4 -type d',
+    'dpkg -l',
+    'apt list --installed',
+    'zion-pkg list',
+    'command -v nmap',
+  ]) {
+    final d=policy.evaluate(tool:'shell',params:{'command':command});
+    expect(d.risk,AgentRisk.safe,reason:command);
+    expect(d.requiresApproval,isFalse,reason:command);
+  }
+  for (final command in [
+    'nmap -sn 192.168.1.0/24',
+    'su -c id',
+  ]) {
+    final d=policy.evaluate(tool:'shell',params:{'command':command});
+    expect(d.risk,AgentRisk.review,reason:command);
+    expect(d.requiresApproval,isTrue,reason:command);
+  }
+ });
  test('read-only HTTP GET is safe',(){
   const policy=AgentPolicy();
   final d=policy.evaluate(tool:'http',params:{'method':'GET','url':'https://example.com'});

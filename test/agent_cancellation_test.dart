@@ -10,6 +10,20 @@ import 'package:project_zion/agent/core/orchestrator.dart';
 import 'package:project_zion/agent/tools/tool.dart';
 import 'package:project_zion/agent/tools/tool_registry.dart';
 
+AgentPlan _singleStepPlan(
+  String tool, {
+  Map<String, dynamic> params = const <String, dynamic>{},
+  AgentPermission permission = AgentPermission.readOnly,
+}) => AgentPlan(steps: [
+  AgentStep(
+    id: '1',
+    description: 'deterministic test step',
+    tool: tool,
+    params: params,
+    permission: permission,
+  ),
+]);
+
 class ReviewTool extends AgentTool {
   @override
   String get name => 'ai';
@@ -86,6 +100,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [ReviewTool()]),
       policy: ReviewPolicy(),
+      planBuilder: (_) => _singleStepPlan('ai'),
     );
     final future = orchestrator.executeTask('حلل المهمة');
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -103,6 +118,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [browser]),
       policy: const AgentPolicy(),
+      planBuilder: (_) => _singleStepPlan('browser', params: const {'action': 'search', 'query': 'معلومات'}),
     );
     final future = orchestrator.executeTask('ابحث عن معلومات');
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -122,6 +138,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [ReviewTool()]),
       policy: ReviewPolicy(),
+      planBuilder: (_) => _singleStepPlan('ai'),
     );
     final future = orchestrator.executeTask('حلل المهمة', approveReviewed: true);
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -138,6 +155,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [ReviewTool()]),
       policy: ReviewPolicy(),
+      planBuilder: (_) => _singleStepPlan('ai'),
     );
     final future = orchestrator.executeTask(
       'حلل المهمة',
@@ -158,6 +176,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: ToolRegistry(customTools: [ReviewTool()]),
       policy: ReviewPolicy(),
+      planBuilder: (_) => _singleStepPlan('ai'),
     );
     final future = orchestrator.executeTask('حلل المهمة');
     await Future<void>.delayed(const Duration(milliseconds: 30));
@@ -217,6 +236,7 @@ void main() {
     final orchestrator = AgentOrchestrator(
       tools: tools,
       policy: const AgentPolicy(),
+      planBuilder: (_) => _singleStepPlan('ai'),
     );
     final result = await orchestrator.executeTask(
       'حلل مهمة timeout test',
@@ -232,7 +252,10 @@ void main() {
   test('AgentRuntime cancellation interrupts an active orchestration', () async {
     final tools = ToolRegistry(customTools: [SlowAITool(const Duration(milliseconds: 500))]);
     final runtime = AgentRuntime(
-      orchestrator: AgentOrchestrator(tools: tools),
+      orchestrator: AgentOrchestrator(
+        tools: tools,
+        planBuilder: (_) => _singleStepPlan('ai'),
+      ),
     );
 
     final future = runtime.run(

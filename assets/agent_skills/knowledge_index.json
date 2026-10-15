@@ -1,0 +1,743 @@
+{
+  "version": 1,
+  "title": "Zion Offline Agent Knowledge Index",
+  "updated": "2026-10-15",
+  "entries": [
+    {
+      "id": "storage-inventory",
+      "title": "Android shared-storage inventory",
+      "domain": "android-storage",
+      "keywords": [
+        "storage",
+        "emulated",
+        "downloads",
+        "local files",
+        "discover files",
+        "inventory",
+        "local systems",
+        "التخزين",
+        "ملفات محلية",
+        "المجلدات المحلية",
+        "التخزين المشترك"
+      ],
+      "summary": "Inventory only accessible paths first; use bounded find/listing and report permission-denied paths instead of claiming they were scanned.",
+      "commands": [
+        "pwd",
+        "ls -la /storage/emulated/0",
+        "find /storage/emulated/0 -maxdepth 3 -type d"
+      ],
+      "limits": "Keep scans depth-bounded; do not read private files or upload discovered contents."
+    },
+    {
+      "id": "kali-detection",
+      "title": "Kali and local Linux discovery",
+      "domain": "linux-runtime",
+      "keywords": [
+        "kali",
+        "rootfs",
+        "linux distro",
+        "distribution",
+        "debian",
+        "proot",
+        "discover kali",
+        "كالي",
+        "لينكس",
+        "توزيعة",
+        "اكتشاف كالي"
+      ],
+      "summary": "Locate known local rootfs directories, then verify executable shell and package database before selecting a runtime.",
+      "commands": [
+        "command -v proot",
+        "test -x <rootfs>/bin/sh",
+        "test -x <rootfs>/bin/bash",
+        "test -d <rootfs>/var/lib/dpkg"
+      ],
+      "limits": "A folder name alone does not prove a working distribution; never claim launch success without exit status."
+    },
+    {
+      "id": "package-inventory",
+      "title": "Installed package inventory",
+      "domain": "linux-packages",
+      "keywords": [
+        "packages",
+        "installed tools",
+        "dpkg",
+        "apt",
+        "package list",
+        "what tools installed",
+        "nmap",
+        "الحزم",
+        "الحزم المثبتة",
+        "الأدوات المثبتة"
+      ],
+      "summary": "Prefer package database queries and command discovery before attempting installation.",
+      "commands": [
+        "dpkg -l",
+        "apt list --installed",
+        "command -v nmap",
+        "command -v python3"
+      ],
+      "limits": "Package listing is read-only; install, upgrade, or remove operations mutate the environment."
+    },
+    {
+      "id": "proot-troubleshooting",
+      "title": "PRoot startup diagnostics",
+      "domain": "linux-runtime",
+      "keywords": [
+        "proot",
+        "userland",
+        "bash missing",
+        "rootfs fails",
+        "cannot execute",
+        "permission denied",
+        "kali won't start",
+        "باش مفقود",
+        "فشل بروت",
+        "تعذر التشغيل",
+        "يوزرلاند"
+      ],
+      "summary": "Verify rootfs path, shell executable, dynamic loader, environment variables, and mount points; capture the first actual error.",
+      "commands": [
+        "ls -l <rootfs>/bin/sh <rootfs>/bin/bash",
+        "file <rootfs>/bin/bash",
+        "proot --version"
+      ],
+      "limits": "Do not overwrite or delete an existing rootfs as a first recovery step."
+    },
+    {
+      "id": "terminal-pty",
+      "title": "PTY execution and output interpretation",
+      "domain": "terminal",
+      "keywords": [
+        "pty",
+        "terminal",
+        "shell",
+        "command output",
+        "exit code",
+        "hang",
+        "timeout",
+        "interactive command",
+        "الطرفية",
+        "رمز الخروج",
+        "مخرجات الأمر",
+        "تعليق الطرفية"
+      ],
+      "summary": "Run through the registered PTY tool; inspect combined output, exitCode, duration, and selected runtime. PTY output may combine stdout and stderr.",
+      "commands": [
+        "printf 'PTY_OK\\n'; command -v bash",
+        "echo $?"
+      ],
+      "limits": "Never label a command successful from text alone when its exit code is nonzero."
+    },
+    {
+      "id": "pty-timeout",
+      "title": "Recover a stalled PTY",
+      "domain": "terminal-recovery",
+      "keywords": [
+        "timeout",
+        "hang",
+        "stuck command",
+        "terminal frozen",
+        "cancel command",
+        "pty restart",
+        "مهلة",
+        "أمر معلق",
+        "الطرفية متجمدة",
+        "إلغاء الأمر"
+      ],
+      "summary": "Interrupt the running process, wait for prompt recovery, then restart only the PTY session if it remains unresponsive; preserve timeout exit status.",
+      "commands": [
+        "Ctrl-C via terminal interrupt",
+        "inspect latest output and exit status"
+      ],
+      "limits": "Cancellation must stop execution rather than merely hide the UI spinner."
+    },
+    {
+      "id": "flutter-diagnostics",
+      "title": "Flutter project diagnosis",
+      "domain": "flutter",
+      "keywords": [
+        "flutter",
+        "dart",
+        "analyze",
+        "pub get",
+        "flutter build",
+        "apk",
+        "dependency",
+        "فلاتر",
+        "بناء apk",
+        "تحليل فلاتر",
+        "اعتماديات"
+      ],
+      "summary": "Establish repository root and SDK versions, then run analysis and focused tests before a full build.",
+      "commands": [
+        "flutter --version",
+        "dart --version",
+        "flutter analyze",
+        "flutter test"
+      ],
+      "limits": "Do not alter workflow secrets or claim APK success until the build job completes."
+    },
+    {
+      "id": "dart-tests",
+      "title": "Dart and Flutter regression tests",
+      "domain": "testing",
+      "keywords": [
+        "unit test",
+        "widget test",
+        "regression",
+        "flutter test",
+        "test failure",
+        "assertion",
+        "اختبار",
+        "اختبارات",
+        "اختبار انحدار",
+        "فشل الاختبار"
+      ],
+      "summary": "Reproduce the failing test, make the smallest fix, add a regression assertion, and rerun the relevant suite.",
+      "commands": [
+        "flutter test test/<focused_test>.dart",
+        "dart format --output=none --set-exit-if-changed <paths>"
+      ],
+      "limits": "A passing static analyzer is not a substitute for tests."
+    },
+    {
+      "id": "git-inspection",
+      "title": "Git working tree and diff inspection",
+      "domain": "git",
+      "keywords": [
+        "git status",
+        "diff",
+        "commit",
+        "branch",
+        "working tree",
+        "changed files",
+        "pull request",
+        "حالة جيت",
+        "التغييرات",
+        "الفرع",
+        "التزام"
+      ],
+      "summary": "Check current branch, uncommitted changes, diff integrity, and recent history before modifying repository files.",
+      "commands": [
+        "git status --short --branch",
+        "git diff --check",
+        "git diff --stat",
+        "git log --oneline -n 8"
+      ],
+      "limits": "Do not reset, clean, or overwrite user changes to make a tree look clean."
+    },
+    {
+      "id": "github-ci",
+      "title": "GitHub Actions CI diagnosis",
+      "domain": "github-ci",
+      "keywords": [
+        "github actions",
+        "ci",
+        "workflow",
+        "build failed",
+        "job logs",
+        "apk artifact",
+        "pipeline",
+        "إجراءات جيتهاب",
+        "فشل البناء",
+        "خطأ سي آي",
+        "ملف apk"
+      ],
+      "summary": "Inspect the exact run SHA and failing job step; fix the root cause in a separate commit and verify the new run, not an older run.",
+      "commands": [
+        "git rev-parse HEAD",
+        "git status --short"
+      ],
+      "limits": "Never report success based on a different commit's green run."
+    },
+    {
+      "id": "android-permissions",
+      "title": "Android storage and runtime permissions",
+      "domain": "android",
+      "keywords": [
+        "android permission",
+        "storage access",
+        "permission denied",
+        "manage external storage",
+        "su",
+        "root",
+        "صلاحيات أندرويد",
+        "الوصول للتخزين",
+        "رفض الإذن",
+        "صلاحيات الروت"
+      ],
+      "summary": "Distinguish app sandbox access, shared-storage access, PRoot privileges, and real device root. Report the actual permission boundary.",
+      "commands": [
+        "id",
+        "id -u",
+        "ls -ld /storage/emulated/0"
+      ],
+      "limits": "An app cannot grant itself Android root; su authorization depends on device root configuration and its manager."
+    },
+    {
+      "id": "root-status",
+      "title": "Verify root capability safely",
+      "domain": "android-root",
+      "keywords": [
+        "root",
+        "su",
+        "root access",
+        "uid 0",
+        "superuser",
+        "صلاحيات الروت",
+        "روت",
+        "سو",
+        "المستخدم الخارق"
+      ],
+      "summary": "Check whether su exists and whether a harmless identity query succeeds; record denial or timeout exactly.",
+      "commands": [
+        "command -v su",
+        "id",
+        "su -c id"
+      ],
+      "limits": "Do not bypass the root manager, hide prompts, or claim root based solely on su being present."
+    },
+    {
+      "id": "network-diagnostics",
+      "title": "Local network troubleshooting",
+      "domain": "network",
+      "keywords": [
+        "network",
+        "dns",
+        "connectivity",
+        "host lookup",
+        "ping",
+        "curl",
+        "http error",
+        "الشبكة",
+        "اتصال",
+        "دي إن إس",
+        "فشل dns"
+      ],
+      "summary": "Start with interface, DNS, and a known read-only endpoint check; separate local connectivity from remote service failure.",
+      "commands": [
+        "getprop net.dns1",
+        "ip addr",
+        "ip route"
+      ],
+      "limits": "Active scans and requests to third-party targets may affect external systems and need appropriate authorization."
+    },
+    {
+      "id": "defensive-network",
+      "title": "Authorized defensive network tooling",
+      "domain": "security-tools",
+      "keywords": [
+        "nmap",
+        "network scan",
+        "port scan",
+        "security audit",
+        "kali tools",
+        "defensive",
+        "فحص الشبكة",
+        "فحص المنافذ",
+        "أدوات كالي",
+        "أمن دفاعي"
+      ],
+      "summary": "Identify the tool/version and target scope before a scan; prefer a lab or explicitly authorized host and a low-impact discovery mode.",
+      "commands": [
+        "nmap --version",
+        "command -v nmap"
+      ],
+      "limits": "The index documents tool discovery; it does not authorize scanning arbitrary public or third-party networks."
+    },
+    {
+      "id": "model-local",
+      "title": "Local GGUF model readiness",
+      "domain": "local-ai",
+      "keywords": [
+        "gguf",
+        "local model",
+        "llama",
+        "inference",
+        "model not ready",
+        "empty response",
+        "token",
+        "نموذج محلي",
+        "نموذج جي جي يو إف",
+        "استدلال",
+        "النموذج لا يعمل"
+      ],
+      "summary": "Verify model file readability, loaded-state, context/generation bounds, and native error logs before invoking the planner.",
+      "commands": [
+        "find <model-dir> -maxdepth 2 -type f -name '*.gguf'"
+      ],
+      "limits": "Never silently replace a failed model-authored plan with a guessed plan."
+    },
+    {
+      "id": "plan-json",
+      "title": "Model-authored plan validation",
+      "domain": "agent-planning",
+      "keywords": [
+        "plan",
+        "json plan",
+        "planner",
+        "invalid plan",
+        "unknown tool",
+        "tool parameters",
+        "الخطة",
+        "خطة json",
+        "المخطط",
+        "أداة غير معروفة"
+      ],
+      "summary": "Validate model JSON against registered tool names, required parameter shapes, unique step IDs, and bounded step count; return actionable validation errors.",
+      "commands": [],
+      "limits": "Validation may reject an invalid plan but must not silently rewrite it into a guessed plan."
+    },
+    {
+      "id": "agent-recovery",
+      "title": "Evidence-driven agent recovery",
+      "domain": "agent-loop",
+      "keywords": [
+        "recover",
+        "retry",
+        "repair",
+        "failed step",
+        "diagnose and fix",
+        "agent loop",
+        "استعادة",
+        "إصلاح",
+        "إعادة المحاولة",
+        "خطوة فاشلة"
+      ],
+      "summary": "Use actual failure output and exit code to ask the local model for a distinct repair step, then observe and record its result.",
+      "commands": [],
+      "limits": "Do not retry identical failed parameters indefinitely; cancellation and retry budget must remain observable."
+    },
+    {
+      "id": "skill-index",
+      "title": "Skill discovery and context ranking",
+      "domain": "agent-skills",
+      "keywords": [
+        "skill",
+        "skills catalog",
+        "knowledge index",
+        "skill library",
+        "agent knowledge",
+        "مهارات",
+        "فهرس المعرفة",
+        "مكتبة المهارات",
+        "مهارة الوكيل"
+      ],
+      "summary": "Rank skills by explicit task keywords and domain, inject only the most relevant bounded excerpts, and preserve upstream source/license metadata.",
+      "commands": [],
+      "limits": "Skill documents are reference context, not executable code or authority to change runtime permissions."
+    },
+    {
+      "id": "offline-first",
+      "title": "Offline-first tool discovery",
+      "domain": "offline",
+      "keywords": [
+        "offline",
+        "no internet",
+        "local tools",
+        "local files",
+        "dns failure",
+        "no network",
+        "بدون إنترنت",
+        "محلي",
+        "فشل dns",
+        "أدوات محلية"
+      ],
+      "summary": "Prefer local filesystem, package databases, bundled indexes, and cached documentation before network-dependent operations.",
+      "commands": [
+        "command -v git",
+        "command -v python3",
+        "command -v bash"
+      ],
+      "limits": "Do not block waiting for internet when the task can be completed from local evidence."
+    },
+    {
+      "id": "file-integrity",
+      "title": "File and archive integrity checks",
+      "domain": "files",
+      "keywords": [
+        "archive",
+        "zip",
+        "tar",
+        "extract",
+        "corrupt file",
+        "checksum",
+        "integrity",
+        "أرشيف",
+        "استخراج",
+        "ملف تالف",
+        "بصمة الملف"
+      ],
+      "summary": "Inspect archive listing and size first; verify expected paths and executable files after extraction.",
+      "commands": [
+        "file <path>",
+        "sha256sum <path>"
+      ],
+      "limits": "Never extract untrusted archives directly over an existing runtime without staging and path checks."
+    },
+    {
+      "id": "logs",
+      "title": "Evidence-based log inspection",
+      "domain": "diagnostics",
+      "keywords": [
+        "logs",
+        "logcat",
+        "crash",
+        "stack trace",
+        "exception",
+        "native crash",
+        "jni",
+        "السجلات",
+        "تعطل",
+        "سجل الأخطاء",
+        "خطأ أصلي"
+      ],
+      "summary": "Collect the smallest relevant time window, identify the first causal exception, and correlate it with the current build or runtime revision.",
+      "commands": [
+        "logcat -d -t 300"
+      ],
+      "limits": "Logs may contain tokens or personal data; redact secrets before saving or sharing."
+    },
+    {
+      "id": "permissions-files",
+      "title": "File permission diagnosis",
+      "domain": "linux-files",
+      "keywords": [
+        "chmod",
+        "permission denied",
+        "ownership",
+        "executable bit",
+        "readable file",
+        "صلاحيات الملفات",
+        "رفض الوصول",
+        "ملف تنفيذي",
+        "أذونات"
+      ],
+      "summary": "Inspect owner, mode bits, mount flags, and parent-directory traversal permissions before changing permissions.",
+      "commands": [
+        "id",
+        "ls -ld <path>",
+        "stat <path>"
+      ],
+      "limits": "Avoid broad recursive chmod/chown fixes."
+    },
+    {
+      "id": "disk-space",
+      "title": "Storage and disk capacity",
+      "domain": "storage",
+      "keywords": [
+        "disk full",
+        "space",
+        "storage usage",
+        "no space left",
+        "model size",
+        "مساحة التخزين",
+        "امتلاء القرص",
+        "لا توجد مساحة",
+        "حجم النموذج"
+      ],
+      "summary": "Check available space and large directories before downloading, compiling, or extracting large models/rootfs images.",
+      "commands": [
+        "df -h",
+        "du -sh <path>"
+      ],
+      "limits": "Do not delete user files to free space without a clear, scoped authorization."
+    },
+    {
+      "id": "package-manager",
+      "title": "Package manager troubleshooting",
+      "domain": "linux-packages",
+      "keywords": [
+        "apt update",
+        "apt install",
+        "dpkg error",
+        "package manager broken",
+        "repository",
+        "مدير الحزم",
+        "تثبيت حزمة",
+        "خطأ dpkg",
+        "مستودع الحزم"
+      ],
+      "summary": "Read the package manager's actual error, verify repository reachability and free space, then use the distro-appropriate repair sequence.",
+      "commands": [
+        "dpkg --audit",
+        "apt-cache policy <package>"
+      ],
+      "limits": "Installing or upgrading packages changes the system and can require confirmation or network access."
+    },
+    {
+      "id": "python-tools",
+      "title": "Python tool availability",
+      "domain": "linux-tools",
+      "keywords": [
+        "python",
+        "pip",
+        "venv",
+        "python script",
+        "module not found",
+        "بايثون",
+        "مكتبة بايثون",
+        "وحدة مفقودة",
+        "بيئة افتراضية"
+      ],
+      "summary": "Check interpreter and module availability inside the selected runtime rather than assuming host and rootfs share packages.",
+      "commands": [
+        "python3 --version",
+        "python3 -m pip --version"
+      ],
+      "limits": "Avoid installing packages globally when a local virtual environment is suitable."
+    },
+    {
+      "id": "git-recovery",
+      "title": "Safe Git recovery",
+      "domain": "git",
+      "keywords": [
+        "git conflict",
+        "rebase conflict",
+        "restore file",
+        "recover commit",
+        "lost changes",
+        "استعادة جيت",
+        "تعارض جيت",
+        "تغييرات مفقودة",
+        "سجل جيت"
+      ],
+      "summary": "Inspect status and reflog first; preserve local modifications and prefer a new corrective commit over destructive history changes.",
+      "commands": [
+        "git status --short --branch",
+        "git log --oneline -n 10",
+        "git reflog -n 10"
+      ],
+      "limits": "Do not run reset --hard, clean -fd, or force-push as an automatic first-line fix."
+    },
+    {
+      "id": "web-research",
+      "title": "Source-backed technical research",
+      "domain": "research",
+      "keywords": [
+        "research",
+        "documentation",
+        "upstream",
+        "github repository",
+        "license",
+        "latest version",
+        "بحث",
+        "توثيق",
+        "المصدر الأصلي",
+        "ترخيص",
+        "أحدث إصدار"
+      ],
+      "summary": "Prefer official docs and upstream source; record revision/date and separate observed facts from assumptions.",
+      "commands": [],
+      "limits": "A catalog listing does not prove that a skill's contents are open source or compatible."
+    },
+    {
+      "id": "resource-limits",
+      "title": "Android memory-aware inference",
+      "domain": "local-ai",
+      "keywords": [
+        "out of memory",
+        "oom",
+        "lmk",
+        "slow inference",
+        "context length",
+        "memory usage",
+        "نفاد الذاكرة",
+        "بطء الاستدلال",
+        "طول السياق",
+        "استهلاك الذاكرة"
+      ],
+      "summary": "Keep prompt size proportional to model context, load only relevant skill excerpts, and capture native failure evidence.",
+      "commands": [
+        "cat /proc/meminfo"
+      ],
+      "limits": "Increasing context/generation limits can increase RAM use; validate on the target device."
+    },
+    {
+      "id": "cancellation",
+      "title": "Reliable task cancellation",
+      "domain": "agent-loop",
+      "keywords": [
+        "cancel",
+        "stop agent",
+        "interrupt",
+        "cancellation",
+        "stuck agent",
+        "إلغاء",
+        "إيقاف الوكيل",
+        "مقاطعة",
+        "مهمة عالقة"
+      ],
+      "summary": "Propagate cancellation through planning, PTY execution, recovery loops, and waiting states; settle futures and clean up subscriptions.",
+      "commands": [],
+      "limits": "Cancellation should be user-triggerable and should not be confused with a timeout."
+    },
+    {
+      "id": "asset-index",
+      "title": "Flutter bundled asset index",
+      "domain": "flutter-assets",
+      "keywords": [
+        "asset not found",
+        "rootbundle",
+        "assets",
+        "skill file missing",
+        "json asset",
+        "ملف أصول مفقود",
+        "الأصول",
+        "ملف مهارة مفقود",
+        "ملف json"
+      ],
+      "summary": "Verify asset paths, pubspec declarations, JSON shape, and runtime loading errors; directory declarations include only supported bundled asset paths.",
+      "commands": [
+        "flutter pub get"
+      ],
+      "limits": "A file committed to Git is not necessarily available to rootBundle until declared as an asset."
+    },
+    {
+      "id": "rootfs-shell",
+      "title": "Rootfs shell prerequisites",
+      "domain": "linux-runtime",
+      "keywords": [
+        "bin/bash",
+        "bin/sh",
+        "shell missing",
+        "rootfs validation",
+        "bash executable",
+        "باش مفقود",
+        "فحص روتفس",
+        "متطلبات الصدفة"
+      ],
+      "summary": "Validate both shell paths and executable bits; inspect symlinks and loader dependencies when the path exists but launch fails.",
+      "commands": [
+        "test -x <rootfs>/bin/sh",
+        "test -x <rootfs>/bin/bash",
+        "ls -l <rootfs>/bin/sh <rootfs>/bin/bash"
+      ],
+      "limits": "Do not infer that a distro is usable from a stale install marker."
+    },
+    {
+      "id": "release-validation",
+      "title": "Release readiness evidence",
+      "domain": "release",
+      "keywords": [
+        "release",
+        "final verification",
+        "apk build",
+        "signature",
+        "artifact",
+        "ready",
+        "الإصدار",
+        "التحقق النهائي",
+        "بناء apk",
+        "التوقيع",
+        "الملف الناتج"
+      ],
+      "summary": "Tie all test and build evidence to the exact commit SHA, inspect artifacts and signing verification, and distinguish CI evidence from device testing.",
+      "commands": [
+        "git rev-parse HEAD"
+      ],
+      "limits": "Never say a physical device test passed unless it was actually run."
+    }
+  ]
+}
