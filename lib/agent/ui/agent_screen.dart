@@ -344,6 +344,7 @@ class _AgentScreenState extends State<AgentScreen> {
                   builder: (_) => AgentLabScreen(
                     runPrompt: _runLabPrompt,
                     cancelRun: _runtime.cancel,
+                    isCancelled: () => _runtime.snapshot?.state == AgentState.cancelled,
                   ),
                 ));
               } else if (value == 'refresh') {
