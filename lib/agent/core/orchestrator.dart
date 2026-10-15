@@ -345,13 +345,24 @@ ${jsonEncode(relevantMemory)}
 استخدم readOnly افتراضياً، وحدد permission من: readOnly, localWrite, network, process, externalSideEffect، وrisk من: safe, review, blocked. كل كتابة أو تشغيل عملية أو اتصال شبكة يجب أن يطلب موافقة عند التنفيذ حتى لو صنفه النموذج آمناً.
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
-      final response = await ai.generate(prompt, maxTokens: 1200, temperature: 0.15).timeout(
-        const Duration(seconds: 90),
-        onTimeout: () => 'ERROR: انتهت مهلة تخطيط المهمة.',
-      );
+      late final String response;
+      try {
+        response = await ai.generate(prompt, maxTokens: 256, temperature: 0.15)
+            .timeout(const Duration(seconds: 90));
+      } on TimeoutException {
+        await ai.cancelGeneration();
+        throw StateError('انتهت مهلة تخطيط النموذج بعد 90 ثانية؛ أُرسل طلب إيقاف للاستدلال. لم تُستخدم خطة احتياطية.');
+      }
+      if (response.trim().isEmpty || response.startsWith('ERROR:')) {
+        throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
+      }
       final parsed = _parsePlan(response, task: task);
-      if (parsed != null && parsed.steps.isNotEmpty) return parsed;
-      _log('رفض خطة النموذج لأنها غير صالحة؛ لن يتم استبدالها بخطة تخمينية.');
+      if (parsed != null && parsed.steps.isNotEmpty) {
+        _log('تم اعتماد خطة النموذج المحلي: ${parsed.steps.length} خطوة.');
+        return parsed;
+      }
+      final excerpt = response.length > 240 ? response.substring(0, 240) : response;
+      _log('رفض خطة النموذج لأنها غير صالحة: $excerpt');
       throw StateError('تعذر اعتماد خطة صالحة من النموذج المحلي. لم تُنفذ أي خطوة؛ صحح حالة النموذج أو أعد المحاولة.');
     }
     throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
@@ -462,16 +473,27 @@ ${jsonEncode(relevantMemory)}
     final context = previousResults.asMap().entries.map((entry) {
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ ${entry.value.summary}؛ المخرجات: ${_stepOutput(entry.value)}';
     }).join('\n');
-    final response = await ai.generate(
-      'تعذرت خطوة في مهمة Zion Super Agent. اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
-      'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
-      'النتائج السابقة الفعلية:\n$context\n'
-      'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
-      'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
-      'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
-      maxTokens: 700,
-      temperature: 0.1,
-    );
+    late final String response;
+    try {
+      response = await ai.generate(
+        'تعذرت خطوة في مهمة Zion Super Agent. اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
+        'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
+        'النتائج السابقة الفعلية:\n$context\n'
+        'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
+        'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
+        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
+        maxTokens: 256,
+        temperature: 0.1,
+      ).timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      await ai.cancelGeneration();
+      _log('انتهت مهلة تشخيص الخطأ؛ أُرسل طلب إيقاف للاستدلال ولم يتم تجاوز الخطوة الفاشلة.');
+      return null;
+    }
+    if (response.trim().isEmpty || response.startsWith('ERROR:')) {
+      _log('تعذر الحصول على خطة إصلاح من النموذج المحلي: ${response.trim()}');
+      return null;
+    }
     final plan = _parsePlan(response, task: 'استعادة: ${failedStep.description}');
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
