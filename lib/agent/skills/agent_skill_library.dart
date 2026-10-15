@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 
 /// Loads bundled Agent Skills as bounded prompt context. Skill files are
@@ -20,6 +22,7 @@ class AgentSkillLibrary {
   AgentSkillLibrary({AssetBundle? bundle}) : _bundle = bundle ?? rootBundle;
 
   final AssetBundle _bundle;
+  Future<List<AgentSkillDefinition>>? _allDefinitionsFuture;
 
   static String _normalize(String value) => value
       .toLowerCase()
@@ -87,8 +90,53 @@ class AgentSkillLibrary {
     AgentSkillDefinition(name: 'git-safe-recovery', asset: 'assets/agent_skills/git-safe-recovery.md', description: 'Recover repository work without discarding user changes.', keywords: ['git recovery', 'lost changes', 'git conflict', 'reflog', 'restore branch', 'working tree', 'استعادة جيت', 'تغييرات مفقودة', 'تعارض جيت', 'سجل جيت', 'حالة المستودع']),
   ];
 
-  /// Checks that the searchable catalog and its bundled Markdown assets agree.
-  /// Returns actionable issues rather than silently hiding missing skills.
+  /// Loads the static Zion skills plus the generated upstream catalog.
+  /// Community skills are documentation-only and never grant tool permissions.
+  Future<List<AgentSkillDefinition>> _allDefinitions() =>
+      _allDefinitionsFuture ??= _loadAllDefinitions();
+
+  Future<List<AgentSkillDefinition>> _loadAllDefinitions() async {
+    final all = <AgentSkillDefinition>[...definitions];
+    final knownNames = definitions.map((skill) => skill.name).toSet();
+    try {
+      final decoded = jsonDecode(
+        await _bundle.loadString('assets/agent_skills/community_catalog.json'),
+      );
+      if (decoded is Map<String, dynamic> && decoded['entries'] is List) {
+        for (final raw in decoded['entries'] as List) {
+          if (raw is! Map) continue;
+          final name = raw['name']?.toString().trim() ?? '';
+          final description = raw['description']?.toString().trim() ?? '';
+          final asset = raw['asset']?.toString().trim() ?? '';
+          final keywordText = raw['keywords']?.toString() ?? '';
+          if (name.isEmpty || description.isEmpty || asset.isEmpty || knownNames.contains(name)) {
+            continue;
+          }
+          final keywords = keywordText
+              .split(RegExp(r'\\s+'))
+              .map(_normalize)
+              .where((keyword) => keyword.isNotEmpty)
+              .toSet()
+              .toList(growable: false);
+          if (keywords.isEmpty) keywords.add(_normalize(name));
+          all.add(AgentSkillDefinition(
+            name: name,
+            asset: asset,
+            description: description,
+            keywords: keywords,
+          ));
+          knownNames.add(name);
+        }
+      }
+    } catch (_) {
+      // Keep Zion's built-in offline skills usable if an old install has no
+      // generated community catalog yet.
+    }
+    return all;
+  }
+
+  /// Checks static Markdown assets and validates all generated catalog records.
+  /// The sync workflow checks every community asset before it is committed.
   Future<List<String>> validateCatalog() async {
     final issues = <String>[];
     final names = <String>{};
@@ -104,6 +152,14 @@ class AgentSkillLibrary {
         if (source.trim().isEmpty) issues.add('Empty skill asset: ${skill.asset}');
       } catch (_) {
         issues.add('Missing skill asset: ${skill.asset}');
+      }
+    }
+    final all = await _allDefinitions();
+    for (final skill in all.skip(definitions.length)) {
+      if (!names.add(skill.name)) issues.add('Duplicate community skill name: ${skill.name}');
+      if (!assets.add(skill.asset)) issues.add('Duplicate community skill asset: ${skill.asset}');
+      if (skill.description.trim().isEmpty || skill.keywords.isEmpty) {
+        issues.add('Incomplete community skill metadata: ${skill.name}');
       }
     }
     return issues;
@@ -136,6 +192,36 @@ class AgentSkillLibrary {
     return relevant;
   }
 
+  /// Ranks every bundled skill, including the complete generated community index.
+  /// Returns no unrelated fallback skills for an unmatched request.
+  Future<List<AgentSkillDefinition>> rankAll(
+    String task, {
+    Iterable<String> hints = const [],
+  }) async {
+    final normalized = _normalize('$task ${hints.join(' ')}');
+    if (normalized.isEmpty) return const [];
+    final candidates = await _allDefinitions();
+    final ranked = candidates.map((skill) {
+      var score = normalized.contains(_normalize(skill.name)) ? 6 : 0;
+      for (final keyword in skill.keywords) {
+        final normalizedKeyword = _normalize(keyword);
+        if (normalizedKeyword.isNotEmpty && normalized.contains(normalizedKeyword)) {
+          score += normalizedKeyword.contains(' ') ? 5 : 3;
+        }
+      }
+      return (skill: skill, score: score);
+    }).toList()
+      ..sort((a, b) {
+        final byScore = b.score.compareTo(a.score);
+        if (byScore != 0) return byScore;
+        return candidates.indexOf(a.skill).compareTo(candidates.indexOf(b.skill));
+      });
+    return ranked
+        .where((entry) => entry.score > 0)
+        .map((entry) => entry.skill)
+        .toList(growable: false);
+  }
+
   Future<String> contextFor(
     String task, {
     int maxSkills = 2,
@@ -151,7 +237,7 @@ class AgentSkillLibrary {
       'Relevant Agent Skills (guidance only; actual tool outputs and runtime policy are authoritative):\n',
     );
     var added = 0;
-    for (final skill in rank(task, hints: hints).take(maxSkills)) {
+    for (final skill in (await rankAll(task, hints: hints)).take(maxSkills)) {
       String source;
       try {
         source = await _bundle.loadString(skill.asset);
