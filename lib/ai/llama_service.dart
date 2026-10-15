@@ -56,7 +56,7 @@ class LlamaService {
   /// instruction/chat-tuned names, then to a moderate model size.
   Future<LlamaModel?> autoLoadBestModel({
     int threads = 2,
-    int maxModelBytes = 2 * 1024 * 1024 * 1024,
+    int maxModelBytes = 4 * 1024 * 1024 * 1024,
   }) async {
     final models = (await discoverModels())
         .where((m) =>
@@ -80,8 +80,8 @@ class LlamaService {
       // Oversized models are filtered before scoring to reduce avoidable
       // low-memory process deaths on Android devices.
       final gb = m.sizeBytes / (1024 * 1024 * 1024);
-      if (gb >= 0.5 && gb <= 2.0) s += 25;
-      if (gb > 1.5) s -= 10;
+      if (gb >= 0.5 && gb <= 3.5) s += 25;
+      if (gb > 3.5) s -= 10;
       return s;
     }
 
@@ -115,7 +115,7 @@ class LlamaService {
     try {
       final ok = await _channel.invokeMethod<bool>('loadModel', {
         'path': path,
-        'threads': threads.clamp(1, 2).toInt(),
+        'threads': threads.clamp(1, 8).toInt(),
         if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
         'loraScale': loraScale > 0 ? loraScale : 1.0,
       }) ?? false;
