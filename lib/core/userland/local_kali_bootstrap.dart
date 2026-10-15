@@ -188,7 +188,9 @@ class ZionLocalKaliBootstrap {
             throw SecurityException('Tar traversal: ${entry.name}');
           }
           if (entry.isDirectory) {
-            await destination.create(recursive: true);
+            // The archive entry is a directory: creating it through File.create
+            // produces a regular file and makes subsequent child extraction fail.
+            await Directory(destination.path).create(recursive: true);
           } else if (entry.isSymbolicLink) {
             await destination.parent.create(recursive: true);
             try { await Link(destination.path).delete(); } catch (_) {}
