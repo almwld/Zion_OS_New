@@ -80,19 +80,20 @@ internal object TermuxBootstrapInstaller {
                     if (++entries > MAX_ENTRIES) throw IllegalStateException("Bootstrap has too many entries")
                     val name = entry.name
                     if (name == "SYMLINKS.txt") {
-                        BufferedReader(InputStreamReader(zip, Charsets.UTF_8)).use { reader ->
-                            while (true) {
-                                val line = reader.readLine() ?: break
-                                if (line.isBlank()) continue
-                                val split = line.split('←')
-                                if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
-                                    throw IllegalStateException("Malformed SYMLINKS.txt line")
-                                }
-                                val linkFile = safeChild(staging, split[1])
-                                val target = rewriteTermuxPrefix(split[0], prefix)
-                                symlinks += target to linkFile.absolutePath
-                                ensureParent(linkFile.parentFile)
+                        // Do not close this reader: it wraps ZipInputStream,
+                        // which must remain open for the following ZIP entries.
+                        val reader = BufferedReader(InputStreamReader(zip, Charsets.UTF_8))
+                        while (true) {
+                            val line = reader.readLine() ?: break
+                            if (line.isBlank()) continue
+                            val split = line.split('←')
+                            if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
+                                throw IllegalStateException("Malformed SYMLINKS.txt line")
                             }
+                            val linkFile = safeChild(staging, split[1])
+                            val target = rewriteTermuxPrefix(split[0], prefix)
+                            symlinks += target to linkFile.absolutePath
+                            ensureParent(linkFile.parentFile)
                         }
                     } else {
                         val target = safeChild(staging, name)
