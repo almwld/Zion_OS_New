@@ -327,8 +327,8 @@ class AgentOrchestrator {
       'text': entry.text.length > 400 ? entry.text.substring(0, 400) : entry.text,
       'metadata': entry.metadata,
     }).toList(growable: false);
-    final skillContext = await AgentSkillLibrary().contextFor(task);
-    final knowledgeContext = await AgentKnowledgeIndex().contextFor(task);
+    final skillContext = await AgentSkillLibrary().contextFor(task, maxSkills: 1, maxCharsPerSkill: 500, maxTotalChars: 650);
+    final knowledgeContext = await AgentKnowledgeIndex().contextFor(task, maxEntries: 2, maxTotalChars: 650);
     if(await _nativeAiAvailable()){
       final toolCatalog = tools.availableTools.map((name) {
         final tool = tools.getTool(name)!;
