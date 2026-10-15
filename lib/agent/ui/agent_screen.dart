@@ -3,6 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
+import '../core/orchestrator.dart';
+import '../tools/tool_registry.dart';
+import '../tools/terminal_pty_tool.dart';
+import '../../features/terminal/terminal_service.dart';
+import '../../security/core/security_core.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
@@ -15,6 +21,7 @@ class AgentScreen extends StatefulWidget {
 
 class _AgentScreenState extends State<AgentScreen> {
   late final AgentRuntime _runtime;
+  late final TerminalService _agentTerminal;
   final _input=TextEditingController();
   final _scroll=ScrollController();
   final _messages=<Map<String,String>>[];
@@ -35,7 +42,10 @@ class _AgentScreenState extends State<AgentScreen> {
 
   @override void initState(){
     super.initState();
-    _runtime=AgentRuntime();
+    final ai = LlamaService();
+    _agentTerminal = TerminalService(context.read<SecurityCore>());
+    final tools = ToolRegistry(ai: ai, customTools: [TerminalPtyTool(_agentTerminal)]);
+    _runtime = AgentRuntime(orchestrator: AgentOrchestrator(ai: ai, tools: tools));
     // Let the agent window render before requesting native model discovery.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_discoverModel());
@@ -965,5 +975,5 @@ class _AgentScreenState extends State<AgentScreen> {
     AgentState.completed=>'اكتمل',AgentState.failed=>'فشل',AgentState.cancelled=>'أُلغي',
   };
 
-  @override void dispose(){_sub?.cancel();_runtime.dispose();_input.dispose();_scroll.dispose();super.dispose();}
+  @override void dispose(){_sub?.cancel();_runtime.dispose();unawaited(_agentTerminal.dispose());_input.dispose();_scroll.dispose();super.dispose();}
 }
