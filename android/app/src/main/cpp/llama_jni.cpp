@@ -64,11 +64,11 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
     auto ctxParams = llama_context_default_params();
     // Keep the context bounded for Android memory, but large enough for the
     // agent's real tool catalog, local inventory, and repair plans.
-    ctxParams.n_ctx = 2048;
-    ctxParams.n_batch = 32;
+    ctxParams.n_ctx = 4096;
+    ctxParams.n_batch = 64;
     ctxParams.n_ubatch = 32;
     ctxParams.n_seq_max = 1;
-    const int safeThreads = std::clamp(static_cast<int>(threads), 1, 2);
+    const int safeThreads = std::clamp(static_cast<int>(threads), 1, 8);
     ctxParams.n_threads = safeThreads;
     ctxParams.n_threads_batch = safeThreads;
     g_ctx = llama_init_from_model(g_model, ctxParams);
