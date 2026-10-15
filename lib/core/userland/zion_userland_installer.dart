@@ -273,7 +273,7 @@ class ZionUserlandInstaller {
       );
     }
 
-    return const ZionUserlandInstallResult(
+    return ZionUserlandInstallResult(
       success: false,
       message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: ${directBackupFailure ?? 'غير متاحة'}؛ الأرشيف المحلي: ${localArchiveFailure ?? 'غير متاح أو لم يُعثر عليه'}؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
     );
