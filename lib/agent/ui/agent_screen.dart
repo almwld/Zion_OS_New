@@ -224,7 +224,7 @@ class _AgentScreenState extends State<AgentScreen> {
         _modelName = ok ? model!.name : null;
         _modelStatus = ok
             ? 'النموذج المحلي جاهز'
-            : 'تعذر تحميل النموذج. جرّب ملف GGUF أصغر ومتوافقاً مع ذاكرة الجهاز.';
+            : 'تعذر تحميل GGUF عبر محرك llama.cpp. تحقق من سلامة الملف وتوافق صيغة النموذج، ثم راجع سجل ZionLLM.';
       });
     } catch (e) {
       if (mounted) setState(() {
