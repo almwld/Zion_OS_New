@@ -23,7 +23,24 @@ class AgentPolicy {
   }
   bool _safeShell(String command){
     final c=command.trim().toLowerCase();
+    // Auto-run routine, read-only workspace diagnostics. Compound shell
+    // commands remain review-only and are never admitted by this allowlist.
     if(c.contains('&&')||c.contains('||')||c.contains(';')||c.contains('|'))return false;
+    const diagnosticCommands = <String>[
+      'git status',
+      'git status --short',
+      'git status --branch',
+      'git diff --check',
+      'git diff --stat',
+      'git diff --name-only',
+      'git log --oneline',
+      'git rev-parse --show-toplevel',
+      'flutter --version',
+      'dart --version',
+    ];
+    if (diagnosticCommands.contains(c)) return true;
+    if (RegExp(r'^git log --oneline -n [1-9][0-9]?$').hasMatch(c)) return true;
+    if (RegExp(r'^(which|command -v) [a-zA-Z0-9._/-]+$').hasMatch(command.trim())) return true;
     return RegExp(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
   }
 }
