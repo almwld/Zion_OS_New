@@ -34,6 +34,17 @@ void main() {
     expect(ranked.first.id, 'kali-detection');
   });
 
+  test('Arabic diacritics do not prevent knowledge retrieval', () async {
+    final ranked = await AgentKnowledgeIndex().rank('اِسْتَكْشِفْ كَالِي لِينُكْس');
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.id, 'kali-detection');
+  });
+
+  test('unknown tasks do not receive unrelated knowledge entries', () async {
+    final ranked = await AgentKnowledgeIndex().rank('zzqxvplm unrelated request');
+    expect(ranked, isEmpty);
+  });
+
   test('ranking prioritizes Flutter diagnostics for build failures', () async {
     final ranked = await AgentKnowledgeIndex().rank('flutter build apk failure');
     expect(ranked.first.id, 'flutter-diagnostics');
