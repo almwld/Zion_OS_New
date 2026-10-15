@@ -224,13 +224,13 @@ class _AgentScreenState extends State<AgentScreen> {
       ? '''[OVERTHINKER MODE — Zion Super Agent]
 Original task: $rawTask
 
-Use a deliberate engineering loop:
-1. Clarify the requested outcome and scope without inventing facts.
-2. Break the work into specialist perspectives: planner, executor, risk reviewer, and verifier. Coordinate these perspectives in the plan; do not claim independent agents ran unless they actually did.
-3. Identify dependencies, failure modes, and permissions before side-effecting steps. Request approval for sensitive actions.
-4. Execute one verifiable step at a time and inspect actual tool output.
-5. Verify the final state against the original task; if a step fails, diagnose and recover within the granted scope.
-6. Report evidence, remaining uncertainty, and concrete outcomes. Never fabricate successful actions.
+Engineering loop:
+1. Define the requested outcome and scope; do not invent missing facts.
+2. Organize the plan through specialist perspectives: planner, executor, risk reviewer, and verifier. Do not claim separate agents ran unless they actually did.
+3. Identify dependencies and risks before side effects; require approval for sensitive actions.
+4. Execute one verifiable step at a time and inspect real tool output.
+5. Verify the final state against the original task; diagnose and recover from failures within the granted scope.
+6. Report evidence, uncertainty, and remaining work honestly.
 ''' : rawTask;
     if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
@@ -339,7 +339,7 @@ Use a deliberate engineering loop:
                     : 'تم إيقاف نمط Overthinker.'),
                   behavior: SnackBarBehavior.floating,
                 ));
-              } else 
+              } else if (value == 'loop') {
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
                 ));
@@ -359,7 +359,28 @@ Use a deliberate engineering loop:
               const PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
               const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
             ],
-
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: Column(children: [
+        _workspaceOverview(),
+        _workspaceTabs(),
+        Expanded(child: ListView(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+          children: [
+            if (_workspaceTab == 0) ...[
+              if (_messages.length <= 1) _quickActions(),
+              for (var i = 0; i < _messages.length; i++)
+                _message(i, _messages[i]['role']!, _messages[i]['text']!),
+              if (_submitting && !_runtime.canCancel)
+                _workingBanner('يتم تجهيز المهمة', 'جارٍ إرسال المهمة إلى منسق الوكيل…'),
+              if (_runtime.canCancel)
+                _workingBanner(
+                  _runtime.canApprove ? 'بانتظار موافقتك' : 'الوكيل يعمل',
+                  _runtime.canApprove ? 'راجع تفاصيل الخطوة قبل السماح بتنفيذها.' : 'تُعرض الخطوات والنتائج هنا فور وصولها.',
+                ),
               _ptyConsoleCard(),
             ],
             if (_workspaceTab == 0 || _workspaceTab == 1)
