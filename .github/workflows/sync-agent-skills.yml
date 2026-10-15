@@ -68,6 +68,9 @@ jobs:
       - name: Resolve Flutter dependencies
         run: flutter pub get
 
+      - name: Fetch bundled Musnad font
+        run: bash tool/fetch_musnad_font.sh
+
       - name: Analyze
         run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
 
