@@ -45,6 +45,18 @@ class NativePtyAdapter {
     }
   }
 
+  /// Install/validate the APK-bundled ARM64 PRoot executable and loader
+  /// into Zion's private prefix before a Kali preflight checks those paths.
+  Future<bool> ensureProotRuntime() async {
+    try {
+      return await _channel.invokeMethod<bool>('ensureProot') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// Inspect the APK's actual native-library directory and local Userland paths.
   /// This is metadata-only: it never loads or executes the reported binaries.
   Future<Map<String, dynamic>?> inspectRuntime() async {
