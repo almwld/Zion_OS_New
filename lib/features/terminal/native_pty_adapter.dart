@@ -25,6 +25,26 @@ class NativePtyAdapter {
   bool get isRunning => _running;
   int? get handle => _handle;
 
+  /// Initialize the embedded Termux bootstrap once before any code creates
+  /// an empty PREFIX directory. The native side preserves non-empty prefixes.
+  Future<Map<String, dynamic>?> ensureBootstrap() async {
+    try {
+      return await _channel.invokeMapMethod<String, dynamic>('ensureBootstrap');
+    } on PlatformException catch (error) {
+      return <String, dynamic>{
+        'success': false,
+        'status': 'platform-error',
+        'message': error.message ?? error.code,
+      };
+    } on MissingPluginException {
+      return <String, dynamic>{
+        'success': false,
+        'status': 'channel-unavailable',
+        'message': 'Native Termux bootstrap channel is unavailable.',
+      };
+    }
+  }
+
   /// Inspect the APK's actual native-library directory and local Userland paths.
   /// This is metadata-only: it never loads or executes the reported binaries.
   Future<Map<String, dynamic>?> inspectRuntime() async {
