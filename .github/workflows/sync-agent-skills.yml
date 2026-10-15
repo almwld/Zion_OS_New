@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: vendor-agent-skills
+  group: vendor-agent-skills-final
   cancel-in-progress: true
 
 jobs:
