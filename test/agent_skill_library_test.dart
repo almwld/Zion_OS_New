@@ -60,6 +60,27 @@ void main() {
     );
   });
 
+  test('complete community corpus is searchable and full skill files load on demand', () async {
+    final library = AgentSkillLibrary();
+    final all = await library.allSkills();
+    expect(all.length, greaterThanOrEqualTo(1000));
+    expect(all.map((skill) => skill.name).toSet().length, all.length);
+
+    final definition = all.firstWhere((skill) => skill.name == 'a11y-audit');
+    expect(definition.license, isNotEmpty);
+    expect(definition.source, startsWith('https://github.com/'));
+    expect(definition.upstreamPath, endsWith('SKILL.md'));
+
+    final fullSource = await library.loadFullSkill('a11y-audit');
+    expect(fullSource, isNotNull);
+    expect(fullSource, contains('When to Use'));
+    expect(fullSource!.length, greaterThan(900));
+  });
+
+  test('unknown full-skill lookup returns null', () async {
+    expect(await AgentSkillLibrary().loadFullSkill('no-such-skill-zion'), isNull);
+  });
+
   test('context loads a relevant bundled skill within configured budget', () async {
     final context = await AgentSkillLibrary().contextFor(
       'debug a build failure',
