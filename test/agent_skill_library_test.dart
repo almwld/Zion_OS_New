@@ -42,6 +42,11 @@ void main() {
     expect(ranked.first.name, 'systematic-debugging');
   });
 
+  test('Arabic tasks rank Zion-native runtime skills', () {
+    final ranked = AgentSkillLibrary().rank('استكشف كالي لينكس والروتفس المحلي');
+    expect(ranked.first.name, 'local-runtime-discovery');
+  });
+
   test('context loads a relevant bundled skill within configured budget', () async {
     final context = await AgentSkillLibrary().contextFor(
       'debug a build failure',
