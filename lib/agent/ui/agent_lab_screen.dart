@@ -417,7 +417,7 @@ class _PerformancePainter extends CustomPainter {
     }
     final data = events.reversed.take(30).toList();
     if (data.isEmpty) return;
-    final maxDuration = data.map((e) => e.duration.inMilliseconds).fold<int>(1, math.max).toDouble();
+    final maxDuration = data.map((e) => e.duration.inMilliseconds).fold<int>(1, (a, b) => a > b ? a : b).toDouble();
     final points = <Offset>[];
     for (var i = 0; i < data.length; i++) {
       final x = data.length == 1 ? size.width / 2 : size.width * i / (data.length - 1);
