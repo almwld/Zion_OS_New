@@ -17,8 +17,8 @@ class AgentOrchestrator {
   bool _running=false;
   Completer<bool>? _approvalCompleter;
   String? _pendingApprovalStepId;
-  static const Duration defaultStepTimeout = Duration(seconds: 30);
-  static const int defaultMaxRecoveryAttempts = 2;
+  static const Duration defaultStepTimeout = Duration(minutes: 16);
+  static const int defaultMaxRecoveryAttempts = 8;
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai})
       :policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService() {
@@ -343,14 +343,15 @@ ${jsonEncode(relevantMemory)}
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       final response = await ai.generate(prompt, maxTokens: 1200, temperature: 0.15).timeout(
-        const Duration(seconds: 25),
+        const Duration(seconds: 90),
         onTimeout: () => 'ERROR: انتهت مهلة تخطيط المهمة.',
       );
       final parsed = _parsePlan(response, task: task);
       if (parsed != null && parsed.steps.isNotEmpty) return parsed;
-      _log('تعذر اعتماد خطة النموذج؛ سيتم استخدام خطة احتياطية محدودة وآمنة.');
+      _log('رفض خطة النموذج لأنها غير صالحة؛ لن يتم استبدالها بخطة تخمينية.');
+      throw StateError('تعذر اعتماد خطة صالحة من النموذج المحلي. لم تُنفذ أي خطوة؛ صحح حالة النموذج أو أعد المحاولة.');
     }
-    return _heuristicPlan(task);
+    throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
   }
 
   AgentPlan? _parsePlan(String response, {String task = ''}) {
@@ -400,53 +401,6 @@ ${jsonEncode(relevantMemory)}
 
   AgentPermission _permissionFrom(dynamic value){switch(value?.toString()){case 'localWrite':return AgentPermission.localWrite;case 'network':return AgentPermission.network;case 'process':return AgentPermission.process;case 'externalSideEffect':return AgentPermission.externalSideEffect;default:return AgentPermission.readOnly;}}
   AgentRisk _riskFrom(dynamic value){switch(value?.toString()){case 'review':return AgentRisk.review;case 'blocked':return AgentRisk.blocked;default:return AgentRisk.safe;}}
-
-  AgentPlan _heuristicPlan(String task){
-    final lower=task.toLowerCase();
-    final command=_extractExplicitCommand(task);
-    if(command!=null){
-      final decision = policy.evaluate(tool: 'shell', params: {'command': command});
-      return AgentPlan(task: task, steps:[
-        AgentStep(
-          id:'1',
-          description:'تنفيذ الأمر المحلي الذي طلبته: $command',
-          tool:'shell',
-          params:{'command':command},
-          permission:decision.risk == AgentRisk.safe ? AgentPermission.readOnly : AgentPermission.process,
-          risk:decision.risk,
-          requiresApproval:decision.requiresApproval,
-          requiresEvaluation:true,
-        ),
-      ]);
-    }
-    if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
-      final query = task.replaceFirst(
-        RegExp(
-          r'^(?:من فضلك\s*)?(?:(?:ابحث|بحث)\s*(?:عن\s*)?|search\s*(?:for\s*)?|تحقق من\s*|آخر الأخبار\s*)',
-          caseSensitive: false,
-        ),
-        '',
-      ).trim();
-      return AgentPlan(task: task, steps: [
-        AgentStep(
-          id: '1',
-          description: 'البحث الفعلي على الويب عن: ${query.isEmpty ? task : query}',
-          tool: 'browser',
-          params: {'action': 'search', 'query': query.isEmpty ? task : query},
-          permission: AgentPermission.network,
-        ),
-      ]);
-    }
-    if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
-    return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
-  }
-
-  String? _extractExplicitCommand(String task){
-    final match=RegExp(r'(?:نفذ|نفّذ|شغل|شغّل|execute|run)\s+(?:الأمر\s*[:：]?\s*)?(.+)',caseSensitive:false).firstMatch(task.trim());
-    final command=match?.group(1)?.trim();
-    if(command==null||command.isEmpty)return null;
-    return command;
-  }
 
   Map<String, dynamic> _resolveParams(Map<String, dynamic> input, List<StepResult> results) {
     final output = <String, dynamic>{};
