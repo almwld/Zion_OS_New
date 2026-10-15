@@ -13,6 +13,7 @@ import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
 import 'kali_agent_loop_screen.dart';
+import 'agent_lab_screen.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -257,6 +258,32 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  Future<String> _runLabPrompt(String prompt) async {
+    if (!mounted || _runtime.canCancel || _submitting) {
+      throw StateError('Zion Super Agent مشغول بمهمة أخرى.');
+    }
+    setState(() => _submitting = true);
+    try {
+      final result = await _runtime.run(
+        prompt,
+        approveReviewed: false,
+        stepTimeout: const Duration(minutes: 8),
+        maxRecoveryAttempts: 3,
+      );
+      if (!result.success) {
+        throw StateError(result.error ?? 'فشل الوكيل المحلي في إكمال الدور.');
+      }
+      final text = (result.report ?? '').trim();
+      if (text.isNotEmpty) return text;
+      if (result.steps.isNotEmpty) {
+        return result.steps.map((step) => step.summary).join('\\n');
+      }
+      return 'اكتملت المهمة دون تقرير نصي.';
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   void _scrollEnd()=>WidgetsBinding.instance.addPostFrameCallback((_){
     if(_scroll.hasClients)_scroll.animateTo(_scroll.position.maxScrollExtent,duration:const Duration(milliseconds:180),curve:Curves.easeOut);
   });
@@ -312,6 +339,13 @@ class _AgentScreenState extends State<AgentScreen> {
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
                 ));
+              } else if (value == 'lab') {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => AgentLabScreen(
+                    runPrompt: _runLabPrompt,
+                    cancelRun: _runtime.cancel,
+                  ),
+                ));
               } else if (value == 'refresh') {
                 unawaited(_discoverModel());
               } else if (value == 'clear') {
@@ -322,6 +356,7 @@ class _AgentScreenState extends State<AgentScreen> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'lab', child: ListTile(leading: Icon(Icons.hub_outlined), title: Text('مختبر الوكلاء وObsidian'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
