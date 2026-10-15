@@ -4,7 +4,7 @@ import 'package:project_zion/agent/skills/agent_skill_library.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('skill catalog contains the six bundled workflow skills', () {
+  test('skill catalog contains all bundled workflow skills', () {
     expect(AgentSkillLibrary.definitions, hasLength(24));
     expect(
       AgentSkillLibrary.definitions.map((skill) => skill.name),
@@ -62,6 +62,12 @@ void main() {
     expect(context, contains('Relevant Agent Skills'));
     expect(context.length, lessThanOrEqualTo(2200));
     expect(context, isNot(contains('name: systematic-debugging')));
+  });
+
+  test('exact skill names are searchable even without keyword overlap', () {
+    final ranked = AgentSkillLibrary().rank('diagnosing-superpowers');
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.name, 'diagnosing-superpowers');
   });
 
   test('unmatched tasks do not receive unrelated fallback skills', () {
