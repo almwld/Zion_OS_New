@@ -137,6 +137,14 @@ class ZionUserlandInstaller {
       '/storage/emulated/0/Download/termux_usr_backup/termux_usr_backup',
       '/storage/emulated/0/Download/termux-backup/usr',
       '/storage/emulated/0/Zion/Userland/usr',
+      // The user's local runtime bundle may contain an extracted Termux usr
+      // tree under ZionUniversal (without a space). Only treat explicit usr
+      // directories as Userland roots; never copy the containing folder of
+      // shared libraries into PREFIX.
+      '/storage/emulated/0/ZionUniversal/usr',
+      '/storage/emulated/0/ZionUniversal/termux/usr',
+      '/storage/emulated/0/ZionUniversal/files/usr',
+      '/storage/emulated/0/ZionUniversal/termux_usr_backup',
     ];
     var hasBackupDirectory = false;
     for (final candidate in backupCandidates) {
@@ -194,6 +202,9 @@ class ZionUserlandInstaller {
       '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
       '/storage/emulated/0/Download/bootstrap-aarch64.zip',
       '/storage/emulated/0/Zion Universal/bootstrap-aarch64.zip',
+      '/storage/emulated/0/ZionUniversal/bootstrap-aarch64.zip',
+      '/storage/emulated/0/ZionUniversal/termux-bootstrap-aarch64.zip',
+      '/storage/emulated/0/ZionUniversal/termux-bootstrap.zip',
     ];
     var localArchiveSeen = false;
     for (final localPath in localCandidates) {
