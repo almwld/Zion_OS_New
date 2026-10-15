@@ -334,11 +334,15 @@ class _KnowledgeNetwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final noteNodes = notes.take(24).map((n) => (id: n.id, label: n.title, kind: 'note')).toList();
-    final eventGroups = <String, int>{};
-    for (final e in events.reversed.take(30)) { eventGroups[e.actor] = (eventGroups[e.actor] ?? 0) + 1; }
-    final agentNodes = eventGroups.keys.take(8).map((actor) => (id: 'agent:$actor', label: actor, kind: 'agent')).toList();
-    final nodes = [...noteNodes, ...agentNodes];
+    final noteNodes = notes.take(16).map((n) => (id: n.id, label: n.title, kind: 'note')).toList();
+    final recentEvents = events.reversed.take(24).toList();
+    final eventActors = recentEvents.map((e) => e.actor).toSet().take(8).toList();
+    final agentNodes = eventActors.map((actor) => (id: 'agent:' + actor, label: actor, kind: 'agent')).toList();
+    final eventNodes = recentEvents.asMap().entries.map((entry) {
+      final e = entry.value;
+      return (id: 'event:' + e.id, label: (entry.key + 1).toString() + '. ' + e.actor + ' · ' + e.action, kind: 'event');
+    }).toList();
+    final nodes = [...noteNodes, ...agentNodes, ...eventNodes];
     if (nodes.isEmpty) return Container(height: 220, alignment: Alignment.center, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(16)), child: const Text('ستظهر العقد بعد إنشاء الملاحظات أو تشغيل الوكلاء.'));
     final ids = nodes.map((n) => n.id).toList();
     final links = <(String, String)>[];
@@ -347,14 +351,15 @@ class _KnowledgeNetwork extends StatelessWidget {
         if (ids.contains(entry.key) && ids.contains(target)) links.add((entry.key, target));
       }
     }
-    final recentEvents = events.reversed.take(30).toList();
+    for (final event in recentEvents) {
+      final eventId = 'event:' + event.id;
+      final agentId = 'agent:' + event.actor;
+      if (ids.contains(eventId) && ids.contains(agentId)) links.add((agentId, eventId));
+    }
     for (var i = 1; i < recentEvents.length; i++) {
       final previous = recentEvents[i - 1];
       final current = recentEvents[i];
-      if (previous.runId != current.runId) continue;
-      final from = 'agent:' + previous.actor;
-      final to = 'agent:' + current.actor;
-      if (from != to && ids.contains(from) && ids.contains(to)) links.add((from, to));
+      if (previous.runId == current.runId) links.add(('event:' + previous.id, 'event:' + current.id));
     }
     return Container(
       height: 330, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(18), border: Border.all(color: colors.outlineVariant)),
@@ -378,7 +383,7 @@ class _NetworkPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     for (var i = 0; i < nodes.length; i++) {
       final angle = (2 * math.pi * i / nodes.length) - math.pi / 2;
-      final radius = math.min(size.width * .36, size.height * .37);
+      final radius = math.min(size.width * .40, size.height * .40);
       positions[nodes[i].id] = center + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
     }
     final line = Paint()..color = colors.primary.withOpacity(.34)..strokeWidth = 1.4;
@@ -394,11 +399,14 @@ class _NetworkPainter extends CustomPainter {
     for (var i = 0; i < nodes.length; i++) {
       final node = nodes[i], p = positions[node.id]!;
       final isAgent = node.kind == 'agent';
-      final radius = isAgent ? 18.0 : 15.0;
-      canvas.drawCircle(p, radius + 5, Paint()..color = (isAgent ? colors.tertiary : colors.primary).withOpacity(.09));
-      canvas.drawCircle(p, radius, Paint()..color = isAgent ? colors.tertiaryContainer : colors.primaryContainer);
-      final text = TextPainter(text: TextSpan(text: node.label.length > 15 ? '${node.label.substring(0, 14)}…' : node.label,
-        style: TextStyle(color: isAgent ? colors.onTertiaryContainer : colors.onPrimaryContainer, fontSize: 9, fontWeight: FontWeight.w600)),
+      final isEvent = node.kind == 'event';
+      final radius = isAgent ? 18.0 : isEvent ? 8.0 : 15.0;
+      final nodeColor = isAgent ? colors.tertiary : isEvent ? colors.secondary : colors.primary;
+      canvas.drawCircle(p, radius + 5, Paint()..color = nodeColor.withOpacity(.09));
+      canvas.drawCircle(p, radius, Paint()..color = isAgent ? colors.tertiaryContainer : isEvent ? colors.secondaryContainer : colors.primaryContainer);
+      final label = node.label.length > 15 ? node.label.substring(0, 14) + '…' : node.label;
+      final text = TextPainter(text: TextSpan(text: label,
+        style: TextStyle(color: isAgent ? colors.onTertiaryContainer : isEvent ? colors.onSecondaryContainer : colors.onPrimaryContainer, fontSize: isEvent ? 7 : 9, fontWeight: FontWeight.w600)),
         textDirection: TextDirection.rtl, maxLines: 1, textAlign: TextAlign.center)..layout(maxWidth: 100);
       text.paint(canvas, Offset(p.dx - text.width / 2, p.dy + radius + 5));
     }
