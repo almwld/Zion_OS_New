@@ -51,6 +51,15 @@ void main() {
     expect(ranked.first.name, 'local-runtime-discovery');
   });
 
+  test('rankAll includes static skills and deduplicates generated community entries', () async {
+    final ranked = await AgentSkillLibrary().rankAll('systematic-debugging');
+    expect(ranked.map((skill) => skill.name), contains('systematic-debugging'));
+    expect(
+      ranked.map((skill) => skill.name).toSet().length,
+      ranked.length,
+    );
+  });
+
   test('context loads a relevant bundled skill within configured budget', () async {
     final context = await AgentSkillLibrary().contextFor(
       'debug a build failure',
