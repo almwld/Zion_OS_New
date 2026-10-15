@@ -21,6 +21,16 @@ void main() {
       expect(method, contains('invalidating state so the local backup is recopied'));
     });
 
+    test('local Termux backup discovery covers common Android folder layouts', () async {
+      final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      expect(installer, contains("'/storage/emulated/0/Download/termux_usr_backup'"));
+      expect(installer, contains("'/storage/emulated/0/termux_usr_backup'"));
+      expect(installer, contains("'/storage/emulated/0/Download/Termux/usr'"));
+      expect(installer, contains("'/storage/emulated/0/Download/termux_usr_backup/usr'"));
+      expect(installer, contains("for (final candidate in backupCandidates)"));
+      expect(installer, contains("if (!await Directory(candidate).exists()) continue;"));
+    });
+
     test('new terminal sessions reuse a verified local shell before restore', () async {
       final source = await File('lib/features/terminal/terminal_service.dart').readAsString();
       final start = source.indexOf('Future<String?> _findShell(');
