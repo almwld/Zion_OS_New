@@ -113,7 +113,7 @@ class AgentSkillLibrary {
       name: 'executing-plans',
       asset: 'assets/agent_skills/executing-plans.md',
       description: 'Execute incrementally with observed outputs and model-led recovery.',
-      keywords: ['execute', 'execution', 'recover', 'retry', 'terminal', 'shell', 'runtime', 'kali', 'userland', 'rootfs', 'تنفيذ', 'استعادة', 'إعادة المحاولة', 'طرفية', 'كالي', 'لينكس',]
+      keywords: ['execute', 'execution', 'recover', 'retry', 'terminal', 'shell', 'runtime', 'تنفيذ', 'استعادة', 'إعادة المحاولة', 'طرفية',]
     ),
     AgentSkillDefinition(name: 'diagnosing-superpowers', asset: 'assets/agent_skills/diagnosing-superpowers.md', description: 'Diagnose skill discovery and invocation problems.', keywords: ['skill', 'skills', 'discovery', 'invoke', 'catalog', 'مهارة', 'مهارات', 'فهرس']),
     AgentSkillDefinition(name: 'dispatching-parallel-agents', asset: 'assets/agent_skills/dispatching-parallel-agents.md', description: 'Decompose independent work into parallelizable subtasks.', keywords: ['parallel', 'concurrent', 'independent tasks', 'subtasks']),
