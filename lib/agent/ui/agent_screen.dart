@@ -13,6 +13,8 @@ import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
 import 'kali_agent_loop_screen.dart';
+import 'agent_subagents_screen.dart';
+import 'obsidian_vault_screen.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -312,6 +314,10 @@ class _AgentScreenState extends State<AgentScreen> {
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
                 ));
+              } else if (value == 'subagents') {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AgentSubagentsScreen()));
+              } else if (value == 'obsidian') {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ObsidianVaultScreen(initialMarkdown: _buildSessionMarkdown())));
               } else if (value == 'refresh') {
                 unawaited(_discoverModel());
               } else if (value == 'clear') {
@@ -322,6 +328,8 @@ class _AgentScreenState extends State<AgentScreen> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'subagents', child: ListTile(leading: Icon(Icons.hub_outlined), title: Text('الوكلاء الفرعيون'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'obsidian', child: ListTile(leading: Icon(Icons.auto_stories_outlined), title: Text('Obsidian · قاعدة المعرفة'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
@@ -500,7 +508,7 @@ class _AgentScreenState extends State<AgentScreen> {
     ]),
   );
 
-  Future<void> _exportSession() async {
+  String _buildSessionMarkdown() {
     final buffer = StringBuffer()
       ..writeln('# Zion Super Agent — تقرير الجلسة')
       ..writeln()
@@ -524,7 +532,11 @@ class _AgentScreenState extends State<AgentScreen> {
       buffer.writeln('## النتيجة');
       buffer.writeln(_visibleResultSummary(_result!));
     }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    return buffer.toString();
+  }
+
+  Future<void> _exportSession() async {
+    await Clipboard.setData(ClipboardData(text: _buildSessionMarkdown()));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
