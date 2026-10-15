@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
@@ -358,45 +360,13 @@ class ZionUserlandInstaller {
       await staging.create(recursive: false);
       onProgress?.call('[Kali] Extracting archive into isolated staging directory: ${staging.path}');
 
-      // Use Android's system shell and tar rather than trying to execute a
-      // binary from app-private storage. Paths are passed as positional
-      // arguments, not interpolated into shell source.
-      final process = await Process.start(
-        '/system/bin/sh',
-        <String>[
-          '-c',
-          'tar -xJf "$1" -C "$2"',
-          'zion-kali-extract',
-          archivePath,
-          staging.path,
-        ],
-        runInShell: false,
-      );
-      final stdoutBuffer = StringBuffer();
-      final stderrBuffer = StringBuffer();
-      final stdoutSub = process.stdout.transform(utf8.decoder).listen(stdoutBuffer.write);
-      final stderrSub = process.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
-      var exitCode = -1;
-      try {
-        exitCode = await process.exitCode.timeout(
-          const Duration(minutes: 30),
-          onTimeout: () {
-            process.kill(ProcessSignal.sigkill);
-            return 124;
-          },
-        );
-      } finally {
-        await stdoutSub.cancel();
-        await stderrSub.cancel();
-      }
-
-      if (exitCode != 0) {
-        onProgress?.call('[Kali] Extraction failed (exit=$exitCode): ${stderrBuffer.toString()}');
-        return ZionUserlandInstallResult(
-          success: false,
-          message: 'فشل فك أرشيف Kali المحلي (exit=$exitCode). لم تُحذف ملفات rootfs الحالية. التفاصيل: ${stderrBuffer.toString()}',
-        );
-      }
+      // Use the Dart archive decoder so extraction does not depend on
+      // Android toybox tar supporting XZ, and never execute an ELF from
+      // app-private storage. archive_io streams .tar.xz entries to disk.
+      // Isolate.run keeps the long decode/extraction off the UI isolate.
+      await Isolate.run<void>(() {
+        extractFileToDisk(archivePath, staging.path);
+      });
 
       final stagedBash = File('${staging.path}/bin/bash');
       final stagedPython = File('${staging.path}/usr/bin/python3');
