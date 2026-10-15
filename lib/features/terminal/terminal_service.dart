@@ -718,8 +718,24 @@ class TerminalService {
       return false;
     }
     final started = DateTime.now();
-    // Kali uses the already-installed Zion PRoot runtime and a local rootfs;
-    // it must not trigger Userland restore or copy the selected rootfs.
+    // The embedded Termux bootstrap must be extracted before
+    // _ensureTerminalEnvironment() creates an otherwise-empty usr/ prefix.
+    // Installation is idempotent and refuses to overwrite a non-empty prefix.
+    try {
+      final bootstrap = await _pty.ensureBootstrap();
+      if (bootstrap != null) {
+        final message = bootstrap['message']?.toString() ?? 'No bootstrap status returned.';
+        _emitOutput('[Bootstrap] $message\\r\\n');
+        if (bootstrap['success'] != true) {
+          _emitOutput('[Bootstrap] status=${bootstrap['status'] ?? 'unknown'}; existing files were preserved.\\r\\n');
+        }
+      }
+    } catch (error) {
+      _emitOutput('[Bootstrap] Initialization failed safely: $error\\r\\n');
+    }
+
+    // Kali uses the installed Zion PRoot runtime and a local rootfs. Bootstrap
+    // is still attempted above because PRoot itself may be supplied by PREFIX.
     await _ensureTerminalEnvironment();
     String? shell;
     if (kaliRootfsPath != null) {
