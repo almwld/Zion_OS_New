@@ -43,7 +43,7 @@ def frontmatter(text: str) -> dict[str, str]:
 def read_readme_licenses(readme: str) -> dict[str, dict[str, str]]:
     result: dict[str, dict[str, str]] = {}
     for line in readme.splitlines():
-        if not line.startswith("|") or "SKILL" in line.upper() or line.startswith("|---"):
+        if not line.startswith("|") or line.startswith("|---") or ("license" in line.lower() and "description" in line.lower()):
             continue
         cells = [cell.strip() for cell in line.strip("|").split("|")]
         if len(cells) < 4:
@@ -62,6 +62,8 @@ def read_readme_licenses(readme: str) -> dict[str, dict[str, str]]:
 def main() -> None:
     DEST.mkdir(parents=True, exist_ok=True)
     FLAT.mkdir(parents=True, exist_ok=True)
+    for existing in FLAT.glob("*.md"):
+        existing.unlink()
     with tempfile.TemporaryDirectory(prefix="zion-agent-skills-") as temp:
         source = Path(temp) / "upstream"
         run("git", "clone", "--depth=1", UPSTREAM, str(source))

@@ -332,8 +332,26 @@ class AgentOrchestrator {
       'kind': entry.kind,
       'text': entry.text.length > 140 ? entry.text.substring(0, 140) : entry.text,
     }).toList(growable: false);
-    final skillContext = await _skillLibrary.contextFor(task, maxSkills: 2, maxCharsPerSkill: 240, maxTotalChars: 440);
-    final knowledgeContext = await _knowledgeIndex.contextFor(task, maxEntries: 2, maxTotalChars: 320);
+    final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
+    final knowledgeHints = rankedKnowledge.expand((entry) => <String>[
+      entry.title,
+      entry.domain,
+      ...entry.keywords,
+    ]).toList(growable: false);
+    // Cross-feed knowledge hits into procedural skill discovery so the two
+    // offline indexes reinforce one another instead of ranking independently.
+    final skillContext = await _skillLibrary.contextFor(
+      task,
+      hints: knowledgeHints,
+      maxSkills: 3,
+      maxCharsPerSkill: 420,
+      maxTotalChars: 1150,
+    );
+    final knowledgeContext = await _knowledgeIndex.contextFor(
+      task,
+      maxEntries: 3,
+      maxTotalChars: 700,
+    );
     if(await _nativeAiAvailable()){
       final toolCatalog = tools.availableTools.map((name) {
         final tool = tools.getTool(name)!;

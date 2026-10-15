@@ -62,6 +62,7 @@ flutter:
     - assets/fonts/
     - assets/repository/
     - assets/agent_skills/
+    - assets/agent_skills/community/
     - assets/repository/
 
 flutter_launcher_icons:
