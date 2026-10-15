@@ -27,8 +27,6 @@ class ZionUserlandInstaller {
   Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
     final bashFile = File(bashPath);
-    final stateFile = File(_stateFilePath);
-
     try {
       if (await bashFile.exists()) {
         final stat = await bashFile.stat();
