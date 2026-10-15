@@ -153,7 +153,22 @@ class _AgentScreenState extends State<AgentScreen> {
       final candidates = models
           .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 4 * 1024 * 1024 * 1024)
           .toList()
-        ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+        ..sort((a, b) {
+          int score(LlamaModel model) {
+            final name = model.name.toLowerCase();
+            var value = 0;
+            if (name.contains('instruct')) value += 100;
+            if (name.contains('chat')) value += 90;
+            if (name.contains('assistant')) value += 70;
+            if (name.contains('qwen')) value += 55;
+            if (name.contains('llama')) value += 45;
+            if (name.contains('base')) value -= 25;
+            return value;
+          }
+          final byQuality = score(b).compareTo(score(a));
+          if (byQuality != 0) return byQuality;
+          return b.sizeBytes.compareTo(a.sizeBytes);
+        });
       final nativeReady = await _runtime.orchestrator.ai.refreshLoadedState();
       if (mounted) setState(() {
         _candidateModel = candidates.isEmpty ? null : candidates.first;
