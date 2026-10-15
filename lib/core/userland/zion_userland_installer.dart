@@ -631,19 +631,55 @@ class ZionUserlandInstaller {
           ? entity.uri.pathSegments[entity.uri.pathSegments.length - 1]
           : entity.path.split('/').last;
       final destination = '${target.path}/$name';
+      final destinationType = await FileSystemEntity.type(
+        destination,
+        followLinks: false,
+      );
 
       if (entity is Link) {
-        final linkTarget = await entity.target();
-        final link = Link(destination);
-        if (await link.exists()) {
-          await link.delete();
+        // FileSystemEntity.exists() follows links and returns false for a
+        // broken destination symlink. Remove by entity type so retries can
+        // replace broken links instead of failing with EEXIST.
+        if (destinationType != FileSystemEntityType.notFound) {
+          await _removeExistingPath(destination, destinationType);
         }
-        await link.create(linkTarget);
+        final linkTarget = await entity.target();
+        await Link(destination).create(linkTarget);
       } else if (entity is Directory) {
+        if (destinationType != FileSystemEntityType.notFound &&
+            destinationType != FileSystemEntityType.directory) {
+          await _removeExistingPath(destination, destinationType);
+        }
+        await Directory(destination).create(recursive: true);
         await _manualCopy(entity, Directory(destination));
       } else if (entity is File) {
+        if (destinationType == FileSystemEntityType.link ||
+            destinationType == FileSystemEntityType.directory) {
+          await _removeExistingPath(destination, destinationType);
+        }
         await entity.copy(destination);
       }
+    }
+  }
+
+  Future<void> _removeExistingPath(
+    String path,
+    FileSystemEntityType type,
+  ) async {
+    switch (type) {
+      case FileSystemEntityType.link:
+        await Link(path).delete();
+      case FileSystemEntityType.file:
+        await File(path).delete();
+      case FileSystemEntityType.directory:
+        await Directory(path).delete(recursive: true);
+      case FileSystemEntityType.notFound:
+        return;
+      case FileSystemEntityType.unixDomainSock:
+      case FileSystemEntityType.pipe:
+      case FileSystemEntityType.blockDevice:
+      case FileSystemEntityType.characterDevice:
+        throw FileSystemException('Unsupported existing destination type', path);
     }
   }
 
