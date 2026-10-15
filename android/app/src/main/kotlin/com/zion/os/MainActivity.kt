@@ -290,6 +290,22 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "available" -> result.success(nativePtyAvailable())
+                    "ensureBootstrap" -> {
+                        // First terminal launch: install the embedded Termux
+                        // ZIP before Dart creates an empty usr/ directory.
+                        terminalExecutor.execute {
+                            val report = try {
+                                TermuxBootstrapInstaller.ensureInstalled(this)
+                            } catch (t: Throwable) {
+                                mapOf<String, Any?>(
+                                    "success" to false,
+                                    "status" to "bootstrap-exception",
+                                    "message" to "${t.javaClass.simpleName}: ${t.message}"
+                                )
+                            }
+                            runOnUiThread { result.success(report) }
+                        }
+                    }
                     "inspectRuntime" -> result.success(inspectTermuxRuntime())
                     "start" -> {
                         val rows = (call.argument<Int>("rows") ?: 24).coerceIn(8, 100)
@@ -452,6 +468,12 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun startTerminalLocked(rows: Int, cols: Int, shell: String?): Int {
         return try {
+            // Keep native callers safe too: bootstrap must precede creation of
+            // an empty PREFIX by ensureTerminalEnvironment().
+            val bootstrapReport = TermuxBootstrapInstaller.ensureInstalled(this)
+            if (bootstrapReport["success"] != true) {
+                android.util.Log.w("ZionBootstrap", bootstrapReport["message"]?.toString() ?: "Bootstrap unavailable")
+            }
             ensureTerminalEnvironment()
             if (!nativePtyAvailable()) return 0
             fun validRootfs(rootfs: File): Boolean =
