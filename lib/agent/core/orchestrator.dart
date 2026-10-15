@@ -438,13 +438,13 @@ ${jsonEncode(toolCatalog)}
   }
 
   Future<bool> _nativeAiAvailable() async {
-    // The Super Agent and its AI tool share this exact service instance.
-    // Avoid probing a native MethodChannel when this session has not loaded a
-    // model; in headless/test environments that channel may have no handler.
-    if (!ai.isLoaded) return false;
+    // The native llama.cpp model is a process-wide singleton and may have been
+    // loaded by the Offline AI screen through another Dart LlamaService object.
+    // Synchronize this instance with native state instead of trusting its
+    // potentially stale local isLoaded flag.
     try {
-      return await ai.nativeLoaded.timeout(
-        const Duration(milliseconds: 500),
+      return await ai.refreshLoadedState().timeout(
+        const Duration(seconds: 3),
         onTimeout: () => false,
       );
     } catch (_) {
