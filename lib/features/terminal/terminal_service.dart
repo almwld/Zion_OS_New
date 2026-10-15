@@ -118,6 +118,9 @@ class TerminalService {
     if (!_output.isClosed) _output.add(event);
   }
   String _interactiveInputBuffer = '';
+  String? _interactiveShell;
+  static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
+  static const String _defaultKaliRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
@@ -405,8 +408,9 @@ class TerminalService {
   }
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
-    if (isInteractiveRunning && kaliRootfsPath == null) return true;
-    if (isInteractiveRunning && kaliRootfsPath != null) {
+    if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
+    if (isInteractiveRunning && kaliRootfsPath != null && _interactiveShell == 'zion-kali@$kaliRootfsPath') return true;
+    if (isInteractiveRunning) {
       await stopInteractive();
     }
     if (!_authorized('<interactive-shell>')) {
@@ -491,6 +495,7 @@ class TerminalService {
       _emitOutput(shell == _userlandBash
           ? 'Connected to Userland: bash • native PTY\r\n'
           : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _interactiveShell = shell;
       _activeInteractiveService = this;
       _audit(
         command: '<interactive-start>',
@@ -552,6 +557,7 @@ class TerminalService {
   Future<TerminalResult> executeInInteractive(
     String command, {
     Duration timeout = const Duration(seconds: 30),
+    String runtime = 'auto',
   }) async {
     final value = command.trim();
     if (value.isEmpty) {
@@ -569,6 +575,47 @@ class TerminalService {
       _audit(command: value, outcome: 'denied', exitCode: denied.exitCode,
         shell: denied.shell, duration: denied.duration, interactive: true);
       return denied;
+    }
+    if (!const {'auto', 'zion', 'kali'}.contains(runtime)) {
+      return TerminalResult(command: value, stdout: '',
+        stderr: 'بيئة التنفيذ غير معروفة: $runtime', exitCode: 2,
+        duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (runtime == 'kali') {
+      String? rootfsPath;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final configured = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+        final candidate = configured != null && configured.startsWith('/')
+            ? configured
+            : _defaultKaliRootfs;
+        if (await File('$candidate/bin/bash').exists() &&
+            await File('$candidate/bin/sh').exists()) {
+          rootfsPath = candidate;
+        }
+      } catch (_) {}
+      if (rootfsPath == null) {
+        return const TerminalResult(command: '', stdout: '',
+          stderr: 'لم يُعثر على Kali rootfs محلي صالح. لم يتم تنزيل أي شيء.',
+          exitCode: 127, duration: Duration.zero, shell: 'kali-unavailable');
+      }
+      if (!isInteractiveRunning || _interactiveShell != 'zion-kali@$rootfsPath') {
+        await stopInteractive();
+        if (!await startInteractive(kaliRootfsPath: rootfsPath)) {
+          return TerminalResult(command: value, stdout: '',
+            stderr: 'تعذر تشغيل Kali المحلي عبر Zion PRoot.',
+            exitCode: 127, duration: Duration.zero, shell: 'kali-unavailable');
+        }
+      }
+    } else if (runtime == 'zion' &&
+        isInteractiveRunning &&
+        (_interactiveShell?.startsWith('zion-kali@') ?? false)) {
+      await stopInteractive();
+      if (!await startInteractive()) {
+        return TerminalResult(command: value, stdout: '',
+          stderr: 'تعذر العودة إلى Zion Userland.',
+          exitCode: 127, duration: Duration.zero, shell: 'zion-unavailable');
+      }
     }
     if (_agentCommandRunning) {
       return const TerminalResult(command: '', stdout: '',
@@ -692,6 +739,7 @@ class TerminalService {
     await _ptyOutputSub?.cancel();
     _ptyOutputSub = null;
     _interactiveInputBuffer = '';
+    _interactiveShell = null;
   }
 
   Future<void> dispose() async {
