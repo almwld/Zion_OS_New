@@ -269,8 +269,6 @@ class AgentSkillLibrary {
         final source = await _bundle.loadString(skill.asset);
         if (source.trim().isEmpty) {
           issues.add('Empty community skill asset: ${skill.asset}');
-        } else if (!source.startsWith('---')) {
-          issues.add('Community skill has no frontmatter: ${skill.asset}');
         }
       } catch (_) {
         issues.add('Missing community skill asset: ${skill.asset}');
