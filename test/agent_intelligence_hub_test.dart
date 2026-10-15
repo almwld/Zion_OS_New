@@ -26,6 +26,15 @@ void main() {
     expect(find.text('Agent Intelligence Lab'), findsOneWidget);
     expect(find.textContaining('Overthinker'), findsWidgets);
     expect(find.text('خريطة الشبكة العصبية التشغيلية'), findsOneWidget);
+
+    // The specialist section is below the first viewport on mobile-sized test
+    // surfaces; scroll to it instead of asserting that off-screen content is
+    // already built by the lazy ListView.
+    await tester.scrollUntilVisible(
+      find.text('الوكلاء الفرعيون المتخصصون'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('الوكلاء الفرعيون المتخصصون'), findsOneWidget);
 
     await tester.scrollUntilVisible(
