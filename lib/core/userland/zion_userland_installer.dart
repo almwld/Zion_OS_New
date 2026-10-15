@@ -364,8 +364,8 @@ class ZionUserlandInstaller {
       // Android toybox tar supporting XZ, and never execute an ELF from
       // app-private storage. archive_io streams .tar.xz entries to disk.
       // Isolate.run keeps the long decode/extraction off the UI isolate.
-      await Isolate.run<void>(() {
-        extractFileToDisk(archivePath, staging.path);
+      await Isolate.run<void>(() async {
+        await extractFileToDisk(archivePath, staging.path);
       });
 
       final stagedBash = File('${staging.path}/bin/bash');
