@@ -101,7 +101,7 @@ class AgentSkillLibrary {
       } catch (_) {
         continue;
       }
-      source = source.replaceFirst(RegExp(r'^---\\s*[\\s\\S]*?---\\s*'), '').trim();
+      source = source.replaceFirst(RegExp(r'^---\s*[\s\S]*?---\s*'), '').trim();
       if (source.isEmpty) continue;
       if (source.length > maxCharsPerSkill) {
         final cut = source.lastIndexOf('\n', maxCharsPerSkill);
