@@ -725,13 +725,13 @@ class TerminalService {
       final bootstrap = await _pty.ensureBootstrap();
       if (bootstrap != null) {
         final message = bootstrap['message']?.toString() ?? 'No bootstrap status returned.';
-        _emitOutput('[Bootstrap] $message\\r\\n');
+        _emitOutput('[Bootstrap] $message\r\n');
         if (bootstrap['success'] != true) {
-          _emitOutput('[Bootstrap] status=${bootstrap['status'] ?? 'unknown'}; existing files were preserved.\\r\\n');
+          _emitOutput('[Bootstrap] status=${bootstrap['status'] ?? 'unknown'}; existing files were preserved.\r\n');
         }
       }
     } catch (error) {
-      _emitOutput('[Bootstrap] Initialization failed safely: $error\\r\\n');
+      _emitOutput('[Bootstrap] Initialization failed safely: $error\r\n');
     }
 
     // Kali uses the installed Zion PRoot runtime and a local rootfs. Bootstrap
