@@ -113,7 +113,7 @@ class AgentSkillLibrary {
             continue;
           }
           final keywords = keywordText
-              .split(RegExp(r'\\s+'))
+              .split(RegExp(r'\s+'))
               .map(_normalize)
               .where((keyword) => keyword.isNotEmpty)
               .toSet()
