@@ -631,6 +631,7 @@ class TerminalService {
     String command, {
     Duration timeout = const Duration(seconds: 30),
     String runtime = 'auto',
+    String? rootfsPath,
   }) async {
     final value = command.trim();
     if (value.isEmpty) {
@@ -655,12 +656,34 @@ class TerminalService {
         duration: Duration.zero, shell: 'zion-native-pty');
     }
 
-    if (!const {'auto', 'zion', 'kali'}.contains(runtime)) {
+    if (!const {'auto', 'zion', 'kali', 'rootfs'}.contains(runtime)) {
       return TerminalResult(command: value, stdout: '',
         stderr: 'بيئة التنفيذ غير معروفة: $runtime', exitCode: 2,
         duration: Duration.zero, shell: 'zion-native-pty');
     }
-    if (runtime == 'kali') {
+    if (runtime == 'rootfs') {
+      final requestedPath = rootfsPath?.trim() ?? '';
+      final allowedLocalPath = requestedPath.startsWith('/storage/emulated/0/') ||
+          requestedPath.startsWith('/data/data/com.zion.os/files/home/.zion/dists/');
+      if (!allowedLocalPath ||
+          requestedPath.contains('..') ||
+          requestedPath.contains('|') ||
+          requestedPath.contains('\u0000') ||
+          !await File('$requestedPath/bin/bash').exists() ||
+          !await File('$requestedPath/bin/sh').exists()) {
+        return const TerminalResult(command: '', stdout: '',
+          stderr: 'مسار rootfs المحلي غير صالح أو لا يحتوي bin/bash وbin/sh.',
+          exitCode: 2, duration: Duration.zero, shell: 'rootfs-unavailable');
+      }
+      if (!isInteractiveRunning || _interactiveShell != 'zion-kali@$requestedPath') {
+        await stopInteractive();
+        if (!await startInteractive(kaliRootfsPath: requestedPath)) {
+          return TerminalResult(command: value, stdout: '',
+            stderr: 'تعذر تشغيل rootfs المحلي عبر Zion PRoot.',
+            exitCode: 127, duration: Duration.zero, shell: 'rootfs-unavailable');
+        }
+      }
+    } else if (runtime == 'kali') {
       final rootfsPath = await _resolveLocalKaliRootfs();
       if (rootfsPath == null) {
         return const TerminalResult(command: '', stdout: '',
