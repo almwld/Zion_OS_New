@@ -12,6 +12,7 @@ import 'agent/ui/agent_screen.dart';
 import 'agent/ui/system_agents_screen.dart';
 import 'services/preferences_service.dart';
 import 'core/theme/app_theme_boundary.dart';
+import 'utils/icon_mapper.dart';
 
 class ZionAppLauncher extends StatefulWidget {
   const ZionAppLauncher({
@@ -196,7 +197,7 @@ class _ZionAppLauncherState extends State<ZionAppLauncher> {
         borderRadius: BorderRadius.circular(18),
         onTap: () => widget.onOpenApp?.call(app),
         child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: widget.iconSize, height: widget.iconSize, decoration: BoxDecoration(color: color.withOpacity(0.16), borderRadius: BorderRadius.circular(widget.iconSize * 0.27), border: Border.all(color: color.withOpacity(0.42))), child: Icon(app['icon'] as IconData, color: color, size: widget.iconSize * 0.5)),
+          Container(width: widget.iconSize, height: widget.iconSize, decoration: BoxDecoration(color: color.withOpacity(0.16), borderRadius: BorderRadius.circular(widget.iconSize * 0.27), border: Border.all(color: color.withOpacity(0.42))), child: IconMapper.getIcon(app['name'] as String, size: widget.iconSize * 0.82)),
           if (widget.showAppNames) ...[
             const SizedBox(height: 7),
             Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Text(app['nameAr'] as String, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: widget.isDark ? Colors.white : Colors.black87, fontSize: 11, fontWeight: FontWeight.w600))),
