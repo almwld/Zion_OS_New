@@ -347,7 +347,7 @@ ${jsonEncode(relevantMemory)}
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
       try {
-        response = await ai.generate(prompt, maxTokens: 256, temperature: 0.15)
+        response = await ai.generate(prompt, maxTokens: 768, temperature: 0.15)
             .timeout(const Duration(seconds: 90));
       } on TimeoutException {
         await ai.cancelGeneration();
@@ -482,7 +482,7 @@ ${jsonEncode(relevantMemory)}
         'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
         'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
         'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
-        maxTokens: 256,
+        maxTokens: 512,
         temperature: 0.1,
       ).timeout(const Duration(seconds: 90));
     } on TimeoutException {
