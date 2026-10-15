@@ -129,8 +129,11 @@ class AgentOrchestrator {
         try {
           r = await tool.executeCancellable(params, cancellationToken).timeout(stepTimeout);
         } on TimeoutException {
+          // A Dart timeout does not stop native llama.cpp inference by itself.
+          // Request native cancellation so retrying cannot queue behind stale work.
+          await ai.cancelGeneration();
           r = StepResult.failure(
-            'انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية.',
+            'انتهت مهلة الخطوة بعد ${stepTimeout.inSeconds} ثانية؛ أُرسل طلب إيقاف للاستدلال المحلي.',
             duration: DateTime.now().difference(started),
           );
         }
@@ -201,8 +204,9 @@ class AgentOrchestrator {
             try {
               ar = await t.executeCancellable(altParams, cancellationToken).timeout(stepTimeout);
             } on TimeoutException {
+              await ai.cancelGeneration();
               ar = StepResult.failure(
-                'انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية.',
+                'انتهت مهلة الخطوة البديلة بعد ${stepTimeout.inSeconds} ثانية؛ أُرسل طلب إيقاف للاستدلال المحلي.',
                 duration: DateTime.now().difference(alternativeStarted),
               );
             }
@@ -346,9 +350,17 @@ ${jsonEncode(toolCatalog)}
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف مختصر","tool":"اسم أداة من القائمة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
 
-    final response = await ai
-        .generate(prompt, maxTokens: 160, temperature: 0.1)
-        .timeout(const Duration(seconds: 90));
+    String response;
+    try {
+      response = await ai
+          .generate(prompt, maxTokens: 160, temperature: 0.1)
+          .timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      await ai.cancelGeneration();
+      throw StateError(
+        'انتهت مهلة تخطيط النموذج بعد 90 ثانية؛ أُرسل طلب إيقاف للاستدلال. لم تُستخدم خطة احتياطية.',
+      );
+    }
     if (response.trim().isEmpty || response.startsWith('ERROR:')) {
       throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
     }
@@ -471,16 +483,22 @@ ${jsonEncode(toolCatalog)}
     final context = previousResults.asMap().entries.map((entry) {
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ ${entry.value.summary}؛ المخرجات: ${_stepOutput(entry.value)}';
     }).join('\n');
-    final response = await ai.generate(
-      'تعذرت خطوة في مهمة Zion Super Agent. اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
-      'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
-      'النتائج السابقة الفعلية:\n$context\n'
-      'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
-      'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
-      'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
-      maxTokens: 160,
-      temperature: 0.1,
-    ).timeout(const Duration(seconds: 90));
+    String response;
+    try {
+      response = await ai.generate(
+        'تعذرت خطوة في مهمة Zion Super Agent. اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
+        'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
+        'النتائج السابقة الفعلية:\n$context\n'
+        'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
+        'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
+        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
+        maxTokens: 160,
+        temperature: 0.1,
+      ).timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      await ai.cancelGeneration();
+      rethrow;
+    }
     final plan = _parsePlan(response, task: 'استعادة: ${failedStep.description}');
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
