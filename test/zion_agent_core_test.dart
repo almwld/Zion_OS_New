@@ -130,6 +130,7 @@ void main(){
   const policy=AgentPolicy();
   for (final command in [
     'find /storage/emulated/0 -maxdepth 2 -type d',
+    'find /storage/emulated/0 -maxdepth 4 -type f',
     'find /data/data/com.zion.os/files/home/.zion/dists -maxdepth 4 -type d',
     'dpkg -l',
     'apt list --installed',
