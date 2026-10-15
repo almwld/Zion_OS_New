@@ -26,6 +26,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _submitting=false;
   bool _historyReady=false;
   bool _workspaceDetailsExpanded=false;
+  int _workspaceTab = 0;
   static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
@@ -278,12 +279,15 @@ class _AgentScreenState extends State<AgentScreen> {
                 unawaited(_discoverModel());
               } else if (value == 'clear') {
                 setState(() { _events.clear(); _result = null; });
+              } else if (value == 'export') {
+                unawaited(_exportSession());
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
               PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
             ],
           ),
           const SizedBox(width: 4),
@@ -291,27 +295,145 @@ class _AgentScreenState extends State<AgentScreen> {
       ),
       body: Column(children: [
         _workspaceOverview(),
+        _workspaceTabs(),
         Expanded(child: ListView(
           controller: _scroll,
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
           children: [
-            if (_messages.length <= 1) _quickActions(),
-            for (var i = 0; i < _messages.length; i++)
-              _message(i, _messages[i]['role']!, _messages[i]['text']!),
-            if (_submitting && !_runtime.canCancel)
-              _workingBanner('يتم تجهيز المهمة', 'جارٍ إرسال المهمة إلى منسق الوكيل…'),
-            if (_events.isNotEmpty) _activity(),
-            if (_result != null) _resultCard(),
-            if (_runtime.canCancel)
-              _workingBanner(
-                _runtime.canApprove ? 'بانتظار موافقتك' : 'الوكيل يعمل',
-                _runtime.canApprove ? 'راجع تفاصيل الخطوة قبل السماح بتنفيذها.' : 'تُعرض الخطوات والنتائج هنا فور وصولها.',
-              ),
+            if (_workspaceTab == 0) ...[
+              if (_messages.length <= 1) _quickActions(),
+              for (var i = 0; i < _messages.length; i++)
+                _message(i, _messages[i]['role']!, _messages[i]['text']!),
+              if (_submitting && !_runtime.canCancel)
+                _workingBanner('يتم تجهيز المهمة', 'جارٍ إرسال المهمة إلى منسق الوكيل…'),
+              if (_runtime.canCancel)
+                _workingBanner(
+                  _runtime.canApprove ? 'بانتظار موافقتك' : 'الوكيل يعمل',
+                  _runtime.canApprove ? 'راجع تفاصيل الخطوة قبل السماح بتنفيذها.' : 'تُعرض الخطوات والنتائج هنا فور وصولها.',
+                ),
+            ],
+            if (_workspaceTab == 0 || _workspaceTab == 1)
+              if (_events.isNotEmpty) _activity()
+              else if (_workspaceTab == 1)
+                _emptyWorkspace('لا توجد أحداث بعد', 'عند بدء المهمة ستظهر هنا خطوات التخطيط والتنفيذ والحالة الفعلية لكل حدث.', Icons.timeline_outlined),
+            if (_workspaceTab == 0 || _workspaceTab == 2)
+              if (_result != null) _resultCard()
+              else if (_workspaceTab == 2)
+                _emptyWorkspace('لا توجد نتائج بعد', 'ستظهر هنا خلاصة المهمة ومخرجات الأدوات وأزمنة التنفيذ بعد انتهاء المهمة.', Icons.fact_check_outlined),
           ],
         )),
         _composer(),
       ]),
     );
+  }
+
+
+  Widget _workspaceTabs() {
+    const labels = ['المحادثة', 'النشاط والخطة', 'النتائج'];
+    const icons = [Icons.forum_outlined, Icons.account_tree_outlined, Icons.fact_check_outlined];
+    return Container(
+      color: const Color(0xFF0E1722),
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF09131D),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF223847)),
+        ),
+        child: Row(children: List.generate(labels.length, (i) {
+          final selected = _workspaceTab == i;
+          return Expanded(child: Semantics(
+            selected: selected,
+            button: true,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => setState(() => _workspaceTab = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 3),
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFF173847) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: selected ? const Color(0xFF2D7187) : Colors.transparent),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(icons[i], size: 15, color: selected ? const Color(0xFF65D9E9) : const Color(0xFF8197A7)),
+                  const SizedBox(width: 5),
+                  Flexible(child: Text(labels[i], maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? const Color(0xFFE2F8FC) : const Color(0xFF9BAFBE)))),
+                ]),
+              ),
+            ),
+          ));
+        })),
+      ),
+    );
+  }
+
+  Widget _emptyWorkspace(String title, String detail, IconData icon) => Container(
+    margin: const EdgeInsets.only(top: 12),
+    padding: const EdgeInsets.all(22),
+    decoration: BoxDecoration(
+      color: const Color(0xFF111D29),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFF263B4A)),
+    ),
+    child: Column(children: [
+      Container(width: 54, height: 54,
+        decoration: BoxDecoration(color: const Color(0xFF173443), borderRadius: BorderRadius.circular(17)),
+        child: Icon(icon, size: 27, color: const Color(0xFF35D3E8))),
+      const SizedBox(height: 12),
+      Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+      const SizedBox(height: 6),
+      Text(detail, textAlign: TextAlign.center,
+        style: const TextStyle(color: Color(0xFF9BAFBE), fontSize: 12, height: 1.55)),
+      if (_workspaceTab != 0) ...[
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: () => setState(() => _workspaceTab = 0),
+          icon: const Icon(Icons.arrow_back_rounded, size: 16),
+          label: const Text('العودة إلى المحادثة'),
+        ),
+      ],
+    ]),
+  );
+
+  Future<void> _exportSession() async {
+    final buffer = StringBuffer()
+      ..writeln('# Zion Super Agent — تقرير الجلسة')
+      ..writeln()
+      ..writeln('## حالة النموذج')
+      ..writeln('- النموذج: ${_modelName ?? 'غير محدد'}')
+      ..writeln('- الحالة: $_modelStatus')
+      ..writeln()
+      ..writeln('## المحادثة');
+    for (final message in _messages) {
+      buffer.writeln();
+      buffer.writeln(message['role'] == 'user' ? '**المستخدم:**' : '**Zion Agent:**');
+      buffer.writeln(message['text'] ?? '');
+    }
+    buffer.writeln();
+    buffer.writeln('## سجل النشاط');
+    for (final event in _events) {
+      buffer.writeln('- [${_stateLabel(event.state)}] ${event.message}');
+    }
+    if (_result != null) {
+      buffer.writeln();
+      buffer.writeln('## النتيجة');
+      buffer.writeln(_visibleResultSummary(_result!));
+    }
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('تم نسخ تقرير الجلسة بالمحادثة والنشاط والنتائج'),
+        duration: Duration(milliseconds: 1800),
+        behavior: SnackBarBehavior.floating,
+      ));
   }
 
   Widget _workspaceOverview() {
