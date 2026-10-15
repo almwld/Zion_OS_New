@@ -25,6 +25,18 @@ class NativePtyAdapter {
   bool get isRunning => _running;
   int? get handle => _handle;
 
+  /// Inspect the APK's actual native-library directory and local Userland paths.
+  /// This is metadata-only: it never loads or executes the reported binaries.
+  Future<Map<String, dynamic>?> inspectRuntime() async {
+    try {
+      return await _channel.invokeMapMethod<String, dynamic>('inspectRuntime');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   Future<bool> isAvailable() async {
     try {
       return await _channel.invokeMethod<bool>('available') ?? false;
