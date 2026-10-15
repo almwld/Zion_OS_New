@@ -287,7 +287,20 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
     const SizedBox(height: 8), _metricRow(colors),
     const SizedBox(height: 10),
     SizedBox(height: 100, child: CustomPaint(size: const Size(double.infinity, 100), painter: _PerformancePainter(events: _events, color: colors.primary, grid: colors.outlineVariant))),
-    Text('زمن كل دور بالميلي ثانية — يعرض القياسات المسجلة فقط.', style: Theme.of(context).textTheme.labelSmall),
+    Builder(builder: (context) {
+      final finished = _events.where((e) =>
+        e.status == CollaborationStatus.completed || e.status == CollaborationStatus.failed).toList();
+      final successful = finished.where((e) => e.status == CollaborationStatus.completed).length;
+      final rate = finished.isEmpty ? 0 : (successful * 100 / finished.length).round();
+      final runs = _events.map((e) => e.runId).where((id) => id.isNotEmpty).toSet().length;
+      final durations = finished.map((e) => e.duration.inMilliseconds).toList()..sort();
+      final p95 = durations.isEmpty ? 0 : durations[((durations.length - 1) * .95).round()];
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text('نجاح الأدوار: $rate%  ·  جلسات مسجلة: $runs  ·  P95: $p95 ms\\nزمن كل دور بالميلي ثانية — القياسات الفعلية المسجلة فقط.',
+          style: Theme.of(context).textTheme.labelSmall),
+      );
+    }),
   ]);
 
   Widget _metric(ColorScheme colors, String title, String value, IconData icon) => Card(
@@ -344,11 +357,17 @@ class _KnowledgeNetwork extends StatelessWidget {
     final recentEvents = events.reversed.take(24).toList();
     final eventActors = recentEvents.map((e) => e.actor).toSet().take(8).toList();
     final agentNodes = eventActors.map((actor) => (id: 'agent:' + actor, label: actor, kind: 'agent')).toList();
+    final runIds = recentEvents.map((e) => e.runId).where((id) => id.isNotEmpty).toSet().take(6).toList();
+    final runNodes = runIds.map((id) => (
+      id: 'run:' + id,
+      label: 'جلسة ' + id.substring(id.length > 6 ? id.length - 6 : 0),
+      kind: 'run',
+    )).toList();
     final eventNodes = recentEvents.asMap().entries.map((entry) {
       final e = entry.value;
       return (id: 'event:' + e.id, label: (entry.key + 1).toString() + '. ' + e.actor + ' · ' + e.action, kind: 'event');
     }).toList();
-    final nodes = [...noteNodes, ...agentNodes, ...eventNodes];
+    final nodes = [...noteNodes, ...agentNodes, ...runNodes, ...eventNodes];
     if (nodes.isEmpty) return Container(height: 220, alignment: Alignment.center, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(16)), child: const Text('ستظهر العقد بعد إنشاء الملاحظات أو تشغيل الوكلاء.'));
     final ids = nodes.map((n) => n.id).toList();
     final links = <(String, String)>[];
@@ -361,6 +380,8 @@ class _KnowledgeNetwork extends StatelessWidget {
       final eventId = 'event:' + event.id;
       final agentId = 'agent:' + event.actor;
       if (ids.contains(eventId) && ids.contains(agentId)) links.add((agentId, eventId));
+      final runId = 'run:' + event.runId;
+      if (ids.contains(eventId) && ids.contains(runId)) links.add((runId, eventId));
     }
     for (var i = 1; i < recentEvents.length; i++) {
       final previous = recentEvents[i - 1];
@@ -406,13 +427,16 @@ class _NetworkPainter extends CustomPainter {
       final node = nodes[i], p = positions[node.id]!;
       final isAgent = node.kind == 'agent';
       final isEvent = node.kind == 'event';
-      final radius = isAgent ? 18.0 : isEvent ? 8.0 : 15.0;
-      final nodeColor = isAgent ? colors.tertiary : isEvent ? colors.secondary : colors.primary;
+      final isRun = node.kind == 'run';
+      final radius = isAgent ? 18.0 : isRun ? 13.0 : isEvent ? 8.0 : 15.0;
+      final nodeColor = isAgent ? colors.tertiary : (isEvent || isRun) ? colors.secondary : colors.primary;
+      final fillColor = isAgent ? colors.tertiaryContainer : (isEvent || isRun) ? colors.secondaryContainer : colors.primaryContainer;
+      final textColor = isAgent ? colors.onTertiaryContainer : (isEvent || isRun) ? colors.onSecondaryContainer : colors.onPrimaryContainer;
       canvas.drawCircle(p, radius + 5, Paint()..color = nodeColor.withOpacity(.09));
-      canvas.drawCircle(p, radius, Paint()..color = isAgent ? colors.tertiaryContainer : isEvent ? colors.secondaryContainer : colors.primaryContainer);
+      canvas.drawCircle(p, radius, Paint()..color = fillColor);
       final label = node.label.length > 15 ? node.label.substring(0, 14) + '…' : node.label;
       final text = TextPainter(text: TextSpan(text: label,
-        style: TextStyle(color: isAgent ? colors.onTertiaryContainer : isEvent ? colors.onSecondaryContainer : colors.onPrimaryContainer, fontSize: isEvent ? 7 : 9, fontWeight: FontWeight.w600)),
+        style: TextStyle(color: textColor, fontSize: isEvent ? 7 : 9, fontWeight: FontWeight.w600)),
         textDirection: TextDirection.rtl, maxLines: 1, textAlign: TextAlign.center)..layout(maxWidth: 100);
       text.paint(canvas, Offset(p.dx - text.width / 2, p.dy + radius + 5));
     }
