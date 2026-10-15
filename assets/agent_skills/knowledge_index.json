@@ -10,12 +10,15 @@
       "keywords": [
         "storage",
         "emulated",
-        "0",
         "downloads",
         "local files",
         "discover files",
         "inventory",
-        "local systems"
+        "local systems",
+        "التخزين",
+        "ملفات محلية",
+        "المجلدات المحلية",
+        "التخزين المشترك"
       ],
       "summary": "Inventory only accessible paths first; use bounded find/listing and report permission-denied paths instead of claiming they were scanned.",
       "commands": [
@@ -36,7 +39,11 @@
         "distribution",
         "debian",
         "proot",
-        "discover kali"
+        "discover kali",
+        "كالي",
+        "لينكس",
+        "توزيعة",
+        "اكتشاف كالي"
       ],
       "summary": "Locate known local rootfs directories, then verify executable shell and package database before selecting a runtime.",
       "commands": [
@@ -58,7 +65,10 @@
         "apt",
         "package list",
         "what tools installed",
-        "nmap"
+        "nmap",
+        "الحزم",
+        "الحزم المثبتة",
+        "الأدوات المثبتة"
       ],
       "summary": "Prefer package database queries and command discovery before attempting installation.",
       "commands": [
@@ -80,7 +90,11 @@
         "rootfs fails",
         "cannot execute",
         "permission denied",
-        "kali won't start"
+        "kali won't start",
+        "باش مفقود",
+        "فشل بروت",
+        "تعذر التشغيل",
+        "يوزرلاند"
       ],
       "summary": "Verify rootfs path, shell executable, dynamic loader, environment variables, and mount points; capture the first actual error.",
       "commands": [
@@ -102,7 +116,11 @@
         "exit code",
         "hang",
         "timeout",
-        "interactive command"
+        "interactive command",
+        "الطرفية",
+        "رمز الخروج",
+        "مخرجات الأمر",
+        "تعليق الطرفية"
       ],
       "summary": "Run through the registered PTY tool; inspect combined output, exitCode, duration, and selected runtime. PTY output may combine stdout and stderr.",
       "commands": [
@@ -121,7 +139,11 @@
         "stuck command",
         "terminal frozen",
         "cancel command",
-        "pty restart"
+        "pty restart",
+        "مهلة",
+        "أمر معلق",
+        "الطرفية متجمدة",
+        "إلغاء الأمر"
       ],
       "summary": "Interrupt the running process, wait for prompt recovery, then restart only the PTY session if it remains unresponsive; preserve timeout exit status.",
       "commands": [
@@ -141,7 +163,11 @@
         "pub get",
         "flutter build",
         "apk",
-        "dependency"
+        "dependency",
+        "فلاتر",
+        "بناء apk",
+        "تحليل فلاتر",
+        "اعتماديات"
       ],
       "summary": "Establish repository root and SDK versions, then run analysis and focused tests before a full build.",
       "commands": [
@@ -162,7 +188,11 @@
         "regression",
         "flutter test",
         "test failure",
-        "assertion"
+        "assertion",
+        "اختبار",
+        "اختبارات",
+        "اختبار انحدار",
+        "فشل الاختبار"
       ],
       "summary": "Reproduce the failing test, make the smallest fix, add a regression assertion, and rerun the relevant suite.",
       "commands": [
@@ -182,7 +212,11 @@
         "branch",
         "working tree",
         "changed files",
-        "pull request"
+        "pull request",
+        "حالة جيت",
+        "التغييرات",
+        "الفرع",
+        "التزام"
       ],
       "summary": "Check current branch, uncommitted changes, diff integrity, and recent history before modifying repository files.",
       "commands": [
@@ -204,7 +238,11 @@
         "build failed",
         "job logs",
         "apk artifact",
-        "pipeline"
+        "pipeline",
+        "إجراءات جيتهاب",
+        "فشل البناء",
+        "خطأ سي آي",
+        "ملف apk"
       ],
       "summary": "Inspect the exact run SHA and failing job step; fix the root cause in a separate commit and verify the new run, not an older run.",
       "commands": [
@@ -223,7 +261,11 @@
         "permission denied",
         "manage external storage",
         "su",
-        "root"
+        "root",
+        "صلاحيات أندرويد",
+        "الوصول للتخزين",
+        "رفض الإذن",
+        "صلاحيات الروت"
       ],
       "summary": "Distinguish app sandbox access, shared-storage access, PRoot privileges, and real device root. Report the actual permission boundary.",
       "commands": [
@@ -242,7 +284,11 @@
         "su",
         "root access",
         "uid 0",
-        "superuser"
+        "superuser",
+        "صلاحيات الروت",
+        "روت",
+        "سو",
+        "المستخدم الخارق"
       ],
       "summary": "Check whether su exists and whether a harmless identity query succeeds; record denial or timeout exactly.",
       "commands": [
@@ -263,7 +309,11 @@
         "host lookup",
         "ping",
         "curl",
-        "http error"
+        "http error",
+        "الشبكة",
+        "اتصال",
+        "دي إن إس",
+        "فشل dns"
       ],
       "summary": "Start with interface, DNS, and a known read-only endpoint check; separate local connectivity from remote service failure.",
       "commands": [
@@ -283,7 +333,11 @@
         "port scan",
         "security audit",
         "kali tools",
-        "defensive"
+        "defensive",
+        "فحص الشبكة",
+        "فحص المنافذ",
+        "أدوات كالي",
+        "أمن دفاعي"
       ],
       "summary": "Identify the tool/version and target scope before a scan; prefer a lab or explicitly authorized host and a low-impact discovery mode.",
       "commands": [
@@ -303,7 +357,11 @@
         "inference",
         "model not ready",
         "empty response",
-        "token"
+        "token",
+        "نموذج محلي",
+        "نموذج جي جي يو إف",
+        "استدلال",
+        "النموذج لا يعمل"
       ],
       "summary": "Verify model file readability, loaded-state, context/generation bounds, and native error logs before invoking the planner.",
       "commands": [
@@ -321,7 +379,11 @@
         "planner",
         "invalid plan",
         "unknown tool",
-        "tool parameters"
+        "tool parameters",
+        "الخطة",
+        "خطة json",
+        "المخطط",
+        "أداة غير معروفة"
       ],
       "summary": "Validate model JSON against registered tool names, required parameter shapes, unique step IDs, and bounded step count; return actionable validation errors.",
       "commands": [],
@@ -337,7 +399,11 @@
         "repair",
         "failed step",
         "diagnose and fix",
-        "agent loop"
+        "agent loop",
+        "استعادة",
+        "إصلاح",
+        "إعادة المحاولة",
+        "خطوة فاشلة"
       ],
       "summary": "Use actual failure output and exit code to ask the local model for a distinct repair step, then observe and record its result.",
       "commands": [],
@@ -352,7 +418,11 @@
         "skills catalog",
         "knowledge index",
         "skill library",
-        "agent knowledge"
+        "agent knowledge",
+        "مهارات",
+        "فهرس المعرفة",
+        "مكتبة المهارات",
+        "مهارة الوكيل"
       ],
       "summary": "Rank skills by explicit task keywords and domain, inject only the most relevant bounded excerpts, and preserve upstream source/license metadata.",
       "commands": [],
@@ -368,7 +438,11 @@
         "local tools",
         "local files",
         "dns failure",
-        "no network"
+        "no network",
+        "بدون إنترنت",
+        "محلي",
+        "فشل dns",
+        "أدوات محلية"
       ],
       "summary": "Prefer local filesystem, package databases, bundled indexes, and cached documentation before network-dependent operations.",
       "commands": [
@@ -389,7 +463,11 @@
         "extract",
         "corrupt file",
         "checksum",
-        "integrity"
+        "integrity",
+        "أرشيف",
+        "استخراج",
+        "ملف تالف",
+        "بصمة الملف"
       ],
       "summary": "Inspect archive listing and size first; verify expected paths and executable files after extraction.",
       "commands": [
@@ -409,7 +487,11 @@
         "stack trace",
         "exception",
         "native crash",
-        "jni"
+        "jni",
+        "السجلات",
+        "تعطل",
+        "سجل الأخطاء",
+        "خطأ أصلي"
       ],
       "summary": "Collect the smallest relevant time window, identify the first causal exception, and correlate it with the current build or runtime revision.",
       "commands": [
@@ -426,7 +508,11 @@
         "permission denied",
         "ownership",
         "executable bit",
-        "readable file"
+        "readable file",
+        "صلاحيات الملفات",
+        "رفض الوصول",
+        "ملف تنفيذي",
+        "أذونات"
       ],
       "summary": "Inspect owner, mode bits, mount flags, and parent-directory traversal permissions before changing permissions.",
       "commands": [
@@ -445,7 +531,11 @@
         "space",
         "storage usage",
         "no space left",
-        "model size"
+        "model size",
+        "مساحة التخزين",
+        "امتلاء القرص",
+        "لا توجد مساحة",
+        "حجم النموذج"
       ],
       "summary": "Check available space and large directories before downloading, compiling, or extracting large models/rootfs images.",
       "commands": [
@@ -463,7 +553,11 @@
         "apt install",
         "dpkg error",
         "package manager broken",
-        "repository"
+        "repository",
+        "مدير الحزم",
+        "تثبيت حزمة",
+        "خطأ dpkg",
+        "مستودع الحزم"
       ],
       "summary": "Read the package manager's actual error, verify repository reachability and free space, then use the distro-appropriate repair sequence.",
       "commands": [
@@ -481,7 +575,11 @@
         "pip",
         "venv",
         "python script",
-        "module not found"
+        "module not found",
+        "بايثون",
+        "مكتبة بايثون",
+        "وحدة مفقودة",
+        "بيئة افتراضية"
       ],
       "summary": "Check interpreter and module availability inside the selected runtime rather than assuming host and rootfs share packages.",
       "commands": [
@@ -499,7 +597,11 @@
         "rebase conflict",
         "restore file",
         "recover commit",
-        "lost changes"
+        "lost changes",
+        "استعادة جيت",
+        "تعارض جيت",
+        "تغييرات مفقودة",
+        "سجل جيت"
       ],
       "summary": "Inspect status and reflog first; preserve local modifications and prefer a new corrective commit over destructive history changes.",
       "commands": [
@@ -519,7 +621,12 @@
         "upstream",
         "github repository",
         "license",
-        "latest version"
+        "latest version",
+        "بحث",
+        "توثيق",
+        "المصدر الأصلي",
+        "ترخيص",
+        "أحدث إصدار"
       ],
       "summary": "Prefer official docs and upstream source; record revision/date and separate observed facts from assumptions.",
       "commands": [],
@@ -535,7 +642,11 @@
         "lmk",
         "slow inference",
         "context length",
-        "memory usage"
+        "memory usage",
+        "نفاد الذاكرة",
+        "بطء الاستدلال",
+        "طول السياق",
+        "استهلاك الذاكرة"
       ],
       "summary": "Keep prompt size proportional to model context, load only relevant skill excerpts, and capture native failure evidence.",
       "commands": [
@@ -552,7 +663,11 @@
         "stop agent",
         "interrupt",
         "cancellation",
-        "stuck agent"
+        "stuck agent",
+        "إلغاء",
+        "إيقاف الوكيل",
+        "مقاطعة",
+        "مهمة عالقة"
       ],
       "summary": "Propagate cancellation through planning, PTY execution, recovery loops, and waiting states; settle futures and clean up subscriptions.",
       "commands": [],
@@ -567,7 +682,11 @@
         "rootbundle",
         "assets",
         "skill file missing",
-        "json asset"
+        "json asset",
+        "ملف أصول مفقود",
+        "الأصول",
+        "ملف مهارة مفقود",
+        "ملف json"
       ],
       "summary": "Verify asset paths, pubspec declarations, JSON shape, and runtime loading errors; directory declarations include only supported bundled asset paths.",
       "commands": [
@@ -584,7 +703,10 @@
         "bin/sh",
         "shell missing",
         "rootfs validation",
-        "bash executable"
+        "bash executable",
+        "باش مفقود",
+        "فحص روتفس",
+        "متطلبات الصدفة"
       ],
       "summary": "Validate both shell paths and executable bits; inspect symlinks and loader dependencies when the path exists but launch fails.",
       "commands": [
@@ -604,7 +726,12 @@
         "apk build",
         "signature",
         "artifact",
-        "ready"
+        "ready",
+        "الإصدار",
+        "التحقق النهائي",
+        "بناء apk",
+        "التوقيع",
+        "الملف الناتج"
       ],
       "summary": "Tie all test and build evidence to the exact commit SHA, inspect artifacts and signing verification, and distinguish CI evidence from device testing.",
       "commands": [
