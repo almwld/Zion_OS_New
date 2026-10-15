@@ -342,7 +342,7 @@ ${jsonEncode(toolCatalog)}
 ${jsonEncode(relevantMemory)}
 أنشئ خطة عملية من 1 إلى 32 خطوة مرتبة، لا مجرد نصيحة عامة. اربط الخطوات بالنتائج السابقة باستخدام {{step_1}} أو {{previous_result}} داخل قيم النصوص فقط. لا تفترض أن أي خطوة نجحت قبل أن تظهر نتيجتها.
 لا تخترع أدوات أو مفاتيح معاملات. استخدم أسماء الأدوات ومفاتيح parameters كما وردت حرفياً. عند استكشاف أدوات Kali أو تشغيلها مرّر runtime=kali؛ ولبيئة Zion مرّر runtime=zion؛ وruntime=auto يبقي الجلسة الحالية. إذا وجدت rootfs محلياً آخر يحتوي bin/bash وbin/sh، استخدم runtime=rootfs مع rootfsPath المطلق ضمن /storage/emulated/0/ أو مجلد توزيعات Zion. استكشف أولاً الأنظمة والحزم المحلية في /storage/emulated/0/ وZion/Kali، ثم استخدم الأدوات المثبتة المناسبة. لا تختلق نتائج، ولا تتجاوز موافقات Android أو نافذة صلاحيات su التي يعرضها النظام.
-استخدم readOnly افتراضياً، وحدد permission من: readOnly, localWrite, network, process, externalSideEffect، وrisk من: safe, review, blocked. كل كتابة أو تشغيل عملية أو اتصال شبكة يجب أن يطلب موافقة عند التنفيذ حتى لو صنفه النموذج آمناً.
+استخدم readOnly للقراءة والاستكشاف وفحص الحزم والتشخيص المحلي؛ لا تطلب موافقة لهذه الخطوات إذا كانت ضمن allowlist. حدّد localWrite أو process أو network أو externalSideEffect فقط عندما تنطبق فعلاً. تعديل الملفات الحساسة، وطلب su، وأدوات الشبكة ذات الأثر الخارجي تبقى خاضعة للمراجعة عند التنفيذ.
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
