@@ -566,17 +566,125 @@ class TerminalService {
     }
   }
 
+  Future<bool> _isValidLocalKaliRootfs(String path) async {
+    try {
+      final root = Directory(path);
+      final bash = File('$path/bin/bash');
+      final shell = File('$path/bin/sh');
+      final env = File('$path/usr/bin/env');
+      final release = File('$path/etc/os-release');
+      if (!await root.exists() ||
+          !await bash.exists() ||
+          !await shell.exists() ||
+          !await env.exists() ||
+          !await release.exists() ||
+          await bash.length() < 100000) {
+        return false;
+      }
+      final releaseText = (await release.readAsString()).toLowerCase();
+      if (!releaseText.contains('kali')) return false;
+
+      // A real Kali ARM64 rootfs uses a Linux AArch64 ELF, not an Android
+      // Bionic binary. Check the ELF machine before attempting PRoot launch.
+      final header = await bash.openRead(0, 20).fold<List<int>>(
+        <int>[],
+        (bytes, part) => bytes..addAll(part),
+      );
+      if (header.length < 20 ||
+          header[0] != 0x7f ||
+          header[1] != 0x45 ||
+          header[2] != 0x4c ||
+          header[3] != 0x46 ||
+          header[4] != 2 ||
+          header[5] != 1) {
+        return false;
+      }
+      final machine = ByteData.sublistView(Uint8List.fromList(header))
+          .getUint16(18, Endian.little);
+      if (machine != 183) return false;
+
+      final interpreters = <String>[
+        '$path/lib/ld-linux-aarch64.so.1',
+        '$path/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+        '$path/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+      ];
+      for (final interpreter in interpreters) {
+        if (await File(interpreter).exists()) return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Recover a previously extracted rootfs.staging-* only after checking its
+  /// distro identity, ARM64 ELF header, shell, env, and glibc interpreter.
+  /// Promotion is a same-filesystem rename and never overwrites an existing
+  /// final rootfs or deletes the staging tree.
+  Future<String?> _recoverValidatedStagedKaliRootfs() async {
+    const installedPath =
+        '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+    final parent = Directory(
+      '/data/data/com.zion.os/files/home/.zion/dists/kali',
+    );
+    try {
+      if (!await parent.exists()) return null;
+      final candidates = <Directory>[];
+      await for (final entry in parent.list(followLinks: false)) {
+        if (entry is Directory &&
+            entry.path.split('/').last.startsWith('rootfs.staging-')) {
+          candidates.add(entry);
+        }
+      }
+      candidates.sort((a, b) => b.path.compareTo(a.path));
+      for (final candidate in candidates) {
+        if (!await _isValidLocalKaliRootfs(candidate.path)) continue;
+        if (await FileSystemEntity.type(installedPath, followLinks: false) ==
+            FileSystemEntityType.notFound) {
+          try {
+            final promoted = await candidate.rename(installedPath);
+            if (await _isValidLocalKaliRootfs(promoted.path)) {
+              _cachedKaliRootfsPath = promoted.path;
+              _emitOutput(
+                '[Kali] Recovered and validated existing staged rootfs at '
+                '${promoted.path}; no archive download or re-extraction was needed.\\r\\n',
+              );
+              return promoted.path;
+            }
+          } catch (error) {
+            _emitOutput(
+              '[Kali] Safe rootfs promotion unavailable; preserving staged '
+              'rootfs at ${candidate.path}: $error\\r\\n',
+            );
+          }
+        }
+        // If a final path already exists or rename is unavailable, the
+        // validated staging path is still a usable local rootfs.
+        _cachedKaliRootfsPath = candidate.path;
+        _emitOutput(
+          '[Kali] Using validated existing staging rootfs: '
+          '${candidate.path}\\r\\n',
+        );
+        return candidate.path;
+      }
+    } catch (error) {
+      _emitOutput('[Kali] Staging recovery scan failed safely: $error\\r\\n');
+    }
+    return null;
+  }
+
   /// Prefer the configured/private Kali rootfs, then discover common local
   /// rootfs locations on shared storage. This is discovery only: no network,
   /// extraction, or file copying occurs while starting the agent runtime.
   Future<String?> _resolveLocalKaliRootfs() async {
     // First reuse the app-private rootfs created by the local offline installer.
     const installedRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
-    if (await File('$installedRootfs/bin/bash').exists() &&
-        await File('$installedRootfs/bin/sh').exists()) {
+    if (await _isValidLocalKaliRootfs(installedRootfs)) {
       _cachedKaliRootfsPath = installedRootfs;
       return installedRootfs;
     }
+    final recoveredStaging = await _recoverValidatedStagedKaliRootfs();
+    if (recoveredStaging != null) return recoveredStaging;
 
     // If the user explicitly selects Kali and the known local ARM64 archive is
     // present, import it offline into Kali's own rootfs location. Never unpack
@@ -751,14 +859,13 @@ class TerminalService {
       final rootfs = Directory(path);
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
       final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
-      if (!await rootfs.exists() ||
-          !await File('$path/bin/bash').exists() ||
-          !await File('$path/bin/sh').exists()) {
-        _emitOutput('[Kali] Invalid rootfs: expected bin/bash and bin/sh at $path. No files were copied.\\r\\n');
+      if (!await _isValidLocalKaliRootfs(path) || !await rootfs.exists()) {
+        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\\r\\n');
         return false;
       }
-      if (!await proot.exists() || !await loader.exists()) {
-        _emitOutput('[Kali] Zion PRoot/loader is missing. Restore Userland PRoot before launching Kali.\\r\\n');
+      final prootReady = await _pty.ensureProotRuntime();
+      if (!prootReady || !await proot.exists() || !await loader.exists()) {
+        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\\r\\n');
         return false;
       }
       shell = 'zion-kali@$path';
