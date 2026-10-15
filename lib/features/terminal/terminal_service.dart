@@ -44,6 +44,21 @@ class TerminalResult {
 class TerminalService {
   TerminalService(this._securityCore);
 
+  // The terminal UI and Super Agent share the selected live PTY service.
+  // This prevents the agent from silently opening a disconnected shell.
+  static TerminalService? _activeInteractiveService;
+  static TerminalService? get activeInteractiveService => _activeInteractiveService;
+
+  void activateForAgent() {
+    _activeInteractiveService = this;
+  }
+
+  void _releaseAgentTarget() {
+    if (identical(_activeInteractiveService, this)) {
+      _activeInteractiveService = null;
+    }
+  }
+
   static const _historyKey = 'zion_terminal_history_v1';
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
@@ -460,6 +475,7 @@ class TerminalService {
       _emitOutput(shell == _userlandBash
           ? 'Connected to Userland: bash • native PTY\r\n'
           : 'Connected to Android system shell: $shell • native PTY\r\n');
+      _activeInteractiveService = this;
       _audit(
         command: '<interactive-start>',
         outcome: 'success',
@@ -634,6 +650,7 @@ class TerminalService {
   }
 
   Future<void> dispose() async {
+    _releaseAgentTarget();
     await stopInteractive();
     await _pty.dispose();
     await _output.close();
