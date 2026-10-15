@@ -48,7 +48,7 @@ void main() {
     expect(context, contains('\n'));
     expect(context.length, lessThanOrEqualTo(1000));
     expect(context, contains('Kali'));
-    expect(context, contains('\\n- ['));
+    expect(context, contains('\n- ['));
     expect(context, isNot(contains(r'\n')));
   });
 
