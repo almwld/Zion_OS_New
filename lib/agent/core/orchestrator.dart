@@ -412,53 +412,6 @@ ${jsonEncode(toolCatalog)}
   AgentPermission _permissionFrom(dynamic value){switch(value?.toString()){case 'localWrite':return AgentPermission.localWrite;case 'network':return AgentPermission.network;case 'process':return AgentPermission.process;case 'externalSideEffect':return AgentPermission.externalSideEffect;default:return AgentPermission.readOnly;}}
   AgentRisk _riskFrom(dynamic value){switch(value?.toString()){case 'review':return AgentRisk.review;case 'blocked':return AgentRisk.blocked;default:return AgentRisk.safe;}}
 
-  AgentPlan _heuristicPlan(String task){
-    final lower=task.toLowerCase();
-    final command=_extractExplicitCommand(task);
-    if(command!=null){
-      final decision = policy.evaluate(tool: 'shell', params: {'command': command});
-      return AgentPlan(task: task, steps:[
-        AgentStep(
-          id:'1',
-          description:'تنفيذ الأمر المحلي الذي طلبته: $command',
-          tool:'shell',
-          params:{'command':command},
-          permission:decision.risk == AgentRisk.safe ? AgentPermission.readOnly : AgentPermission.process,
-          risk:decision.risk,
-          requiresApproval:decision.requiresApproval,
-          requiresEvaluation:true,
-        ),
-      ]);
-    }
-    if(lower.contains('ابحث') || lower.contains('بحث') || lower.contains('search') || lower.contains('تحقق من') || lower.contains('آخر الأخبار')) {
-      final query = task.replaceFirst(
-        RegExp(
-          r'^(?:من فضلك\s*)?(?:(?:ابحث|بحث)\s*(?:عن\s*)?|search\s*(?:for\s*)?|تحقق من\s*|آخر الأخبار\s*)',
-          caseSensitive: false,
-        ),
-        '',
-      ).trim();
-      return AgentPlan(task: task, steps: [
-        AgentStep(
-          id: '1',
-          description: 'البحث الفعلي على الويب عن: ${query.isEmpty ? task : query}',
-          tool: 'browser',
-          params: {'action': 'search', 'query': query.isEmpty ? task : query},
-          permission: AgentPermission.network,
-        ),
-      ]);
-    }
-    if(lower.contains('حلل')||lower.contains('analy'))return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
-    return AgentPlan(task: task, steps:[AgentStep(id:'1',description:'تحليل المهمة محلياً',tool:'ai',params:{'prompt':task},requiresEvaluation:true)]);
-  }
-
-  String? _extractExplicitCommand(String task){
-    final match=RegExp(r'(?:نفذ|نفّذ|شغل|شغّل|execute|run)\s+(?:الأمر\s*[:：]?\s*)?(.+)',caseSensitive:false).firstMatch(task.trim());
-    final command=match?.group(1)?.trim();
-    if(command==null||command.isEmpty)return null;
-    return command;
-  }
-
   Map<String, dynamic> _resolveParams(Map<String, dynamic> input, List<StepResult> results) {
     final output = <String, dynamic>{};
     for (final entry in input.entries) {
@@ -509,8 +462,10 @@ ${jsonEncode(toolCatalog)}
       final tool = tools.getTool(name)!;
       return <String, dynamic>{
         'name': tool.name,
-        'description': tool.description,
-        'parameters': tool.parameters,
+        'description': tool.description.length > 90
+            ? tool.description.substring(0, 90)
+            : tool.description,
+        'parameters': tool.parameters.keys.toList(growable: false),
       };
     }).toList(growable: false);
     final context = previousResults.asMap().entries.map((entry) {
@@ -523,9 +478,9 @@ ${jsonEncode(toolCatalog)}
       'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
       'لا تقترح أي إجراء هجومي أو تخطي صلاحيات. استخدم الأدوات الموجودة ومفاتيحها الصحيحة. '
       'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
-      maxTokens: 700,
+      maxTokens: 160,
       temperature: 0.1,
-    );
+    ).timeout(const Duration(seconds: 90));
     final plan = _parsePlan(response, task: 'استعادة: ${failedStep.description}');
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
