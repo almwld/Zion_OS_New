@@ -29,6 +29,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStat
   bool _busy = false;
   bool _loadingNotes = true;
   String? _error;
+  String? _liveRunId;
   static const _telemetryKey = 'zion_agent_collaboration_events_v1';
 
   @override
@@ -72,11 +73,11 @@ class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStat
   Future<void> _run(String mode) async {
     final task = _task.text.trim();
     if (task.isEmpty || _busy) return;
-    setState(() { _busy = true; _error = null; });
+    setState(() { _busy = true; _error = null; _liveRunId = 'live-run-${DateTime.now().microsecondsSinceEpoch}'; });
     try {
       late final CollaborationResult result;
       if (mode == 'team') {
-        result = await _engine.runTeam(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt, isCancelled: widget.isCancelled);
+        result = await _engine.runTeam(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: _runTrackedPrompt, isCancelled: widget.isCancelled);
       } else if (mode == 'loop') {
         result = await _engine.runEngineeringLoop(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt, isCancelled: widget.isCancelled);
       } else {
@@ -85,6 +86,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStat
       if (!mounted) return;
       setState(() {
         _output.insert(0, result.output);
+        _events.removeWhere((event) => event.id.startsWith('live-'));
         _events.addAll(result.events);
         if (_events.length > 400) _events.removeRange(0, _events.length - 400);
       });
@@ -93,6 +95,41 @@ class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStat
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<String> _runTrackedPrompt(String prompt) async {
+    final roleMatch = RegExp(r'(Planner|Researcher|Engineer|Reviewer|Verifier|Overthinker|Super Agent)', caseSensitive: false).firstMatch(prompt);
+    final actor = roleMatch?.group(0) ?? 'Local model';
+    final id = 'live-${DateTime.now().microsecondsSinceEpoch}';
+    final started = DateTime.now();
+    final live = CollaborationEvent(
+      id: id, runId: _liveRunId ?? 'live-run', actor: actor,
+      action: 'استدلال النموذج المحلي', status: CollaborationStatus.running,
+      startedAt: started, finishedAt: started, detail: 'جارٍ إرسال الطلب إلى محرك GGUF…',
+    );
+    if (mounted) setState(() { _events.add(live); if (_events.length > 400) _events.removeRange(0, _events.length - 400); });
+    try {
+      final response = await widget.runPrompt(prompt);
+      if (mounted) setState(() {
+        final index = _events.indexWhere((event) => event.id == id);
+        if (index >= 0) _events[index] = CollaborationEvent(
+          id: id, runId: live.runId, actor: actor, action: live.action,
+          status: CollaborationStatus.completed, startedAt: started,
+          finishedAt: DateTime.now(), detail: response.trim().length > 180 ? '${response.trim().substring(0, 177)}…' : response.trim(),
+        );
+      });
+      return response;
+    } catch (error) {
+      if (mounted) setState(() {
+        final index = _events.indexWhere((event) => event.id == id);
+        if (index >= 0) _events[index] = CollaborationEvent(
+          id: id, runId: live.runId, actor: actor, action: live.action,
+          status: CollaborationStatus.failed, startedAt: started,
+          finishedAt: DateTime.now(), detail: error.toString(),
+        );
+      });
+      rethrow;
     }
   }
 
