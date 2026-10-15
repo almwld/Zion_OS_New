@@ -28,6 +28,12 @@ void main() {
     expect(ranked.first.id, anyOf('kali-detection', 'rootfs-shell'));
   });
 
+  test('Arabic queries retrieve local Kali knowledge', () async {
+    final ranked = await AgentKnowledgeIndex().rank('استكشف كالي لينكس والتوزيعة المحلية');
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.id, 'kali-detection');
+  });
+
   test('ranking prioritizes Flutter diagnostics for build failures', () async {
     final ranked = await AgentKnowledgeIndex().rank('flutter build apk failure');
     expect(ranked.first.id, 'flutter-diagnostics');
