@@ -99,8 +99,9 @@ class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStat
   }
 
   Future<String> _runTrackedPrompt(String prompt) async {
-    final roleMatch = RegExp(r'(Planner|Researcher|Engineer|Reviewer|Verifier|Overthinker|Super Agent)', caseSensitive: false).firstMatch(prompt);
-    final actor = roleMatch?.group(0) ?? 'Local model';
+    final explicitRole = RegExp(r'Zion Super Agent:\s*([A-Za-z ]+)', caseSensitive: false).firstMatch(prompt);
+    final roleMatch = explicitRole ?? RegExp(r'(Overthinker|Planner|Researcher|Engineer|Reviewer|Verifier|Super Agent)', caseSensitive: false).firstMatch(prompt);
+    final actor = explicitRole?.group(1)?.trim() ?? roleMatch?.group(0) ?? 'Local model';
     final id = 'live-${DateTime.now().microsecondsSinceEpoch}';
     final started = DateTime.now();
     final live = CollaborationEvent(
