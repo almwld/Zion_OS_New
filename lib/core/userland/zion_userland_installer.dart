@@ -662,7 +662,13 @@ class ZionUserlandInstaller {
     } else if (type == FileSystemEntityType.file) {
       await File(path).delete();
     } else if (type == FileSystemEntityType.directory) {
-      await Directory(path).delete(recursive: true);
+      // Never recursively remove an existing Userland directory to resolve a
+      // copy conflict. Stop the repair and preserve the on-device files for
+      // diagnosis instead of risking deletion of usr/bin or another subtree.
+      throw FileSystemException(
+        'Refusing destructive recursive delete during Userland restore',
+        path,
+      );
     } else if (type != FileSystemEntityType.notFound) {
       throw FileSystemException('Unsupported existing destination type', path);
     }
