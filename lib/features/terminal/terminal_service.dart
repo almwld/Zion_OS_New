@@ -272,6 +272,26 @@ class TerminalService {
       add('control /system/bin/sh failed: $e');
     }
 
+    // A second control uses a small native Android ELF (toybox), not just
+    // the /system/bin/sh interpreter. This helps distinguish general app
+    // process-execution restrictions from a Userland-specific binary issue.
+    try {
+      const toybox = '/system/bin/toybox';
+      final toyboxStat = await File(toybox).stat();
+      add('Android ELF control metadata: path=$toybox; type=${toyboxStat.type}; size=${toyboxStat.size}; mode=0${toyboxStat.mode.toRadixString(8)}');
+      final toyboxRun = await Process.run(
+        toybox,
+        const <String>['true'],
+        runInShell: false,
+        environment: _androidEnvironment,
+      ).timeout(const Duration(seconds: 3));
+      add('Android ELF control /system/bin/toybox true: exit=${toyboxRun.exitCode}; stdout=${toyboxRun.stdout.toString().trim()}; stderr=${toyboxRun.stderr.toString().trim()}');
+    } on ProcessException catch (e) {
+      add('Android ELF control ProcessException: errno=${e.errorCode}; message=${e.message}; executable=${e.executable}');
+    } catch (e) {
+      add('Android ELF control failed: $e');
+    }
+
     try {
       final result = await Process.run(
         bashPath,
