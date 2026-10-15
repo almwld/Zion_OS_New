@@ -583,6 +583,7 @@ class TerminalService {
     final completed = Completer<int>();
     StreamSubscription<String>? subscription;
     Timer? timer;
+    Timer? interruptGraceTimer;
     try {
       if (!isInteractiveRunning && !await startInteractive()) {
         return TerminalResult(command: value, stdout: '',
@@ -607,10 +608,24 @@ class TerminalService {
       write('$wrapped\n');
       _remember(value);
       timer = Timer(timeout, () {
-        if (!completed.isCompleted) {
-          write('\x03');
-          completed.complete(124);
-        }
+        if (completed.isCompleted) return;
+        // Interrupt first. If the shell does not return to its prompt, recycle
+        // the PTY so a timed-out process cannot poison the next agent command.
+        write('\x03');
+        interruptGraceTimer = Timer(const Duration(seconds: 2), () async {
+          if (completed.isCompleted) return;
+          _audit(
+            command: value,
+            outcome: 'timeout-pty-restart',
+            exitCode: 124,
+            shell: 'zion-native-pty',
+            duration: DateTime.now().difference(started),
+            interactive: true,
+          );
+          await stopInteractive();
+          await startInteractive();
+          if (!completed.isCompleted) completed.complete(124);
+        });
       });
       final code = await completed.future;
       final raw = output.toString();
@@ -641,6 +656,7 @@ class TerminalService {
       return result;
     } finally {
       timer?.cancel();
+      interruptGraceTimer?.cancel();
       await subscription?.cancel();
       _agentCommandRunning = false;
     }
