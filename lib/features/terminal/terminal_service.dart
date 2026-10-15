@@ -622,9 +622,22 @@ class TerminalService {
             duration: DateTime.now().difference(started),
             interactive: true,
           );
-          await stopInteractive();
-          await startInteractive();
-          if (!completed.isCompleted) completed.complete(124);
+          try {
+            await stopInteractive();
+            await startInteractive();
+          } catch (restartError) {
+            _audit(
+              command: value,
+              outcome: 'timeout-pty-restart-failed',
+              exitCode: 124,
+              shell: 'zion-native-pty',
+              duration: DateTime.now().difference(started),
+              interactive: true,
+            );
+            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\\r\\n');
+          } finally {
+            if (!completed.isCompleted) completed.complete(124);
+          }
         });
       });
       final code = await completed.future;
