@@ -346,9 +346,7 @@ ${jsonEncode(relevantMemory)}
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
-      try {
-        response = await ai.generate(prompt, maxTokens: 4096, temperature: 0.15);
-      }
+      response = await ai.generate(prompt, maxTokens: 4096, temperature: 0.15);
       if (response.trim().isEmpty || response.startsWith('ERROR:')) {
         throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
       }
@@ -467,8 +465,7 @@ ${jsonEncode(relevantMemory)}
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ ${entry.value.summary}؛ المخرجات: ${_stepOutput(entry.value)}';
     }).join('\n');
     late final String response;
-    try {
-      response = await ai.generate(
+    response = await ai.generate(
         'تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
         'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
         'النتائج السابقة الفعلية:\n$context\n'
