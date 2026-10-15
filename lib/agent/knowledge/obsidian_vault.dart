@@ -116,6 +116,26 @@ class ObsidianVault {
     return ObsidianGraph(notes: notes, edges: edges);
   }
 
+  Future<String> contextFor(String query, {int maxNotes = 4, int maxChars = 6000}) async {
+    final terms = _normalize(query).split(RegExp(r'[^a-z0-9\\u0600-\\u06FF]+')).where((term) => term.length > 2).toSet();
+    if (terms.isEmpty) return '';
+    final notes = await allNotes();
+    final ranked = notes.map((note) {
+      final haystack = _normalize(note.title + ' ' + note.body + ' ' + note.tags.join(' '));
+      final score = terms.fold<int>(0, (sum, term) => sum + (haystack.contains(term) ? 1 : 0));
+      return (note: note, score: score);
+    }).where((item) => item.score > 0).toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    final out = StringBuffer('## Relevant local Obsidian notes\\n');
+    var added = 0;
+    for (final item in ranked.take(maxNotes)) {
+      final section = '\\n### ' + item.note.title + '\\n' + item.note.body + '\\n';
+      if (out.length + section.length > maxChars) break;
+      out.write(section);
+      added++;
+    }
+    return added == 0 ? '' : out.toString();
+  }
   Future<String> exportMarkdown() async {
     final notes = await allNotes();
     return notes.map((note) {
