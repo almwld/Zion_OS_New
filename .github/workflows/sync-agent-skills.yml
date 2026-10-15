@@ -47,10 +47,22 @@ jobs:
           print(f"Validated {len(entries)} skills; full source bundle is present.")
           PY
 
+      - name: Commit complete offline corpus
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/agent_skills/community assets/agent_skills/community_catalog.json assets/agent_skills/community_bundle.zip
+          if git diff --cached --quiet; then
+            echo "The vendored corpus is already up to date."
+          else
+            git commit -m "chore(agent): vendor complete offline skill corpus"
+            git push origin HEAD:main
+          fi
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: "3.38.10"
           cache: true
 
       - name: Resolve Flutter dependencies
@@ -65,14 +77,3 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release --split-per-abi --no-shrink
 
-      - name: Commit complete offline corpus
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/agent_skills/community assets/agent_skills/community_catalog.json assets/agent_skills/community_bundle.zip
-          if git diff --cached --quiet; then
-            echo "The vendored corpus is already up to date."
-          else
-            git commit -m "chore(agent): vendor complete offline skill corpus"
-            git push origin HEAD:main
-          fi
