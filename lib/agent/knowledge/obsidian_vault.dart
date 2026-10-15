@@ -47,10 +47,9 @@ class ObsidianGraph {
 /// Data stays in app-private SharedPreferences; no account or cloud is required.
 class ObsidianVault {
   static const String _key = 'zion_obsidian_vault_v1';
-  final SharedPreferencesAsync _prefs = SharedPreferencesAsync();
-
   Future<List<ObsidianNote>> allNotes() async {
-    final raw = await _prefs.getString(_key);
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
     if (raw == null || raw.isEmpty) return const [];
     try {
       final decoded = jsonDecode(raw);
@@ -125,8 +124,10 @@ class ObsidianVault {
     }).join('\n\n---\n\n');
   }
 
-  Future<void> _persist(List<ObsidianNote> notes) async =>
-      _prefs.setString(_key, jsonEncode(notes.map((note) => note.toJson()).toList()));
+  Future<void> _persist(List<ObsidianNote> notes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, jsonEncode(notes.map((note) => note.toJson()).toList()));
+  }
 
   String _normalize(String value) => value.toLowerCase().replaceAll(RegExp(r'[\u064B-\u065F\u0670]'), '').trim();
 }
