@@ -480,38 +480,191 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
-  @override Widget build(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isReady = _agent.isInitialized;
+    final hasMessages = _messages.isNotEmpty;
+    final modelName = _selected?.name ?? 'لا يوجد نموذج محدد';
+    Widget actionButton(IconData icon, String tooltip, VoidCallback? onPressed) =>
+      IconButton(tooltip: tooltip, onPressed: onPressed, icon: Icon(icon, size: 21), visualDensity: VisualDensity.compact);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Zion Offline AI'), actions: [IconButton(onPressed: _newChat, tooltip: 'محادثة جديدة', icon: const Icon(Icons.add_comment_outlined)), IconButton(onPressed: _showSessions, tooltip: 'المحادثات المحفوظة', icon: const Icon(Icons.history)), IconButton(onPressed: _showGenerationSettings, tooltip: 'إعدادات التوليد', icon: const Icon(Icons.tune)), IconButton(onPressed: _loading || _loadingModel || _selected == null ? null : _loadSelected, tooltip: 'تحميل النموذج', icon: const Icon(Icons.memory)), if (_agent.isInitialized) IconButton(onPressed: _loadingModel || _generating ? null : _unloadModel, tooltip: 'تفريغ النموذج وتحرير الذاكرة', icon: const Icon(Icons.eject)), IconButton(onPressed: _loading || _loadingModel ? null : _pick, tooltip: 'استيراد نموذج GGUF', icon: const Icon(Icons.folder_open)), IconButton(onPressed: _clearConversation, tooltip: 'مسح المحادثة', icon: const Icon(Icons.delete_outline))]),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
-        if (_loadingModel) const LinearProgressIndicator(),
-        if (_availableModels.length > 1) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: DropdownButton<LlamaModel>(isExpanded: true, value: _selected, items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(), onChanged: _loadingModel || _generating ? null : (m) async {
-          if (m == null) return;
-          setState(() { _selected = m; _preferredModelPath = m.path; _error = null; });
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_modelPathKey, m.path);
-        })),
-        if (_selected != null) ListTile(leading: const Icon(Icons.memory), title: Text(_selected!.name), subtitle: Text(_selected!.path, maxLines: 1, overflow: TextOverflow.ellipsis), trailing: Chip(label: Text(_agent.isInitialized ? 'OFFLINE' : 'غير محمل'))),
-        if (_status != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Align(alignment: AlignmentDirectional.centerStart, child: Text(_status!, style: TextStyle(color: Theme.of(context).colorScheme.secondary)))),
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
-        Expanded(child: ListView.builder(controller: _scroll, padding: const EdgeInsets.all(12), itemCount: _messages.length, itemBuilder: (_, i) {
-          final m = _messages[i]; final user = m.role == 'user';
-          return Align(alignment: user ? Alignment.centerRight : Alignment.centerLeft, child: Container(margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(12), constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .84), decoration: BoxDecoration(color: user ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SelectableText(m.content, style: const TextStyle(height: 1.45)),
-            const SizedBox(height: 4),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: 'نسخ النص', icon: const Icon(Icons.copy_outlined, size: 16), onPressed: () => Clipboard.setData(ClipboardData(text: m.content))),
-              if (user) IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: 'تعديل وإعادة إرسال المدخل', icon: const Icon(Icons.edit_outlined, size: 16), onPressed: _generating ? null : () { _input.value = TextEditingValue(text: m.content, selection: TextSelection.collapsed(offset: m.content.length)); FocusScope.of(context).requestFocus(_inputFocus); }),
+      appBar: AppBar(
+        toolbarHeight: 68, titleSpacing: 16,
+        title: Row(children: [
+          Container(width: 40, height: 40, decoration: BoxDecoration(color: colors.primaryContainer, borderRadius: BorderRadius.circular(13)), child: Icon(Icons.auto_awesome, color: colors.onPrimaryContainer, size: 22)),
+          const SizedBox(width: 11),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            const Text('Zion Offline AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            Row(children: [
+              Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: isReady ? const Color(0xFF20B486) : colors.outline)),
+              const SizedBox(width: 6),
+              Flexible(child: Text(isReady ? 'يعمل محلياً · دون اتصال' : 'مساعد ذكي على جهازك', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant))),
             ]),
-          ])));
-        })),
-        if (_generating) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), child: Row(children: [const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10), Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف النموذج...' : 'النموذج يكتب الآن...', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontSize: 13))), TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف'))])),
-        SafeArea(child: Padding(padding: const EdgeInsets.all(8), child: Row(children: [Expanded(child: TextField(focusNode: _inputFocus, controller: _input, minLines: 1, maxLines: 5, maxLength: 700, textInputAction: TextInputAction.newline, onSubmitted: (_) => _send(), decoration: InputDecoration(hintText: _generating ? 'النموذج يكتب...' : 'اكتب رسالتك...', prefixIcon: const Icon(Icons.edit_note), border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)), counterText: ''))), const SizedBox(width: 8), IconButton.filled(
-          onPressed: _loadingModel ? null : (_generating ? _cancelGeneration : _send),
-          tooltip: _generating ? 'إيقاف التوليد' : 'إرسال الرسالة',
-          icon: Icon(_generating ? Icons.stop : Icons.send),
-        )])))
-      ]),
+          ])),
+        ]),
+        actions: [
+          actionButton(Icons.add_comment_outlined, 'محادثة جديدة', _generating || _loadingModel ? null : _newChat),
+          actionButton(Icons.history_rounded, 'المحادثات المحفوظة', _generating || _loadingModel ? null : _showSessions),
+          actionButton(Icons.tune_rounded, 'إعدادات التوليد', _showGenerationSettings),
+          PopupMenuButton<String>(
+            tooltip: 'أدوات النموذج', icon: const Icon(Icons.more_vert),
+            onSelected: (value) { if (value == 'load') _loadSelected(); if (value == 'import') _pick(); if (value == 'unload') _unloadModel(); if (value == 'clear') _clearConversation(); },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'load', enabled: !_loading && !_loadingModel && _selected != null, child: const ListTile(dense: true, leading: Icon(Icons.memory), title: Text('تحميل النموذج'))),
+              PopupMenuItem(value: 'import', enabled: !_loading && !_loadingModel, child: const ListTile(dense: true, leading: Icon(Icons.folder_open), title: Text('استيراد نموذج GGUF'))),
+              if (isReady) PopupMenuItem(value: 'unload', enabled: !_loadingModel && !_generating, child: const ListTile(dense: true, leading: Icon(Icons.eject), title: Text('تحرير ذاكرة النموذج'))),
+              const PopupMenuDivider(),
+              PopupMenuItem(value: 'clear', enabled: !_generating && !_loadingModel, child: const ListTile(dense: true, leading: Icon(Icons.delete_outline), title: Text('مسح المحادثة'))),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: SafeArea(top: false, child: Column(children: [
+        if (_loadingModel) const LinearProgressIndicator(minHeight: 2),
+        if (_loading)
+          const Expanded(child: Center(child: CircularProgressIndicator()))
+        else ...[
+          Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 6), child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: colors.surfaceContainerLow, border: Border.all(color: colors.outlineVariant.withValues(alpha: .55)), borderRadius: BorderRadius.circular(18)),
+            child: Row(children: [
+              Container(width: 38, height: 38, decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Icon(Icons.memory_rounded, color: colors.primary, size: 21)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('النموذج المحلي', style: theme.textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant)),
+                const SizedBox(height: 2),
+                if (_availableModels.length > 1)
+                  DropdownButtonHideUnderline(child: DropdownButton<LlamaModel>(
+                    isExpanded: true, isDense: true, value: _selected, hint: const Text('اختر نموذج GGUF'),
+                    items: _availableModels.map((m) => DropdownMenuItem(value: m, child: Text('${m.name} · ${(m.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MB', overflow: TextOverflow.ellipsis))).toList(),
+                    onChanged: _loadingModel || _generating ? null : (m) async {
+                      if (m == null) return;
+                      setState(() { _selected = m; _preferredModelPath = m.path; _error = null; });
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString(_modelPathKey, m.path);
+                    },
+                  ))
+                else Text(modelName, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+              ])),
+              const SizedBox(width: 8),
+              if (isReady)
+                Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: const Color(0xFF20B486).withValues(alpha: .13), borderRadius: BorderRadius.circular(10)), child: const Text('جاهز', style: TextStyle(color: Color(0xFF168765), fontWeight: FontWeight.w700, fontSize: 11)))
+              else FilledButton.tonal(onPressed: _loadingModel || _selected == null ? null : _loadSelected, style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 38)), child: Text(_loadingModel ? 'تحميل...' : 'تحميل')),
+            ]),
+          )),
+          if (_status != null)
+            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 6), child: Row(children: [
+              if (_loadingModel) const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2)) else Icon(Icons.info_outline, size: 15, color: colors.secondary),
+              const SizedBox(width: 7), Expanded(child: Text(_status!, style: theme.textTheme.bodySmall?.copyWith(color: colors.secondary))),
+            ])),
+          if (_error != null)
+            Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 6), child: Material(
+              color: colors.errorContainer.withValues(alpha: .65), borderRadius: BorderRadius.circular(12),
+              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.info_outline, size: 18, color: colors.onErrorContainer), const SizedBox(width: 8),
+                Expanded(child: Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer))),
+                IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 28, minHeight: 28), tooltip: 'إخفاء التنبيه', onPressed: () => setState(() => _error = null), icon: Icon(Icons.close, size: 16, color: colors.onErrorContainer)),
+              ])),
+            )),
+          Expanded(child: hasMessages
+            ? ListView.builder(controller: _scroll, padding: const EdgeInsets.fromLTRB(14, 10, 14, 18), itemCount: _messages.length, itemBuilder: (context, i) {
+                final message = _messages[i]; final user = message.role == 'user';
+                final bubbleColor = user ? colors.primaryContainer : colors.surfaceContainerLow;
+                final foreground = user ? colors.onPrimaryContainer : colors.onSurface;
+                return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(mainAxisAlignment: user ? MainAxisAlignment.end : MainAxisAlignment.start, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (!user) ...[
+                    Container(width: 31, height: 31, decoration: BoxDecoration(color: colors.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: Icon(Icons.auto_awesome, size: 17, color: colors.primary)),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(child: Container(
+                    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .82),
+                    padding: const EdgeInsets.fromLTRB(14, 11, 10, 5),
+                    decoration: BoxDecoration(color: bubbleColor, borderRadius: BorderRadius.only(topLeft: const Radius.circular(18), topRight: const Radius.circular(18), bottomLeft: Radius.circular(user ? 18 : 5), bottomRight: Radius.circular(user ? 5 : 18)), border: Border.all(color: colors.outlineVariant.withValues(alpha: .45))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      SelectableText(message.content, style: TextStyle(height: 1.55, fontSize: 14.5, color: foreground)),
+                      const SizedBox(height: 4),
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 30), tooltip: 'نسخ النص', icon: Icon(Icons.content_copy_rounded, size: 15, color: colors.onSurfaceVariant), onPressed: () => Clipboard.setData(ClipboardData(text: message.content))),
+                        if (user) IconButton(visualDensity: VisualDensity.compact, constraints: const BoxConstraints(minWidth: 32, minHeight: 30), tooltip: 'تعديل وإعادة إرسال المدخل', icon: Icon(Icons.edit_outlined, size: 15, color: colors.onSurfaceVariant), onPressed: _generating ? null : () {
+                          _input.value = TextEditingValue(text: message.content, selection: TextSelection.collapsed(offset: message.content.length));
+                          FocusScope.of(context).requestFocus(_inputFocus);
+                        }),
+                      ]),
+                    ]),
+                  )),
+                ]));
+              })
+            : ListView(padding: const EdgeInsets.fromLTRB(22, 18, 22, 24), children: [
+                const SizedBox(height: 16),
+                Center(child: Container(width: 78, height: 78, decoration: BoxDecoration(color: colors.primary.withValues(alpha: .11), borderRadius: BorderRadius.circular(26), border: Border.all(color: colors.primary.withValues(alpha: .16))), child: Icon(Icons.psychology_alt_rounded, size: 40, color: colors.primary))),
+                const SizedBox(height: 20),
+                Text('ماذا تريد أن تنجز؟', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -.4)),
+                const SizedBox(height: 8),
+                Text(isReady ? 'اكتب طلبك وسأعالجه محلياً على جهازك.' : 'مساعدك المحلي جاهز للإعداد. اختر نموذج GGUF وحمّله لبدء الاستدلال.', textAlign: TextAlign.center, style: theme.textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant, height: 1.5)),
+                const SizedBox(height: 25),
+                Text('ابدأ بأحد هذه الطلبات', style: theme.textTheme.labelLarge?.copyWith(color: colors.onSurfaceVariant)),
+                const SizedBox(height: 10),
+                ...[
+                  (Icons.terminal_rounded, 'شرح أمر طرفية', 'اشرح هذا الأمر في الطرفية خطوة بخطوة'),
+                  (Icons.code_rounded, 'مساعدة برمجية', 'راجع هذا الكود واقترح إصلاحاً آمناً'),
+                  (Icons.menu_book_rounded, 'تلخيص وشرح', 'لخّص هذا الموضوع في نقاط واضحة'),
+                ].map((item) => Padding(padding: const EdgeInsets.only(bottom: 9), child: Material(
+                  color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(15),
+                  child: InkWell(borderRadius: BorderRadius.circular(15), onTap: () {
+                    _input.text = item.$3;
+                    _input.selection = TextSelection.collapsed(offset: _input.text.length);
+                    FocusScope.of(context).requestFocus(_inputFocus);
+                  }, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13), child: Row(children: [
+                    Icon(item.$1, color: colors.primary, size: 21), const SizedBox(width: 12),
+                    Expanded(child: Text(item.$2, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+                    Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: colors.onSurfaceVariant),
+                  ]))),
+                ))),
+                if (!isReady && _availableModels.isEmpty)
+                  Padding(padding: const EdgeInsets.only(top: 8), child: OutlinedButton.icon(onPressed: _loadingModel ? null : _pick, icon: const Icon(Icons.file_open_outlined), label: const Text('استيراد نموذج GGUF من الهاتف'), style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))),
+              ]),
+          ),
+          if (_generating)
+            Padding(padding: const EdgeInsets.fromLTRB(18, 0, 18, 8), child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(13)),
+              child: Row(children: [
+                const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10),
+                Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف الاستدلال...' : 'النموذج يعالج طلبك...', style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant))),
+                TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف')),
+              ]),
+            )),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            decoration: BoxDecoration(color: colors.surface, border: Border(top: BorderSide(color: colors.outlineVariant.withValues(alpha: .5)))),
+            child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                IconButton(tooltip: 'استيراد نموذج GGUF', onPressed: _loading || _loadingModel ? null : _pick, icon: const Icon(Icons.add_circle_outline_rounded)),
+                Expanded(child: TextField(
+                  focusNode: _inputFocus, controller: _input, minLines: 1, maxLines: 5, maxLength: 700, textInputAction: TextInputAction.newline,
+                  onSubmitted: (_) { if (!_generating) _send(); },
+                  decoration: InputDecoration(
+                    hintText: _generating ? 'انتظر اكتمال الاستدلال...' : 'اكتب رسالتك إلى Zion AI...', counterText: '', filled: true, fillColor: colors.surfaceContainerLow,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide(color: colors.outlineVariant.withValues(alpha: .5))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide(color: colors.primary, width: 1.4)),
+                  ),
+                )),
+                const SizedBox(width: 8),
+                SizedBox(width: 48, height: 48, child: IconButton.filled(onPressed: _loadingModel ? null : (_generating ? _cancelGeneration : _send), tooltip: _generating ? 'إيقاف التوليد' : 'إرسال الرسالة', style: IconButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))), icon: Icon(_generating ? Icons.stop_rounded : Icons.arrow_upward_rounded))),
+              ]),
+              const SizedBox(height: 5),
+              Text(isReady ? 'المحادثة والاستدلال محليان · قد تختلف السرعة حسب النموذج والجهاز' : 'تُحفظ المحادثات على الجهاز · حمّل نموذجاً لبدء العمل', textAlign: TextAlign.center, style: theme.textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant.withValues(alpha: .8), fontSize: 10.5)),
+            ])),
+          ),
+        ],
+      ])),
     );
   }
 
