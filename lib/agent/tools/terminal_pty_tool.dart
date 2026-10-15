@@ -47,21 +47,35 @@ class TerminalPtyTool extends AgentTool {
       final result = await terminal.executeInInteractive(
         command, timeout: Duration(seconds: seconds));
       cancellationToken?.throwIfCancelled();
+      // A PTY merges stdout/stderr by design. Keep the raw stream honest and
+      // expose a diagnostic field for non-zero exits instead of pretending the
+      // PTY has separate file descriptors.
+      final combinedOutput = result.stdout;
+      final diagnostic = result.stderr.isNotEmpty
+          ? result.stderr
+          : (!result.succeeded && combinedOutput.isNotEmpty
+              ? combinedOutput
+              : '');
       final data = <String, dynamic>{
         'command': command,
-        'stdout': result.stdout,
-        'stderr': result.stderr,
+        'stdout': combinedOutput,
+        'combinedOutput': combinedOutput,
+        'stderr': diagnostic,
+        'outputStream': 'pty-combined',
         'exitCode': result.exitCode,
+        'durationMs': result.duration.inMilliseconds,
         'shell': result.shell,
         'pty': true,
       };
       if (!result.succeeded) {
         return StepResult(
           success: false,
-          summary: 'فشل أمر Zion PTY (exit ${result.exitCode}).',
-          error: result.stderr.isNotEmpty
-              ? result.stderr
-              : (result.stdout.isNotEmpty ? result.stdout : 'رمز الخروج ${result.exitCode}.'),
+          summary: result.exitCode == 124
+              ? 'انتهت مهلة أمر Zion PTY (exit 124).'
+              : 'فشل أمر Zion PTY (exit ${result.exitCode}).',
+          error: diagnostic.isNotEmpty
+              ? diagnostic
+              : 'رمز الخروج ${result.exitCode}.',
           data: data,
           duration: result.duration,
         );
