@@ -25,6 +25,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _modelReady=false;
   bool _submitting=false;
   bool _historyReady=false;
+  bool _workspaceDetailsExpanded=false;
   static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
@@ -354,6 +355,18 @@ class _AgentScreenState extends State<AgentScreen> {
                   label: const Text('إيقاف'),
                   style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF8585), visualDensity: VisualDensity.compact),
                 ),
+              IconButton(
+                tooltip: _workspaceDetailsExpanded ? 'إخفاء تفاصيل النموذج' : 'عرض تفاصيل النموذج',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() => _workspaceDetailsExpanded = !_workspaceDetailsExpanded),
+                icon: Icon(
+                  _workspaceDetailsExpanded ? Icons.expand_less_rounded : Icons.tune_rounded,
+                  color: const Color(0xFF91A7B7),
+                  size: 20,
+                ),
+              ),
             ]),
             const SizedBox(height: 10),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -372,15 +385,17 @@ class _AgentScreenState extends State<AgentScreen> {
                 Icon(_modelReady ? Icons.check_circle : Icons.info_outline,
                   color: _modelReady ? const Color(0xFF45D6A0) : const Color(0xFFFFB454), size: 20),
             ]),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (!_modelReady && !_modelLoading && _candidateModel != null)
-                _outlineAction(Icons.play_circle_outline, 'تحميل النموذج', _runtime.canCancel ? null : () => unawaited(_initializeModel())),
-              if (!_modelReady && !_modelLoading)
-                _outlineAction(Icons.file_open_outlined, 'استيراد GGUF', _runtime.canCancel ? null : () => unawaited(_initializeModel(pick: true))),
-              _outlineAction(Icons.refresh, 'فحص النموذج', (_modelLoading || _runtime.canCancel) ? null : () => unawaited(_discoverModel())),
-              _statusTag(Icons.lock_outline, 'موافقة للخطوات الحساسة', const Color(0xFFFFB454)),
-            ]),
+            if (_workspaceDetailsExpanded) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (!_modelReady && !_modelLoading && _candidateModel != null)
+                  _outlineAction(Icons.play_circle_outline, 'تحميل النموذج', _runtime.canCancel ? null : () => unawaited(_initializeModel())),
+                if (!_modelReady && !_modelLoading)
+                  _outlineAction(Icons.file_open_outlined, 'استيراد GGUF', _runtime.canCancel ? null : () => unawaited(_initializeModel(pick: true))),
+                _outlineAction(Icons.refresh, 'فحص النموذج', (_modelLoading || _runtime.canCancel) ? null : () => unawaited(_discoverModel())),
+                _statusTag(Icons.lock_outline, 'موافقة للخطوات الحساسة', const Color(0xFFFFB454)),
+              ]),
+            ],
           ]),
         ),
         if (_runtime.canApprove) ...[
@@ -402,13 +417,15 @@ class _AgentScreenState extends State<AgentScreen> {
           ),
         ],
         const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: _metricCard('الأنشطة', '${_events.length}', Icons.timeline_outlined)),
-          const SizedBox(width: 8),
-          Expanded(child: _metricCard('خطوات النتيجة', '${_result?.steps.length ?? 0}', Icons.checklist_rtl_outlined)),
-          const SizedBox(width: 8),
-          Expanded(child: _metricCard('المحادثة', '${_messages.length}', Icons.forum_outlined)),
-        ]),
+        if (_workspaceDetailsExpanded) ...[
+          Row(children: [
+            Expanded(child: _metricCard('الأنشطة', '${_events.length}', Icons.timeline_outlined)),
+            const SizedBox(width: 8),
+            Expanded(child: _metricCard('خطوات النتيجة', '${_result?.steps.length ?? 0}', Icons.checklist_rtl_outlined)),
+            const SizedBox(width: 8),
+            Expanded(child: _metricCard('المحادثة', '${_messages.length}', Icons.forum_outlined)),
+          ]),
+        ],
       ]),
     );
   }
