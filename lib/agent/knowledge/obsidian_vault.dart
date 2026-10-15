@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ObsidianNote {
@@ -43,23 +45,77 @@ class ObsidianGraph {
   int get edgeCount => edges.values.fold<int>(0, (sum, value) => sum + value.length);
 }
 
-/// Local-first Markdown vault inspired by linked-note workflows.
-/// Data stays in app-private SharedPreferences; no account or cloud is required.
+/// Local-first Obsidian-style vault. Notes are indexed locally and mirrored as
+/// ordinary Markdown files in the app-private documents directory; no cloud is
+/// required. ExportMarkdown provides a portable Markdown bundle.
 class ObsidianVault {
   static const String _key = 'zion_obsidian_vault_v1';
+  bool _markdownSynced = false;
+
+  Future<Directory> get _directory async {
+    final app = await getApplicationDocumentsDirectory();
+    final directory = Directory('${app.path}/zion_obsidian_vault');
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  String _safeFileId(String id) =>
+      id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+  Future<File> _fileFor(String id) async {
+    final directory = await _directory;
+    return File('${directory.path}/${_safeFileId(id)}.md');
+  }
+
+  String _markdownFor(ObsidianNote note) {
+    final title = jsonEncode(note.title);
+    final tags = jsonEncode(note.tags);
+    return '---\n'
+        'id: ${jsonEncode(note.id)}\n'
+        'title: $title\n'
+        'created: ${note.createdAt.toIso8601String()}\n'
+        'updated: ${note.updatedAt.toIso8601String()}\n'
+        'tags: $tags\n'
+        '---\n\n'
+        '${note.body.trimRight()}\n';
+  }
+
+  Future<void> _syncMarkdownFiles(List<ObsidianNote> notes) async {
+    try {
+      for (final note in notes) {
+        final file = await _fileFor(note.id);
+        // Do not overwrite an existing Markdown file during migration/startup.
+        // Explicit save() is the only operation that replaces its contents.
+        if (!await file.exists()) {
+          await file.writeAsString(_markdownFor(note), flush: true);
+        }
+      }
+    } catch (_) {
+      // SharedPreferences remains the canonical fallback on unsupported test
+      // hosts or devices where app-document storage is temporarily unavailable.
+    } finally {
+      _markdownSynced = true;
+    }
+  }
+
   Future<List<ObsidianNote>> allNotes() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
-    if (raw == null || raw.isEmpty) return const [];
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
-      return decoded.whereType<Map>().map((e) =>
-        ObsidianNote.fromJson(Map<String, dynamic>.from(e))).toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    } catch (_) {
-      return const [];
+    var notes = <ObsidianNote>[];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          notes = decoded.whereType<Map>().map((e) =>
+            ObsidianNote.fromJson(Map<String, dynamic>.from(e))).toList();
+        }
+      } catch (_) {
+        notes = <ObsidianNote>[];
+      }
     }
+    if (!_markdownSynced) await _syncMarkdownFiles(notes);
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return notes;
   }
 
   Future<ObsidianNote> save({
@@ -86,12 +142,24 @@ class ObsidianVault {
       notes[index] = note;
     }
     await _persist(notes);
+    try {
+      final file = await _fileFor(note.id);
+      await file.writeAsString(_markdownFor(note), flush: true);
+    } catch (_) {
+      // The note remains saved in the local index if file mirroring fails.
+    }
     return note;
   }
 
   Future<void> delete(String id) async {
     final notes = (await allNotes()).where((note) => note.id != id).toList();
     await _persist(notes);
+    try {
+      final file = await _fileFor(id);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Removing the indexed note must not fail solely due to mirror cleanup.
+    }
   }
 
   Future<List<ObsidianNote>> search(String query) async {
