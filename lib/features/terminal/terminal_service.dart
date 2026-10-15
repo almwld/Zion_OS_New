@@ -121,6 +121,7 @@ class TerminalService {
   String? _interactiveShell;
   static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
   static const String _defaultKaliRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+  static String? _cachedKaliRootfsPath;
 
   Stream<String> get output => _output.stream;
   List<String> get history => List.unmodifiable(_history);
@@ -407,6 +408,78 @@ class TerminalService {
     }
   }
 
+  /// Prefer the configured/private Kali rootfs, then discover common local
+  /// rootfs locations on shared storage. This is discovery only: no network,
+  /// extraction, or file copying occurs while starting the agent runtime.
+  Future<String?> _resolveLocalKaliRootfs() async {
+    final cached = _cachedKaliRootfsPath;
+    if (cached != null &&
+        await File('$cached/bin/bash').exists() &&
+        await File('$cached/bin/sh').exists()) {
+      return cached;
+    }
+    final candidates = <String>[];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final configured = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+      if (configured != null && configured.startsWith('/')) candidates.add(configured);
+    } catch (_) {}
+    candidates.addAll(const <String>[
+      _defaultKaliRootfs,
+      '/storage/emulated/0/kali-rootfs',
+      '/storage/emulated/0/kali-arm64',
+      '/storage/emulated/0/kali/rootfs',
+      '/storage/emulated/0/Download/kali-rootfs',
+      '/storage/emulated/0/Download/kali-arm64',
+      '/storage/emulated/0/Download/kali/rootfs',
+      '/storage/emulated/0/Downloads/kali-rootfs',
+      '/storage/emulated/0/Downloads/kali-arm64',
+    ]);
+    for (final candidate in candidates.toSet()) {
+      if (await File('$candidate/bin/bash').exists() &&
+          await File('$candidate/bin/sh').exists()) {
+        _cachedKaliRootfsPath = candidate;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_kaliRootfsPreferenceKey, candidate);
+        } catch (_) {}
+        return candidate;
+      }
+    }
+
+    // Bounded directory discovery finds locally extracted systems whose
+    // directory name is not one of the common defaults.
+    for (final parentPath in const <String>[
+      '/storage/emulated/0',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Downloads',
+    ]) {
+      final parent = Directory(parentPath);
+      try {
+        if (!await parent.exists()) continue;
+        var inspected = 0;
+        await for (final entity in parent.list(followLinks: false)) {
+          if (entity is! Directory || inspected++ >= 200) continue;
+          final name = entity.path.split('/').last.toLowerCase();
+          if (!name.contains('kali') && !name.contains('rootfs') && !name.contains('linux')) continue;
+          final path = entity.path;
+          if (await File('$path/bin/bash').exists() &&
+              await File('$path/bin/sh').exists()) {
+            _cachedKaliRootfsPath = path;
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString(_kaliRootfsPreferenceKey, path);
+            } catch (_) {}
+            return path;
+          }
+        }
+      } catch (_) {
+        // Scoped storage or a missing directory is reported as unavailable.
+      }
+    }
+    return null;
+  }
+
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
     if (isInteractiveRunning && kaliRootfsPath != null && _interactiveShell == 'zion-kali@$kaliRootfsPath') return true;
@@ -588,18 +661,7 @@ class TerminalService {
         duration: Duration.zero, shell: 'zion-native-pty');
     }
     if (runtime == 'kali') {
-      String? rootfsPath;
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final configured = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
-        final candidate = configured != null && configured.startsWith('/')
-            ? configured
-            : _defaultKaliRootfs;
-        if (await File('$candidate/bin/bash').exists() &&
-            await File('$candidate/bin/sh').exists()) {
-          rootfsPath = candidate;
-        }
-      } catch (_) {}
+      final rootfsPath = await _resolveLocalKaliRootfs();
       if (rootfsPath == null) {
         return const TerminalResult(command: '', stdout: '',
           stderr: 'لم يُعثر على Kali rootfs محلي صالح. لم يتم تنزيل أي شيء.',
