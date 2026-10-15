@@ -513,6 +513,111 @@ class TerminalService {
     }
   }
 
+
+  bool _agentCommandRunning = false;
+
+  /// Executes one command through Zion's native PTY and captures its exit code.
+  Future<TerminalResult> executeInInteractive(
+    String command, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final value = command.trim();
+    if (value.isEmpty) {
+      return const TerminalResult(command: '', stdout: '', stderr: 'الأمر فارغ.',
+        exitCode: 2, duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (value.contains('\u0000')) {
+      return const TerminalResult(command: '', stdout: '', stderr: 'الأمر يحتوي على محرف غير صالح.',
+        exitCode: 2, duration: Duration.zero, shell: 'zion-native-pty');
+    }
+    if (!_authorized(value)) {
+      final denied = TerminalResult(command: value, stdout: '',
+        stderr: 'رفضت Zion SecurityCore تنفيذ الأمر.', exitCode: 126,
+        duration: Duration.zero, shell: 'security-core');
+      _audit(command: value, outcome: 'denied', exitCode: denied.exitCode,
+        shell: denied.shell, duration: denied.duration, interactive: true);
+      return denied;
+    }
+    if (_agentCommandRunning) {
+      return const TerminalResult(command: '', stdout: '',
+        stderr: 'يوجد أمر وكيل قيد التنفيذ في جلسة PTY.', exitCode: 125,
+        duration: Duration.zero, shell: 'zion-native-pty');
+    }
+
+    _agentCommandRunning = true;
+    final started = DateTime.now();
+    final marker = '@@DART_MARKER@@';
+    final output = StringBuffer();
+    final completed = Completer<int>();
+    StreamSubscription<String>? subscription;
+    Timer? timer;
+    try {
+      if (!isInteractiveRunning && !await startInteractive()) {
+        return TerminalResult(command: value, stdout: '',
+          stderr: 'تعذر بدء جلسة Zion PTY.', exitCode: 127,
+          duration: DateTime.now().difference(started), shell: 'unavailable');
+      }
+      subscription = _output.stream.listen((chunk) {
+        if (completed.isCompleted) return;
+        output.write(chunk);
+        if (output.length > 100000) {
+          final current = output.toString();
+          output..clear()..write(current.substring(current.length - 100000));
+        }
+        final match = RegExp(
+          '(?:^|\\r?\\n)' + RegExp.escape(marker) + r':(-?\d+)(?:\r?\n|$)',
+        ).firstMatch(output.toString());
+        if (match != null && !completed.isCompleted) {
+          completed.complete(int.tryParse(match.group(1) ?? '') ?? 1);
+        }
+      });
+      final wrapped = "$value; __zion_agent_status=\$?; printf '\\n$marker:%s\\n' \"\$__zion_agent_status\"";
+      write('$wrapped\n');
+      _remember(value);
+      timer = Timer(timeout, () {
+        if (!completed.isCompleted) {
+          write('\x03');
+          completed.complete(124);
+        }
+      });
+      final code = await completed.future;
+      final raw = output.toString();
+      final markerIndex = raw.lastIndexOf(marker);
+      final captured = markerIndex >= 0 ? raw.substring(0, markerIndex) : raw;
+      final clean = captured
+          .replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '')
+          .replaceAll('\r', '')
+          .trim();
+      final result = TerminalResult(
+        command: value,
+        stdout: clean.length > 24000 ? clean.substring(clean.length - 24000) : clean,
+        stderr: code == 124 ? 'انتهت مهلة الأمر أو أُوقف بمقاطعة PTY.' : '',
+        exitCode: code,
+        duration: DateTime.now().difference(started),
+        shell: 'zion-native-pty',
+      );
+      _audit(command: value,
+        outcome: code == 0 ? 'success' : (code == 124 ? 'timeout-or-interrupt' : 'failed'),
+        exitCode: code, shell: result.shell, duration: result.duration, interactive: true);
+      return result;
+    } catch (error) {
+      final result = TerminalResult(command: value, stdout: '',
+        stderr: 'فشل تنفيذ الأمر عبر PTY: $error', exitCode: 126,
+        duration: DateTime.now().difference(started), shell: 'zion-native-pty');
+      _audit(command: value, outcome: 'process-error', exitCode: result.exitCode,
+        shell: result.shell, duration: result.duration, interactive: true);
+      return result;
+    } finally {
+      timer?.cancel();
+      await subscription?.cancel();
+      _agentCommandRunning = false;
+    }
+  }
+
+  Future<void> interruptInteractive() async {
+    if (isInteractiveRunning) await _pty.write('\x03');
+  }
+
   Future<bool> resizeInteractive({required int rows, required int cols}) async {
     if (!_pty.isRunning) return false;
     return _pty.resize(rows: rows, cols: cols);
