@@ -33,6 +33,51 @@ class AgentSkillLibrary {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+  static String _expandArabicQuery(String value) {
+    final normalized = _normalize(value);
+    const aliases = <String, String>{
+      'برمجة': 'programming code development software engineering',
+      'كود': 'code programming software development',
+      'تطوير': 'development engineering implementation',
+      'تصميم': 'design ui ux visual interface',
+      'واجهة': 'ui ux frontend interface accessibility',
+      'امان': 'security defensive audit vulnerability',
+      'حماية': 'security defensive hardening',
+      'اختبار': 'test testing quality assurance regression',
+      'بيانات': 'data analytics database sql',
+      'تحليل': 'analysis analytics audit debugging',
+      'بحث': 'research search knowledge sources',
+      'كتابة': 'writing documentation content',
+      'مستند': 'document files office pdf',
+      'ملفات': 'files documents filesystem',
+      'نشر': 'deployment release ci cd',
+      'اصدار': 'release versioning changelog',
+      'شبكة': 'network infrastructure devops',
+      'خادم': 'server backend api infrastructure',
+      'سيرفر': 'server backend api infrastructure',
+      'ذكاء': 'ai machine learning model llm',
+      'نموذج': 'model ai machine learning inference',
+      'مالي': 'finance accounting financial',
+      'محاسبة': 'accounting finance',
+      'تسويق': 'marketing seo growth',
+      'طرفية': 'terminal shell linux command line',
+      'لينكس': 'linux shell terminal devops',
+      'سحابة': 'cloud infrastructure aws azure',
+      'قاعدة': 'database sql schema',
+      'وصول': 'accessibility a11y wcag',
+      'متصفح': 'browser automation web',
+      'صورة': 'image media design',
+      'فيديو': 'video media editing',
+      'صوت': 'audio speech voice',
+    };
+    final expansions = <String>[];
+    for (final token in normalized.split(' ')) {
+      final expansion = aliases[token];
+      if (expansion != null) expansions.add(expansion);
+    }
+    return '$normalized ${expansions.join(' ')}';
+  }
+
   static const List<AgentSkillDefinition> definitions = [
     AgentSkillDefinition(
       name: 'systematic-debugging',
@@ -198,7 +243,7 @@ class AgentSkillLibrary {
     String task, {
     Iterable<String> hints = const [],
   }) async {
-    final normalized = _normalize('$task ${hints.join(' ')}');
+    final normalized = _expandArabicQuery('$task ${hints.join(' ')}');
     if (normalized.isEmpty) return const [];
     final candidates = await _allDefinitions();
     final ranked = candidates.map((skill) {
