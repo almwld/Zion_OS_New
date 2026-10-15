@@ -9,7 +9,8 @@ import '../knowledge/obsidian_vault.dart';
 class AgentLabScreen extends StatefulWidget {
   final AgentPromptRunner runPrompt;
   final Future<void> Function()? cancelRun;
-  const AgentLabScreen({super.key, required this.runPrompt, this.cancelRun});
+  final bool Function()? isCancelled;
+  const AgentLabScreen({super.key, required this.runPrompt, this.cancelRun, this.isCancelled});
 
   @override
   State<AgentLabScreen> createState() => _AgentLabScreenState();
@@ -73,11 +74,11 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
     try {
       late final CollaborationResult result;
       if (mode == 'team') {
-        result = await _engine.runTeam(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
+        result = await _engine.runTeam(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt, isCancelled: widget.isCancelled);
       } else if (mode == 'loop') {
-        result = await _engine.runEngineeringLoop(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
+        result = await _engine.runEngineeringLoop(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt, isCancelled: widget.isCancelled);
       } else {
-        result = await _engine.runOverthinker(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
+        result = await _engine.runOverthinker(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt, isCancelled: widget.isCancelled);
       }
       if (!mounted) return;
       setState(() {
