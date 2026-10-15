@@ -68,15 +68,15 @@ class AgentKnowledgeIndex {
     if (task.trim().isEmpty || maxEntries < 1 || maxTotalChars < 1) return '';
     final ranked = await rank(task, limit: maxEntries);
     if (ranked.isEmpty) return '';
-    const header = 'Relevant Zion local knowledge (reference only; verify with live tool output):\\n';
+    const header = 'Relevant Zion local knowledge (reference only; verify with live tool output):\n';
     if (maxTotalChars <= 0) return '';
     final out = StringBuffer(
       header.length > maxTotalChars ? header.substring(0, maxTotalChars) : header,
     );
     if (header.length >= maxTotalChars) return out.toString();
     for (final entry in ranked) {
-      final commandText = entry.commands.isEmpty ? '' : '\\nExamples: ${entry.commands.join(' ; ')}';
-      final section = '\\n- [${entry.domain}] ${entry.title}: ${entry.summary}${commandText}\\nLimit: ${entry.limits}\\n';
+      final commandText = entry.commands.isEmpty ? '' : '\nExamples: ${entry.commands.join(' ; ')}';
+      final section = '\n- [${entry.domain}] ${entry.title}: ${entry.summary}${commandText}\nLimit: ${entry.limits}\n';
       final remaining = maxTotalChars - out.length;
       if (remaining <= 0) break;
       if (section.length > remaining) {
