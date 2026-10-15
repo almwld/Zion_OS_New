@@ -14,6 +14,9 @@ import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
 import 'kali_agent_loop_screen.dart';
 import 'agent_lab_screen.dart';
+import 'agent_subagents_screen.dart';
+import 'obsidian_vault_screen.dart';
+import 'agent_intelligence_hub.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -39,6 +42,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _submitting=false;
   bool _historyReady=false;
   bool _workspaceDetailsExpanded=false;
+  bool _overthinkerEnabled = false;
   int _workspaceTab = 0;
   int _activityFilter = 0;
   static const String _historyKey='zion_super_agent_messages_v1';
@@ -218,14 +222,26 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _run() async {
-    final task = _input.text.trim();
-    if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
+    final rawTask = _input.text.trim();
+    final task = _overthinkerEnabled
+      ? '''[OVERTHINKER MODE — Zion Super Agent]
+Original task: $rawTask
+
+Engineering loop:
+1. Define the requested outcome and scope; do not invent missing facts.
+2. Organize the plan through specialist perspectives: planner, executor, risk reviewer, and verifier. Do not claim separate agents ran unless they actually did.
+3. Identify dependencies and risks before side effects; require approval for sensitive actions.
+4. Execute one verifiable step at a time and inspect real tool output.
+5. Verify the final state against the original task; diagnose and recover from failures within the granted scope.
+6. Report evidence, uncertainty, and remaining work honestly.
+''' : rawTask;
+    if (rawTask.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
     // uses the local GGUF model when it is available.
     setState(() {
       _submitting = true;
       _input.clear();
-      _appendMessage({'role': 'user', 'text': task});
+      _appendMessage({'role': 'user', 'text': rawTask});
       _result = null;
     });
     await _persistMessages();
@@ -335,10 +351,31 @@ class _AgentScreenState extends State<AgentScreen> {
             tooltip: 'أدوات الوكيل',
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              if (value == 'loop') {
+              if (value == 'hub') {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => AgentIntelligenceHub(
+                    events: List<AgentEvent>.unmodifiable(_events),
+                    task: _runtime.activeSession?.task ?? _input.text.trim(),
+                    result: _result,
+                    overthinkerEnabled: _overthinkerEnabled,
+                  ),
+                ));
+              } else if (value == 'overthinker') {
+                setState(() => _overthinkerEnabled = !_overthinkerEnabled);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(_overthinkerEnabled
+                    ? 'تم تفعيل Overthinker: تخطيط أعمق ومراجعة للنتائج.'
+                    : 'تم إيقاف نمط Overthinker.'),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              } else if (value == 'loop') {
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
                 ));
+              } else if (value == 'subagents') {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AgentSubagentsScreen()));
+              } else if (value == 'obsidian') {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ObsidianVaultScreen(initialMarkdown: _buildSessionMarkdown())));
               } else if (value == 'lab') {
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => AgentLabScreen(
@@ -355,12 +392,16 @@ class _AgentScreenState extends State<AgentScreen> {
                 unawaited(_exportSession());
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'lab', child: ListTile(leading: Icon(Icons.hub_outlined), title: Text('مختبر الوكلاء وObsidian'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'hub', child: ListTile(leading: const Icon(Icons.hub_outlined), title: const Text('مركز الذكاء والتحليلات'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'overthinker', child: ListTile(leading: Icon(_overthinkerEnabled ? Icons.psychology_alt : Icons.psychology_alt_outlined), title: Text(_overthinkerEnabled ? 'إيقاف Overthinker' : 'تفعيل Overthinker'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'subagents', child: ListTile(leading: Icon(Icons.groups_2_outlined), title: Text('الوكلاء الفرعيون'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'obsidian', child: ListTile(leading: Icon(Icons.auto_stories_outlined), title: Text('Obsidian · قاعدة المعرفة'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'lab', child: ListTile(leading: Icon(Icons.hub_outlined), title: Text('مختبر الوكلاء وLoop Engineering'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
             ],
           ),
           const SizedBox(width: 4),
@@ -536,7 +577,7 @@ class _AgentScreenState extends State<AgentScreen> {
     ]),
   );
 
-  Future<void> _exportSession() async {
+  String _buildSessionMarkdown() {
     final buffer = StringBuffer()
       ..writeln('# Zion Super Agent — تقرير الجلسة')
       ..writeln()
@@ -560,7 +601,11 @@ class _AgentScreenState extends State<AgentScreen> {
       buffer.writeln('## النتيجة');
       buffer.writeln(_visibleResultSummary(_result!));
     }
-    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    return buffer.toString();
+  }
+
+  Future<void> _exportSession() async {
+    await Clipboard.setData(ClipboardData(text: _buildSessionMarkdown()));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
