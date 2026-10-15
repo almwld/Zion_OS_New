@@ -323,7 +323,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       setState(() {
         _error = ok
             ? null
-            : 'تعذر تحميل النموذج. اختر نموذج GGUF أصغر أو متوافقاً مع الجهاز.';
+            : 'تعذر تحميل GGUF عبر محرك llama.cpp. تحقق من سلامة الملف وتوافق صيغة النموذج، ثم راجع سجل ZionLLM.';
         _status = ok ? 'النموذج محمل محلياً دون اتصال.' : null;
         if (ok) {
           _preferredModelPath = model.path;
