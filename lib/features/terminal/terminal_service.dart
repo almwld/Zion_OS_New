@@ -53,6 +53,22 @@ class TerminalService {
     _activeInteractiveService = this;
   }
 
+  int _agentLeases = 0;
+  bool _disposeRequested = false;
+  bool _disposed = false;
+
+  void retainForAgent() {
+    if (_disposed) throw StateError('TerminalService has already been disposed.');
+    _agentLeases++;
+  }
+
+  Future<void> releaseForAgent() async {
+    if (_agentLeases > 0) _agentLeases--;
+    if (_agentLeases == 0 && _disposeRequested) {
+      await _disposeNow();
+    }
+  }
+
   void _releaseAgentTarget() {
     if (identical(_activeInteractiveService, this)) {
       _activeInteractiveService = null;
@@ -650,6 +666,17 @@ class TerminalService {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    if (_agentLeases > 0) {
+      _disposeRequested = true;
+      return;
+    }
+    await _disposeNow();
+  }
+
+  Future<void> _disposeNow() async {
+    if (_disposed) return;
+    _disposed = true;
     _releaseAgentTarget();
     await stopInteractive();
     await _pty.dispose();
