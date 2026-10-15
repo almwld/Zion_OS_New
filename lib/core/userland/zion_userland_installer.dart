@@ -666,20 +666,14 @@ class ZionUserlandInstaller {
     String path,
     FileSystemEntityType type,
   ) async {
-    switch (type) {
-      case FileSystemEntityType.link:
-        await Link(path).delete();
-      case FileSystemEntityType.file:
-        await File(path).delete();
-      case FileSystemEntityType.directory:
-        await Directory(path).delete(recursive: true);
-      case FileSystemEntityType.notFound:
-        return;
-      case FileSystemEntityType.unixDomainSock:
-      case FileSystemEntityType.pipe:
-      case FileSystemEntityType.blockDevice:
-      case FileSystemEntityType.characterDevice:
-        throw FileSystemException('Unsupported existing destination type', path);
+    if (type == FileSystemEntityType.link) {
+      await Link(path).delete();
+    } else if (type == FileSystemEntityType.file) {
+      await File(path).delete();
+    } else if (type == FileSystemEntityType.directory) {
+      await Directory(path).delete(recursive: true);
+    } else if (type != FileSystemEntityType.notFound) {
+      throw FileSystemException('Unsupported existing destination type', path);
     }
   }
 
