@@ -22,6 +22,11 @@ class AgentScreen extends StatefulWidget {
 class _AgentScreenState extends State<AgentScreen> {
   late final AgentRuntime _runtime;
   late final TerminalService _agentTerminal;
+  late final bool _ownsAgentTerminal;
+  late final bool _usingSharedTerminal;
+  StreamSubscription<String>? _ptySubscription;
+  final StringBuffer _ptyConsole = StringBuffer();
+  int _ptyOutputVersion = 0;
   final _input=TextEditingController();
   final _scroll=ScrollController();
   final _messages=<Map<String,String>>[];
@@ -43,7 +48,22 @@ class _AgentScreenState extends State<AgentScreen> {
   @override void initState(){
     super.initState();
     final ai = LlamaService();
-    _agentTerminal = TerminalService(context.read<SecurityCore>());
+    final activeTerminal = TerminalService.activeInteractiveService;
+    _usingSharedTerminal = activeTerminal != null;
+    _ownsAgentTerminal = activeTerminal == null;
+    _agentTerminal = activeTerminal ?? TerminalService(context.read<SecurityCore>());
+    _ptySubscription = _agentTerminal.output.listen((chunk) {
+      if (!mounted) return;
+      _ptyConsole.write(chunk);
+      if (_ptyConsole.length > 18000) {
+        final current = _ptyConsole.toString();
+        _ptyConsole
+          ..clear()
+          ..write(current.substring(current.length - 18000));
+      }
+      setState(() => _ptyOutputVersion++);
+      _scrollEnd();
+    });
     final tools = ToolRegistry(ai: ai, customTools: [TerminalPtyTool(_agentTerminal)]);
     _runtime = AgentRuntime(orchestrator: AgentOrchestrator(ai: ai, tools: tools));
     // Let the agent window render before requesting native model discovery.
@@ -209,7 +229,12 @@ class _AgentScreenState extends State<AgentScreen> {
     await _persistMessages();
     _scrollEnd();
     try {
-      final result = await _runtime.run(task, approveReviewed: false);
+      final result = await _runtime.run(
+        task,
+        approveReviewed: false,
+        stepTimeout: const Duration(minutes: 16),
+        maxRecoveryAttempts: 8,
+      );
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -322,6 +347,7 @@ class _AgentScreenState extends State<AgentScreen> {
                   _runtime.canApprove ? 'بانتظار موافقتك' : 'الوكيل يعمل',
                   _runtime.canApprove ? 'راجع تفاصيل الخطوة قبل السماح بتنفيذها.' : 'تُعرض الخطوات والنتائج هنا فور وصولها.',
                 ),
+              _ptyConsoleCard(),
             ],
             if (_workspaceTab == 0 || _workspaceTab == 1)
               if (_events.isNotEmpty) _activity()
@@ -338,6 +364,67 @@ class _AgentScreenState extends State<AgentScreen> {
     );
   }
 
+
+  Widget _ptyConsoleCard() {
+    final output = _ptyConsole.toString().trimRight();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF080D12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2A4858)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+            child: Row(children: [
+              const Icon(Icons.terminal, size: 17, color: Color(0xFF48D9C0)),
+              const SizedBox(width: 7),
+              const Expanded(child: Text(
+                'مخرجات Zion PTY الحية',
+                style: TextStyle(color: Color(0xFFE4F1F5), fontSize: 12, fontWeight: FontWeight.w700),
+              )),
+              Text(
+                _usingSharedTerminal ? 'جلسة الطرفية المحددة' : 'جلسة PTY للوكيل',
+                style: const TextStyle(color: Color(0xFF8BA7B7), fontSize: 9),
+              ),
+              IconButton(
+                tooltip: 'مسح العرض فقط',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() {
+                  _ptyConsole.clear();
+                  _ptyOutputVersion++;
+                }),
+                icon: const Icon(Icons.clear_all, size: 17, color: Color(0xFF8BA7B7)),
+              ),
+            ]),
+          ),
+          Container(
+            constraints: const BoxConstraints(minHeight: 64, maxHeight: 230),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: SingleChildScrollView(
+              reverse: true,
+              child: SelectableText(
+                output.isEmpty
+                    ? 'بانتظار مخرجات الطرفية… ستظهر الأوامر والنتائج هنا أثناء التنفيذ.'
+                    : output,
+                key: ValueKey<int>(_ptyOutputVersion),
+                style: const TextStyle(
+                  color: Color(0xFFB7D8C9),
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _workspaceTabs() {
     const labels = ['المحادثة', 'النشاط والخطة', 'النتائج'];
@@ -975,5 +1062,13 @@ class _AgentScreenState extends State<AgentScreen> {
     AgentState.completed=>'اكتمل',AgentState.failed=>'فشل',AgentState.cancelled=>'أُلغي',
   };
 
-  @override void dispose(){_sub?.cancel();_runtime.dispose();unawaited(_agentTerminal.dispose());_input.dispose();_scroll.dispose();super.dispose();}
+  @override void dispose(){
+    _sub?.cancel();
+    _ptySubscription?.cancel();
+    _runtime.dispose();
+    if (_ownsAgentTerminal) unawaited(_agentTerminal.dispose());
+    _input.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
 }
