@@ -227,6 +227,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     setState(() {
       _selectedIndex = _selectedIndex.clamp(0, _tabs.length - 1);
     });
+    _selectedTab?.service.activateForAgent();
   }
 
   Future<void> _toggleSelected() async {
@@ -1024,7 +1025,12 @@ $request''',
           _SessionBar(
             tabs: _tabs,
             selectedIndex: _selectedIndex,
-            onSelect: (index) => setState(() => _selectedIndex = index),
+            onSelect: (index) {
+              setState(() => _selectedIndex = index);
+              if (index >= 0 && index < _tabs.length) {
+                _tabs[index].service.activateForAgent();
+              }
+            },
             onClose: _closeTab,
             palette: _palette,
           ),
