@@ -70,14 +70,14 @@ class ObsidianVault {
   String _markdownFor(ObsidianNote note) {
     final title = jsonEncode(note.title);
     final tags = jsonEncode(note.tags);
-    return '---\\n'
-        'id: ${jsonEncode(note.id)}\\n'
-        'title: $title\\n'
-        'created: ${note.createdAt.toIso8601String()}\\n'
-        'updated: ${note.updatedAt.toIso8601String()}\\n'
-        'tags: $tags\\n'
-        '---\\n\\n'
-        '${note.body.trimRight()}\\n';
+    return '---\n'
+        'id: ${jsonEncode(note.id)}\n'
+        'title: $title\n'
+        'created: ${note.createdAt.toIso8601String()}\n'
+        'updated: ${note.updatedAt.toIso8601String()}\n'
+        'tags: $tags\n'
+        '---\n\n'
+        '${note.body.trimRight()}\n';
   }
 
   Future<void> _syncMarkdownFiles(List<ObsidianNote> notes) async {
