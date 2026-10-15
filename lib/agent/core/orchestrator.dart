@@ -46,7 +46,7 @@ class AgentOrchestrator {
     final results = <StepResult>[];
     try {
       cancellationToken?.throwIfCancelled();
-      final plan = await _createPlan(clean);
+      final plan = await _createPlan(clean, cancellationToken: cancellationToken);
       _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
         _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
@@ -156,7 +156,7 @@ class AgentOrchestrator {
           while (!recovered && recoveryAttempt < maxRecoveryAttempts) {
             recoveryAttempt++;
             cancellationToken?.throwIfCancelled();
-            final alt = await _alternative(step, r.error ?? 'فشل', results);
+            final alt = await _alternative(step, r.error ?? 'فشل', results, cancellationToken: cancellationToken);
             if (alt == null) break;
             final altParams = _resolveParams(alt.params, results);
             final t = tools.getTool(alt.tool);
@@ -316,7 +316,7 @@ class AgentOrchestrator {
   bool get isWaitingForApproval => _approvalCompleter != null;
   String? get pendingApprovalStepId => _pendingApprovalStepId;
 
-  Future<AgentPlan> _createPlan(String task) async {
+  Future<AgentPlan> _createPlan(String task, {CancellationToken? cancellationToken}) async {
     final injectedPlanBuilder = planBuilder;
     if (injectedPlanBuilder != null) return injectedPlanBuilder(task);
     await memory.load();
@@ -346,7 +346,7 @@ ${jsonEncode(relevantMemory)}
 أعد JSON فقط بهذا الشكل:
 {"steps":[{"id":"1","description":"وصف واضح قابل للتحقق","tool":"اسم أداة موجودة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
-      response = await ai.generate(prompt, maxTokens: 4096, temperature: 0.15);
+      response = await _generateModel(prompt, maxTokens: 4096, temperature: 0.15, cancellationToken: cancellationToken);
       if (response.trim().isEmpty || response.startsWith('ERROR:')) {
         throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
       }
@@ -435,6 +435,44 @@ ${jsonEncode(relevantMemory)}
     return output.length > 3000 ? '${output.substring(0, 3000)}…[تم اقتطاع المخرجات]' : output;
   }
 
+  /// Model inference has no automatic wall-clock timeout. Only an explicit
+  /// user cancellation stops generation; the planner is never replaced by a
+  /// guessed or heuristic plan.
+  Future<String> _generateModel(
+    String prompt, {
+    required int maxTokens,
+    required double temperature,
+    CancellationToken? cancellationToken,
+  }) async {
+    cancellationToken?.throwIfCancelled();
+    final generation = ai.generate(
+      prompt,
+      maxTokens: maxTokens,
+      temperature: temperature,
+    );
+    if (cancellationToken == null) return generation;
+
+    final cancelled = Completer<String>();
+    StreamSubscription<void>? subscription;
+    subscription = cancellationToken.onCancel.listen((_) async {
+      try {
+        await ai.cancelGeneration();
+      } catch (_) {}
+      if (!cancelled.isCompleted) {
+        cancelled.completeError(const AgentCancelledException());
+      }
+    });
+    try {
+      if (cancellationToken.isCancelled) {
+        await ai.cancelGeneration();
+        throw const AgentCancelledException();
+      }
+      return await Future.any<String>([generation, cancelled.future]);
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
   Future<bool> _nativeAiAvailable() async {
     // The Super Agent and its AI tool share this exact service instance.
     // Avoid probing a native MethodChannel when this session has not loaded a
@@ -450,8 +488,9 @@ ${jsonEncode(relevantMemory)}
   Future<AgentStep?> _alternative(
     AgentStep failedStep,
     String error,
-    List<StepResult> previousResults,
-  ) async {
+    List<StepResult> previousResults, {
+    CancellationToken? cancellationToken,
+  }) async {
     if (!await _nativeAiAvailable()) return null;
     final toolCatalog = tools.availableTools.map((name) {
       final tool = tools.getTool(name)!;
@@ -465,7 +504,7 @@ ${jsonEncode(relevantMemory)}
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ ${entry.value.summary}؛ المخرجات: ${_stepOutput(entry.value)}';
     }).join('\n');
     late final String response;
-    response = await ai.generate(
+    response = await _generateModel(
         'تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
         'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
         'النتائج السابقة الفعلية:\n$context\n'
@@ -474,6 +513,7 @@ ${jsonEncode(relevantMemory)}
         'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
         maxTokens: 2048,
         temperature: 0.1,
+        cancellationToken: cancellationToken,
       );
     if (response.trim().isEmpty || response.startsWith('ERROR:')) {
       _log('تعذر الحصول على خطة إصلاح من النموذج المحلي: ${response.trim()}');
