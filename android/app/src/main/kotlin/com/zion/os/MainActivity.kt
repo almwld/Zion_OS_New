@@ -155,17 +155,17 @@ class MainActivity : FlutterFragmentActivity() {
                         val loraPath = call.argument<String>("loraPath")
                         val loraScale = (call.argument<Double>("loraScale") ?: 1.0).toFloat()
                         // mmap reduces copies but does not make a model free:
-                        // reject clearly unsafe loads before entering native code.
+                        // Do not impose a guessed free-RAM gate: memory reporting is
+                        // conservative on some Android builds and prevented users from
+                        // attempting larger local GGUF models. Keep the estimate for
+                        // diagnostics; the native loader remains the source of truth.
                         val modelBytes = try { File(path).length().coerceAtLeast(0L) } catch (_: Throwable) { 0L }
                         val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
                         val memoryInfo = ActivityManager.MemoryInfo()
                         activityManager?.getMemoryInfo(memoryInfo)
                         val requiredBytes = maxOf(768L * 1024L * 1024L, modelBytes * 3L / 2L + 512L * 1024L * 1024L)
                         if (activityManager != null && memoryInfo.availMem < requiredBytes) {
-                            android.util.Log.w("ZionLLM", "Model load deferred: available=${memoryInfo.availMem / (1024 * 1024)}MiB, estimatedRequired=${requiredBytes / (1024 * 1024)}MiB")
-                            Toast.makeText(this, "الذاكرة المتاحة غير كافية لتحميل هذا النموذج بأمان. أغلق التطبيقات الأخرى أو اختر نموذجاً أصغر.", Toast.LENGTH_LONG).show()
-                            result.success(false)
-                            return@setMethodCallHandler
+                            android.util.Log.w("ZionLLM", "Large model load requested despite estimate: available=${memoryInfo.availMem / (1024 * 1024)}MiB, estimatedRequired=${requiredBytes / (1024 * 1024)}MiB, modelBytes=$modelBytes")
                         }
                         aiExecutor.execute {
                             val ok = try {
