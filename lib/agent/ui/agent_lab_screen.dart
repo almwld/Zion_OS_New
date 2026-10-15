@@ -16,7 +16,7 @@ class AgentLabScreen extends StatefulWidget {
   State<AgentLabScreen> createState() => _AgentLabScreenState();
 }
 
-class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProviderStateMixin {
+class _AgentLabScreenState extends State<AgentLabScreen> with TickerProviderStateMixin {
   final _engine = AgentCollaborationEngine();
   final _vault = ObsidianVault();
   final _task = TextEditingController();
@@ -25,6 +25,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
   final _events = <CollaborationEvent>[];
   final _output = <String>[];
   late final TabController _tabs;
+  late final AnimationController _motion;
   bool _busy = false;
   bool _loadingNotes = true;
   String? _error;
@@ -34,6 +35,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
+    _motion = AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
     _tabs.addListener(() { if (mounted) setState(() {}); });
     _refreshNotes();
     _restoreTelemetry();
@@ -219,7 +221,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
       builder: (context, snapshot) {
         final graph = snapshot.data;
         if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
-        return _KnowledgeNetwork(colors: colors, notes: graph?.notes ?? const [], edges: graph?.edges ?? const {}, events: _events);
+        return _KnowledgeNetwork(colors: colors, notes: graph?.notes ?? const [], edges: graph?.edges ?? const {}, events: _events, animation: _motion);
       },
     ),
     const SizedBox(height: 14),
@@ -286,7 +288,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
     Text('مؤشرات الأداء الفعلية', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
     const SizedBox(height: 8), _metricRow(colors),
     const SizedBox(height: 10),
-    SizedBox(height: 100, child: CustomPaint(size: const Size(double.infinity, 100), painter: _PerformancePainter(events: _events, color: colors.primary, grid: colors.outlineVariant))),
+    SizedBox(height: 100, child: AnimatedBuilder(animation: _motion, builder: (context, _) => CustomPaint(size: const Size(double.infinity, 100), painter: _PerformancePainter(events: _events, color: colors.primary, grid: colors.outlineVariant, phase: _motion.value)))),
     Builder(builder: (context) {
       final finished = _events.where((e) =>
         e.status == CollaborationStatus.completed || e.status == CollaborationStatus.failed).toList();
@@ -332,7 +334,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
 
   @override
   void dispose() {
-    _tabs.dispose(); _task.dispose(); _search.dispose();
+    _motion.dispose(); _tabs.dispose(); _task.dispose(); _search.dispose();
     super.dispose();
   }
 }
@@ -349,14 +351,15 @@ class _KnowledgeNetwork extends StatelessWidget {
   final List<ObsidianNote> notes;
   final Map<String, List<String>> edges;
   final List<CollaborationEvent> events;
-  const _KnowledgeNetwork({required this.colors, required this.notes, required this.edges, required this.events});
+  final Animation<double> animation;
+  const _KnowledgeNetwork({required this.colors, required this.notes, required this.edges, required this.events, required this.animation});
 
   @override
   Widget build(BuildContext context) {
     final noteNodes = notes.map((n) => (id: n.id, label: n.title, kind: 'note')).toList();
     // Telemetry is capped at 400 persisted events by the lab. Draw every event
     // retained in that audit window rather than silently dropping all but 24.
-    final recordedEvents = events.reversed.take(400).toList();
+    final recordedEvents = events.reversed.take(100).toList();
     final eventActors = recordedEvents.map((e) => e.actor).toSet().toList();
     final agentNodes = eventActors.map((actor) => (id: 'agent:' + actor, label: actor, kind: 'agent')).toList();
     final runIds = recordedEvents.map((e) => e.runId).where((id) => id.isNotEmpty).toSet().toList();
@@ -412,9 +415,12 @@ class _KnowledgeNetwork extends StatelessWidget {
       child: ClipRRect(borderRadius: BorderRadius.circular(18), child: InteractiveViewer(
         constrained: false,
         minScale: .35, maxScale: 2.5, boundaryMargin: const EdgeInsets.all(80),
-        child: CustomPaint(
-          size: Size(940, graphHeight),
-          painter: _NetworkPainter(nodes: nodes, links: links, colors: colors),
+        child: AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) => CustomPaint(
+            size: Size(940, graphHeight),
+            painter: _NetworkPainter(nodes: nodes, links: links, colors: colors, phase: animation.value),
+          ),
         ),
       )),
     );
@@ -425,7 +431,8 @@ class _NetworkPainter extends CustomPainter {
   final List<({String id, String label, String kind})> nodes;
   final List<(String, String)> links;
   final ColorScheme colors;
-  const _NetworkPainter({required this.nodes, required this.links, required this.colors});
+  final double phase;
+  const _NetworkPainter({required this.nodes, required this.links, required this.colors, required this.phase});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -450,7 +457,9 @@ class _NetworkPainter extends CustomPainter {
           position = Offset(760, 42 + eventIndex * 36.0);
           eventIndex++;
       }
-      positions[node.id] = position;
+      // A small perspective/depth orbit creates a live 3D-like neural-map effect.
+      final depth = math.sin(phase * math.pi * 2 + positions.length * 0.73);
+      positions[node.id] = Offset(position.dx + depth * 11, position.dy + math.cos(phase * math.pi * 2 + positions.length * 0.51) * 5);
     }
 
     final line = Paint()..color = colors.primary.withOpacity(.34)..strokeWidth = 1.25;
@@ -458,7 +467,10 @@ class _NetworkPainter extends CustomPainter {
       final a = positions[link.$1], b = positions[link.$2];
       if (a != null && b != null) {
         canvas.drawLine(a, b, line);
+        final t = (phase + (link.$1.hashCode.abs() % 100) / 100) % 1.0;
+        final particle = Offset(a.dx + (b.dx - a.dx) * t, a.dy + (b.dy - a.dy) * t);
         canvas.drawCircle(Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2), 1.8, Paint()..color = colors.primary);
+        canvas.drawCircle(particle, 3.0, Paint()..color = colors.tertiary.withOpacity(.92));
       }
     }
 
@@ -472,7 +484,8 @@ class _NetworkPainter extends CustomPainter {
       final nodeColor = failed ? colors.error : isAgent ? colors.tertiary : isRun ? colors.secondary : colors.primary;
       final fillColor = failed ? colors.errorContainer : isAgent ? colors.tertiaryContainer : isRun ? colors.secondaryContainer : colors.primaryContainer;
       final textColor = failed ? colors.onErrorContainer : isAgent ? colors.onTertiaryContainer : isRun ? colors.onSecondaryContainer : colors.onPrimaryContainer;
-      canvas.drawCircle(p, radius + 4, Paint()..color = nodeColor.withOpacity(.09));
+      final pulse = 1.0 + (math.sin((phase * math.pi * 2) + p.dx * .012) + 1) * .18;
+      canvas.drawCircle(p, (radius + 4) * pulse, Paint()..color = nodeColor.withOpacity(.10));
       canvas.drawCircle(p, radius, Paint()..color = fillColor);
       final label = node.label.length > 23 ? node.label.substring(0, 22) + '…' : node.label;
       final text = TextPainter(
@@ -487,14 +500,15 @@ class _NetworkPainter extends CustomPainter {
     }
   }
 
-  @override bool shouldRepaint(covariant _NetworkPainter old) => old.nodes != nodes || old.links != links || old.colors != colors;
+  @override bool shouldRepaint(covariant _NetworkPainter old) => old.nodes != nodes || old.links != links || old.colors != colors || old.phase != phase;
 }
 
 class _PerformancePainter extends CustomPainter {
   final List<CollaborationEvent> events;
   final Color color;
   final Color grid;
-  const _PerformancePainter({required this.events, required this.color, required this.grid});
+  final double phase;
+  const _PerformancePainter({required this.events, required this.color, required this.grid, required this.phase});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -517,7 +531,9 @@ class _PerformancePainter extends CustomPainter {
     for (final point in points.skip(1)) { path.lineTo(point.dx, point.dy); }
     canvas.drawPath(path, paint);
     for (final point in points) { canvas.drawCircle(point, 3.2, Paint()..color = color); }
+    final head = points.last;
+    canvas.drawCircle(Offset(head.dx, head.dy), 5.0 + 2.0 * math.sin(phase * math.pi * 2).abs(), Paint()..color = color.withOpacity(.20));
   }
 
-  @override bool shouldRepaint(covariant _PerformancePainter old) => old.events != events || old.color != color || old.grid != grid;
+  @override bool shouldRepaint(covariant _PerformancePainter old) => old.events != events || old.color != color || old.grid != grid || old.phase != phase;
 }
