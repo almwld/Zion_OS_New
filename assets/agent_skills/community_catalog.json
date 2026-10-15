@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "upstream_repository": "hummbl-io/agent-skills",
+  "upstream_commit": "",
+  "skill_count": 0,
+  "full_source_bundle": "assets/agent_skills/community_bundle.zip",
+  "entries": []
+}
