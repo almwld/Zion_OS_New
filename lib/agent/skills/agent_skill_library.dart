@@ -91,9 +91,9 @@ class AgentSkillLibrary {
 
   Future<String> contextFor(
     String task, {
-    int maxSkills = 3,
-    int maxCharsPerSkill = 2400,
-    int maxTotalChars = 6000,
+    int maxSkills = 2,
+    int maxCharsPerSkill = 900,
+    int maxTotalChars = 2400,
   }) async {
     if (task.trim().isEmpty || maxSkills < 1 || maxCharsPerSkill < 1 || maxTotalChars < 1) {
       return '';
