@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -178,10 +179,141 @@ class TerminalService {
         _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
       } catch (error) {
         _emitOutput('[Userland] Cannot execute $path: $error\r\n');
+        if (name == 'bash') {
+          await diagnoseBashExecution(launchError: error);
+        }
       }
     }
     return null;
   }
+  /// Collects on-device evidence for a Userland Bash launch failure.
+  ///
+  /// Dart does not expose every Android inode/security attribute directly, so
+  /// this combines Dart metadata, Android toolbox output, a platform-shell
+  /// control, the real ProcessException, dependency checks, and filtered logs.
+  Future<void> diagnoseBashExecution({Object? launchError}) async {
+    const bashPath = _userlandBash;
+    const prefix = '/data/data/com.zion.os/files/usr';
+    void add(String line) {
+      final message = '[DIAG] $line';
+      print(message);
+      _emitOutput('$message\r\n');
+    }
+
+    add('========== Bash execution diagnosis ==========');
+    add('path=$bashPath');
+    if (launchError is ProcessException) {
+      add('initial ProcessException: errno=${launchError.errorCode}; message=${launchError.message}; executable=${launchError.executable}');
+    } else if (launchError != null) {
+      add('initial launch error: $launchError');
+    }
+
+    final bash = File(bashPath);
+    try {
+      add('exists=${await bash.exists()}');
+      if (await bash.exists()) {
+        final stat = await bash.stat();
+        add('stat: type=${stat.type}; size=${stat.size}; modified=${stat.modified.toIso8601String()}; mode=0${stat.mode.toRadixString(8)}');
+        final bytes = await bash.openRead(0, 64).fold<List<int>>(<int>[], (all, part) => all..addAll(part));
+        if (bytes.length >= 20 && bytes[0] == 0x7f && bytes[1] == 0x45 && bytes[2] == 0x4c && bytes[3] == 0x46) {
+          final elfClass = bytes[4] == 2 ? 'ELF64' : (bytes[4] == 1 ? 'ELF32' : 'unknown-class-${bytes[4]}');
+          final endian = bytes[5] == 1 ? Endian.little : Endian.big;
+          final machine = ByteData.sublistView(Uint8List.fromList(bytes)).getUint16(18, endian);
+          final arch = switch (machine) {
+            183 => 'AArch64',
+            40 => 'ARM',
+            62 => 'x86_64',
+            3 => 'x86',
+            _ => 'unknown-e_machine-${machine}',
+          };
+          add('ELF: $elfClass; e_machine=$machine ($arch); endian=${bytes[5] == 1 ? "little" : "big"}');
+        } else {
+          add('ELF header: not ELF or shorter than 20 bytes');
+        }
+      }
+    } catch (e) {
+      add('Dart stat/read failed: $e');
+    }
+
+    Future<String> probe(String command, {Duration timeout = const Duration(seconds: 3)}) async {
+      try {
+        final result = await Process.run(
+          '/system/bin/sh',
+          <String>['-c', command],
+          runInShell: false,
+          environment: _androidEnvironment,
+        ).timeout(timeout);
+        final stdout = result.stdout.toString().trim();
+        final stderr = result.stderr.toString().trim();
+        return 'exit=${result.exitCode}${stdout.isEmpty ? "" : "; stdout=$stdout"}${stderr.isEmpty ? "" : "; stderr=$stderr"}';
+      } catch (e) {
+        return 'unavailable: $e';
+      }
+    }
+
+    add('UID/GID/mode/SELinux label: ${await probe("ls -lnZ '$bashPath' 2>&1")}');
+    add('app process SELinux context: ${await probe('cat /proc/self/attr/current 2>&1')}');
+    add('toybox stat: ${await probe("toybox stat -c 'uid=%u gid=%g mode=%a type=%F' '$bashPath' 2>&1")}');
+
+    try {
+      final control = await Process.run(
+        '/system/bin/sh',
+        const <String>['-c', 'printf ZION_ANDROID_SHELL_OK'],
+        runInShell: false,
+        environment: _androidEnvironment,
+      ).timeout(const Duration(seconds: 3));
+      add('control /system/bin/sh: exit=${control.exitCode}; stdout=${control.stdout.toString().trim()}; stderr=${control.stderr.toString().trim()}');
+    } catch (e) {
+      add('control /system/bin/sh failed: $e');
+    }
+
+    try {
+      final result = await Process.run(
+        bashPath,
+        const <String>['-c', 'printf ZION_BASH_EXEC_OK'],
+        runInShell: false,
+        environment: _userlandEnvironment,
+      ).timeout(const Duration(seconds: 4));
+      add('Bash launch: exit=${result.exitCode}; stdout=${result.stdout.toString().trim()}; stderr=${result.stderr.toString().trim()}');
+    } on ProcessException catch (e) {
+      add('Bash ProcessException: errno=${e.errorCode}; message=${e.message}; executable=${e.executable}; arguments=${e.arguments}');
+    } catch (e) {
+      add('Bash launch failed: $e');
+    }
+
+    for (final tool in const <String>['file', 'readelf', 'ldd']) {
+      add('tool $tool: ${await probe('command -v $tool 2>&1')}');
+    }
+    for (final library in const <String>[
+      'libreadline.so.8', 'libiconv.so', 'libdl.so', 'libc.so',
+      'libncursesw.so.6', 'libtinfo.so.6',
+    ]) {
+      add('$library exists=${await File('$prefix/lib/$library').exists()}');
+    }
+
+    add('readelf dependencies: ${await probe("if command -v readelf >/dev/null 2>&1; then readelf -d '$bashPath' 2>&1 | head -n 50; else echo readelf-unavailable; fi")}');
+    add('ldd dependencies: ${await probe("if command -v ldd >/dev/null 2>&1; then ldd '$bashPath' 2>&1 | head -n 50; else echo ldd-unavailable; fi")}');
+
+    try {
+      final logs = await Process.run(
+        '/system/bin/logcat',
+        const <String>['-d', '-t', '500'],
+        runInShell: false,
+        environment: _androidEnvironment,
+      ).timeout(const Duration(seconds: 5));
+      final relevant = logs.stdout.toString().split('\n').where((line) =>
+          RegExp(r'avc:\s*denied|SELinux|linker|CANNOT LINK EXECUTABLE|not found|Permission denied|execve|dlopen', caseSensitive: false).hasMatch(line)).toList();
+      add('logcat relevant lines=${relevant.length}; logcat exit=${logs.exitCode}');
+      for (final line in relevant.take(60)) {
+        add('logcat: ${line.trim()}');
+      }
+      if (relevant.isEmpty) add('logcat: no matching lines visible; Android may restrict app access');
+    } catch (e) {
+      add('logcat unavailable/restricted: $e');
+    }
+    add('========== End Bash diagnosis ==========');
+  }
+
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
       // A usable sh/dash may remain after an incomplete backup restore. Check
