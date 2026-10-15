@@ -295,7 +295,8 @@ class _AgentScreenState extends State<AgentScreen> {
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
           children: [
             if (_messages.length <= 1) _quickActions(),
-            for (final message in _messages) _message(message['role']!, message['text']!),
+            for (var i = 0; i < _messages.length; i++)
+              _message(i, _messages[i]['role']!, _messages[i]['text']!),
             if (_submitting && !_runtime.canCancel)
               _workingBanner('يتم تجهيز المهمة', 'جارٍ إرسال المهمة إلى منسق الوكيل…'),
             if (_events.isNotEmpty) _activity(),
@@ -484,7 +485,40 @@ class _AgentScreenState extends State<AgentScreen> {
     ]),
   );
 
-  Widget _message(String role, String text) {
+  Future<void> _copyMessage(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('تم نسخ النص'),
+        duration: Duration(milliseconds: 1200),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
+  void _editMessage(int index) {
+    if (_runtime.canCancel || _submitting || index < 0 || index >= _messages.length) return;
+    final message = _messages[index];
+    if (message['role'] != 'user') return;
+    setState(() {
+      _input.text = message['text'] ?? '';
+      _input.selection = TextSelection.collapsed(offset: _input.text.length);
+      _messages.removeRange(index, _messages.length);
+      _events.clear();
+      _result = null;
+    });
+    unawaited(_persistMessages());
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('عدّل الطلب ثم أرسله من جديد'),
+        duration: Duration(milliseconds: 1600),
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
+  Widget _message(int index, String role, String text) {
     final isUser = role == 'user';
     return Align(
       alignment: isUser ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
@@ -500,10 +534,27 @@ class _AgentScreenState extends State<AgentScreen> {
           border: Border.all(color: isUser ? const Color(0xFF2D7187) : const Color(0xFF263B4A)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
             Icon(isUser ? Icons.person_outline : Icons.hub_outlined, size: 15, color: isUser ? const Color(0xFF8EDCF0) : const Color(0xFF45D6C0)),
             const SizedBox(width: 6),
-            Text(isUser ? 'أنت' : 'Zion Agent', style: const TextStyle(color: Color(0xFFB8CAD5), fontSize: 10, fontWeight: FontWeight.w700)),
+            Expanded(child: Text(isUser ? 'أنت' : 'Zion Agent', style: const TextStyle(color: Color(0xFFB8CAD5), fontSize: 10, fontWeight: FontWeight.w700))),
+            IconButton(
+              tooltip: 'نسخ الرسالة',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+              padding: EdgeInsets.zero,
+              onPressed: () => unawaited(_copyMessage(text)),
+              icon: const Icon(Icons.content_copy_rounded, size: 15, color: Color(0xFF91A7B7)),
+            ),
+            if (isUser)
+              IconButton(
+                tooltip: 'تعديل الطلب',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                padding: EdgeInsets.zero,
+                onPressed: (_runtime.canCancel || _submitting) ? null : () => _editMessage(index),
+                icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF8EDCF0)),
+              ),
           ]),
           const SizedBox(height: 7),
           SelectableText(text, style: const TextStyle(color: Color(0xFFE5EDF2), height: 1.55, fontSize: 13)),
