@@ -94,7 +94,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       // substantial RAM, so it must be an explicit user action.
       final models = await _agent.llama.discoverModels();
       _availableModels = models
-          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
+          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 4 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
       _selected = _availableModels.cast<LlamaModel?>().firstWhere(
@@ -363,8 +363,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
     try {
       final model = await _agent.llama.pickAndImportModel();
       if (model == null || !mounted) return;
-      if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
-        setState(() => _error = 'تم اختيار النموذج لكن حجمه خارج الحد الآمن (2 GiB). اختر نموذجاً أصغر.');
+      if (model.sizeBytes <= 0) {
+        setState(() => _error = 'تعذر قراءة حجم ملف النموذج. أعد استيراد GGUF.');
         return;
       }
       setState(() {
