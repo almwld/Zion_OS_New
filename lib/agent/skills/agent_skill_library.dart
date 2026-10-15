@@ -25,7 +25,10 @@ class AgentSkillLibrary {
       .toLowerCase()
       .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
       .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
-      .replaceAll('ى', 'ي');
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'[^a-z0-9\\u0600-\\u06FF]+'), ' ')
+      .replaceAll(RegExp(r'\\s+'), ' ')
+      .trim();
 
   static const List<AgentSkillDefinition> definitions = [
     AgentSkillDefinition(
@@ -112,7 +115,7 @@ class AgentSkillLibrary {
   }) {
     final normalized = _normalize('$task ${hints.join(' ')}');
     final ranked = definitions.map((skill) {
-      var score = 0;
+      var score = normalized.contains(_normalize(skill.name)) ? 6 : 0;
       for (final keyword in skill.keywords) {
         final normalizedKeyword = _normalize(keyword.trim());
         if (normalizedKeyword.isNotEmpty && normalized.contains(normalizedKeyword)) {
