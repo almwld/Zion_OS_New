@@ -687,6 +687,26 @@ class TerminalService {
       _emitOutput('$message\r\n');
       print(stackTrace);
     }
+    try {
+      final inventory = await _pty.inspectRuntime();
+      if (inventory != null) {
+        final nativeDir = inventory['nativeLibraryDir'];
+        _emitOutput('[DIAG] APK nativeLibraryDir: $nativeDir\r\n');
+        final libraries = inventory['libraries'];
+        if (libraries is Map) {
+          for (final entry in libraries.entries) {
+            final details = entry.value;
+            if (details is Map) {
+              _emitOutput('[DIAG] ${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes\r\n');
+            }
+          }
+        }
+        _emitOutput('[DIAG] Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes\r\n');
+        _emitOutput('[DIAG] ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}\r\n');
+      }
+    } catch (error) {
+      _emitOutput('[DIAG] Runtime inventory unavailable: $error\r\n');
+    }
 
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
     if (isInteractiveRunning && kaliRootfsPath != null && _interactiveShell == 'zion-kali@$kaliRootfsPath') return true;
