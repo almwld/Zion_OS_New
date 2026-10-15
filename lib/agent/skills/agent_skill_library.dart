@@ -84,6 +84,28 @@ class AgentSkillLibrary {
     AgentSkillDefinition(name: 'git-safe-recovery', asset: 'assets/agent_skills/git-safe-recovery.md', description: 'Recover repository work without discarding user changes.', keywords: ['git recovery', 'lost changes', 'git conflict', 'reflog', 'restore branch', 'working tree', 'استعادة جيت', 'تغييرات مفقودة', 'تعارض جيت', 'سجل جيت', 'حالة المستودع']),
   ];
 
+  /// Checks that the searchable catalog and its bundled Markdown assets agree.
+  /// Returns actionable issues rather than silently hiding missing skills.
+  Future<List<String>> validateCatalog() async {
+    final issues = <String>[];
+    final names = <String>{};
+    final assets = <String>{};
+    for (final skill in definitions) {
+      if (skill.name.trim().isEmpty || skill.description.trim().isEmpty || skill.keywords.isEmpty) {
+        issues.add('Incomplete skill metadata: ${skill.name}');
+      }
+      if (!names.add(skill.name)) issues.add('Duplicate skill name: ${skill.name}');
+      if (!assets.add(skill.asset)) issues.add('Duplicate skill asset: ${skill.asset}');
+      try {
+        final source = await _bundle.loadString(skill.asset);
+        if (source.trim().isEmpty) issues.add('Empty skill asset: ${skill.asset}');
+      } catch (_) {
+        issues.add('Missing skill asset: ${skill.asset}');
+      }
+    }
+    return issues;
+  }
+
   List<AgentSkillDefinition> rank(
     String task, {
     Iterable<String> hints = const [],
