@@ -73,11 +73,11 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
     try {
       late final CollaborationResult result;
       if (mode == 'team') {
-        result = await _engine.runTeam(task: task, runPrompt: widget.runPrompt);
+        result = await _engine.runTeam(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
       } else if (mode == 'loop') {
-        result = await _engine.runEngineeringLoop(task: task, runPrompt: widget.runPrompt);
+        result = await _engine.runEngineeringLoop(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
       } else {
-        result = await _engine.runOverthinker(task: task, runPrompt: widget.runPrompt);
+        result = await _engine.runOverthinker(task: task + String.fromCharCode(10) + String.fromCharCode(10) + await _vault.contextFor(task), runPrompt: widget.runPrompt);
       }
       if (!mounted) return;
       setState(() {
