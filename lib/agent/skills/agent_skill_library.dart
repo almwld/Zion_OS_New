@@ -117,7 +117,7 @@ class AgentSkillLibrary {
               .map(_normalize)
               .where((keyword) => keyword.isNotEmpty)
               .toSet()
-              .toList(growable: false);
+              .toList();
           if (keywords.isEmpty) keywords.add(_normalize(name));
           all.add(AgentSkillDefinition(
             name: name,
