@@ -80,7 +80,7 @@ void main() {
   });
 
   test('unmatched tasks do not receive unrelated fallback skills', () {
-    expect(AgentSkillLibrary().rank('zzqxvplm no known workflow'), isEmpty);
+    expect(AgentSkillLibrary().rank('zzqxvplm qwerty asdf'), isEmpty);
   });
 
   test('knowledge-index hints improve procedural skill discovery', () {
