@@ -46,7 +46,7 @@ void main() {
       maxTotalChars: 1000,
     );
     expect(context, contains('reference only'));
-    expect(context, lessThanOrEqualTo(1000));
+    expect(context.length, lessThanOrEqualTo(1000));
     expect(context, contains('Kali'));
   });
 
