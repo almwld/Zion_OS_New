@@ -32,6 +32,14 @@ android {
         }
     }
 
+    // Keep the standard native-library source location explicit. CI may stage
+    // ABI-specific PRoot/Termux-compatible libraries here before packaging.
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ["src/main/jniLibs"]
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
