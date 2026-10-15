@@ -120,6 +120,12 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
     title.dispose(); body.dispose(); tags.dispose();
   }
 
+  Future<void> _saveResult(String text) async {
+    final title = 'نتيجة وكيل ' + DateTime.now().toIso8601String().replaceAll(':', '-');
+    await _vault.save(title: title, body: text, tags: const ['agent', 'result']);
+    await _refreshNotes(_search.text);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('حُفظت النتيجة في دفتر Obsidian المحلي.')));
+  }
   Future<void> _exportVault() async {
     final markdown = await _vault.exportMarkdown();
     await Clipboard.setData(ClipboardData(text: markdown));
@@ -261,7 +267,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
   Widget _outputCard(ColorScheme colors, String text) => Card(
     color: colors.surfaceContainerLow,
     child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [const Icon(Icons.task_alt_rounded, size: 18), const SizedBox(width: 8), const Expanded(child: Text('آخر نتيجة')), IconButton(tooltip: 'نسخ النتيجة', onPressed: () => Clipboard.setData(ClipboardData(text: text)), icon: const Icon(Icons.copy, size: 18))]),
+      Row(children: [const Icon(Icons.task_alt_rounded, size: 18), const SizedBox(width: 8), const Expanded(child: Text('آخر نتيجة')), IconButton(tooltip: 'حفظ في Obsidian', onPressed: () => _saveResult(text), icon: const Icon(Icons.bookmark_add_outlined, size: 18)), IconButton(tooltip: 'نسخ النتيجة', onPressed: () => Clipboard.setData(ClipboardData(text: text)), icon: const Icon(Icons.copy, size: 18))]),
       SelectableText(text, style: const TextStyle(height: 1.45)),
     ])),
   );
