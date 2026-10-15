@@ -12,6 +12,7 @@ class AgentOrchestrator {
   final AgentPolicy policy;
   final LongTermAIMemory memory;
   final LlamaService ai;
+  final AgentPlan Function(String task)? planBuilder;
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
@@ -20,7 +21,7 @@ class AgentOrchestrator {
   static const Duration defaultStepTimeout = Duration(minutes: 16);
   static const int defaultMaxRecoveryAttempts = 8;
 
-  AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai})
+  AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai, this.planBuilder})
       :policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService() {
     this.tools = tools ?? ToolRegistry(ai: this.ai);
   }
@@ -316,6 +317,8 @@ class AgentOrchestrator {
   String? get pendingApprovalStepId => _pendingApprovalStepId;
 
   Future<AgentPlan> _createPlan(String task) async {
+    final injectedPlanBuilder = planBuilder;
+    if (injectedPlanBuilder != null) return injectedPlanBuilder(task);
     await memory.load();
     final relevantMemory = memory.search(task, limit: 6).map((entry) => <String, dynamic>{
       'kind': entry.kind,
