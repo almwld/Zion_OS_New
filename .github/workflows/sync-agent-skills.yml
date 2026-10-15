@@ -1,0 +1,78 @@
+name: Vendor complete Agent Skills corpus
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tooling/sync_agent_skills.py"
+      - ".github/workflows/sync-agent-skills.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vendor-agent-skills
+  cancel-in-progress: false
+
+jobs:
+  vendor-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Zion OS
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Vendor all upstream skills and full source tree
+        run: python tooling/sync_agent_skills.py
+
+      - name: Verify generated corpus
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          catalog = json.loads(Path("assets/agent_skills/community_catalog.json").read_text())
+          entries = catalog["entries"]
+          assert catalog["skill_count"] == len(entries) >= 1000, catalog["skill_count"]
+          assert len({entry["name"] for entry in entries}) == len(entries)
+          assert all(Path(entry["asset"]).is_file() for entry in entries)
+          assert Path("assets/agent_skills/community_bundle.zip").stat().st_size > 100_000
+          print(f"Validated {len(entries)} skills; full source bundle is present.")
+          PY
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-pub
+
+      - name: Run tests
+        run: flutter test --no-pub
+
+      - name: Build release APK
+        run: flutter build apk --release --split-per-abi --no-shrink
+
+      - name: Commit complete offline corpus
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/agent_skills/community assets/agent_skills/community_catalog.json assets/agent_skills/community_bundle.zip
+          if git diff --cached --quiet; then
+            echo "The vendored corpus is already up to date."
+          else
+            git commit -m "chore(agent): vendor complete offline skill corpus"
+            git push origin HEAD:main
+          fi
