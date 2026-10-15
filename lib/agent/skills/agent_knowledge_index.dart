@@ -24,6 +24,15 @@ class AgentKnowledgeIndex {
   static const String assetPath = 'assets/agent_skills/knowledge_index.json';
   List<AgentKnowledgeEntry>? _cache;
 
+  static String _normalize(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
+      .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
   Future<List<AgentKnowledgeEntry>> entries() async {
     final cached = _cache;
     if (cached != null) return cached;
@@ -35,6 +44,9 @@ class AgentKnowledgeIndex {
         .whereType<Map>()
         .map((entry) => AgentKnowledgeEntry.fromJson(Map<String, dynamic>.from(entry)))
         .toList(growable: false);
+    if (loaded.any((entry) => entry.id.trim().isEmpty || entry.title.trim().isEmpty || entry.domain.trim().isEmpty)) {
+      throw const FormatException('Knowledge index entries require non-empty id, title, and domain.');
+    }
     final ids = loaded.map((entry) => entry.id).toSet();
     if (ids.length != loaded.length) throw const FormatException('Duplicate knowledge index entry id.');
     _cache = loaded;
@@ -43,16 +55,18 @@ class AgentKnowledgeIndex {
 
   Future<List<AgentKnowledgeEntry>> rank(String task, {int limit = 5}) async {
     if (task.trim().isEmpty || limit < 1) return const [];
-    final normalized = task.toLowerCase();
+    final normalized = _normalize(task);
     final loaded = await entries();
     final scored = loaded.map((entry) {
       var score = 0;
       for (final keyword in entry.keywords) {
-        if (keyword.isNotEmpty && normalized.contains(keyword.toLowerCase())) {
-          score += keyword.contains(' ') ? 4 : 2;
+        final normalizedKeyword = _normalize(keyword.trim());
+        if (normalizedKeyword.isNotEmpty && normalized.contains(normalizedKeyword)) {
+          score += normalizedKeyword.contains(' ') ? 5 : 3;
         }
       }
-      for (final word in entry.title.toLowerCase().split(RegExp(r'[^a-z0-9]+'))) {
+      for (final word in _normalize('${entry.title} ${entry.domain}')
+          .split(RegExp(r'[^a-z0-9\u0600-\u06FF]+'))) {
         if (word.length > 3 && normalized.contains(word)) score++;
       }
       return (entry: entry, score: score);
