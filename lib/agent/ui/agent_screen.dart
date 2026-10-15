@@ -13,6 +13,7 @@ import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
 import '../../ai/llama_service.dart';
 import 'kali_agent_loop_screen.dart';
+import 'agent_intelligence_hub.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -38,6 +39,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _submitting=false;
   bool _historyReady=false;
   bool _workspaceDetailsExpanded=false;
+  bool _overthinkerEnabled = false;
   int _workspaceTab = 0;
   int _activityFilter = 0;
   static const String _historyKey='zion_super_agent_messages_v1';
@@ -217,7 +219,19 @@ class _AgentScreenState extends State<AgentScreen> {
   }
 
   Future<void> _run() async {
-    final task = _input.text.trim();
+    final rawTask = _input.text.trim();
+    final task = _overthinkerEnabled
+      ? '''[OVERTHINKER MODE — Zion Super Agent]
+Original task: $rawTask
+
+Use a deliberate engineering loop:
+1. Clarify the requested outcome and scope without inventing facts.
+2. Break the work into specialist perspectives: planner, executor, risk reviewer, and verifier. Coordinate these perspectives in the plan; do not claim independent agents ran unless they actually did.
+3. Identify dependencies, failure modes, and permissions before side-effecting steps. Request approval for sensitive actions.
+4. Execute one verifiable step at a time and inspect actual tool output.
+5. Verify the final state against the original task; if a step fails, diagnose and recover within the granted scope.
+6. Report evidence, remaining uncertainty, and concrete outcomes. Never fabricate successful actions.
+''' : rawTask;
     if (task.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
     // uses the local GGUF model when it is available.
@@ -308,7 +322,24 @@ class _AgentScreenState extends State<AgentScreen> {
             tooltip: 'أدوات الوكيل',
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              if (value == 'loop') {
+              if (value == 'hub') {
+                Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => AgentIntelligenceHub(
+                    events: List<AgentEvent>.unmodifiable(_events),
+                    task: _runtime.activeSession?.task ?? _input.text.trim(),
+                    result: _result,
+                    overthinkerEnabled: _overthinkerEnabled,
+                  ),
+                ));
+              } else if (value == 'overthinker') {
+                setState(() => _overthinkerEnabled = !_overthinkerEnabled);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(_overthinkerEnabled
+                    ? 'تم تفعيل Overthinker: تخطيط أعمق ومراجعة للنتائج.'
+                    : 'تم إيقاف نمط Overthinker.'),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              } else 
                 Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
                 ));
@@ -320,34 +351,15 @@ class _AgentScreenState extends State<AgentScreen> {
                 unawaited(_exportSession());
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'hub', child: ListTile(leading: const Icon(Icons.hub_outlined), title: const Text('مركز الذكاء والتحليلات'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(value: 'overthinker', child: ListTile(leading: Icon(_overthinkerEnabled ? Icons.psychology_alt : Icons.psychology_alt_outlined), title: Text(_overthinkerEnabled ? 'إيقاف Overthinker' : 'تفعيل Overthinker'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'loop', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Agent Loop · Kali'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('فحص النموذج مجدداً'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'clear', child: ListTile(leading: Icon(Icons.cleaning_services_outlined), title: Text('مسح النشاط الظاهر'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share_outlined), title: Text('نسخ تقرير الجلسة'), contentPadding: EdgeInsets.zero)),
             ],
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: Column(children: [
-        _workspaceOverview(),
-        _workspaceTabs(),
-        Expanded(child: ListView(
-          controller: _scroll,
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-          children: [
-            if (_workspaceTab == 0) ...[
-              if (_messages.length <= 1) _quickActions(),
-              for (var i = 0; i < _messages.length; i++)
-                _message(i, _messages[i]['role']!, _messages[i]['text']!),
-              if (_submitting && !_runtime.canCancel)
-                _workingBanner('يتم تجهيز المهمة', 'جارٍ إرسال المهمة إلى منسق الوكيل…'),
-              if (_runtime.canCancel)
-                _workingBanner(
-                  _runtime.canApprove ? 'بانتظار موافقتك' : 'الوكيل يعمل',
-                  _runtime.canApprove ? 'راجع تفاصيل الخطوة قبل السماح بتنفيذها.' : 'تُعرض الخطوات والنتائج هنا فور وصولها.',
-                ),
+
               _ptyConsoleCard(),
             ],
             if (_workspaceTab == 0 || _workspaceTab == 1)
