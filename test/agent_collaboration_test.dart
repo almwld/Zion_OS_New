@@ -61,6 +61,7 @@ void main() {
     expect(graph.notes, hasLength(2));
     expect(graph.edges[first.id], [second.id]);
     expect((await vault.search('خطة الوكيل')), hasLength(1));
+    expect(await vault.contextFor('خطة الوكيل'), contains('خطة الوكيل'));
     await vault.delete(second.id);
     expect((await vault.allNotes()), hasLength(1));
   });
