@@ -417,7 +417,6 @@ class MainActivity : FlutterFragmentActivity() {
             "libproot-loader.so",
             "libproot.so",
             "libproot-loader32.so",
-            "libzion_pty.so",
             "libzion_pty.so"
         )
         val libraries = expectedLibraries.distinct().associateWith { name ->
