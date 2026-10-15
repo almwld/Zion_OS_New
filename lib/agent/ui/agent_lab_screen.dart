@@ -206,7 +206,7 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
   ]);
 
   Widget _vaultGraphTab(ColorScheme colors) => ListView(padding: const EdgeInsets.all(16), children: [
-    _introCard(colors, Icons.hub_outlined, 'Obsidian محلي + شبكة تفاعلات الوكلاء', 'دفتر Markdown محلي بروابط [[ويكي]] ووسوم وبحث. الرسم يجمع ملاحظاتك وروابطها وأدوار الوكلاء المسجلة؛ هو مخطط علاقات وتشغيل وليس أوزان شبكة عصبية مدرّبة.'),
+    _introCard(colors, Icons.hub_outlined, 'Obsidian محلي + شبكة تفاعلات الوكلاء', 'دفتر Markdown محلي بروابط [[ويكي]] ووسوم وبحث. الرسم يعرض الملاحظات وروابطها وكل التفاعلات المحفوظة ضمن سجل آخر 400 حدث، مع جلسات التشغيل والأدوار وحالات النجاح والفشل؛ إنه مخطط علاقات وتشغيل وليس أوزان شبكة عصبية مدرّبة.'),
     const SizedBox(height: 14),
     Row(children: [
       Expanded(child: TextField(controller: _search, onChanged: _refreshNotes, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'ابحث في دفتر المعرفة', border: OutlineInputBorder()))),
@@ -353,46 +353,69 @@ class _KnowledgeNetwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final noteNodes = notes.take(16).map((n) => (id: n.id, label: n.title, kind: 'note')).toList();
-    final recentEvents = events.reversed.take(24).toList();
-    final eventActors = recentEvents.map((e) => e.actor).toSet().take(8).toList();
+    final noteNodes = notes.map((n) => (id: n.id, label: n.title, kind: 'note')).toList();
+    // Telemetry is capped at 400 persisted events by the lab. Draw every event
+    // retained in that audit window rather than silently dropping all but 24.
+    final recordedEvents = events.reversed.take(400).toList();
+    final eventActors = recordedEvents.map((e) => e.actor).toSet().toList();
     final agentNodes = eventActors.map((actor) => (id: 'agent:' + actor, label: actor, kind: 'agent')).toList();
-    final runIds = recentEvents.map((e) => e.runId).where((id) => id.isNotEmpty).toSet().take(6).toList();
+    final runIds = recordedEvents.map((e) => e.runId).where((id) => id.isNotEmpty).toSet().toList();
     final runNodes = runIds.map((id) => (
       id: 'run:' + id,
       label: 'جلسة ' + id.substring(id.length > 6 ? id.length - 6 : 0),
       kind: 'run',
     )).toList();
-    final eventNodes = recentEvents.asMap().entries.map((entry) {
+    final eventNodes = recordedEvents.asMap().entries.map((entry) {
       final e = entry.value;
-      return (id: 'event:' + e.id, label: (entry.key + 1).toString() + '. ' + e.actor + ' · ' + e.action, kind: 'event');
+      final state = e.status == CollaborationStatus.completed
+          ? 'OK'
+          : e.status == CollaborationStatus.failed ? 'ERR' : 'WAIT';
+      return (id: 'event:' + e.id, label: '[' + state + '] ' + (entry.key + 1).toString() + '. ' + e.actor + ' · ' + e.action, kind: 'event');
     }).toList();
-    final nodes = [...noteNodes, ...agentNodes, ...runNodes, ...eventNodes];
-    if (nodes.isEmpty) return Container(height: 220, alignment: Alignment.center, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(16)), child: const Text('ستظهر العقد بعد إنشاء الملاحظات أو تشغيل الوكلاء.'));
-    final ids = nodes.map((n) => n.id).toList();
+    final nodes = [...noteNodes, ...runNodes, ...agentNodes, ...eventNodes];
+    if (nodes.isEmpty) {
+      return Container(height: 220, alignment: Alignment.center,
+        decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(16)),
+        child: const Text('ستظهر العقد بعد إنشاء الملاحظات أو تشغيل الوكلاء.'));
+    }
+
+    final ids = nodes.map((n) => n.id).toSet();
     final links = <(String, String)>[];
     for (final entry in edges.entries) {
       for (final target in entry.value) {
         if (ids.contains(entry.key) && ids.contains(target)) links.add((entry.key, target));
       }
     }
-    for (final event in recentEvents) {
+    for (final event in recordedEvents) {
       final eventId = 'event:' + event.id;
       final agentId = 'agent:' + event.actor;
-      if (ids.contains(eventId) && ids.contains(agentId)) links.add((agentId, eventId));
       final runId = 'run:' + event.runId;
+      if (ids.contains(eventId) && ids.contains(agentId)) links.add((agentId, eventId));
       if (ids.contains(eventId) && ids.contains(runId)) links.add((runId, eventId));
     }
-    for (var i = 1; i < recentEvents.length; i++) {
-      final previous = recentEvents[i - 1];
-      final current = recentEvents[i];
-      if (previous.runId == current.runId) links.add(('event:' + previous.id, 'event:' + current.id));
+    for (var i = 1; i < recordedEvents.length; i++) {
+      final previous = recordedEvents[i - 1];
+      final current = recordedEvents[i];
+      if (previous.runId == current.runId) {
+        links.add(('event:' + previous.id, 'event:' + current.id));
+      }
     }
+
+    final rows = math.max(
+      math.max(recordedEvents.length, runNodes.length) * 36.0 + 80,
+      noteNodes.length * 46.0 + 80,
+    );
+    final graphHeight = math.max(330.0, rows);
     return Container(
-      height: 330, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(18), border: Border.all(color: colors.outlineVariant)),
+      height: 330,
+      decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(18), border: Border.all(color: colors.outlineVariant)),
       child: ClipRRect(borderRadius: BorderRadius.circular(18), child: InteractiveViewer(
-        minScale: .6, maxScale: 3, boundaryMargin: const EdgeInsets.all(60),
-        child: CustomPaint(size: const Size(620, 330), painter: _NetworkPainter(nodes: nodes, links: links, colors: colors)),
+        constrained: false,
+        minScale: .35, maxScale: 2.5, boundaryMargin: const EdgeInsets.all(80),
+        child: CustomPaint(
+          size: Size(940, graphHeight),
+          painter: _NetworkPainter(nodes: nodes, links: links, colors: colors),
+        ),
       )),
     );
   }
@@ -407,38 +430,60 @@ class _NetworkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final positions = <String, Offset>{};
-    final center = Offset(size.width / 2, size.height / 2);
-    for (var i = 0; i < nodes.length; i++) {
-      final angle = (2 * math.pi * i / nodes.length) - math.pi / 2;
-      final radius = math.min(size.width * .40, size.height * .40);
-      positions[nodes[i].id] = center + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
+    var noteIndex = 0, runIndex = 0, agentIndex = 0, eventIndex = 0;
+    for (final node in nodes) {
+      late final Offset position;
+      switch (node.kind) {
+        case 'note':
+          position = Offset(90, 42 + noteIndex * 46.0);
+          noteIndex++;
+          break;
+        case 'run':
+          position = Offset(300, 42 + runIndex * 36.0);
+          runIndex++;
+          break;
+        case 'agent':
+          position = Offset(510, 70 + agentIndex * 130.0);
+          agentIndex++;
+          break;
+        default:
+          position = Offset(760, 42 + eventIndex * 36.0);
+          eventIndex++;
+      }
+      positions[node.id] = position;
     }
-    final line = Paint()..color = colors.primary.withOpacity(.34)..strokeWidth = 1.4;
+
+    final line = Paint()..color = colors.primary.withOpacity(.34)..strokeWidth = 1.25;
     for (final link in links) {
       final a = positions[link.$1], b = positions[link.$2];
       if (a != null && b != null) {
         canvas.drawLine(a, b, line);
-        final direction = (b - a);
-        final tip = a + direction * .62;
-        canvas.drawCircle(tip, 2.2, Paint()..color = colors.primary);
+        canvas.drawCircle(Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2), 1.8, Paint()..color = colors.primary);
       }
     }
-    for (var i = 0; i < nodes.length; i++) {
-      final node = nodes[i], p = positions[node.id]!;
+
+    for (final node in nodes) {
+      final p = positions[node.id]!;
       final isAgent = node.kind == 'agent';
-      final isEvent = node.kind == 'event';
       final isRun = node.kind == 'run';
-      final radius = isAgent ? 18.0 : isRun ? 13.0 : isEvent ? 8.0 : 15.0;
-      final nodeColor = isAgent ? colors.tertiary : (isEvent || isRun) ? colors.secondary : colors.primary;
-      final fillColor = isAgent ? colors.tertiaryContainer : (isEvent || isRun) ? colors.secondaryContainer : colors.primaryContainer;
-      final textColor = isAgent ? colors.onTertiaryContainer : (isEvent || isRun) ? colors.onSecondaryContainer : colors.onPrimaryContainer;
-      canvas.drawCircle(p, radius + 5, Paint()..color = nodeColor.withOpacity(.09));
+      final isEvent = node.kind == 'event';
+      final failed = isEvent && node.label.startsWith('[ERR]');
+      final radius = isAgent ? 17.0 : isRun ? 12.0 : isEvent ? 7.0 : 12.0;
+      final nodeColor = failed ? colors.error : isAgent ? colors.tertiary : isRun ? colors.secondary : colors.primary;
+      final fillColor = failed ? colors.errorContainer : isAgent ? colors.tertiaryContainer : isRun ? colors.secondaryContainer : colors.primaryContainer;
+      final textColor = failed ? colors.onErrorContainer : isAgent ? colors.onTertiaryContainer : isRun ? colors.onSecondaryContainer : colors.onPrimaryContainer;
+      canvas.drawCircle(p, radius + 4, Paint()..color = nodeColor.withOpacity(.09));
       canvas.drawCircle(p, radius, Paint()..color = fillColor);
-      final label = node.label.length > 15 ? node.label.substring(0, 14) + '…' : node.label;
-      final text = TextPainter(text: TextSpan(text: label,
-        style: TextStyle(color: textColor, fontSize: isEvent ? 7 : 9, fontWeight: FontWeight.w600)),
-        textDirection: TextDirection.rtl, maxLines: 1, textAlign: TextAlign.center)..layout(maxWidth: 100);
-      text.paint(canvas, Offset(p.dx - text.width / 2, p.dy + radius + 5));
+      final label = node.label.length > 23 ? node.label.substring(0, 22) + '…' : node.label;
+      final text = TextPainter(
+        text: TextSpan(text: label, style: TextStyle(
+          color: textColor, fontSize: isEvent ? 7 : 9, fontWeight: FontWeight.w600,
+        )),
+        textDirection: TextDirection.rtl,
+        maxLines: 1,
+        textAlign: TextAlign.center,
+      )..layout(maxWidth: isEvent ? 160 : 180);
+      text.paint(canvas, Offset(p.dx - text.width / 2, p.dy + radius + 3));
     }
   }
 
