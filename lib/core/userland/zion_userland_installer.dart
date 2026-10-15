@@ -273,9 +273,11 @@ class ZionUserlandInstaller {
       );
     }
 
+    final directFailureText = directBackupFailure ?? 'غير متاحة';
+    final archiveFailureText = localArchiveFailure ?? 'غير متاح أو لم يُعثر عليه';
     return ZionUserlandInstallResult(
       success: false,
-      message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: ${directBackupFailure ?? 'غير متاحة'}؛ الأرشيف المحلي: ${localArchiveFailure ?? 'غير متاح أو لم يُعثر عليه'}؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
+      message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: $directFailureText؛ الأرشيف المحلي: $archiveFailureText؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
     );
   }
 
