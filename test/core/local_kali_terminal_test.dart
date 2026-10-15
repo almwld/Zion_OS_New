@@ -19,6 +19,16 @@ void main() {
       expect(native, contains('validRootfs(rootfs)'));
     });
 
+    test('Super Agent auto-imports the verified local archive when Kali is requested', () async {
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      expect(service, contains("import '../../core/userland/local_kali_bootstrap.dart';"));
+      expect(service, contains('const ZionLocalKaliBootstrap()'));
+      expect(service, contains('kaliBootstrap.findLocalPackage()'));
+      expect(service, contains('kaliBootstrap.install('));
+      expect(service, contains('Local archive found; installing into the separate Kali rootfs'));
+      expect(service, contains("const installedRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs'"));
+    });
+
     test('terminal launches selected local rootfs through native PTY without copying it', () async {
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
       final screen = await File('lib/features/terminal/terminal_screen.dart').readAsString();
