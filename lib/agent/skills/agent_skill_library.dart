@@ -206,6 +206,14 @@ class AgentSkillLibrary {
       if (skill.description.trim().isEmpty || skill.keywords.isEmpty) {
         issues.add('Incomplete community skill metadata: ${skill.name}');
       }
+      // Validate the actual offline payload, not just the catalog pointer.
+      // This catches a stale or partially copied 1,283-skill corpus before release.
+      try {
+        final source = await _bundle.loadString(skill.asset);
+        if (source.trim().isEmpty) issues.add('Empty community skill asset: ${skill.asset}');
+      } catch (_) {
+        issues.add('Missing community skill asset: ${skill.asset}');
+      }
     }
     return issues;
   }
@@ -236,6 +244,9 @@ class AgentSkillLibrary {
     // receive no skill context rather than a misleading arbitrary fallback.
     return relevant;
   }
+
+  /// Number of bundled built-in and community skills available offline.
+  Future<int> get totalSkillCount async => (await _allDefinitions()).length;
 
   /// Ranks every bundled skill, including the complete generated community index.
   /// Returns no unrelated fallback skills for an unmatched request.
