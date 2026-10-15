@@ -675,6 +675,19 @@ class TerminalService {
   }
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
+    // Always emit on-device Bash diagnostics before any Userland discovery,
+    // installation, Kali validation, or Android-shell fallback. This is
+    // intentionally best-effort: diagnostics must never prevent the terminal
+    // from starting when Userland is missing or broken.
+    try {
+      await diagnoseBashExecution();
+    } catch (error, stackTrace) {
+      final message = '[DIAG] diagnosis crashed: $error';
+      print(message);
+      _emitOutput('$message\\r\\n');
+      print(stackTrace);
+    }
+
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
     if (isInteractiveRunning && kaliRootfsPath != null && _interactiveShell == 'zion-kali@$kaliRootfsPath') return true;
     if (isInteractiveRunning) {
