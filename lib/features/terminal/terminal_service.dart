@@ -441,67 +441,30 @@ class TerminalService {
     required String shell,
   }) async {
     final started = DateTime.now();
-    Process? process;
-    try {
-      process = await Process.start(
-        shell,
-        <String>['-c', command],
-        runInShell: false,
-        environment: _environmentFor(shell),
-      );
-      final stdoutFuture = process.stdout.transform(utf8.decoder).join();
-      final stderrFuture = process.stderr.transform(utf8.decoder).join();
-      final exitCode = await process.exitCode.timeout(
-        _commandTimeout,
-        onTimeout: () {
-          process?.kill(ProcessSignal.sigterm);
-          return 124;
-        },
-      );
-      if (exitCode == 124) {
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-        if (process != null) {
-          process.kill(ProcessSignal.sigkill);
-        }
-      }
-      final result = TerminalResult(
-        command: command,
-        stdout: await stdoutFuture,
-        stderr: exitCode == 124
-            ? '${await stderrFuture}\nCommand timed out after ${_commandTimeout.inSeconds}s and the process was terminated.'
-            : await stderrFuture,
-        exitCode: exitCode,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
-      _audit(
-        command: command,
-        outcome: exitCode == 0 ? 'success' : (exitCode == 124 ? 'timeout' : 'failed'),
-        exitCode: exitCode,
-        shell: shell,
-        duration: result.duration,
-        interactive: false,
-      );
-      return result;
-    } on ProcessException catch (e) {
-      final result = TerminalResult(
-        command: command,
-        stdout: '',
-        stderr: e.message,
-        exitCode: e.errorCode ?? 126,
-        duration: DateTime.now().difference(started),
-        shell: shell,
-      );
-      _audit(
-        command: command,
-        outcome: 'process-error',
-        exitCode: result.exitCode,
-        shell: shell,
-        duration: result.duration,
-        interactive: false,
-      );
-      return result;
-    }
+    final result = await _pty.runCommand(
+      command: command,
+      shell: shell,
+      timeout: _commandTimeout,
+    );
+    final terminalResult = TerminalResult(
+      command: command,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      duration: DateTime.now().difference(started),
+      shell: shell,
+    );
+    _audit(
+      command: command,
+      outcome: terminalResult.exitCode == 0
+          ? 'success'
+          : (terminalResult.exitCode == 124 ? 'timeout' : 'failed'),
+      exitCode: terminalResult.exitCode,
+      shell: shell,
+      duration: terminalResult.duration,
+      interactive: false,
+    );
+    return terminalResult;
   }
 
   Future<TerminalResult> execute(String command) async {
