@@ -290,6 +290,7 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "available" -> result.success(nativePtyAvailable())
+                    "inspectRuntime" -> result.success(inspectTermuxRuntime())
                     "start" -> {
                         val rows = (call.argument<Int>("rows") ?: 24).coerceIn(8, 100)
                         val cols = (call.argument<Int>("cols") ?: 80).coerceIn(20, 240)
@@ -403,6 +404,50 @@ class MainActivity : FlutterFragmentActivity() {
         if (!bashrc.exists()) bashrc.writeText(profile.readText())
         return home to prefix
     }
+    /**
+     * Reports what is actually installed in this APK/runtime without loading
+     * or executing third-party binaries. Termux bootstrap is packaged as a
+     * native-library payload, so its presence is checked in nativeLibraryDir.
+     */
+    private fun inspectTermuxRuntime(): Map<String, Any?> {
+        val nativeDir = File(applicationInfo.nativeLibraryDir)
+        val expectedLibraries = listOf(
+            "libtermux.so",
+            "libtermux-bootstrap.so",
+            "libproot-loader.so",
+            "libproot.so",
+            "libproot-loader32.so",
+            "libzion_pty.so",
+            "libzion_pty.so"
+        )
+        val libraries = expectedLibraries.distinct().associateWith { name ->
+            val file = File(nativeDir, name)
+            mapOf("present" to file.isFile, "sizeBytes" to if (file.isFile) file.length() else 0L)
+        }
+        val prefix = File(filesDir, "usr")
+        val bash = File(prefix, "bin/bash")
+        val bin = File(prefix, "bin")
+        val localBundle = File("/storage/emulated/0/ZionUniversal")
+        val localEntries = try {
+            if (localBundle.isDirectory) localBundle.list()?.take(40) ?: emptyList() else emptyList()
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        return mapOf(
+            "nativeLibraryDir" to nativeDir.absolutePath,
+            "libraries" to libraries,
+            "prefix" to prefix.absolutePath,
+            "prefixExists" to prefix.isDirectory,
+            "binExists" to bin.isDirectory,
+            "binEntryCount" to (try { bin.list()?.size ?: 0 } catch (_: Throwable) { -1 }),
+            "bashExists" to bash.isFile,
+            "bashSizeBytes" to if (bash.isFile) bash.length() else 0L,
+            "localBundlePath" to localBundle.absolutePath,
+            "localBundleExists" to localBundle.isDirectory,
+            "localBundleEntries" to localEntries
+        )
+    }
+
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
         synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
 
