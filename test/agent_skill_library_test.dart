@@ -60,6 +60,23 @@ void main() {
     );
   });
 
+  test('complete offline community corpus is ranked and loaded by the planner', () async {
+    final library = AgentSkillLibrary();
+    expect(await library.totalSkillCount, greaterThanOrEqualTo(1300));
+
+    final ranked = await library.rankAll('a11y-audit WCAG accessibility');
+    expect(ranked.map((skill) => skill.name), contains('a11y-audit'));
+
+    final context = await library.contextFor(
+      'a11y-audit WCAG accessibility',
+      maxSkills: 1,
+      maxCharsPerSkill: 1200,
+      maxTotalChars: 1500,
+    );
+    expect(context, contains('a11y-audit'));
+    expect(context.toLowerCase(), contains('accessibility'));
+  });
+
   test('context loads a relevant bundled skill within configured budget', () async {
     final context = await AgentSkillLibrary().contextFor(
       'debug a build failure',
