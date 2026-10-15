@@ -151,7 +151,7 @@ class _AgentScreenState extends State<AgentScreen> {
     try {
       final models = await _runtime.orchestrator.ai.discoverModels();
       final candidates = models
-          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 2 * 1024 * 1024 * 1024)
+          .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 4 * 1024 * 1024 * 1024)
           .toList()
         ..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
       final nativeReady = await _runtime.orchestrator.ai.refreshLoadedState();
@@ -166,7 +166,7 @@ class _AgentScreenState extends State<AgentScreen> {
             : _candidateModel == null
                 ? (models.isEmpty
                     ? 'لا يوجد نموذج GGUF قابل للتحميل. استورد نموذجاً للبدء.'
-                    : 'النماذج الموجودة أكبر من حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.')
+                    : 'لم يُعثر على نموذج GGUF ضمن الحد الافتراضي 4 GiB. يمكنك استيراد النموذج يدوياً.')
                 : 'تم العثور على ${_candidateModel!.name}. اضغط تحميل النموذج عند الاستعداد.';
       });
     } catch (e) {
@@ -199,8 +199,8 @@ class _AgentScreenState extends State<AgentScreen> {
         if (mounted) setState(() => _modelStatus = 'لم يتم العثور على نموذج. استخدم استيراد GGUF.');
         return;
       }
-      if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
-        if (mounted) setState(() => _modelStatus = 'حجم النموذج يتجاوز حد الذاكرة الآمن (2 GiB). اختر نموذجاً أصغر.');
+      if (model.sizeBytes <= 0) {
+        if (mounted) setState(() => _modelStatus = 'تعذر قراءة حجم ملف GGUF. أعد استيراد النموذج.');
         return;
       }
       final ok = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
@@ -280,21 +280,25 @@ Engineering loop:
     }
     setState(() => _submitting = true);
     try {
-      final result = await _runtime.run(
+      final ai = _runtime.orchestrator.ai;
+      if (!await ai.refreshLoadedState()) {
+        throw StateError('النموذج المحلي غير محمّل؛ حمّل GGUF أولاً ثم أعد المحاولة.');
+      }
+      // Collaboration roles are model prompts, not system/tool tasks. Routing
+      // them through AgentRuntime caused its task verifier to reject ordinary
+      // analysis text and mark the whole collaboration as failed.
+      final response = await ai.generate(
         prompt,
-        approveReviewed: false,
-        stepTimeout: const Duration(minutes: 8),
-        maxRecoveryAttempts: 3,
-      );
-      if (!result.success) {
-        throw StateError(result.error ?? 'فشل الوكيل المحلي في إكمال الدور.');
-      }
-      final text = (result.report ?? '').trim();
-      if (text.isNotEmpty) return text;
-      if (result.steps.isNotEmpty) {
-        return result.steps.map((step) => step.summary).join('\\n');
-      }
-      return 'اكتملت المهمة دون تقرير نصي.';
+        maxTokens: 768,
+        temperature: 0.25,
+      ).timeout(const Duration(minutes: 8));
+      final text = response.trim();
+      if (text.isEmpty) throw StateError('عاد النموذج برد فارغ لهذا الدور.');
+      if (text.startsWith('ERROR:')) throw StateError(text);
+      return text;
+    } on TimeoutException {
+      await _runtime.orchestrator.ai.cancelGeneration();
+      throw StateError('انتهت مهلة استجابة النموذج بعد 8 دقائق؛ تم طلب إيقاف التوليد.');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
