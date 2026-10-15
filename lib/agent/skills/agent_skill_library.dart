@@ -9,12 +9,20 @@ class AgentSkillDefinition {
   final String asset;
   final String description;
   final List<String> keywords;
+  final String license;
+  final String source;
+  final String upstreamPath;
+  final String displayName;
 
   const AgentSkillDefinition({
     required this.name,
     required this.asset,
     required this.description,
     required this.keywords,
+    this.license = '',
+    this.source = '',
+    this.upstreamPath = '',
+    this.displayName = '',
   });
 }
 
@@ -140,6 +148,39 @@ class AgentSkillLibrary {
   Future<List<AgentSkillDefinition>> _allDefinitions() =>
       _allDefinitionsFuture ??= _loadAllDefinitions();
 
+  /// Returns the complete offline catalog (built-in and community skills).
+  /// The returned records include provenance and license metadata where the
+  /// upstream catalog provides it; this does not imply permission to execute.
+  Future<List<AgentSkillDefinition>> allSkills() async =>
+      List<AgentSkillDefinition>.unmodifiable(await _allDefinitions());
+
+  /// Loads the complete original Markdown for one indexed skill on demand.
+  /// Unlike contextFor, this method never truncates the source document.
+  /// Skill documents remain inert instructions and are never executed here.
+  Future<String?> loadFullSkill(String name) async {
+    final needle = _normalize(name);
+    if (needle.isEmpty) return null;
+    AgentSkillDefinition? match;
+    for (final skill in await _allDefinitions()) {
+      if (_normalize(skill.name) == needle ||
+          (skill.displayName.isNotEmpty &&
+              _normalize(skill.displayName) == needle)) {
+        match = skill;
+        break;
+      }
+    }
+    if (match == null ||
+        !match.asset.startsWith('assets/agent_skills/')) {
+      return null;
+    }
+    try {
+      final source = await _bundle.loadString(match.asset);
+      return source.trim().isEmpty ? null : source;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<AgentSkillDefinition>> _loadAllDefinitions() async {
     final all = <AgentSkillDefinition>[...definitions];
     final knownNames = definitions.map((skill) => skill.name).toSet();
@@ -154,7 +195,17 @@ class AgentSkillLibrary {
           final description = raw['description']?.toString().trim() ?? '';
           final asset = raw['asset']?.toString().trim() ?? '';
           final keywordText = raw['keywords']?.toString() ?? '';
+          final license = raw['license']?.toString().trim() ?? '';
+          final source = raw['source']?.toString().trim() ?? '';
+          final upstreamPath = raw['upstream_path']?.toString().trim() ?? '';
+          final displayName = raw['display_name']?.toString().trim() ?? name;
           if (name.isEmpty || description.isEmpty || asset.isEmpty || knownNames.contains(name)) {
+            continue;
+          }
+          // Community entries must remain in the vendored directory.
+          if (!asset.startsWith('assets/agent_skills/community/') ||
+              asset.contains('..') ||
+              !asset.endsWith('.md')) {
             continue;
           }
           final keywords = keywordText
@@ -169,6 +220,10 @@ class AgentSkillLibrary {
             asset: asset,
             description: description,
             keywords: keywords,
+            license: license,
+            source: source,
+            upstreamPath: upstreamPath,
+            displayName: displayName,
           ));
           knownNames.add(name);
         }
@@ -203,8 +258,20 @@ class AgentSkillLibrary {
     for (final skill in all.skip(definitions.length)) {
       if (!names.add(skill.name)) issues.add('Duplicate community skill name: ${skill.name}');
       if (!assets.add(skill.asset)) issues.add('Duplicate community skill asset: ${skill.asset}');
-      if (skill.description.trim().isEmpty || skill.keywords.isEmpty) {
+      if (skill.description.trim().isEmpty ||
+          skill.keywords.isEmpty ||
+          skill.license.trim().isEmpty ||
+          skill.source.trim().isEmpty ||
+          skill.upstreamPath.trim().isEmpty) {
         issues.add('Incomplete community skill metadata: ${skill.name}');
+      }
+      try {
+        final source = await _bundle.loadString(skill.asset);
+        if (source.trim().isEmpty) {
+          issues.add('Empty community skill asset: ${skill.asset}');
+        }
+      } catch (_) {
+        issues.add('Missing community skill asset: ${skill.asset}');
       }
     }
     return issues;
