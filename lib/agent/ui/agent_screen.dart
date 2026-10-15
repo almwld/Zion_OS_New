@@ -218,7 +218,7 @@ class _AgentScreenState extends State<AgentScreen> {
         if (mounted) setState(() => _modelStatus = 'تعذر قراءة حجم ملف GGUF. أعد استيراد النموذج.');
         return;
       }
-      final ok = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
+      final ok = await _runtime.orchestrator.ai.loadModel(model.path, threads: 4);
       if (mounted) setState(() {
         _modelReady = ok;
         _modelName = ok ? model!.name : null;
