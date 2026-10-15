@@ -684,7 +684,7 @@ class TerminalService {
     } catch (error, stackTrace) {
       final message = '[DIAG] diagnosis crashed: $error';
       print(message);
-      _emitOutput('$message\\r\\n');
+      _emitOutput('$message\r\n');
       print(stackTrace);
     }
 
