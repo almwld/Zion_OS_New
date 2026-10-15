@@ -177,6 +177,11 @@ class TerminalService {
           return path;
         }
         _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+        if (name == 'bash') {
+          await diagnoseBashExecution(
+            launchError: 'Process.run returned exit ${result.exitCode}; stdout=${result.stdout}; stderr=${result.stderr}',
+          );
+        }
       } catch (error) {
         _emitOutput('[Userland] Cannot execute $path: $error\r\n');
         if (name == 'bash') {
