@@ -321,7 +321,7 @@ class _NeuralMapPainter extends CustomPainter {
       canvas.drawCircle(node, 19, fill);
       canvas.drawCircle(node, 19, border);
       final tp = TextPainter(text: TextSpan(text: labels[i], style: TextStyle(color: Colors.white, fontSize: size.width < 350 ? 9 : 10, fontWeight: FontWeight.w600)), textDirection: TextDirection.ltr, textAlign: TextAlign.center)..layout(maxWidth: size.width * .32);
-      tp.paint(canvas, Offset((node.dx - tp.width / 2).clamp(0, size.width - tp.width), node.dy + 24));
+      tp.paint(canvas, Offset((node.dx - tp.width / 2).clamp(0.0, size.width - tp.width).toDouble(), node.dy + 24));
     }
   }
   @override bool shouldRepaint(covariant _NeuralMapPainter old) => activity != old.activity || hasResult != old.hasResult || hasFailure != old.hasFailure || waiting != old.waiting;
