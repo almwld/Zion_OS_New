@@ -21,6 +21,12 @@ class AgentSkillLibrary {
 
   final AssetBundle _bundle;
 
+  static String _normalize(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\\u064B-\\u065F\\u0670\\u0640]'), '')
+      .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
+      .replaceAll('ى', 'ي');
+
   static const List<AgentSkillDefinition> definitions = [
     AgentSkillDefinition(
       name: 'systematic-debugging',
@@ -78,12 +84,18 @@ class AgentSkillLibrary {
     AgentSkillDefinition(name: 'git-safe-recovery', asset: 'assets/agent_skills/git-safe-recovery.md', description: 'Recover repository work without discarding user changes.', keywords: ['git recovery', 'lost changes', 'git conflict', 'reflog', 'restore branch', 'working tree', 'استعادة جيت', 'تغييرات مفقودة', 'تعارض جيت', 'سجل جيت', 'حالة المستودع']),
   ];
 
-  List<AgentSkillDefinition> rank(String task) {
-    final normalized = task.toLowerCase();
+  List<AgentSkillDefinition> rank(
+    String task, {
+    Iterable<String> hints = const [],
+  }) {
+    final normalized = _normalize('$task ${hints.join(' ')}');
     final ranked = definitions.map((skill) {
       var score = 0;
       for (final keyword in skill.keywords) {
-        if (normalized.contains(keyword)) score += keyword.contains(' ') ? 3 : 2;
+        final normalizedKeyword = _normalize(keyword.trim());
+        if (normalizedKeyword.isNotEmpty && normalized.contains(normalizedKeyword)) {
+          score += normalizedKeyword.contains(' ') ? 5 : 3;
+        }
       }
       return (skill: skill, score: score);
     }).toList()
@@ -94,8 +106,9 @@ class AgentSkillLibrary {
       });
 
     final relevant = ranked.where((entry) => entry.score > 0).map((entry) => entry.skill).toList();
-    if (relevant.isNotEmpty) return relevant;
-    return ranked.take(3).map((entry) => entry.skill).toList();
+    // Never inject unrelated skills for an unknown task. The planner should
+    // receive no skill context rather than a misleading arbitrary fallback.
+    return relevant;
   }
 
   Future<String> contextFor(
@@ -103,6 +116,7 @@ class AgentSkillLibrary {
     int maxSkills = 2,
     int maxCharsPerSkill = 900,
     int maxTotalChars = 2400,
+    Iterable<String> hints = const [],
   }) async {
     if (task.trim().isEmpty || maxSkills < 1 || maxCharsPerSkill < 1 || maxTotalChars < 1) {
       return '';
@@ -112,7 +126,7 @@ class AgentSkillLibrary {
       'Relevant Agent Skills (guidance only; actual tool outputs and runtime policy are authoritative):\n',
     );
     var added = 0;
-    for (final skill in rank(task).take(maxSkills)) {
+    for (final skill in rank(task, hints: hints).take(maxSkills)) {
       String source;
       try {
         source = await _bundle.loadString(skill.asset);
