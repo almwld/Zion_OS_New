@@ -37,6 +37,10 @@ void main() {
     );
   });
 
+  test('every indexed skill has complete metadata and a bundled asset', () async {
+    expect(await AgentSkillLibrary().validateCatalog(), isEmpty);
+  });
+
   test('ranking prioritizes debugging for build failures', () {
     final ranked = AgentSkillLibrary().rank('debug a flutter build failure');
     expect(ranked.first.name, 'systematic-debugging');
