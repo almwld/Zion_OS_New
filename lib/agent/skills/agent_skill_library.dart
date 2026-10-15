@@ -58,6 +58,15 @@ class AgentSkillLibrary {
       description: 'Execute incrementally with observed outputs and model-led recovery.',
       keywords: ['execute', 'execution', 'recover', 'retry', 'terminal', 'shell', 'runtime', 'kali', 'userland', 'rootfs'],
     ),
+    AgentSkillDefinition(name: 'diagnosing-superpowers', asset: 'assets/agent_skills/diagnosing-superpowers.md', description: 'Diagnose skill discovery and invocation problems.', keywords: ['skill', 'skills', 'discovery', 'invoke', 'catalog']),
+    AgentSkillDefinition(name: 'dispatching-parallel-agents', asset: 'assets/agent_skills/dispatching-parallel-agents.md', description: 'Decompose independent work into parallelizable subtasks.', keywords: ['parallel', 'concurrent', 'independent tasks', 'subtasks']),
+    AgentSkillDefinition(name: 'finishing-a-development-branch', asset: 'assets/agent_skills/finishing-a-development-branch.md', description: 'Verify branch state and prepare a clean delivery.', keywords: ['branch', 'pull request', 'merge', 'commit', 'finish', 'release']),
+    AgentSkillDefinition(name: 'receiving-code-review', asset: 'assets/agent_skills/receiving-code-review.md', description: 'Evaluate review feedback against evidence and requirements.', keywords: ['review feedback', 'review comment', 'code review', 'critique']),
+    AgentSkillDefinition(name: 'requesting-code-review', asset: 'assets/agent_skills/requesting-code-review.md', description: 'Check changes against correctness and quality criteria.', keywords: ['code review', 'review changes', 'quality', 'diff']),
+    AgentSkillDefinition(name: 'subagent-driven-development', asset: 'assets/agent_skills/subagent-driven-development.md', description: 'Structure delegated work with explicit contracts and checks.', keywords: ['subagent', 'delegate', 'delegation', 'parallel implementation']),
+    AgentSkillDefinition(name: 'using-git-worktrees', asset: 'assets/agent_skills/using-git-worktrees.md', description: 'Isolate concurrent repository work safely.', keywords: ['worktree', 'git worktree', 'parallel branch', 'isolate branch']),
+    AgentSkillDefinition(name: 'using-superpowers', asset: 'assets/agent_skills/using-superpowers.md', description: 'Discover relevant workflow skills before work.', keywords: ['skill workflow', 'use skills', 'agent skill']),
+    AgentSkillDefinition(name: 'writing-skills', asset: 'assets/agent_skills/writing-skills.md', description: 'Author and validate reusable agent skill documents.', keywords: ['write skill', 'create skill', 'skill authoring', 'skill testing']),
   ];
 
   List<AgentSkillDefinition> rank(String task) {
