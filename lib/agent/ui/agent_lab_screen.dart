@@ -347,9 +347,14 @@ class _KnowledgeNetwork extends StatelessWidget {
         if (ids.contains(entry.key) && ids.contains(target)) links.add((entry.key, target));
       }
     }
-    for (final event in events.reversed.take(20)) {
-      final id = 'agent:${event.actor}';
-      if (ids.contains(id) && noteNodes.isNotEmpty) links.add((id, noteNodes[event.runId.hashCode.abs() % noteNodes.length].id));
+    final recentEvents = events.reversed.take(30).toList();
+    for (var i = 1; i < recentEvents.length; i++) {
+      final previous = recentEvents[i - 1];
+      final current = recentEvents[i];
+      if (previous.runId != current.runId) continue;
+      final from = 'agent:' + previous.actor;
+      final to = 'agent:' + current.actor;
+      if (from != to && ids.contains(from) && ids.contains(to)) links.add((from, to));
     }
     return Container(
       height: 330, decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(18), border: Border.all(color: colors.outlineVariant)),
