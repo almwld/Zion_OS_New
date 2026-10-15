@@ -21,7 +21,7 @@ FLAT = DEST / "community"
 CATALOG = DEST / "community_catalog.json"
 BUNDLE = DEST / "community_bundle.zip"
 UPSTREAM = "https://github.com/hummbl-io/agent-skills.git"
-MIN_SKILLS = 1000
+MIN_SKILLS = 1000  # Fail closed if the upstream corpus is unexpectedly truncated.
 
 
 def run(*args: str, cwd: Path | None = None) -> str:
