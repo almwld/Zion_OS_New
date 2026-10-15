@@ -16,8 +16,6 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_aiChannel, (call) async {
       switch (call.method) {
-        case 'loadModel':
-          return true;
         case 'isLoaded':
           return true;
         case 'generate':
@@ -29,8 +27,10 @@ void main() {
       }
     });
 
+    // Simulate the model being loaded by the Offline AI screen through a
+    // different LlamaService instance: the native model is ready, while this
+    // service's local isLoaded flag starts false.
     final ai = LlamaService();
-    expect(await ai.loadModel('/test/Qwen2.5-0.5B-Instruct-heretic-Q4_K_M.gguf'), isTrue);
     final orchestrator = AgentOrchestrator(
       ai: ai,
       tools: ToolRegistry(customTools: [_CountingTool(() => toolExecutions++)]),
