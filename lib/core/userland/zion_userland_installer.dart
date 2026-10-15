@@ -20,32 +20,35 @@ class ZionUserlandInstaller {
   static const _stateFilePath = '/data/data/com.zion.os/.userland_state.json';
   static Future<ZionUserlandInstallResult>? _installFuture;
 
-  /// The on-disk marker is authoritative across app restarts and new tabs.
-  /// Never gate this check on the process-local cache: Dart statics reset when
-  /// the app process is recreated, while /files/usr is the shared system Userland.
-  /// A healthy marked installation must not be probed by launching Bash or copied
-  /// again just because a new TerminalService was created.
+  /// The state marker is a cache, not proof that the copied binaries still run.
+  /// Every new terminal session must validate Bash itself. If Android reports
+  /// Permission denied or a missing shared library, invalidate the stale marker
+  /// so installLatest() recopies the local backup instead of incorrectly skipping it.
   Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
     final bashFile = File(bashPath);
     final stateFile = File(_stateFilePath);
+    var stateIsValid = false;
 
     try {
-      if (await bashFile.exists() && await stateFile.exists()) {
+      if (await stateFile.exists()) {
         final state = jsonDecode(await stateFile.readAsString());
-        if (state is Map &&
+        stateIsValid = state is Map &&
             state['installed'] == true &&
-            state['bashPath'] == bashPath) {
-          return true;
-        }
+            state['bashPath'] == bashPath;
       }
     } catch (_) {
-      // A corrupt/missing marker is handled as a one-time legacy migration
-      // below. It must never invalidate or recopy a working marked install.
+      // A corrupt marker is rebuilt only after the actual shell passes.
+    }
+
+    if (!await bashFile.exists()) {
+      if (await stateFile.exists()) {
+        try { await stateFile.delete(); } catch (_) {}
+      }
+      return false;
     }
 
     try {
-      if (!await bashFile.exists()) return false;
       final result = await Process.run(
         bashPath,
         const <String>['-c', 'printf ZION_USERLAND_BASH_OK'],
@@ -62,34 +65,38 @@ class ZionUserlandInstaller {
           'LC_ALL': 'C.UTF-8',
         },
       ).timeout(const Duration(seconds: 4));
-      if (result.exitCode != 0 || !result.stdout.toString().contains('ZION_USERLAND_BASH_OK')) return false;
-
-      final stateFile = File(_stateFilePath);
-      var stateIsValid = false;
-      if (await stateFile.exists()) {
-        try {
-          final state = jsonDecode(await stateFile.readAsString());
-          stateIsValid = state is Map && state['installed'] == true && state['bashPath'] == bashPath;
-        } catch (_) {
-          // Rebuild a corrupt marker below; do not recopy a working Userland.
+      if (result.exitCode != 0 ||
+          !result.stdout.toString().contains('ZION_USERLAND_BASH_OK')) {
+        onProgress?.call(
+          '[Userland] Bash exists but failed its runtime check (exit ${result.exitCode}); invalidating state so the local backup is recopied.',
+        );
+        if (await stateFile.exists()) {
+          try { await stateFile.delete(); } catch (_) {}
         }
+        return false;
       }
-      if (!stateIsValid) {
-        // A Bash that predates the marker may be a partially repaired restore.
-        // Repair it in place and restore command links; never recopy 1.4 GB just
-        // because the marker is absent or corrupt.
-        onProgress?.call('[Userland] Existing Bash found; repairing permissions without recopy...');
-        await _repairPermissions(Directory(ZionBootstrap.prefix));
-        onProgress?.call('[Userland] Creating symlinks...');
-        await _recreateCoreutilsSymlinks('${ZionBootstrap.prefix}/bin');
-        await _createOtherSymlinks('${ZionBootstrap.prefix}/bin');
-        await ZionBootstrap.initializeRuntime();
-        if (!await _hasCompatibleShell()) return false;
-        await _writeState(source: 'existing-userland', sizeBytes: 0);
-      }
+
+      // A marked install that passes the real execution probe is healthy; do
+      // not recopy the large Userland tree on every new tab.
+      if (stateIsValid) return true;
+
+      // Legacy or unmarked but executable Bash: repair metadata in place.
+      // Never recopy a working Userland merely because its marker is absent.
+      onProgress?.call('[Userland] Existing Bash runs; repairing permissions and state without recopy...');
+      await _repairPermissions(Directory(ZionBootstrap.prefix));
+      onProgress?.call('[Userland] Creating symlinks...');
+      await _recreateCoreutilsSymlinks('${ZionBootstrap.prefix}/bin');
+      await _createOtherSymlinks('${ZionBootstrap.prefix}/bin');
+      await ZionBootstrap.initializeRuntime();
+      if (!await _hasCompatibleShell()) return false;
+      await _writeState(source: 'existing-userland', sizeBytes: 0);
       return true;
     } catch (e) {
       print('[Userland] installed check failed: $e');
+      onProgress?.call('[Userland] Bash runtime probe failed ($e); clearing stale state so the local backup can be recopied.');
+      if (await stateFile.exists()) {
+        try { await stateFile.delete(); } catch (_) {}
+      }
       return false;
     }
   }
