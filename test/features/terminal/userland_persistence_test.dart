@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('Zion Userland persistence', () {
-    test('durable marker is checked before launching Bash', () async {
+    test('durable marker is validated by actually launching Bash', () async {
       final source = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final start = source.indexOf('Future<bool> isInstalled({void Function(String message)? onProgress})');
       final end = source.indexOf('Future<void> _writeState(', start);
@@ -15,6 +15,10 @@ void main() {
       expect(method, contains("state['installed'] == true"));
       expect(method, contains("state['bashPath'] == bashPath"));
       expect(method.indexOf('await stateFile.exists()'), lessThan(method.indexOf('Process.run(')));
+      expect(method, contains('if (stateIsValid) return true;'));
+      expect(method, contains('await stateFile.delete();'));
+      expect(method.indexOf('Process.run('), lessThan(method.indexOf('if (stateIsValid) return true;')));
+      expect(method, contains('invalidating state so the local backup is recopied'));
     });
 
     test('new terminal sessions reuse a verified local shell before restore', () async {
