@@ -37,7 +37,7 @@ class TerminalPtyTool extends AgentTool {
   ) async {
     final command = params['command']?.toString().trim() ?? '';
     if (command.isEmpty) return StepResult.failure('command مطلوب.');
-    final seconds = ((params['timeout'] as num?)?.toInt() ?? 30).clamp(1, 120);
+    final seconds = ((params['timeout'] as num?)?.toInt() ?? 300).clamp(1, 900);
     final subscription = cancellationToken?.onCancel.listen((_) {
       unawaited(terminal.interruptInteractive());
     });
