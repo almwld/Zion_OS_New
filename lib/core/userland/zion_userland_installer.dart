@@ -107,15 +107,16 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
+    // Check the local Kali archive first, even if Termux usr is already
+    // installed: Kali rootfs and the Termux-compatible prefix are separate.
+    // The method returns null only when no supported local archive exists.
+    final kaliResult = await _installFromKaliArchive(onProgress: onProgress);
+    if (kaliResult != null) return kaliResult;
+
     if (await isInstalled(onProgress: onProgress)) {
       onProgress?.call('[Userland] Already installed; skipping copy.');
       return const ZionUserlandInstallResult(success: true, message: 'Userland already installed; no copy needed.');
     }
-    // Prefer the user's offline Kali NetHunter rootfs archive before checking
-    // Termux backups or considering any remote bootstrap source. Kali is
-    // installed under HOME/.zion/dists/kali, never into the Termux PREFIX.
-    final kaliResult = await _installFromKaliArchive(onProgress: onProgress);
-    if (kaliResult != null) return kaliResult;
 
     final abi = ZionBootstrapEndpoint.currentAbi();
     onProgress?.call('اكتشاف معمارية الجهاز: $abi...');
