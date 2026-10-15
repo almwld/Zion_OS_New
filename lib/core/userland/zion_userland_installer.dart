@@ -163,7 +163,30 @@ class ZionUserlandInstaller {
     // Restore the uncompressed Termux usr backup directly first. Do not
     // package it as ZIP/TAR: archive metadata and executable bits matter.
     const backupPath = '/storage/emulated/0/Download/termux_usr_backup';
-    if (!await Directory(backupPath).exists()) {
+    // The local backup has appeared under several directory layouts across
+    // Android file managers. Search only known backup roots; do not walk the
+    // whole shared-storage tree or mistake a Kali rootfs for Termux usr.
+    const backupCandidates = <String>[
+      backupPath,
+      '/storage/emulated/0/termux_usr_backup',
+      '/storage/emulated/0/Download/Termux/usr',
+      '/storage/emulated/0/Download/termux/usr',
+      '/storage/emulated/0/termux/usr',
+      '/storage/emulated/0/Download/termux_usr_backup/usr',
+      '/storage/emulated/0/Download/termux_usr_backup/termux_usr_backup',
+      '/storage/emulated/0/Download/termux-backup/usr',
+      '/storage/emulated/0/Zion/Userland/usr',
+    ];
+    var hasBackupDirectory = false;
+    for (final candidate in backupCandidates) {
+      try {
+        if (await Directory(candidate).exists()) {
+          hasBackupDirectory = true;
+          break;
+        }
+      } catch (_) {}
+    }
+    if (!hasBackupDirectory) {
       onProgress?.call('[Userland] Checking Android access to the local backup...');
       var granted = false;
       try {
@@ -182,16 +205,23 @@ class ZionUserlandInstaller {
       }
     }
     String? directBackupFailure;
-    if (await Directory(backupPath).exists()) {
-      onProgress?.call('[Userland] Restoring direct directory backup: $backupPath');
-      final restored = await _installFromDirectory(backupPath, onProgress: onProgress);
-      if (restored.success) {
-        return restored;
+    var directBackupFound = false;
+    for (final candidate in backupCandidates) {
+      try {
+        if (!await Directory(candidate).exists()) continue;
+        directBackupFound = true;
+        onProgress?.call('[Userland] Checking local backup candidate: $candidate');
+        final restored = await _installFromDirectory(candidate, onProgress: onProgress);
+        if (restored.success) return restored;
+        directBackupFailure = restored.message;
+        onProgress?.call('تعذرت استعادة النسخة المحلية من $candidate: ${restored.message}');
+      } catch (e) {
+        directBackupFailure = e.toString();
+        onProgress?.call('[Userland] Could not restore candidate $candidate: $e');
       }
-      directBackupFailure = restored.message;
-      onProgress?.call('تعذرت استعادة النسخة المحلية مباشرة: ${restored.message}');
-      // Continue checking other local, verified bootstrap archives and the
-      // app-private known-good backup. Never fall back to the network here.
+    }
+    if (!directBackupFound) {
+      directBackupFailure = 'لم يُعثر على مجلد النسخة الاحتياطية في المسارات المحلية المعروفة.';
     }
 
     // Offline-first: inspect local package locations before considering any
