@@ -27,6 +27,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _historyReady=false;
   bool _workspaceDetailsExpanded=false;
   int _workspaceTab = 0;
+  int _activityFilter = 0;
   static const String _historyKey='zion_super_agent_messages_v1';
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
@@ -702,6 +703,29 @@ class _AgentScreenState extends State<AgentScreen> {
     );
   }
 
+  List<AgentEvent> _visibleEvents() => _events.where((event) {
+    if (_activityFilter == 1) return event.state == AgentState.failed;
+    if (_activityFilter == 2) return event.state == AgentState.waitingApproval;
+    return true;
+  }).toList(growable: false);
+
+  Widget _activityFilterChip(String label, int value) => FilterChip(
+    label: Text(label),
+    selected: _activityFilter == value,
+    onSelected: (_) => setState(() => _activityFilter = value),
+    showCheckmark: false,
+    visualDensity: VisualDensity.compact,
+    backgroundColor: const Color(0xFF162633),
+    selectedColor: const Color(0xFF174452),
+    side: BorderSide(color: _activityFilter == value ? const Color(0xFF35D3E8) : const Color(0xFF2B4657)),
+    labelStyle: TextStyle(
+      color: _activityFilter == value ? const Color(0xFFBDF5FC) : const Color(0xFF9BAFBE),
+      fontSize: 11,
+      fontWeight: _activityFilter == value ? FontWeight.w700 : FontWeight.w500,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  );
+
   Widget _activity() => Container(
     margin: const EdgeInsets.only(bottom: 12),
     decoration: BoxDecoration(color: const Color(0xFF111D29), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF263B4A))),
@@ -716,7 +740,23 @@ class _AgentScreenState extends State<AgentScreen> {
         title: const Text('سجل نشاط الوكيل', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
         subtitle: Text('${_events.length} حدث مسجل · يعرض أحدث 12 حدثاً', style: const TextStyle(color: Color(0xFF91A7B7), fontSize: 10)),
         children: [
-          for (final e in _events.reversed.take(12).toList().reversed)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Wrap(spacing: 7, runSpacing: 7, children: [
+              _activityFilterChip('الكل', 0),
+              _activityFilterChip('الإخفاقات', 1),
+              _activityFilterChip('الموافقات', 2),
+            ]),
+          ),
+          if (_visibleEvents().isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 14),
+              child: Text(
+                _activityFilter == 1 ? 'لا توجد إخفاقات مسجلة.' : _activityFilter == 2 ? 'لا توجد خطوات تنتظر الموافقة.' : 'لا توجد أحداث مسجلة بعد.',
+                style: const TextStyle(color: Color(0xFF91A7B7), fontSize: 12),
+              ),
+            ),
+          for (final e in _visibleEvents().reversed.take(12).toList().reversed)
             Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Container(width: 29, height: 29, decoration: BoxDecoration(color: _eventColor(e).withOpacity(.10), borderRadius: BorderRadius.circular(9)),
                 child: Icon(_eventIcon(e), size: 16, color: _eventColor(e))),
