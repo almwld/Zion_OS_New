@@ -181,15 +181,17 @@ class ZionUserlandInstaller {
         );
       }
     }
+    String? directBackupFailure;
     if (await Directory(backupPath).exists()) {
       onProgress?.call('[Userland] Restoring direct directory backup: $backupPath');
       final restored = await _installFromDirectory(backupPath, onProgress: onProgress);
       if (restored.success) {
         return restored;
       }
+      directBackupFailure = restored.message;
       onProgress?.call('تعذرت استعادة النسخة المحلية مباشرة: ${restored.message}');
-      // Do not silently replace a failed direct restore with a network fetch.
-      return restored;
+      // Continue checking other local, verified bootstrap archives and the
+      // app-private known-good backup. Never fall back to the network here.
     }
 
     // Offline-first: inspect local package locations before considering any
@@ -235,11 +237,11 @@ class ZionUserlandInstaller {
         onProgress?.call('تعذر استخدام الملف المحلي $localPath: $e');
       }
     }
-    if (localArchiveSeen) {
-      return const ZionUserlandInstallResult(
-        success: false,
-        message: 'عُثر على ملفات محلية، لكن لم توجد حزمة Zion ZIP صالحة تحتوي manifest وملفات متوافقة. لم تتم محاولة التنزيل عبر الإنترنت.',
-      );
+    final String? localArchiveFailure = localArchiveSeen
+        ? 'عُثر على أرشيف محلي لكن لم تجتز أي حزمة تحقق manifest وSHA-256 وABI.'
+        : null;
+    if (localArchiveFailure != null) {
+      onProgress?.call('[Userland] $localArchiveFailure Checking the app-private known-good backup next.');
     }
 
     // A release marker and a working PRoot do not prove that the shell
@@ -273,7 +275,7 @@ class ZionUserlandInstaller {
 
     return const ZionUserlandInstallResult(
       success: false,
-      message: 'لم يتم العثور على Userland صالح في النسخ المحلية أو النسخة الداخلية. لم تتم محاولة الاتصال بالإنترنت؛ تحقق من وجود Download/termux_usr_backup ومنح إذن الوصول إلى الملفات.',
+      message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: ${directBackupFailure ?? 'غير متاحة'}؛ الأرشيف المحلي: ${localArchiveFailure ?? 'غير متاح أو لم يُعثر عليه'}؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
     );
   }
 
