@@ -68,13 +68,13 @@ class AgentKnowledgeIndex {
     if (task.trim().isEmpty || maxEntries < 1 || maxTotalChars < 1) return '';
     final ranked = await rank(task, limit: maxEntries);
     if (ranked.isEmpty) return '';
-    final out = StringBuffer('Relevant Zion local knowledge (reference only; verify with live tool output):\\n');
+    final out = StringBuffer('Relevant Zion local knowledge (reference only; verify with live tool output):\n');
     for (final entry in ranked) {
-      final commandText = entry.commands.isEmpty ? '' : '\\nExamples: ${entry.commands.join(' ; ')}';
-      final section = '\\n- [${entry.domain}] ${entry.title}: ${entry.summary}${commandText}\\nLimit: ${entry.limits}\\n';
+      final commandText = entry.commands.isEmpty ? '' : '\nExamples: ${entry.commands.join(' ; ')}';
+      final section = '\n- [${entry.domain}] ${entry.title}: ${entry.summary}${commandText}\nLimit: ${entry.limits}\n';
       if (out.length + section.length > maxTotalChars) break;
       out.write(section);
     }
-    return out.length == 'Relevant Zion local knowledge (reference only; verify with live tool output):\\n'.length ? '' : out.toString();
+    return out.length == 'Relevant Zion local knowledge (reference only; verify with live tool output):\n'.length ? '' : out.toString();
   }
 }
