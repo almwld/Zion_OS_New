@@ -103,6 +103,18 @@ jobs:
       - name: Run tests
         run: flutter test --no-pub
 
+      - name: Generate app icons
+        run: flutter pub run flutter_launcher_icons
+
+      - name: Verify required Flutter assets and launcher resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d assets/fonts
+          test -f assets/icons/app_icon.png
+          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.png || test -f android/app/src/main/res/mipmap-hdpi/ic_launcher.webp
+
       - name: Build release APK
         run: flutter build apk --release --split-per-abi --no-shrink
 
