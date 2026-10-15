@@ -185,9 +185,11 @@ internal object TermuxBootstrapInstaller {
         if (relative.startsWith("/") || relative.contains('\u0000')) {
             throw IllegalStateException("Unsafe absolute/NUL archive path")
         }
-        val rootPath = root.canonicalFile.toPath()
-        val childPath = File(root, relative).canonicalFile.toPath()
-        if (!childPath.startsWith(rootPath)) throw IllegalStateException("Archive path escapes staging: $relative")
+        val rootPath = root.canonicalPath.trimEnd(File.separatorChar)
+        val childPath = File(root, relative).canonicalPath
+        if (childPath != rootPath && !childPath.startsWith(rootPath + File.separator)) {
+            throw IllegalStateException("Archive path escapes staging: $relative")
+        }
         return File(root, relative)
     }
 
