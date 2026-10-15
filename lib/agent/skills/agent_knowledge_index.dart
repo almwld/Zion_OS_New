@@ -28,7 +28,10 @@ class AgentKnowledgeIndex {
       .toLowerCase()
       .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
       .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
-      .replaceAll('ى', 'ي');
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'[^a-z0-9\\u0600-\\u06FF]+'), ' ')
+      .replaceAll(RegExp(r'\\s+'), ' ')
+      .trim();
 
   Future<List<AgentKnowledgeEntry>> entries() async {
     final cached = _cache;
