@@ -576,6 +576,12 @@ class TerminalService {
         shell: denied.shell, duration: denied.duration, interactive: true);
       return denied;
     }
+    if (_agentCommandRunning) {
+      return const TerminalResult(command: '', stdout: '',
+        stderr: 'يوجد أمر وكيل قيد التنفيذ في جلسة PTY.', exitCode: 125,
+        duration: Duration.zero, shell: 'zion-native-pty');
+    }
+
     if (!const {'auto', 'zion', 'kali'}.contains(runtime)) {
       return TerminalResult(command: value, stdout: '',
         stderr: 'بيئة التنفيذ غير معروفة: $runtime', exitCode: 2,
@@ -617,12 +623,6 @@ class TerminalService {
           exitCode: 127, duration: Duration.zero, shell: 'zion-unavailable');
       }
     }
-    if (_agentCommandRunning) {
-      return const TerminalResult(command: '', stdout: '',
-        stderr: 'يوجد أمر وكيل قيد التنفيذ في جلسة PTY.', exitCode: 125,
-        duration: Duration.zero, shell: 'zion-native-pty');
-    }
-
     _agentCommandRunning = true;
     final started = DateTime.now();
     final marker = '@@DART_MARKER@@';
