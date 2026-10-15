@@ -50,7 +50,7 @@ class AgentSkillLibrary {
       name: 'brainstorming',
       asset: 'assets/agent_skills/brainstorming.md',
       description: 'Compare designs and clarify constraints before large changes.',
-      keywords: ['brainstorm', 'design', 'approach', 'options', 'architecture', 'new system'])
+      keywords: ['brainstorm', 'design', 'approach', 'options', 'architecture', 'new system'],
     ),
     AgentSkillDefinition(
       name: 'executing-plans',
