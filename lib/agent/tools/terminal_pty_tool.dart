@@ -13,12 +13,13 @@ class TerminalPtyTool extends AgentTool {
   String get name => 'shell';
   @override
   String get description =>
-      'تنفيذ أمر عبر جلسة Zion Terminal native PTY. runtime=auto يستخدم الجلسة الحالية، runtime=zion يختار Zion Userland، وruntime=kali يشغّل Kali rootfs المحلي المتحقق منه دون تنزيل.';
+      'تنفيذ أمر عبر جلسة Zion Terminal native PTY. runtime=auto يستخدم الجلسة الحالية، runtime=zion يختار Zion Userland، runtime=kali يكتشف Kali المحلي، وruntime=rootfs يشغّل مجلداً محلياً متحققاً منه مع تمرير rootfsPath.';
   @override
   Map<String, dynamic> get parameters => const {
         'command': 'string',
         'timeout': 'int',
-        'runtime': 'auto | zion | kali',
+        'runtime': 'auto | zion | kali | rootfs',
+        'rootfsPath': 'string',
       };
   @override
   Set<AgentPermission> get permissions => const {AgentPermission.readOnly};
@@ -40,6 +41,7 @@ class TerminalPtyTool extends AgentTool {
     if (command.isEmpty) return StepResult.failure('command مطلوب.');
     final seconds = ((params['timeout'] as num?)?.toInt() ?? 900).clamp(1, 1800);
     final runtime = (params['runtime']?.toString() ?? 'auto').trim().toLowerCase();
+    final rootfsPath = params['rootfsPath']?.toString();
     final subscription = cancellationToken?.onCancel.listen((_) {
       unawaited(terminal.interruptInteractive());
     });
@@ -47,7 +49,7 @@ class TerminalPtyTool extends AgentTool {
     try {
       cancellationToken?.throwIfCancelled();
       final result = await terminal.executeInInteractive(
-        command, timeout: Duration(seconds: seconds), runtime: runtime);
+        command, timeout: Duration(seconds: seconds), runtime: runtime, rootfsPath: rootfsPath);
       cancellationToken?.throwIfCancelled();
       // A PTY merges stdout/stderr by design. Keep the raw stream honest and
       // expose a diagnostic field for non-zero exits instead of pretending the
@@ -68,6 +70,7 @@ class TerminalPtyTool extends AgentTool {
         'durationMs': result.duration.inMilliseconds,
         'shell': result.shell,
         'runtime': runtime,
+        if (rootfsPath != null) 'rootfsPath': rootfsPath,
         'pty': true,
       };
       if (!result.succeeded) {
