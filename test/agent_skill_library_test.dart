@@ -60,6 +60,25 @@ void main() {
     expect(context, isNot(contains('name: systematic-debugging')));
   });
 
+  test('unmatched tasks do not receive unrelated fallback skills', () {
+    expect(AgentSkillLibrary().rank('zzqxvplm no known workflow'), isEmpty);
+  });
+
+  test('knowledge-index hints improve procedural skill discovery', () {
+    final ranked = AgentSkillLibrary().rank(
+      'inspect this environment',
+      hints: ['rootfs', 'bash missing', 'local Linux runtime'],
+    );
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.name, 'local-runtime-discovery');
+  });
+
+  test('Arabic diacritics do not prevent skill discovery', () {
+    final ranked = AgentSkillLibrary().rank('اِسْتَكْشِفْ كَالِي لِينُكْس');
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.name, 'local-runtime-discovery');
+  });
+
   test('empty task yields no skill context', () async {
     expect(await AgentSkillLibrary().contextFor('   '), isEmpty);
   });
