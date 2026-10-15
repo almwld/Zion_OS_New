@@ -1,24 +1,22 @@
 # Zion Super Agent Skills
 
-This directory contains concise, Android-friendly skill playbooks written for Zion's local-model planner. The runtime ranks skills by task relevance and injects only a small context window into each plan request.
+This directory vendors six workflow skills from [obra/superpowers](https://github.com/obra/superpowers), an MIT-licensed open-source agent skills framework. The original Markdown skill files are retained with their frontmatter. The upstream MIT license is included as `LICENSE`.
 
-## Built-in playbooks
+## Included skills
 
-- `systematic-debugging.md` — investigate evidence and isolate root causes before editing.
-- `test-driven-development.md` — specify a behavior, test it, implement, and re-run regressions.
-- `verification-before-completion.md` — require fresh evidence before claiming success.
-- `writing-plans.md` — break work into verifiable, dependency-aware steps.
-- `brainstorming.md` — compare feasible approaches and clarify constraints before large changes.
-- `executing-plans.md` — execute incrementally, observe real outputs, and recover from failures.
+- `systematic-debugging.md` — evidence-based root-cause analysis.
+- `test-driven-development.md` — test-first feature and bug-fix workflow.
+- `verification-before-completion.md` — fresh verification before success claims.
+- `writing-plans.md` — actionable multi-step plans.
+- `brainstorming.md` — structured design exploration.
+- `executing-plans.md` — incremental execution and evidence-based recovery.
 
-## Skill format and compatibility
+## Runtime integration
 
-Skills use plain Markdown with optional YAML frontmatter (`name`, `description`). The loader is offline-first and never executes scripts contained in skill documents. Skill text is guidance to the model, not an authorization grant: tool policy and the Android runtime remain authoritative.
+Zion's local-model planner ranks these files by task relevance and injects only a bounded excerpt into its prompt. Skills are guidance, not executable plugins: the loader does not run code from skill files, and a skill cannot grant tool permissions or bypass the runtime policy.
 
-## Upstream inspiration and attribution
+## Attribution
 
-The workflow ideas are informed by the MIT-licensed [obra/superpowers](https://github.com/obra/superpowers) project. These Zion playbooks are concise original adaptations rather than verbatim copies. See the upstream repository for its current license and full skill texts.
-
-## Adding skills
-
-Add a Markdown file, register it in `AgentSkillLibrary`, and add a focused test for its relevance and loading behavior. Keep each skill task-oriented, measurable, and suitable for local-model context budgets.
+Upstream project: https://github.com/obra/superpowers  
+License: MIT; see `LICENSE`.  
+The skill text remains upstream-authored and is included with attribution and the required license notice.
