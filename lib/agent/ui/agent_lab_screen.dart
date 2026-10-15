@@ -86,7 +86,6 @@ class _AgentLabScreenState extends State<AgentLabScreen> with SingleTickerProvid
         if (_events.length > 400) _events.removeRange(0, _events.length - 400);
       });
       await _persistTelemetry();
-      _tabs.animateTo(1);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
