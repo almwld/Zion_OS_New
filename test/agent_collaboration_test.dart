@@ -50,6 +50,39 @@ void main() {
     expect(result.events.last.actor, 'Verifier · دورة 3');
   });
 
+  test('team stops immediately when cancellation is requested', () async {
+    var cancelled = false;
+    var calls = 0;
+    await expectLater(
+      AgentCollaborationEngine().runTeam(
+        task: 'مهمة قابلة للإلغاء',
+        isCancelled: () => cancelled,
+        runPrompt: (_) async {
+          calls++;
+          cancelled = true;
+          return 'نتيجة أولية';
+        },
+      ),
+      throwsA(isA<AgentCollaborationCancelled>()),
+    );
+    expect(calls, 1);
+  });
+
+  test('engineering loop stops only on explicit verifier completion marker', () async {
+    var calls = 0;
+    final result = await AgentCollaborationEngine().runEngineeringLoop(
+      task: 'تحقق من إكمال المهمة',
+      runPrompt: (prompt) async {
+        calls++;
+        if (prompt.contains('Verifier')) return 'معايير القبول متحققة.\\nLOOP_STATUS: COMPLETE';
+        return 'مرحلة مكتملة';
+      },
+    );
+    expect(calls, 3);
+    expect(result.events, hasLength(3));
+    expect(result.success, isTrue);
+  });
+
   test('Obsidian vault persists notes, wikilinks, tags and graph edges locally', () async {
     SharedPreferences.setMockInitialValues({});
     final vault = ObsidianVault();
