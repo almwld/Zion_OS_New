@@ -64,7 +64,7 @@ class AgentKnowledgeIndex {
     return scored.take(limit).map((item) => item.entry).toList(growable: false);
   }
 
-  Future<String> contextFor(String task, {int maxEntries = 4, int maxTotalChars = 1400}) async {
+  Future<String> contextFor(String task, {int maxEntries = 3, int maxTotalChars = 900}) async {
     if (task.trim().isEmpty || maxEntries < 1 || maxTotalChars < 1) return '';
     final ranked = await rank(task, limit: maxEntries);
     if (ranked.isEmpty) return '';
