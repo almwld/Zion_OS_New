@@ -18,7 +18,7 @@ class AgentPolicy {
     return const AgentPolicyDecision(risk:AgentRisk.safe,reason:'الأداة مسموحة.',requiresApproval:false);
   }
   bool _blockedShell(String command){
-    final c=command.toLowerCase(); const blocked=['rm -rf /','mkfs','dd if=','shutdown','reboot','su -c','chmod 777 /','mount ','iptables -f','nmap ','masscan ','metasploit','sqlmap','hydra ','john ','aircrack'];
+    final c=command.toLowerCase(); const blocked=['rm -rf /','mkfs','dd if=','shutdown','reboot','chmod 777 /','mount ','iptables -f'];
     return blocked.any(c.contains);
   }
   bool _safeShell(String command){
@@ -40,7 +40,31 @@ class AgentPolicy {
     ];
     if (diagnosticCommands.contains(c)) return true;
     if (RegExp(r'^git log --oneline -n [1-9][0-9]?$').hasMatch(c)) return true;
-    if (RegExp(r'^(which|command -v) [a-zA-Z0-9._/-]+$').hasMatch(command.trim())) return true;
+    if (RegExp(r'^(which|command -v) [a-zA-Z0-9._/-]+(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(command.trim())) return true;
+    // Bounded, read-only inventory of locally mounted storage and known Zion/Kali roots.
+    if (RegExp(r'^find /storage/emulated/0 -maxdepth [1-4] -type [df](r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(c)) return true;
+    if (RegExp(r'^find /data/data/com\.zion\.os/files/home/\.zion/dists -maxdepth [1-5] -type [df](r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(c)) return true;
+    if (RegExp(r'^ls( -la)? /storage/emulated/0(/[^;&|`]+)?(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(command.trim())) return true;
+    if (RegExp(r'^(dpkg -l|apt list --installed|pkg list-installed|zion-pkg list)(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(c)) return true;
+    if (RegExp(r'^zion-pkg search [a-zA-Z0-9.+_-]+(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
+  }
+}
+).hasMatch(c)) return true;
     return RegExp(r'^(pwd|ls(\s+-[a-z-]+)?(\s+[^\s]+)?|cat\s+[^\s]+|echo\s+.+|whoami|id|uname(\s+-[a-z]+)?|date|df(\s+-[a-z]+)?|du(\s+-[a-z]+)?|ps(\s+-[a-z]+)?)$').hasMatch(c);
   }
 }
