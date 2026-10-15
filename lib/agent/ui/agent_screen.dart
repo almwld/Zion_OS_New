@@ -52,6 +52,7 @@ class _AgentScreenState extends State<AgentScreen> {
     _usingSharedTerminal = activeTerminal != null;
     _ownsAgentTerminal = activeTerminal == null;
     _agentTerminal = activeTerminal ?? TerminalService(context.read<SecurityCore>());
+    if (!_ownsAgentTerminal) _agentTerminal.retainForAgent();
     _ptySubscription = _agentTerminal.output.listen((chunk) {
       if (!mounted) return;
       _ptyConsole.write(chunk);
@@ -1066,7 +1067,11 @@ class _AgentScreenState extends State<AgentScreen> {
     _sub?.cancel();
     _ptySubscription?.cancel();
     _runtime.dispose();
-    if (_ownsAgentTerminal) unawaited(_agentTerminal.dispose());
+    if (_ownsAgentTerminal) {
+      unawaited(_agentTerminal.dispose());
+    } else {
+      unawaited(_agentTerminal.releaseForAgent());
+    }
     _input.dispose();
     _scroll.dispose();
     super.dispose();
