@@ -26,7 +26,7 @@ class AgentKnowledgeIndex {
 
   static String _normalize(String value) => value
       .toLowerCase()
-      .replaceAll(RegExp(r'[\\u064B-\\u065F\\u0670\\u0640]'), '')
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '')
       .replaceAll(RegExp(r'[أإآٱ]'), 'ا')
       .replaceAll('ى', 'ي');
 
@@ -63,7 +63,7 @@ class AgentKnowledgeIndex {
         }
       }
       for (final word in _normalize('${entry.title} ${entry.domain}')
-          .split(RegExp(r'[^a-z0-9\\u0600-\\u06FF]+'))) {
+          .split(RegExp(r'[^a-z0-9\u0600-\u06FF]+'))) {
         if (word.length > 3 && normalized.contains(word)) score++;
       }
       return (entry: entry, score: score);
