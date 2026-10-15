@@ -405,7 +405,7 @@ class _KnowledgeNetwork extends StatelessWidget {
       math.max(recordedEvents.length, runNodes.length) * 36.0 + 80,
       noteNodes.length * 46.0 + 80,
     );
-    final graphHeight = math.max(330.0, rows);
+    final graphHeight = math.max(330.0, rows).toDouble();
     return Container(
       height: 330,
       decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(18), border: Border.all(color: colors.outlineVariant)),
