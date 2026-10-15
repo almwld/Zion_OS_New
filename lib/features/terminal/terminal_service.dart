@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../security/core/authorization_policy.dart';
 import '../../security/core/security_core.dart';
 import '../../core/userland/zion_userland_installer.dart';
+import '../../core/userland/local_kali_bootstrap.dart';
 import 'native_pty_adapter.dart';
 import 'terminal_capabilities.dart';
 
@@ -412,6 +413,42 @@ class TerminalService {
   /// rootfs locations on shared storage. This is discovery only: no network,
   /// extraction, or file copying occurs while starting the agent runtime.
   Future<String?> _resolveLocalKaliRootfs() async {
+    // First reuse the app-private rootfs created by the local offline installer.
+    const installedRootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+    if (await File('$installedRootfs/bin/bash').exists() &&
+        await File('$installedRootfs/bin/sh').exists()) {
+      _cachedKaliRootfsPath = installedRootfs;
+      return installedRootfs;
+    }
+
+    // If the user explicitly selects Kali and the known local ARM64 archive is
+    // present, import it offline into Kali's own rootfs location. Never unpack
+    // it into Zion's usr prefix: a distro rootfs and the Termux runtime differ.
+    try {
+      final kaliBootstrap = const ZionLocalKaliBootstrap();
+      final state = await kaliBootstrap.state();
+      final localPackage = await kaliBootstrap.findLocalPackage();
+      if (state != ZionKaliInstallState.ready && localPackage != null) {
+        _emitOutput('[Kali] Local archive found; installing into the separate Kali rootfs (offline)...\\r\\n');
+        final result = await kaliBootstrap.install(
+          onProgress: (progress) => _emitOutput(
+            '[Kali ${progress.percent}%] ${progress.message}\\r\\n',
+          ),
+        );
+        if (result.isSuccess && result.value != null &&
+            await File('${result.value!.path}/bin/bash').exists() &&
+            await File('${result.value!.path}/bin/sh').exists()) {
+          _cachedKaliRootfsPath = result.value!.path;
+          return result.value!.path;
+        }
+        _emitOutput('[Kali] Local archive import failed: ${result.error}\\r\\n');
+      } else if (state == ZionKaliInstallState.error) {
+        _emitOutput('[Kali] Previous local rootfs state is invalid; a verified local archive is required to reinstall.\\r\\n');
+      }
+    } catch (error) {
+      _emitOutput('[Kali] Local archive discovery/import failed: $error\\r\\n');
+    }
+
     final cached = _cachedKaliRootfsPath;
     if (cached != null &&
         await File('$cached/bin/bash').exists() &&
