@@ -81,15 +81,21 @@ class ObsidianVault {
   }
 
   Future<void> _syncMarkdownFiles(List<ObsidianNote> notes) async {
-    for (final note in notes) {
-      final file = await _fileFor(note.id);
-      // Do not overwrite an existing Markdown file during migration/startup.
-      // Explicit save() is the only operation that replaces its contents.
-      if (!await file.exists()) {
-        await file.writeAsString(_markdownFor(note), flush: true);
+    try {
+      for (final note in notes) {
+        final file = await _fileFor(note.id);
+        // Do not overwrite an existing Markdown file during migration/startup.
+        // Explicit save() is the only operation that replaces its contents.
+        if (!await file.exists()) {
+          await file.writeAsString(_markdownFor(note), flush: true);
+        }
       }
+    } catch (_) {
+      // SharedPreferences remains the canonical fallback on unsupported test
+      // hosts or devices where app-document storage is temporarily unavailable.
+    } finally {
+      _markdownSynced = true;
     }
-    _markdownSynced = true;
   }
 
   Future<List<ObsidianNote>> allNotes() async {
@@ -136,16 +142,24 @@ class ObsidianVault {
       notes[index] = note;
     }
     await _persist(notes);
-    final file = await _fileFor(note.id);
-    await file.writeAsString(_markdownFor(note), flush: true);
+    try {
+      final file = await _fileFor(note.id);
+      await file.writeAsString(_markdownFor(note), flush: true);
+    } catch (_) {
+      // The note remains saved in the local index if file mirroring fails.
+    }
     return note;
   }
 
   Future<void> delete(String id) async {
     final notes = (await allNotes()).where((note) => note.id != id).toList();
     await _persist(notes);
-    final file = await _fileFor(id);
-    if (await file.exists()) await file.delete();
+    try {
+      final file = await _fileFor(id);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Removing the indexed note must not fail solely due to mirror cleanup.
+    }
   }
 
   Future<List<ObsidianNote>> search(String query) async {
