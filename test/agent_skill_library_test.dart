@@ -5,7 +5,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('skill catalog contains the six bundled workflow skills', () {
-    expect(AgentSkillLibrary.definitions, hasLength(15));
+    expect(AgentSkillLibrary.definitions, hasLength(24));
     expect(
       AgentSkillLibrary.definitions.map((skill) => skill.name),
       containsAll([
@@ -24,6 +24,15 @@ void main() {
         'using-git-worktrees',
         'using-superpowers',
         'writing-skills',
+        'local-runtime-discovery',
+        'linux-package-inventory',
+        'pty-evidence-debugging',
+        'flutter-ci-repair',
+        'local-model-planning',
+        'android-storage-inventory',
+        'evidence-driven-recovery',
+        'defensive-network-inventory',
+        'git-safe-recovery',
       ]),
     );
   });
