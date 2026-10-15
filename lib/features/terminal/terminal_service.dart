@@ -857,9 +857,14 @@ class TerminalService {
         return false;
       }
       final rootfs = Directory(path);
+      final bash = File('$path/bin/bash');
+      final shellFile = File('$path/bin/sh');
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
       final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
-      if (!await _isValidLocalKaliRootfs(path) || !await rootfs.exists()) {
+      if (!await rootfs.exists() ||
+          !await bash.exists() ||
+          !await shellFile.exists() ||
+          !await _isValidLocalKaliRootfs(path)) {
         _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\\r\\n');
         return false;
       }
