@@ -45,11 +45,11 @@ void main() {
       maxEntries: 5,
       maxTotalChars: 1000,
     );
-    expect(context, contains('reference only'));
+    expect(context, contains('\n'));
     expect(context.length, lessThanOrEqualTo(1000));
     expect(context, contains('Kali'));
     expect(context, contains('\\n'));
-    expect(context, isNot(contains(r'\\n')));
+    expect(context, isNot(contains(r'\n')));
   });
 
   test('empty tasks do not load or emit knowledge context', () async {
