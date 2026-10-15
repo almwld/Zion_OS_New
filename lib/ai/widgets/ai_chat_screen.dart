@@ -304,8 +304,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   Future<void> _loadSelected() async {
     final model = _selected;
     if (model == null || _loading || _loadingModel) return;
-    if (model.sizeBytes <= 0 || model.sizeBytes > 2 * 1024 * 1024 * 1024) {
-      setState(() => _error = 'حجم النموذج يتجاوز حد الذاكرة الآمن (2 GiB). اختر نموذج GGUF أصغر.');
+    if (model.sizeBytes <= 0) {
+      setState(() => _error = 'تعذر قراءة حجم ملف النموذج. أعد استيراد GGUF.');
       return;
     }
     setState(() {
