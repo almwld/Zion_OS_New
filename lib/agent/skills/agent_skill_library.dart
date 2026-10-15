@@ -26,37 +26,37 @@ class AgentSkillLibrary {
       name: 'systematic-debugging',
       asset: 'assets/agent_skills/systematic-debugging.md',
       description: 'Evidence-first root-cause investigation and repair.',
-      keywords: ['bug', 'debug', 'error', 'failure', 'crash', 'broken', 'diagnos', 'timeout', 'exception', 'build', 'خطأ', 'تعطل', 'فشل', 'تشخيص', 'مهلة', 'بناء',
+      keywords: ['bug', 'debug', 'error', 'failure', 'crash', 'broken', 'diagnos', 'timeout', 'exception', 'build', 'خطأ', 'تعطل', 'فشل', 'تشخيص', 'مهلة', 'بناء',]
     ),
     AgentSkillDefinition(
       name: 'test-driven-development',
       asset: 'assets/agent_skills/test-driven-development.md',
       description: 'Test-first feature implementation and regression coverage.',
-      keywords: ['test', 'regression', 'feature', 'implement', 'fix', 'refactor', 'assertion', 'اختبار', 'اختبارات', 'إصلاح', 'ميزة',
+      keywords: ['test', 'regression', 'feature', 'implement', 'fix', 'refactor', 'assertion', 'اختبار', 'اختبارات', 'إصلاح', 'ميزة',]
     ),
     AgentSkillDefinition(
       name: 'verification-before-completion',
       asset: 'assets/agent_skills/verification-before-completion.md',
       description: 'Verify claims with fresh test and build evidence.',
-      keywords: ['verify', 'verification', 'complete', 'finish', 'release', 'ci', 'apk', 'success', 'device', 'تحقق', 'اكتمال', 'إصدار', 'بناء', 'جهاز',
+      keywords: ['verify', 'verification', 'complete', 'finish', 'release', 'ci', 'apk', 'success', 'device', 'تحقق', 'اكتمال', 'إصدار', 'بناء', 'جهاز',]
     ),
     AgentSkillDefinition(
       name: 'writing-plans',
       asset: 'assets/agent_skills/writing-plans.md',
       description: 'Break complex requests into executable, verifiable steps.',
-      keywords: ['plan', 'multi-step', 'architecture', 'design', 'task', 'workflow', 'roadmap', 'خطة', 'مهمة', 'سير العمل', 'تصميم',
+      keywords: ['plan', 'multi-step', 'architecture', 'design', 'task', 'workflow', 'roadmap', 'خطة', 'مهمة', 'سير العمل', 'تصميم',]
     ),
     AgentSkillDefinition(
       name: 'brainstorming',
       asset: 'assets/agent_skills/brainstorming.md',
       description: 'Compare designs and clarify constraints before large changes.',
-      keywords: ['brainstorm', 'design', 'approach', 'options', 'architecture', 'new system'],
+      keywords: ['brainstorm', 'design', 'approach', 'options', 'architecture', 'new system'],]
     ),
     AgentSkillDefinition(
       name: 'executing-plans',
       asset: 'assets/agent_skills/executing-plans.md',
       description: 'Execute incrementally with observed outputs and model-led recovery.',
-      keywords: ['execute', 'execution', 'recover', 'retry', 'terminal', 'shell', 'runtime', 'kali', 'userland', 'rootfs', 'تنفيذ', 'استعادة', 'إعادة المحاولة', 'طرفية', 'كالي', 'لينكس',
+      keywords: ['execute', 'execution', 'recover', 'retry', 'terminal', 'shell', 'runtime', 'kali', 'userland', 'rootfs', 'تنفيذ', 'استعادة', 'إعادة المحاولة', 'طرفية', 'كالي', 'لينكس',]
     ),
     AgentSkillDefinition(name: 'diagnosing-superpowers', asset: 'assets/agent_skills/diagnosing-superpowers.md', description: 'Diagnose skill discovery and invocation problems.', keywords: ['skill', 'skills', 'discovery', 'invoke', 'catalog', 'مهارة', 'مهارات', 'فهرس'),
     AgentSkillDefinition(name: 'dispatching-parallel-agents', asset: 'assets/agent_skills/dispatching-parallel-agents.md', description: 'Decompose independent work into parallelizable subtasks.', keywords: ['parallel', 'concurrent', 'independent tasks', 'subtasks']),
