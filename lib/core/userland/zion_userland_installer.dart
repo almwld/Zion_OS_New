@@ -457,6 +457,9 @@ class ZionUserlandInstaller {
     String sourcePath, {
     void Function(String message)? onProgress,
   }) async {
+    Directory? rollbackTarget;
+    Directory? rollbackSnapshot;
+    var hadRollbackTarget = false;
     try {
       final requestedSourceDir = Directory(sourcePath);
       if (!await requestedSourceDir.exists()) {
@@ -496,6 +499,9 @@ class ZionUserlandInstaller {
       // cannot be completed, abort without changing usr/ at all.
       final hadTarget = await targetDir.exists();
       final safetyBackup = Directory('${targetDir.path}.backup.${DateTime.now().millisecondsSinceEpoch}');
+      rollbackTarget = targetDir;
+      rollbackSnapshot = safetyBackup;
+      hadRollbackTarget = hadTarget;
       if (hadTarget) {
         try {
           onProgress?.call('[Userland] Creating rollback snapshot: ${safetyBackup.path}');
@@ -576,6 +582,29 @@ class ZionUserlandInstaller {
       onProgress?.call('[Userland] ✓ Ready');
       return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
     } catch (e) {
+      // Last-resort rollback for exceptions thrown by permission repair,
+      // symlink repair, runtime setup, or state writing. Never delete a prefix
+      // unless a safety snapshot exists and can be promoted into its place.
+      final target = rollbackTarget;
+      final snapshot = rollbackSnapshot;
+      if (target != null && snapshot != null && hadRollbackTarget) {
+        try {
+          if (await snapshot.exists()) {
+            final failed = Directory('${target.path}.failed.${DateTime.now().millisecondsSinceEpoch}');
+            if (await target.exists()) await target.rename(failed.path);
+            await snapshot.rename(target.path);
+            // Retain the rejected tree if cleanup fails; it is recoverable data.
+            try { if (await failed.exists()) await failed.delete(recursive: true); } catch (_) {}
+            onProgress?.call('[Userland] Exception rollback completed; prior usr restored.');
+          } else {
+            onProgress?.call('[Userland] Exception occurred but no rollback snapshot exists; usr was not deleted.');
+          }
+        } catch (rollbackError) {
+          onProgress?.call('[Userland] Exception rollback failed: $rollbackError. Current and snapshot trees were preserved where possible.');
+        }
+      } else {
+        onProgress?.call('[Userland] Exception occurred without a previous usr snapshot; current files were preserved.');
+      }
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
   }
