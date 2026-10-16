@@ -838,25 +838,33 @@ class ZionUserlandInstaller {
       print('[Permissions] Bash is missing; preserving Userland for sh/dash fallback.');
       return;
     }
-    final test = await Process.run(
-      bash.path, const <String>['-c', 'printf BASH_OK'],
-      runInShell: false,
-      environment: <String, String>{
-        ...Platform.environment,
-        'HOME': ZionBootstrap.home,
-        'PREFIX': ZionBootstrap.prefix,
-        'TMPDIR': ZionBootstrap.tmp,
-        'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
-        'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
-        'TERM': 'xterm-256color',
-        'LANG': 'C.UTF-8',
-        'LC_ALL': 'C.UTF-8',
-      },
-    ).timeout(const Duration(seconds: 5));
-    if (test.exitCode != 0 || !test.stdout.toString().contains('BASH_OK')) {
-      throw StateError('bash verification failed (exit=${test.exitCode}): ${test.stderr}');
+    // File integrity and execution are separate checks on Android. Some
+    // devices deny launching copied ELF files even when usr is intact. Never
+    // roll back or discard a recovered tree solely because Process.run fails.
+    try {
+      final test = await Process.run(
+        bash.path, const <String>['-c', 'printf BASH_OK'],
+        runInShell: false,
+        environment: <String, String>{
+          ...Platform.environment,
+          'HOME': ZionBootstrap.home,
+          'PREFIX': ZionBootstrap.prefix,
+          'TMPDIR': ZionBootstrap.tmp,
+          'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
+          'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
+          'TERM': 'xterm-256color',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+        },
+      ).timeout(const Duration(seconds: 5));
+      if (test.exitCode == 0 && test.stdout.toString().contains('BASH_OK')) {
+        print('[Permissions] ✓ Bash execution probe passed.');
+      } else {
+        print('[Permissions] Bash execution probe failed (exit=${test.exitCode}); preserving usr for PTY/linker diagnostics and /system/bin/sh fallback. stderr=${test.stderr}');
+      }
+    } catch (error) {
+      print('[Permissions] Bash execution probe unavailable: $error. Preserving usr and using runtime fallback if needed.');
     }
-    print('[Permissions] ✓ Critical Bash check passed; non-critical chmod errors were tolerated.');
   }
 
   Future<void> _recreateCoreutilsSymlinks(String binDir) async {
@@ -996,44 +1004,28 @@ class ZionUserlandInstaller {
     'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
     'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
   };
+  /// Checks shell payload integrity only. Execution is tested by TerminalService;
+  /// Android may deny Process.start for an intact ELF, which must not trigger
+  /// destructive restore/rollback of the entire Userland tree.
   Future<bool> _hasCompatibleShell() async {
     const candidates = <String>[
       '${ZionBootstrap.prefix}/bin/bash',
       '${ZionBootstrap.prefix}/bin/zsh',
       '${ZionBootstrap.prefix}/bin/fish',
       '${ZionBootstrap.prefix}/bin/ash',
+      '${ZionBootstrap.prefix}/bin/sh',
+      '${ZionBootstrap.prefix}/bin/dash',
     ];
-    final environment = <String, String>{
-      ...Platform.environment,
-      'HOME': ZionBootstrap.home,
-      'PREFIX': ZionBootstrap.prefix,
-      'TMPDIR': ZionBootstrap.tmp,
-      'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
-      'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
-      'TERM': 'xterm-256color',
-      'LANG': 'C.UTF-8',
-      'LC_ALL': 'C.UTF-8',
-    };
-
     for (final path in candidates) {
       try {
-        final stat = await File(path).stat();
-        if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
+        final file = File(path);
+        final stat = await file.stat();
+        if (stat.type != FileSystemEntityType.file || stat.size < 4096 || (stat.mode & 0x49) == 0) {
           continue;
         }
-        final result = await Process.run(
-          path,
-          const <String>['-c', 'printf ZionUserlandShellOK'],
-          runInShell: false,
-          environment: environment,
-        ).timeout(const Duration(seconds: 4));
-        if (result.exitCode == 0 &&
-            result.stdout.toString().contains('ZionUserlandShellOK')) {
-          return true;
-        }
+        return true;
       } catch (_) {
-        // Try the next supported shell; a missing shared library or broken
-        // executable must not be mistaken for a usable runtime.
+        // Metadata errors do not mutate or invalidate the existing usr tree.
       }
     }
     return false;
