@@ -203,13 +203,13 @@ class TerminalService {
             ).timeout(const Duration(seconds: 4));
             final versionOutput = linked.stdout.toString();
             if (linked.exitCode == 0 && versionOutput.contains('GNU bash')) {
-              _emitOutput('[Userland] Verified Bash via Android linker: $realPath\\r\\n');
+              _emitOutput('[Userland] Verified Bash via Android linker: $realPath\r\n');
               // Keep the public wrapper as the selected path. Native PTY
               // launch maps /bash to bash.real and supplies the same library
               // environment, so shell selection matches this successful probe.
               return path;
             }
-            _emitOutput('[Userland] linker64 Bash probe failed: exit ${linked.exitCode}; ${linked.stderr}\\r\\n');
+            _emitOutput('[Userland] linker64 Bash probe failed: exit ${linked.exitCode}; ${linked.stderr}\r\n');
           }
         }
 
@@ -220,17 +220,17 @@ class TerminalService {
           environment: _userlandEnvironment,
         ).timeout(const Duration(seconds: 3));
         if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
-          _emitOutput('[Userland] Using verified shell: $path\\r\\n');
+          _emitOutput('[Userland] Using verified shell: $path\r\n');
           return path;
         }
-        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\\r\\n');
+        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
         if (name == 'bash') {
           await diagnoseBashExecution(
             launchError: 'Process.run returned exit ${result.exitCode}; stdout=${result.stdout}; stderr=${result.stderr}',
           );
         }
       } catch (error) {
-        _emitOutput('[Userland] Cannot execute $path: $error\\r\\n');
+        _emitOutput('[Userland] Cannot execute $path: $error\r\n');
         if (name == 'bash') {
           await diagnoseBashExecution(launchError: error);
         }
