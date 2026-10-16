@@ -257,10 +257,7 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
         _exit(126);
     }
 
-    /* PRoot's temp workspace must be app-private and created before fork(). */
-    setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1);
-    setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
-    setenv("PROOT_NO_SECCOMP", "1", 1);
+    /* PRoot temp and seccomp variables are prepared in the parent before fork(). */
 
     execl("/system/bin/linker64", "linker64", proot,
           "--link2symlink", "-0", "-r", rootfs,
