@@ -4,6 +4,19 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+class NativePtyCommandResult {
+  const NativePtyCommandResult({
+    required this.stdout,
+    required this.exitCode,
+    this.stderr = '',
+  });
+
+  final String stdout;
+  final String stderr;
+  final int exitCode;
+  bool get succeeded => exitCode == 0;
+}
+
 class NativePtyAdapter {
   NativePtyAdapter() : _channel = const MethodChannel('zion.os/pty');
 
@@ -42,6 +55,18 @@ class NativePtyAdapter {
         'status': 'channel-unavailable',
         'message': 'Native Termux bootstrap channel is unavailable.',
       };
+    }
+  }
+
+  /// Install/validate the APK-bundled ARM64 PRoot executable and loader
+  /// into Zion's private prefix before a Kali preflight checks those paths.
+  Future<bool> ensureProotRuntime() async {
+    try {
+      return await _channel.invokeMethod<bool>('ensureProot') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
     }
   }
 
@@ -186,6 +211,76 @@ class NativePtyAdapter {
       _pendingEvents.clear();
       await stop();
       return false;
+    }
+  }
+
+  /// Execute a bounded command inside a native PTY session. This keeps
+  /// terminal process creation on the JNI side rather than Dart Process.start.
+  /// It does not bypass Android SELinux policy: binaries that Android forbids
+  /// the app domain to execute can still fail inside the native child.
+  Future<NativePtyCommandResult> runCommand({
+    required String command,
+    required String shell,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final session = NativePtyAdapter();
+    final output = StringBuffer();
+    final token = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final markerPrefix = '__ZION_DONE_${token}_';
+    final marker = RegExp('__ZION_DONE_${token}_(-?\\d+)__');
+    final completed = Completer<int>();
+    StreamSubscription<String>? outputSubscription;
+
+    outputSubscription = session.output.listen((chunk) {
+      output.write(chunk);
+      if (!completed.isCompleted) {
+        final match = marker.firstMatch(output.toString());
+        if (match != null) {
+          completed.complete(int.tryParse(match.group(1) ?? '') ?? 126);
+        }
+      }
+    });
+
+    try {
+      final started = await session.start(rows: 24, cols: 100, shell: shell);
+      if (!started) {
+        return const NativePtyCommandResult(
+          stdout: '',
+          stderr: 'Native PTY could not start the requested shell.',
+          exitCode: 126,
+        );
+      }
+
+      final script =
+          '${command}\n__zion_status=\$?; printf \'\\n${markerPrefix}%s__\\n\' "\$__zion_status"\n';
+      await session.write(script);
+
+      final exitCode = await completed.future.timeout(timeout);
+      final raw = output.toString();
+      final match = marker.firstMatch(raw);
+      final cleanOutput = match == null
+          ? raw
+          : raw.substring(0, match.start);
+      return NativePtyCommandResult(
+        stdout: cleanOutput,
+        stderr: '',
+        exitCode: exitCode,
+      );
+    } on TimeoutException {
+      return NativePtyCommandResult(
+        stdout: output.toString(),
+        stderr: 'Command timed out after ${timeout.inSeconds}s.',
+        exitCode: 124,
+      );
+    } catch (error) {
+      return NativePtyCommandResult(
+        stdout: output.toString(),
+        stderr: 'Native PTY command failed: $error',
+        exitCode: 126,
+      );
+    } finally {
+      await outputSubscription.cancel();
+      await session.dispose();
     }
   }
 

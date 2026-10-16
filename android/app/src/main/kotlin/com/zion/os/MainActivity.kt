@@ -330,6 +330,15 @@ class MainActivity : FlutterFragmentActivity() {
                             runOnUiThread { result.success(report) }
                         }
                     }
+                    "ensureProot" -> {
+                        terminalExecutor.execute {
+                            val ready = try { ensureProotRuntime() } catch (t: Throwable) {
+                                android.util.Log.e("ZionProot", "Runtime preparation failed", t)
+                                false
+                            }
+                            runOnUiThread { result.success(ready) }
+                        }
+                    }
                     "inspectRuntime" -> result.success(inspectTermuxRuntime())
                     "start" -> {
                         val rows = (call.argument<Int>("rows") ?: 24).coerceIn(8, 100)
@@ -539,6 +548,107 @@ class MainActivity : FlutterFragmentActivity() {
         )
     }
 
+    /**
+     * Materialize the bundled Android PRoot executable and its matching loader
+     * into app-private paths expected by the native PTY launcher. Never trust
+     * mere existence: verify ELF64/AArch64 headers and preserve invalid files
+     * as backups before replacing them.
+     */
+    private fun ensureProotRuntime(): Boolean {
+        val prefix = File(filesDir, "usr")
+        val proot = File(prefix, "bin/proot")
+        val loader = File(prefix, "libexec/proot")
+        val sourceLoader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+
+        fun validArm64Elf(file: File, minimumBytes: Long): Boolean {
+            if (!file.isFile || file.length() < minimumBytes) return false
+            return try {
+                java.io.FileInputStream(file).use { input ->
+                    val header = ByteArray(20)
+                    var offset = 0
+                    while (offset < header.size) {
+                        val count = input.read(header, offset, header.size - offset)
+                        if (count <= 0) return false
+                        offset += count
+                    }
+                    header[0] == 0x7f.toByte() &&
+                        header[1] == 'E'.code.toByte() &&
+                        header[2] == 'L'.code.toByte() &&
+                        header[3] == 'F'.code.toByte() &&
+                        header[4] == 2.toByte() &&
+                        header[5] == 1.toByte() &&
+                        (header[18].toInt() and 0xff) == 183 &&
+                        (header[19].toInt() and 0xff) == 0
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        fun install(target: File, minimumBytes: Long, executable: Boolean, source: () -> java.io.InputStream): Boolean {
+            if (validArm64Elf(target, minimumBytes) && (!executable || target.canExecute())) return true
+            if (!target.parentFile!!.exists() && !target.parentFile!!.mkdirs() && !target.parentFile!!.isDirectory) {
+                return false
+            }
+            val temporary = File(target.parentFile, target.name + ".staging")
+            if (temporary.exists() && !temporary.delete()) return false
+            try {
+                source().use { input ->
+                    FileOutputStream(temporary).use { output ->
+                        input.copyTo(output)
+                        output.fd.sync()
+                    }
+                }
+                if (!validArm64Elf(temporary, minimumBytes)) {
+                    temporary.delete()
+                    android.util.Log.e("ZionProot", "Rejected invalid ARM64 ELF payload for ${target.absolutePath}")
+                    return false
+                }
+                temporary.setReadable(true, true)
+                temporary.setExecutable(executable, true)
+                if (!validArm64Elf(temporary, minimumBytes) || (executable && !temporary.canExecute())) {
+                    temporary.delete()
+                    return false
+                }
+                var backup: File? = null
+                if (target.exists()) {
+                    backup = File(target.parentFile, target.name + ".invalid-backup-" + System.currentTimeMillis())
+                    if (!target.renameTo(backup)) {
+                        temporary.delete()
+                        return false
+                    }
+                }
+                if (!temporary.renameTo(target)) {
+                    if (backup != null && !target.exists()) backup.renameTo(target)
+                    temporary.delete()
+                    return false
+                }
+                target.setReadable(true, true)
+                target.setExecutable(executable, true)
+                return validArm64Elf(target, minimumBytes) && (!executable || target.canExecute())
+            } catch (t: Throwable) {
+                android.util.Log.e("ZionProot", "Unable to install ${target.absolutePath}", t)
+                temporary.delete()
+                return false
+            }
+        }
+
+        val executableReady = install(proot, 64 * 1024L, true) {
+            assets.open("proot-aarch64")
+        }
+        val loaderReady = install(loader, 8 * 1024L, true) {
+            java.io.FileInputStream(sourceLoader)
+        }
+        if (!executableReady || !loaderReady) {
+            android.util.Log.w(
+                "ZionProot",
+                "PRoot unavailable: executableReady=$executableReady loaderReady=$loaderReady asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
+            )
+            return false
+        }
+        return true
+    }
+
     private fun startTerminal(rows: Int, cols: Int, shell: String?): Int =
         synchronized(terminalLifecycleLock) { startTerminalLocked(rows, cols, shell) }
 
@@ -551,6 +661,10 @@ class MainActivity : FlutterFragmentActivity() {
                 android.util.Log.w("ZionBootstrap", bootstrapReport["message"]?.toString() ?: "Bootstrap unavailable")
             }
             ensureTerminalEnvironment()
+            // Prepare the local PRoot payload on every startup so the Dart
+            // preflight and native launcher see the same private runtime.
+            val prootReady = ensureProotRuntime()
+            if (!prootReady) android.util.Log.w("ZionProot", "PRoot is unavailable; Android shell remains usable.")
             if (!nativePtyAvailable()) {
                 android.util.Log.e("ZionTerminal", "PTY startup aborted: native PTY is unavailable")
                 return 0
@@ -559,6 +673,7 @@ class MainActivity : FlutterFragmentActivity() {
                 rootfs.isDirectory && File(rootfs, "bin/sh").isFile && File(rootfs, "bin/bash").isFile
             val nativeShell = when {
                 shell == "zion-kali" -> {
+                    if (!prootReady) return 0
                     val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(filesDir, "usr/libexec/proot")
@@ -566,6 +681,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 shell?.startsWith("zion-kali@") == true -> {
+                    if (!prootReady) return 0
                     val rootfsPath = shell.removePrefix("zion-kali@").trim()
                     if (rootfsPath.isEmpty() || !rootfsPath.startsWith("/") ||
                         rootfsPath.contains("|") || rootfsPath.contains("\\n") ||

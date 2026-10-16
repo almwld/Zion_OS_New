@@ -47,14 +47,17 @@ internal object TermuxBootstrapInstaller {
 
         // Do not overlay a partial installation. It may contain user data,
         // packages, or evidence needed to diagnose why Bash is missing.
+        var preserveIncompletePrefix = false
         if (prefix.exists() && prefix.isDirectory && (prefix.list()?.isNotEmpty() == true)) {
-            // Earlier PTY startup versions could create only empty PREFIX
-            // directories after a transient bootstrap read failure. Recover
-            // that known placeholder safely, but never remove files or symlinks.
-            if (!isEmptyPlaceholderPrefix(prefix) || !deleteTreeSafely(prefix)) {
-                return report(false, "preserved-prefix-conflict",
-                    "مجلد usr موجود وغير فارغ لكن Bash غير صالح؛ احتُفظ بكل الملفات ولم يُستبدل المجلد.",
-                    prefix, bash)
+            // Remove only a known empty placeholder. Keep populated incomplete
+            // PREFIX trees intact until a fully validated replacement is ready.
+            if (isEmptyPlaceholderPrefix(prefix)) {
+                if (!deleteTreeSafely(prefix)) {
+                    return report(false, "placeholder-prefix-cleanup-failed",
+                        "تعذر تنظيف مجلد usr المؤقت الفارغ؛ لم يتم حذف أي ملفات.", prefix, bash)
+                }
+            } else {
+                preserveIncompletePrefix = true
             }
         }
         if (prefix.exists() && !prefix.isDirectory) {
@@ -158,16 +161,28 @@ internal object TermuxBootstrapInstaller {
                 throw IllegalStateException("Extracted bootstrap does not contain bin/apt")
             }
 
-            // Prefix was absent or empty at entry. Delete only an empty
-            // directory, never recursively remove a populated Userland tree.
+            // Move a populated incomplete PREFIX aside only after the staged archive
+            // has passed validation. Keep the backup recoverable; never recursively delete it.
+            var incompleteBackup: File? = null
             if (prefix.exists()) {
-                val children = prefix.list()
-                if (children == null || children.isNotEmpty()) {
-                    throw IllegalStateException("PREFIX changed during install; refusing replacement")
+                val children = prefix.list() ?: throw IllegalStateException("Cannot inspect PREFIX before promotion")
+                if (children.isNotEmpty()) {
+                    if (!preserveIncompletePrefix) throw IllegalStateException("PREFIX changed during install; refusing replacement")
+                    val backup = File(files, "usr.incomplete-backup-${System.currentTimeMillis()}")
+                    if (backup.exists() || !prefix.renameTo(backup)) {
+                        throw IllegalStateException("Cannot preserve incomplete PREFIX before promotion")
+                    }
+                    incompleteBackup = backup
+                } else if (!prefix.delete()) {
+                    throw IllegalStateException("Cannot remove empty PREFIX directory")
                 }
-                if (!prefix.delete()) throw IllegalStateException("Cannot remove empty PREFIX directory")
             }
-            if (!staging.renameTo(prefix)) throw IllegalStateException("Cannot atomically promote staging to usr")
+            if (!staging.renameTo(prefix)) {
+                if (incompleteBackup != null && !prefix.exists() && !incompleteBackup.renameTo(prefix)) {
+                    Log.e(TAG, "Unable to restore incomplete PREFIX backup after promotion failure")
+                }
+                throw IllegalStateException("Cannot atomically promote staging to usr")
+            }
 
             listOf("tmp", "var/tmp", "var/cache/apt/archives/partial", "var/lib/apt/lists/partial").forEach {
                 val dir = File(prefix, it)
@@ -180,7 +195,10 @@ internal object TermuxBootstrapInstaller {
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             configureBashRuntime(prefix, files)
 
-            return report(true, "installed", "تم استخراج Termux Bootstrap وتجهيز Bash runtime في ${prefix.absolutePath}.",
+            val backupNote = incompleteBackup?.let {
+                " تم حفظ النسخة غير المكتملة دون حذفها في ${it.absolutePath}."
+            } ?: ""
+            return report(true, "installed", "تم استخراج Termux Bootstrap وتجهيز Bash runtime في ${prefix.absolutePath}.$backupNote",
                 prefix, File(prefix, "bin/bash"))
         } catch (t: Throwable) {
             Log.e(TAG, "Bootstrap install failed; preserving active prefix", t)

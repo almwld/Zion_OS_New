@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 
@@ -107,10 +109,17 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
+    // Check the local Kali archive first, even if Termux usr is already
+    // installed: Kali rootfs and the Termux-compatible prefix are separate.
+    // The method returns null only when no supported local archive exists.
+    final kaliResult = await _installFromKaliArchive(onProgress: onProgress);
+    if (kaliResult != null) return kaliResult;
+
     if (await isInstalled(onProgress: onProgress)) {
       onProgress?.call('[Userland] Already installed; skipping copy.');
       return const ZionUserlandInstallResult(success: true, message: 'Userland already installed; no copy needed.');
     }
+
     final abi = ZionBootstrapEndpoint.currentAbi();
     onProgress?.call('اكتشاف معمارية الجهاز: $abi...');
 
@@ -281,6 +290,136 @@ class ZionUserlandInstaller {
       success: false,
       message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: $directFailureText؛ الأرشيف المحلي: $archiveFailureText؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
     );
+  }
+
+  /// Installs the explicitly supported local Kali NetHunter rootfs archive.
+  ///
+  /// Returns null only when the archive is absent, allowing the existing
+  /// offline Termux recovery paths to continue. If the archive exists but is
+  /// invalid or extraction fails, returns a failure instead of silently
+  /// switching to a different source. Existing rootfs data is never deleted:
+  /// a validated new rootfs is staged first and any old destination is renamed
+  /// to a timestamped sibling before promotion.
+  Future<ZionUserlandInstallResult?> _installFromKaliArchive({
+    void Function(String message)? onProgress,
+  }) async {
+    const candidates = <String>[
+      '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
+      '/storage/emulated/0/kali-nethunter-rootfs-minimal-arm64.tar.xz',
+    ];
+
+    File? archive;
+    for (final path in candidates) {
+      try {
+        final candidate = File(path);
+        if (await candidate.exists()) {
+          archive = candidate;
+          break;
+        }
+      } catch (_) {
+        // Continue through the known local paths only.
+      }
+    }
+    if (archive == null) {
+      onProgress?.call('[Kali] No local NetHunter archive found; continuing offline Userland recovery.');
+      return null;
+    }
+
+    final archivePath = archive.path;
+    onProgress?.call('[Kali] Found local rootfs archive: $archivePath');
+    try {
+      final stat = await archive.stat();
+      const minimumArchiveBytes = 100 * 1024 * 1024;
+      if (stat.size <= minimumArchiveBytes) {
+        return ZionUserlandInstallResult(
+          success: false,
+          message: 'أرشيف Kali المحلي أصغر من الحد المطلوب (>100 MiB): ${stat.size} bytes. لم يتم تعديل ملفاتك.',
+        );
+      }
+
+      final distDir = Directory('${ZionBootstrap.home}/.zion/dists/kali');
+      final target = Directory('${distDir.path}/rootfs');
+      final targetBash = File('${target.path}/bin/bash');
+      final targetPython = File('${target.path}/usr/bin/python3');
+
+      // Do not overwrite an already complete installation just because the
+      // source archive is present.
+      if (await targetBash.exists() && await targetPython.exists()) {
+        onProgress?.call('[Kali] Existing rootfs already has bin/bash and usr/bin/python3; preserving it.');
+        return const ZionUserlandInstallResult(
+          success: true,
+          message: 'Kali rootfs موجود وسليم من ناحية الملفات المطلوبة؛ لم يتم استبداله.',
+          releaseTag: 'local-kali-rootfs',
+        );
+      }
+
+      await distDir.create(recursive: true);
+      final staging = Directory(
+        '${distDir.path}/rootfs.staging-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await staging.create(recursive: false);
+      onProgress?.call('[Kali] Extracting archive into isolated staging directory: ${staging.path}');
+
+      // Use the Dart archive decoder so extraction does not depend on
+      // Android toybox tar supporting XZ, and never execute an ELF from
+      // app-private storage. archive_io streams .tar.xz entries to disk.
+      // Isolate.run keeps the long decode/extraction off the UI isolate.
+      await Isolate.run<void>(() async {
+        await extractFileToDisk(archivePath, staging.path);
+      });
+
+      final stagedBash = File('${staging.path}/bin/bash');
+      final stagedPython = File('${staging.path}/usr/bin/python3');
+      if (!await stagedBash.exists() || !await stagedPython.exists()) {
+        onProgress?.call('[Kali] Staged archive did not contain both bin/bash and usr/bin/python3; staging preserved for diagnosis.');
+        return ZionUserlandInstallResult(
+          success: false,
+          message: 'الأرشيف لا يحتوي في جذر الاستخراج على bin/bash وusr/bin/python3 معًا. تُرك مجلد staging للتشخيص ولم يتم المساس بملفاتك.',
+        );
+      }
+      final bashStat = await stagedBash.stat();
+      if (bashStat.size < 100000) {
+        return ZionUserlandInstallResult(
+          success: false,
+          message: 'ملف bin/bash داخل أرشيف Kali غير مكتمل (${bashStat.size} bytes). تُرك staging دون حذف.',
+        );
+      }
+
+      // If an incomplete destination exists, preserve it by renaming it;
+      // never recursively delete user data to make room for the new rootfs.
+      String? preservedPath;
+      if (await target.exists()) {
+        preservedPath = '${distDir.path}/rootfs.backup-${DateTime.now().microsecondsSinceEpoch}';
+        await target.rename(preservedPath);
+        onProgress?.call('[Kali] Existing rootfs preserved at $preservedPath');
+      }
+      try {
+        await staging.rename(target.path);
+      } catch (error) {
+        // Best-effort rollback of the previous rootfs if promotion fails.
+        if (preservedPath != null && !await target.exists()) {
+          try {
+            await Directory(preservedPath).rename(target.path);
+          } catch (rollbackError) {
+            onProgress?.call('[Kali] Rollback failed; previous rootfs remains at $preservedPath: $rollbackError');
+          }
+        }
+        rethrow;
+      }
+
+      onProgress?.call('[Kali] ✓ Rootfs installed at ${target.path}');
+      return const ZionUserlandInstallResult(
+        success: true,
+        message: 'تم تثبيت Kali NetHunter محليًا والتحقق من bin/bash وusr/bin/python3 دون اتصال بالإنترنت.',
+        releaseTag: 'local-kali-rootfs',
+      );
+    } catch (error) {
+      onProgress?.call('[Kali] Local archive installation failed: $error');
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'تعذر تثبيت أرشيف Kali المحلي: $error. لم تُحذف ملفات المستخدم.',
+      );
+    }
   }
 
   Future<ZionUserlandInstallResult> _installFromDirectory(
