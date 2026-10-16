@@ -508,10 +508,22 @@ class ZionUserlandInstaller {
       if (hadTarget) {
         try {
           onProgress?.call('[Userland] Creating rollback snapshot: ${safetyBackup.path}');
+          final originalBash = File('${targetDir.path}/bin/bash');
+          final originalBashExists = await originalBash.exists();
+          final originalBashSize = originalBashExists ? await originalBash.length() : -1;
+          final originalTopEntries = await targetDir.list(followLinks: false).take(1).toList();
           await _manualCopy(targetDir, safetyBackup);
-          if (!await File('${safetyBackup.path}/bin/bash').exists() &&
-              !await Directory(safetyBackup.path).exists()) {
-            throw StateError('Safety snapshot verification failed');
+          if (!await safetyBackup.exists()) {
+            throw StateError('Safety snapshot directory was not created');
+          }
+          final snapshotBash = File('${safetyBackup.path}/bin/bash');
+          if (originalBashExists &&
+              (!await snapshotBash.exists() || await snapshotBash.length() != originalBashSize)) {
+            throw StateError('Safety snapshot did not preserve the existing Bash file');
+          }
+          final snapshotTopEntries = await safetyBackup.list(followLinks: false).take(1).toList();
+          if (originalTopEntries.isNotEmpty && snapshotTopEntries.isEmpty) {
+            throw StateError('Safety snapshot is unexpectedly empty');
           }
         } catch (e) {
           try { if (await safetyBackup.exists()) await safetyBackup.delete(recursive: true); } catch (_) {}
