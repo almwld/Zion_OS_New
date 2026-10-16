@@ -180,36 +180,42 @@ internal object TermuxBootstrapInstaller {
      * does not require the EOCD record.
      */
     private fun loadBootstrapArchive(context: Context): ByteArray {
-        var jniError: Throwable? = null
+        // The packaged library's known payload is a raw ZIP stream embedded
+        // in an ELF, and intentionally has no ZIP EOCD/central directory.
+        // Try this path first; ZipInputStream consumes local entries in order.
+        var blobError: Throwable? = null
+        val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
+        try {
+            if (soFile.isFile) {
+                val offset = BOOTSTRAP_BLOB_OFFSET
+                val size = BOOTSTRAP_BLOB_SIZE
+                RandomAccessFile(soFile, "r").use { raf ->
+                    if (raf.length() < offset + size) {
+                        throw IllegalStateException(
+                            "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}"
+                        )
+                    }
+                    raf.seek(offset)
+                    val bytes = ByteArray(size.toInt())
+                    raf.readFully(bytes)
+                    if (!looksLikeZipStream(bytes)) {
+                        throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header")
+                    }
+                    return bytes
+                }
+            }
+            blobError = IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}")
+        } catch (t: Throwable) {
+            blobError = t
+            Log.w(TAG, "Embedded bootstrap blob unavailable; trying JNI getZip", t)
+        }
+
         try {
             val bytes = TermuxInstaller.getZip()
             if (looksLikeZipStream(bytes)) return bytes
-            jniError = IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream")
+            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream", blobError)
         } catch (t: Throwable) {
-            jniError = t
-            Log.w(TAG, "JNI getZip unavailable; trying the embedded ZIP blob", t)
-        }
-
-        val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
-        if (!soFile.isFile) {
-            throw IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}", jniError)
-        }
-        val offset = BOOTSTRAP_BLOB_OFFSET
-        val size = BOOTSTRAP_BLOB_SIZE
-        RandomAccessFile(soFile, "r").use { raf ->
-            if (raf.length() < offset + size) {
-                throw IllegalStateException(
-                    "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}",
-                    jniError
-                )
-            }
-            raf.seek(offset)
-            val bytes = ByteArray(size.toInt())
-            raf.readFully(bytes)
-            if (!looksLikeZipStream(bytes)) {
-                throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header", jniError)
-            }
-            return bytes
+            throw IllegalStateException("Unable to read bootstrap ZIP stream from ELF blob or JNI", t)
         }
     }
 
