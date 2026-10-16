@@ -132,7 +132,19 @@ static void prepare_environment(void) {
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
-    setenv("LD_LIBRARY_PATH", library_path, 1);
+    char full_library_path[512];
+    snprintf(full_library_path, sizeof(full_library_path), "%s:/data/data/com.zion.os/files/usr/libexec", library_path);
+    setenv("LD_LIBRARY_PATH", full_library_path, 1);
+    setenv("BASH_ENV", "/data/data/com.zion.os/files/usr/etc/zion-bashrc", 1);
+    setenv("TERMINFO", "/data/data/com.zion.os/files/usr/share/terminfo", 1);
+    setenv("TERMINFO_DIRS", "/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo:/system/usr/share/terminfo", 1);
+    if (access("/data/data/com.zion.os/files/usr/etc/tls/cert.pem", R_OK) == 0) {
+        setenv("SSL_CERT_FILE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+        setenv("CURL_CA_BUNDLE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+    } else {
+        unsetenv("SSL_CERT_FILE");
+        unsetenv("CURL_CA_BUNDLE");
+    }
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     setenv("PS1", "$ ", 1);

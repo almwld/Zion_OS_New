@@ -221,7 +221,10 @@ internal object TermuxBootstrapInstaller {
             "export PREFIX=\"${prefix.absolutePath}\"\n" +
             "export HOME=\"${File(files, "home").absolutePath}\"\n" +
             "export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
-            "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64\"\n" +
+            "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64:\$PREFIX/libexec\"\n" +
+            "export TERMINFO=\"\$PREFIX/share/terminfo\"\n" +
+            "export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo\"\n" +
+            "if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi\n" +
             "export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"\n" +
             "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
         FileOutputStream(bash).use { out ->
@@ -238,7 +241,10 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("export PREFIX=\"${prefix.absolutePath}\"")
         rc.appendLine("export HOME=\"${File(files, "home").absolutePath}\"")
         rc.appendLine("export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"")
-        rc.appendLine("export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64\"")
+        rc.appendLine("export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64:\$PREFIX/libexec\"")
+        rc.appendLine("export TERMINFO=\"\$PREFIX/share/terminfo\"")
+        rc.appendLine("export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo:/system/usr/share/terminfo\"")
+        rc.appendLine("if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi")
         rc.appendLine("export TERM=xterm-256color")
         rc.appendLine("export COLORTERM=truecolor")
         rc.appendLine("export ZION_TERMINAL=1")
@@ -252,15 +258,26 @@ internal object TermuxBootstrapInstaller {
             rc.appendLine("alias coreutils='/system/bin/linker64 \"\$PREFIX/bin/coreutils\"'")
             listOf("ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "tee",
                 "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "basename", "dirname",
-                "date", "df", "du", "id", "readlink", "realpath", "stat", "test", "whoami").forEach { applet ->
+                "date", "du", "id", "readlink", "realpath", "stat", "test", "whoami").forEach { applet ->
                 rc.appendLine("alias $applet='/system/bin/linker64 \"\$PREFIX/bin/coreutils\" --coreutils-prog=$applet'")
             }
         }
-        listOf("grep", "sed", "gawk", "find", "python3", "node").forEach { tool ->
+        listOf("grep", "sed", "gawk", "find", "xargs", "curl", "wget", "tar", "unzip",
+            "python3", "node", "git", "nano", "which", "file").forEach { tool ->
             if (File(bin, tool).isFile) {
                 rc.appendLine("alias $tool='/system/bin/linker64 \"\$PREFIX/bin/$tool\"'")
             }
         }
+        // Android provides these applets in toybox; they are not guaranteed to
+        // exist in the Termux coreutils multi-call binary.
+        rc.appendLine("df() { /system/bin/toybox df \"\$@\"; }")
+        rc.appendLine("ps() { /system/bin/toybox ps \"\$@\"; }")
+        rc.appendLine("top() { /system/bin/toybox top \"\$@\"; }")
+        rc.appendLine("free() { /system/bin/toybox free \"\$@\"; }")
+        rc.appendLine("alias ll='ls -alF'")
+        rc.appendLine("alias la='ls -A'")
+        rc.appendLine("alias l='ls -CF'")
+        rc.appendLine("PS1='ZOIN@OS:\\w\\$ '")
         val rcFile = File(etc, "zion-bashrc")
         FileOutputStream(rcFile).use { out ->
             out.write(rc.toString().toByteArray(Charsets.UTF_8))
