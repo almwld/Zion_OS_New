@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import 'terminal_logs.dart';
 
+const EventChannel _nativeTerminalLogs = EventChannel('zion.os/terminal/logs');
+
 class LogsScreen extends StatefulWidget {
   const LogsScreen({super.key});
 
@@ -16,13 +18,21 @@ class _LogsScreenState extends State<LogsScreen> {
   final List<String> _logs = ZionTerminalLogs.entries.toList();
   final ScrollController _scrollController = ScrollController();
   StreamSubscription<String>? _subscription;
+  StreamSubscription<dynamic>? _nativeSubscription;
 
   @override
   void initState() {
     super.initState();
+    _nativeSubscription = _nativeTerminalLogs.receiveBroadcastStream().listen(
+      (event) => ZionTerminalLogs.add('Android: ${event.toString()}'),
+      onError: (Object error) => ZionTerminalLogs.add('Android log stream error: $error'),
+    );
     _subscription = ZionTerminalLogs.stream.listen((line) {
       if (!mounted) return;
-      setState(() => _logs.add(line));
+      setState(() {
+        _logs.add(line);
+        if (_logs.length > 1500) _logs.removeRange(0, _logs.length - 1500);
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
@@ -34,6 +44,7 @@ class _LogsScreenState extends State<LogsScreen> {
   @override
   void dispose() {
     _subscription?.cancel();
+    _nativeSubscription?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
