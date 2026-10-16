@@ -8,6 +8,7 @@ import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.io.InputStreamReader
 import java.util.zip.ZipInputStream
 
@@ -18,6 +19,8 @@ import java.util.zip.ZipInputStream
  */
 internal object TermuxBootstrapInstaller {
     private const val TAG = "ZionBootstrap"
+    private const val BOOTSTRAP_BLOB_OFFSET = 0x520L
+    private const val BOOTSTRAP_BLOB_SIZE = 0x1766da7L
     private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
     private const val MAX_ENTRIES = 100_000
     private const val MAX_UNCOMPRESSED_BYTES = 512L * 1024L * 1024L
@@ -27,13 +30,36 @@ internal object TermuxBootstrapInstaller {
         val files = context.filesDir
         val prefix = File(files, "usr")
         val bash = File(prefix, "bin/bash")
-        if (bash.isFile && bash.length() >= 100_000L) {
-            return report(true, "already-installed", "Termux Bootstrap موجود بالفعل؛ لم يتم تغيير usr.", prefix, bash)
+        val bashReal = File(prefix, "bin/bash.real")
+        if (isBashBinary(bash) || isBashBinary(bashReal)) {
+            return try {
+                configureBashRuntime(prefix, files)
+                report(true, "already-installed-runtime-configured",
+                    "Termux Bootstrap موجود؛ تم تجهيز zion-bashrc وBash launcher دون إعادة استخراج usr.",
+                    prefix, File(prefix, "bin/bash"))
+            } catch (t: Throwable) {
+                Log.e(TAG, "Unable to configure existing Bash runtime", t)
+                report(false, "bash-runtime-configuration-failed",
+                    "تعذر إعداد Bash runtime: ${t.javaClass.simpleName}: ${t.message}",
+                    prefix, File(prefix, "bin/bash"))
+            }
         }
 
-        // An incomplete prefix must not block recovery forever. Keep it intact
-        // while extracting and validating a fresh bootstrap in isolation; only
-        // move it aside after the staged payload passes validation.
+        // Do not overlay a partial installation. It may contain user data,
+        // packages, or evidence needed to diagnose why Bash is missing.
+        var preserveIncompletePrefix = false
+        if (prefix.exists() && prefix.isDirectory && (prefix.list()?.isNotEmpty() == true)) {
+            // Remove only a known empty placeholder. Keep populated incomplete
+            // PREFIX trees intact until a fully validated replacement is ready.
+            if (isEmptyPlaceholderPrefix(prefix)) {
+                if (!deleteTreeSafely(prefix)) {
+                    return report(false, "placeholder-prefix-cleanup-failed",
+                        "تعذر تنظيف مجلد usr المؤقت الفارغ؛ لم يتم حذف أي ملفات.", prefix, bash)
+                }
+            } else {
+                preserveIncompletePrefix = true
+            }
+        }
         if (prefix.exists() && !prefix.isDirectory) {
             return report(false, "prefix-path-conflict", "المسار usr موجود لكنه ليس مجلدًا؛ لم يُحذف.",
                 prefix, bash)
@@ -42,11 +68,11 @@ internal object TermuxBootstrapInstaller {
         val staging = File(files, "usr.bootstrap-staging")
         try {
             val archive = try {
-                TermuxInstaller.getZip()
+                loadBootstrapArchive(context)
             } catch (t: Throwable) {
-                Log.e(TAG, "Unable to load libtermux-bootstrap.so/getZip JNI", t)
+                Log.e(TAG, "Unable to read Termux Bootstrap ZIP stream from JNI or ELF blob", t)
                 return report(false, "bootstrap-library-load-failed",
-                    "تعذر تحميل libtermux-bootstrap.so أو دالة getZip: ${t.javaClass.simpleName}: ${t.message}",
+                    "تعذر قراءة Bootstrap من JNI أو من ZIP blob داخل المكتبة: ${t.javaClass.simpleName}: ${t.message}",
                     prefix, bash)
             }
             if (archive.isEmpty() || archive.size.toLong() > MAX_ARCHIVE_BYTES) {
@@ -128,34 +154,32 @@ internal object TermuxBootstrapInstaller {
             }
 
             val stagedBash = File(staging, "bin/bash")
-            if (!stagedBash.isFile || stagedBash.length() < 100_000L) {
-                throw IllegalStateException("Extracted bootstrap does not contain a valid bin/bash")
+            if (!isBashBinary(stagedBash)) {
+                throw IllegalStateException("Extracted bootstrap bin/bash is not a valid ELF executable")
             }
             if (!File(staging, "bin/apt").exists()) {
                 throw IllegalStateException("Extracted bootstrap does not contain bin/apt")
             }
 
-            // Promote only after validation. If usr is the known broken skeleton,
-            // preserve it as a timestamped backup instead of treating it as a
-            // permanent conflict or deleting any of its contents.
-            var backup: File? = null
+            // Move a populated incomplete PREFIX aside only after the staged archive
+            // has passed validation. Keep the backup recoverable; never recursively delete it.
+            var incompleteBackup: File? = null
             if (prefix.exists()) {
-                val children = prefix.list()
-                    ?: throw IllegalStateException("Cannot inspect PREFIX before promotion")
-                if (children.isEmpty()) {
-                    if (!prefix.delete()) throw IllegalStateException("Cannot remove empty PREFIX directory")
-                } else {
-                    backup = File(files, "usr.incomplete-backup-${System.currentTimeMillis()}")
-                    if (!prefix.renameTo(backup)) {
-                        throw IllegalStateException("Cannot preserve incomplete PREFIX as ${backup.absolutePath}")
+                val children = prefix.list() ?: throw IllegalStateException("Cannot inspect PREFIX before promotion")
+                if (children.isNotEmpty()) {
+                    if (!preserveIncompletePrefix) throw IllegalStateException("PREFIX changed during install; refusing replacement")
+                    val backup = File(files, "usr.incomplete-backup-${System.currentTimeMillis()}")
+                    if (backup.exists() || !prefix.renameTo(backup)) {
+                        throw IllegalStateException("Cannot preserve incomplete PREFIX before promotion")
                     }
+                    incompleteBackup = backup
+                } else if (!prefix.delete()) {
+                    throw IllegalStateException("Cannot remove empty PREFIX directory")
                 }
             }
             if (!staging.renameTo(prefix)) {
-                if (backup != null && !prefix.exists()) {
-                    if (!backup.renameTo(prefix)) {
-                        throw IllegalStateException("Promotion failed and PREFIX rollback failed; backup remains at ${backup.absolutePath}")
-                    }
+                if (incompleteBackup != null && !prefix.exists() && !incompleteBackup.renameTo(prefix)) {
+                    Log.e(TAG, "Unable to restore incomplete PREFIX backup after promotion failure")
                 }
                 throw IllegalStateException("Cannot atomically promote staging to usr")
             }
@@ -169,9 +193,12 @@ internal object TermuxBootstrapInstaller {
             }
             File(files, "home").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
+            configureBashRuntime(prefix, files)
 
-            val backupNote = if (backup != null) " تم حفظ النسخة غير المكتملة دون حذفها في ${backup.absolutePath}." else ""
-            return report(true, "installed", "تم استخراج Termux Bootstrap بنجاح إلى ${prefix.absolutePath}.$backupNote",
+            val backupNote = incompleteBackup?.let {
+                " تم حفظ النسخة غير المكتملة دون حذفها في ${it.absolutePath}."
+            } ?: ""
+            return report(true, "installed", "تم استخراج Termux Bootstrap وتجهيز Bash runtime في ${prefix.absolutePath}.$backupNote",
                 prefix, File(prefix, "bin/bash"))
         } catch (t: Throwable) {
             Log.e(TAG, "Bootstrap install failed; preserving active prefix", t)
@@ -180,6 +207,203 @@ internal object TermuxBootstrapInstaller {
                 "فشل استخراج Bootstrap دون حذف usr: ${t.javaClass.simpleName}: ${t.message}", prefix, bash)
         }
     }
+
+    private fun isEmptyPlaceholderPrefix(prefix: File): Boolean {
+        val allowed = setOf("bin", "sbin", "lib", "lib64", "etc", "include", "libexec", "share", "tmp", "var")
+        val children = prefix.listFiles() ?: return false
+        if (children.isEmpty() || children.any { it.name !in allowed }) return false
+        return isEmptyDirectoryTree(prefix)
+    }
+
+    private fun isEmptyDirectoryTree(directory: File): Boolean {
+        if (readlinkOrNull(directory.absolutePath) != null || !directory.isDirectory) return false
+        val children = directory.listFiles() ?: return false
+        for (child in children) {
+            if (readlinkOrNull(child.absolutePath) != null) return false
+            if (!child.isDirectory || !isEmptyDirectoryTree(child)) return false
+        }
+        return true
+    }
+
+    private fun isBashBinary(file: File): Boolean {
+        if (!file.isFile || file.length() < 100_000L) return false
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                if (raf.readUnsignedByte() != 0x7f ||
+                    raf.readUnsignedByte() != 0x45 ||
+                    raf.readUnsignedByte() != 0x4c ||
+                    raf.readUnsignedByte() != 0x46) return@use false
+                val elfClass = raf.readUnsignedByte()
+                val elfData = raf.readUnsignedByte()
+                val elfVersion = raf.readUnsignedByte()
+                elfClass in 1..2 && elfData in 1..2 && elfVersion == 1
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Keep the real Bash ELF as bash.real and create a small launcher for
+     * environments that can invoke scripts. PTY startup itself uses linker64
+     * directly because SELinux may reject execve on app-private ELF files.
+     */
+    private fun configureBashRuntime(prefix: File, files: File) {
+        val bin = File(prefix, "bin")
+        val etc = File(prefix, "etc")
+        if (!bin.isDirectory && !bin.mkdirs()) {
+            throw IllegalStateException("Cannot create Userland bin directory")
+        }
+        if (!etc.isDirectory && !etc.mkdirs()) {
+            throw IllegalStateException("Cannot create Userland etc directory")
+        }
+
+        val bash = File(bin, "bash")
+        val real = File(bin, "bash.real")
+        if (!isBashBinary(real)) {
+            if (!isBashBinary(bash)) {
+                throw IllegalStateException("Neither bin/bash nor bin/bash.real is a valid Bash ELF")
+            }
+            if (real.exists() && !real.delete()) {
+                throw IllegalStateException("Cannot replace invalid bash.real")
+            }
+            if (!bash.renameTo(real)) {
+                throw IllegalStateException("Cannot move Bash ELF to bash.real")
+            }
+        }
+
+        val launcher = "#!/system/bin/sh\n" +
+            "export PREFIX=\"${prefix.absolutePath}\"\n" +
+            "export HOME=\"${File(files, "home").absolutePath}\"\n" +
+            "export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
+            "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64:\$PREFIX/libexec\"\n" +
+            "export TMPDIR=\"${File(files, "tmp").absolutePath}\"\n" +
+            "export TERM=\"xterm-256color\"\n" +
+            "export COLORTERM=\"truecolor\"\n" +
+            "export LANG=\"C.UTF-8\"\n" +
+            "export LC_ALL=\"C.UTF-8\"\n" +
+            "export SHELL=\"${File(prefix, "bin/bash").absolutePath}\"\n" +
+            "export ZION_TERMINAL=1\n" +
+            "export TERMINFO=\"\$PREFIX/share/terminfo\"\n" +
+            "export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo\"\n" +
+            "if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi\n" +
+            "export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"\n" +
+            "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
+        FileOutputStream(bash).use { out ->
+            out.write(launcher.toByteArray(Charsets.UTF_8))
+            out.fd.sync()
+        }
+        Os.chmod(bash.absolutePath, 493) // 0755
+        Os.chmod(real.absolutePath, 493) // 0755
+
+        val coreutils = File(bin, "coreutils")
+        val rc = StringBuilder()
+        rc.appendLine("# Zion interactive Bash configuration")
+        rc.appendLine("# External ELF programs are invoked through Android's linker; this is not an SELinux bypass.")
+        rc.appendLine("export PREFIX=\"${prefix.absolutePath}\"")
+        rc.appendLine("export HOME=\"${File(files, "home").absolutePath}\"")
+        rc.appendLine("export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"")
+        rc.appendLine("export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64:\$PREFIX/libexec\"")
+        rc.appendLine("export TMPDIR=\"${File(files, "tmp").absolutePath}\"")
+        rc.appendLine("export SHELL=\"${File(prefix, "bin/bash").absolutePath}\"")
+        rc.appendLine("export LANG=C.UTF-8")
+        rc.appendLine("export LC_ALL=C.UTF-8")
+        rc.appendLine("export TERMINFO=\"\$PREFIX/share/terminfo\"")
+        rc.appendLine("export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo:/system/usr/share/terminfo\"")
+        rc.appendLine("if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi")
+        rc.appendLine("export TERM=xterm-256color")
+        rc.appendLine("export COLORTERM=truecolor")
+        rc.appendLine("export ZION_TERMINAL=1")
+        // Non-interactive Bash does not read --init-file/.bashrc. BASH_ENV makes
+        // the same linker-backed aliases available to scripts, where direct
+        // execve of app-private ELF tools can be denied by Android SELinux.
+        rc.appendLine("export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"")
+        rc.appendLine("shopt -s expand_aliases")
+        rc.appendLine("alias bash='/system/bin/linker64 \"\$PREFIX/bin/bash.real\"'")
+        if (coreutils.isFile) {
+            rc.appendLine("alias coreutils='/system/bin/linker64 \"\$PREFIX/bin/coreutils\"'")
+            listOf("ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "tee",
+                "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "basename", "dirname",
+                "date", "du", "id", "readlink", "realpath", "stat", "test", "whoami").forEach { applet ->
+                rc.appendLine("alias $applet='/system/bin/linker64 \"\$PREFIX/bin/coreutils\" --coreutils-prog=$applet'")
+            }
+        }
+        listOf("grep", "sed", "gawk", "find", "xargs", "curl", "wget", "tar", "unzip",
+            "python3", "node", "git", "nano", "which", "file").forEach { tool ->
+            if (File(bin, tool).isFile) {
+                rc.appendLine("alias $tool='/system/bin/linker64 \"\$PREFIX/bin/$tool\"'")
+            }
+        }
+        // Android provides these applets in toybox; they are not guaranteed to
+        // exist in the Termux coreutils multi-call binary.
+        rc.appendLine("df() { /system/bin/toybox df \"\$@\"; }")
+        rc.appendLine("ps() { /system/bin/toybox ps \"\$@\"; }")
+        rc.appendLine("top() { /system/bin/toybox top \"\$@\"; }")
+        rc.appendLine("free() { /system/bin/toybox free \"\$@\"; }")
+        rc.appendLine("alias ll='ls -alF'")
+        rc.appendLine("alias la='ls -A'")
+        rc.appendLine("alias l='ls -CF'")
+        rc.appendLine("PS1='\\n\\[\\e[1;38;5;117m\\]╭─\\[\\e[1;38;5;39m\\][ZION]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;45m\\][OS]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;222m\\][\\w]\\[\\e[0m\\]\\n\\[\\e[1;38;5;117m\\]╰─\\[\\e[1;32m\\]\\$\\[\\e[0m\\] '")
+        val rcFile = File(etc, "zion-bashrc")
+        FileOutputStream(rcFile).use { out ->
+            out.write(rc.toString().toByteArray(Charsets.UTF_8))
+            out.fd.sync()
+        }
+        Os.chmod(rcFile.absolutePath, 420) // 0644
+    }
+
+    /**
+     * Prefer the official JNI accessor. Some packaged builds expose the ZIP
+     * payload only as a raw stream embedded in the ELF shared object, without
+     * a ZIP central directory/EOCD. ZipInputStream is a streaming reader and
+     * does not require the EOCD record.
+     */
+    private fun loadBootstrapArchive(context: Context): ByteArray {
+        // The packaged library's known payload is a raw ZIP stream embedded
+        // in an ELF, and intentionally has no ZIP EOCD/central directory.
+        // Try this path first; ZipInputStream consumes local entries in order.
+        var blobError: Throwable? = null
+        val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
+        try {
+            if (soFile.isFile) {
+                val offset = BOOTSTRAP_BLOB_OFFSET
+                val size = BOOTSTRAP_BLOB_SIZE
+                RandomAccessFile(soFile, "r").use { raf ->
+                    if (raf.length() < offset + size) {
+                        throw IllegalStateException(
+                            "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}"
+                        )
+                    }
+                    raf.seek(offset)
+                    val bytes = ByteArray(size.toInt())
+                    raf.readFully(bytes)
+                    if (!looksLikeZipStream(bytes)) {
+                        throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header")
+                    }
+                    return bytes
+                }
+            }
+            blobError = IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}")
+        } catch (t: Throwable) {
+            blobError = t
+            Log.w(TAG, "Embedded bootstrap blob unavailable; trying JNI getZip", t)
+        }
+
+        try {
+            val bytes = TermuxInstaller.getZip()
+            if (looksLikeZipStream(bytes)) return bytes
+            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream", blobError)
+        } catch (t: Throwable) {
+            throw IllegalStateException("Unable to read bootstrap ZIP stream from ELF blob or JNI", t)
+        }
+    }
+
+    private fun looksLikeZipStream(bytes: ByteArray): Boolean =
+        bytes.size >= 4 &&
+            bytes[0] == 0x50.toByte() &&
+            bytes[1] == 0x4b.toByte() &&
+            bytes[2] == 0x03.toByte() &&
+            bytes[3] == 0x04.toByte()
 
     private fun report(success: Boolean, status: String, message: String, prefix: File, bash: File) =
         mapOf<String, Any?>(

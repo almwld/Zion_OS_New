@@ -1,0 +1,64 @@
+name: Userland source contract
+
+on:
+  pull_request:
+    paths:
+      - 'USERLAND.md'
+      - 'android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt'
+      - 'android/app/src/main/kotlin/com/zion/os/MainActivity.kt'
+      - 'android/app/src/main/cpp/zion_pty.c'
+      - 'android/app/src/main/kotlin/com/zion/os/RootAccessManager.kt'
+      - 'lib/features/terminal/native_pty_adapter.dart'
+      - '.github/workflows/userland-source-contract.yml'
+  push:
+    paths:
+      - 'USERLAND.md'
+      - 'android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt'
+      - 'android/app/src/main/kotlin/com/zion/os/MainActivity.kt'
+      - 'android/app/src/main/cpp/zion_pty.c'
+      - '.github/workflows/userland-source-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check persistent bootstrap and PTY source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer='android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt'
+          activity='android/app/src/main/kotlin/com/zion/os/MainActivity.kt'
+          pty='android/app/src/main/cpp/zion_pty.c'
+
+          test -s "$installer"
+          test -s "$activity"
+          test -s "$pty"
+          test -s USERLAND.md
+
+          grep -q 'fun ensureInstalled(context: Context)' "$installer"
+          grep -q 'usr.bootstrap-staging' "$installer"
+          grep -q 'isEmptyPlaceholderPrefix(prefix)' "$installer"
+          grep -q 'private fun isEmptyDirectoryTree' "$installer"
+          grep -q 'raf.readUnsignedByte() != 0x7f' "$installer"
+          grep -q 'isBashBinary(stagedBash)' "$installer"
+          grep -q 'safeChild(staging, name)' "$installer"
+          grep -q 'SYMLINKS.txt' "$installer"
+          grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"
+          grep -q 'PTY startup failed' "$activity"
+          grep -q 'nativeStartPty failed: handle=' "$activity"
+          grep -q '"/system/bin/linker64"' "$pty"
+          grep -q 'snprintf(full_library_path' "$pty"
+          grep -q 'setenv("LD_LIBRARY_PATH", full_library_path, 1)' "$pty"
+          grep -q 'root-opt-in' "$pty"
+          grep -q 'exec_root_shell(selected_shell)' "$pty"
+          grep -q 'ROOT_CHANNEL' "$activity"
+          grep -q 'RootAccessManager.request()' "$activity"
+          grep -q 'Future<bool> startAsRoot' lib/features/terminal/native_pty_adapter.dart
+          grep -Fq "shell: 'root:\$shell'" lib/features/terminal/native_pty_adapter.dart
+          test -s android/app/src/main/kotlin/com/zion/os/RootAccessManager.kt
+
+          echo 'Source contract passed. This is not an Android runtime test.'

@@ -108,6 +108,34 @@ class NativePtyAdapter {
     }
   }
 
+  /// Request Magisk/su authorization explicitly, then start an interactive
+  /// root shell inside the existing native PTY. No SELinux changes are made.
+  Future<Map<String, dynamic>?> requestRootAccess() async {
+    try {
+      return await const MethodChannel('zion.os/root')
+          .invokeMapMethod<String, dynamic>('request');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// Start a root shell only after the user-approved su probe succeeds.
+  /// The native layer independently allowlists the shell path.
+  Future<bool> startAsRoot({
+    int rows = 24,
+    int cols = 80,
+    String shell = '/data/data/com.zion.os/files/usr/bin/bash',
+  }) async {
+    final status = await requestRootAccess();
+    if (status?['granted'] != true) {
+      _output.add('[Zion Root] Root access was not granted; no root shell was started.');
+      return false;
+    }
+    return start(rows: rows, cols: cols, shell: 'root:$shell');
+  }
+
   Future<bool> start({int rows = 24, int cols = 80, String? shell}) async {
     if (_running) return true;
     if (_starting) return false;

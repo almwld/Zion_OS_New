@@ -1,18 +1,28 @@
 #include <jni.h>
+#include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+extern char **environ;
 
 #define ZION_MAX_PTY_SESSIONS 8
 
@@ -123,7 +133,19 @@ static void prepare_environment(void) {
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
-    setenv("LD_LIBRARY_PATH", library_path, 1);
+    char full_library_path[512];
+    snprintf(full_library_path, sizeof(full_library_path), "%s:/data/data/com.zion.os/files/usr/libexec", library_path);
+    setenv("LD_LIBRARY_PATH", full_library_path, 1);
+    setenv("BASH_ENV", "/data/data/com.zion.os/files/usr/etc/zion-bashrc", 1);
+    setenv("TERMINFO", "/data/data/com.zion.os/files/usr/share/terminfo", 1);
+    setenv("TERMINFO_DIRS", "/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo:/system/usr/share/terminfo", 1);
+    if (access("/data/data/com.zion.os/files/usr/etc/tls/cert.pem", R_OK) == 0) {
+        setenv("SSL_CERT_FILE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+        setenv("CURL_CA_BUNDLE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+    } else {
+        unsetenv("SSL_CERT_FILE");
+        unsetenv("CURL_CA_BUNDLE");
+    }
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     setenv("PS1", "$ ", 1);
@@ -137,6 +159,7 @@ static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\0') return 0;
     return strncmp(shell, "kali:", 5) == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
@@ -145,22 +168,71 @@ static int is_allowed_shell(const char *shell) {
 
 static const char *select_shell(const char *configured_shell) {
     if (configured_shell != NULL && strncmp(configured_shell, "kali:", 5) == 0) return configured_shell;
-    if (is_allowed_shell(configured_shell) && access(configured_shell, X_OK) == 0) {
+    /*
+     * access(X_OK) can reject private-prefix ELF files even when Android's
+     * dynamic linker can load them. Use F_OK for candidate discovery; the
+     * actual launch path below determines whether the shell is runnable.
+     */
+    if (is_allowed_shell(configured_shell) && access(configured_shell, F_OK) == 0) {
         return configured_shell;
     }
 
     static const char *fallbacks[] = {
-        "/system/bin/sh",
+        "/data/data/com.zion.os/files/usr/bin/bash.real",
         "/data/data/com.zion.os/files/usr/bin/bash",
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
         "/data/data/com.zion.os/files/usr/bin/ash",
+        "/system/bin/sh",
         NULL
     };
     for (int i = 0; fallbacks[i] != NULL; ++i) {
-        if (access(fallbacks[i], X_OK) == 0) return fallbacks[i];
+        if (access(fallbacks[i], F_OK) == 0) return fallbacks[i];
     }
     return NULL;
+}
+
+/*
+ * Explicit root mode: selected only by the "root:" PTY prefix. The shell path
+ * must pass the native allowlist before reaching this function. SELinux remains
+ * enabled and root launch failures never fall back to an unprivileged shell.
+ */
+static void exec_root_shell(const char *shell_path) {
+    if (shell_path == NULL || !is_allowed_shell(shell_path) ||
+        strncmp(shell_path, "kali:", 5) == 0) {
+        __android_log_print(ANDROID_LOG_WARN, "ZionPTY", "Root shell rejected by native allowlist");
+        _exit(126);
+    }
+
+    char real_path[512];
+    const char *selected = shell_path;
+    size_t length = strlen(shell_path);
+    if (length < sizeof(real_path) && length >= 5 &&
+        strcmp(shell_path + length - 5, "/bash") == 0) {
+        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        if (access(real_path, F_OK) == 0) selected = real_path;
+    }
+
+    char command[1200];
+    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
+    if (strncmp(selected, "/data/data/com.zion.os/files/usr/", strlen("/data/data/com.zion.os/files/usr/")) == 0) {
+        if (strcmp(selected, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 &&
+            access(bashrc, F_OK) == 0) {
+            snprintf(command, sizeof(command),
+                     "exec /system/bin/linker64 '%s' --init-file '%s' -i",
+                     selected, bashrc);
+        } else {
+            snprintf(command, sizeof(command),
+                     "exec /system/bin/linker64 '%s' -i", selected);
+        }
+    } else {
+        snprintf(command, sizeof(command), "exec '%s' -i", selected);
+    }
+
+    execlp("su", "su", "-c", command, (char *)NULL);
+    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
+                        "Root shell launch failed (errno=%d); check Magisk authorization", errno);
+    _exit(127);
 }
 
 static void exec_kali_proot(const char *proot, const char *rootfs) {
@@ -178,13 +250,52 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
     _exit(127);
 }
 
+/*
+ * Launch a Termux ELF through Android's dynamic linker when direct exec is
+ * rejected for a private app-data path. This is a supported loader path, not
+ * an attempt to bypass SELinux. It still requires valid ELF dependencies and
+ * device policy that permits the linker to load the binary.
+ */
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
-    const char *name = shell_path;
-    for (const char *p = shell_path; *p != '\0'; ++p) {
-        if (*p == '/') name = p + 1;
+
+    char real_path[512];
+    const char *selected = shell_path;
+    size_t length = strlen(shell_path);
+    if (length < sizeof(real_path) &&
+        length >= 5 && strcmp(shell_path + length - 5, "/bash") == 0) {
+        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        if (access(real_path, F_OK) == 0) selected = real_path;
     }
-    execl(shell_path, name, "-i", (char *)NULL);
+
+    const char *name = strrchr(selected, '/');
+    name = name ? name + 1 : selected;
+
+    /*
+     * Prefer linker64 for Bash so the Zion rc file is always loaded. A direct
+     * exec may succeed on some builds but would skip the configured prompt,
+     * aliases, TLS paths, and bionic() helper.
+     */
+    const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
+    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
+    if (strcmp(selected, bash_real) == 0 && access(bashrc, F_OK) == 0) {
+        execl("/system/bin/linker64", "linker64", selected,
+              "--init-file", bashrc, "-i", (char *)NULL);
+        /* Linker path failed; retain the direct execution fallback. */
+        execl(selected, name, "-i", (char *)NULL);
+    } else {
+        /* Other shells use the generic linker path first as well. */
+        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+        execl(selected, name, "-i", (char *)NULL);
+    }
+
+    /* Never hide a failed Userland launch behind an unexplained shell switch. */
+    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
+                        "Userland shell launch failed for %s (errno=%d); trying Android sh",
+                        selected, errno);
+    if (strcmp(selected, "/system/bin/sh") != 0) {
+        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+    }
     _exit(127);
 }
 
@@ -215,6 +326,19 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             }
             (*env)->ReleaseStringUTFChars(env, shell_arg, raw);
         }
+    }
+
+    int root_mode = 0;
+    if (strncmp(configured_shell, "root:", 5) == 0) {
+        root_mode = 1;
+        memmove(configured_shell, configured_shell + 5,
+                strlen(configured_shell + 5) + 1);
+    }
+
+    if (root_mode && (!is_allowed_shell(configured_shell) ||
+        strncmp(configured_shell, "kali:", 5) == 0 ||
+        access(configured_shell, F_OK) != 0)) {
+        return 0;
     }
 
     if (strncmp(configured_shell, "kali:", 5) == 0) {
@@ -273,13 +397,18 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
-    const char *selected_shell = select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
+    const char *selected_shell = root_mode
+        ? configured_shell
+        : select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
     if (selected_shell == NULL) {
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
     setenv("SHELL", selected_shell, 1);
+    if (root_mode) {
+        setenv("ZION_SHELL_MODE", "root-opt-in", 1);
+    }
     if (kali_mode) {
         setenv("PROOT_LOADER", kali_loader, 1);
         setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
@@ -336,6 +465,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             _exit(126);
         }
         if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
+        if (root_mode) exec_root_shell(selected_shell);
         exec_selected_shell(selected_shell);
     }
 

@@ -11,6 +11,7 @@ import '../../security/core/security_core.dart';
 import '../../core/userland/zion_userland_installer.dart';
 import '../../core/userland/local_kali_bootstrap.dart';
 import 'native_pty_adapter.dart';
+import 'terminal_logs.dart';
 import 'terminal_capabilities.dart';
 
 class TerminalResult {
@@ -90,6 +91,8 @@ class TerminalService {
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
+    'SHELL': '/system/bin/sh',
+    'ZION_TERMINAL': '1',
   };
   static const String _userlandBash = '/data/data/com.zion.os/files/usr/bin/bash';
   static const Map<String, String> _userlandEnvironment = <String, String>{
@@ -102,13 +105,26 @@ class TerminalService {
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
+    'SHELL': '/data/data/com.zion.os/files/usr/bin/bash',
+    'ZION_TERMINAL': '1',
   };
   static const ZionUserlandInstaller _userlandInstaller = ZionUserlandInstaller();
 
-  Map<String, String> _environmentFor(String shell) =>
-      shell == _userlandBash || shell.startsWith('/data/data/com.zion.os/files/usr/bin/')
-          ? _userlandEnvironment
-          : _androidEnvironment;
+  Map<String, String> _environmentFor(String shell) {
+    final isUserland = shell == _userlandBash ||
+        shell.startsWith('/data/data/com.zion.os/files/usr/bin/');
+    final environment = Map<String, String>.from(
+      isUserland ? _userlandEnvironment : _androidEnvironment,
+    );
+    if (isUserland) {
+      const certificate = '/data/data/com.zion.os/files/usr/etc/tls/cert.pem';
+      if (File(certificate).existsSync()) {
+        environment['SSL_CERT_FILE'] = certificate;
+        environment['CURL_CA_BUNDLE'] = certificate;
+      }
+    }
+    return environment;
+  }
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
@@ -200,9 +216,7 @@ class TerminalService {
     const bashPath = _userlandBash;
     const prefix = '/data/data/com.zion.os/files/usr';
     void add(String line) {
-      final message = '[DIAG] $line';
-      print(message);
-      _emitOutput('$message\r\n');
+      ZionTerminalLogs.add(line);
     }
 
     add('========== Bash execution diagnosis ==========');
@@ -753,30 +767,28 @@ class TerminalService {
     try {
       await diagnoseBashExecution();
     } catch (error, stackTrace) {
-      final message = '[DIAG] diagnosis crashed: $error';
-      print(message);
-      _emitOutput('$message\r\n');
-      print(stackTrace);
+      ZionTerminalLogs.add('diagnosis crashed: $error');
+      ZionTerminalLogs.add(stackTrace.toString());
     }
     try {
       final inventory = await _pty.inspectRuntime();
       if (inventory != null) {
         final nativeDir = inventory['nativeLibraryDir'];
-        _emitOutput('[DIAG] APK nativeLibraryDir: $nativeDir\r\n');
+        ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
         final libraries = inventory['libraries'];
         if (libraries is Map) {
           for (final entry in libraries.entries) {
             final details = entry.value;
             if (details is Map) {
-              _emitOutput('[DIAG] ${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes\r\n');
+              ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
             }
           }
         }
-        _emitOutput('[DIAG] Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes\r\n');
-        _emitOutput('[DIAG] ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}\r\n');
+        ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
+        ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
       }
     } catch (error) {
-      _emitOutput('[DIAG] Runtime inventory unavailable: $error\r\n');
+      ZionTerminalLogs.add('Runtime inventory unavailable: $error');
     }
 
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
