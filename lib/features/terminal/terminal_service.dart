@@ -779,6 +779,13 @@ class TerminalService {
       ZionTerminalLogs.add(stackTrace.toString());
     }
     try {
+      await _userlandInstaller.logUsrDiagnostics(
+        onProgress: ZionTerminalLogs.add,
+      );
+    } catch (error) {
+      ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
+    }
+    try {
       final inventory = await _pty.inspectRuntime();
       if (inventory != null) {
         final nativeDir = inventory['nativeLibraryDir'];
