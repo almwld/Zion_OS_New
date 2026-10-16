@@ -7,12 +7,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+extern char **environ;
 
 #define ZION_MAX_PTY_SESSIONS 8
 
@@ -178,14 +186,71 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
     _exit(127);
 }
 
+/*
+ * Best-effort fallback for direct execution of a private-files ELF. This is
+ * not a SELinux bypass: Android kernels may prohibit executable memfds too.
+ */
+static void exec_via_memfd(const char *src_path, char *const argv[], char *const envp[]) {
+#if defined(SYS_memfd_create)
+    int src = open(src_path, O_RDONLY | O_CLOEXEC);
+    if (src < 0) _exit(127);
+
+    struct stat st;
+    if (fstat(src, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
+        close(src);
+        _exit(127);
+    }
+
+    int fd = (int)syscall(SYS_memfd_create, "zion-shell", MFD_CLOEXEC);
+    if (fd < 0) {
+        close(src);
+        _exit(127);
+    }
+
+    char buf[65536];
+    for (;;) {
+        ssize_t n = read(src, buf, sizeof(buf));
+        if (n == 0) break;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            close(src);
+            close(fd);
+            _exit(127);
+        }
+        ssize_t written = 0;
+        while (written < n) {
+            ssize_t w = write(fd, buf + written, (size_t)(n - written));
+            if (w < 0 && errno == EINTR) continue;
+            if (w <= 0) {
+                close(src);
+                close(fd);
+                _exit(127);
+            }
+            written += w;
+        }
+    }
+    close(src);
+
+    if (fchmod(fd, 0700) != 0 || lseek(fd, 0, SEEK_SET) < 0) {
+        close(fd);
+        _exit(127);
+    }
+
+    fexecve(fd, argv, envp);
+    close(fd);
+#endif
+    _exit(127);
+}
+
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
     const char *name = shell_path;
     for (const char *p = shell_path; *p != '\0'; ++p) {
         if (*p == '/') name = p + 1;
     }
+    char *const argv[] = {(char *)name, (char *)"-i", NULL};
     execl(shell_path, name, "-i", (char *)NULL);
-    _exit(127);
+    exec_via_memfd(shell_path, argv, environ);
 }
 
 JNIEXPORT jboolean JNICALL
