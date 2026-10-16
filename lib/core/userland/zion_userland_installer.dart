@@ -77,7 +77,7 @@ class ZionUserlandInstaller {
           final du = await Process.run('/system/bin/du', <String>['-sk', root.path], runInShell: false)
               .timeout(const Duration(seconds: 10));
           if (du.exitCode == 0) {
-            final fields = du.stdout.toString().trim().split(RegExp(r'\\s+'));
+            final fields = du.stdout.toString().trim().split(RegExp(r'\s+'));
             if (fields.isNotEmpty) totalBytes = (int.tryParse(fields.first) ?? 0) * 1024;
           }
         } catch (_) {}
