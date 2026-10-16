@@ -15,6 +15,7 @@ import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
 import 'terminal_service.dart';
+import 'logs_screen.dart';
 import '../../widgets/toast_bar.dart';
 
 class TerminalScreen extends StatefulWidget {
@@ -917,6 +918,13 @@ $request''',
         foregroundColor: _palette.foreground,
         title: const Text('Zion OS Terminal'),
         actions: [
+          IconButton(
+            tooltip: 'سجلات التشخيص',
+            icon: const Icon(Icons.bug_report_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const LogsScreen()),
+            ),
+          ),
           IconButton(
             tooltip: 'قراءة المخرجات العربية',
             icon: const Icon(Icons.translate),
