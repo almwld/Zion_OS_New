@@ -271,23 +271,23 @@ static void exec_selected_shell(const char *shell_path) {
     const char *name = strrchr(selected, '/');
     name = name ? name + 1 : selected;
 
-    execl(selected, name, "-i", (char *)NULL);
-
     /*
-     * Bash's private-prefix ELF cannot be execve'd directly on some Android
-     * SELinux policies. Launch it through the platform linker and load the
-     * Zion interactive rc file. This does not bypass SELinux; it uses the
-     * linker path that was verified on-device.
+     * Prefer linker64 for Bash so the Zion rc file is always loaded. A direct
+     * exec may succeed on some builds but would skip the configured prompt,
+     * aliases, TLS paths, and bionic() helper.
      */
     const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
     const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
     if (strcmp(selected, bash_real) == 0 && access(bashrc, F_OK) == 0) {
         execl("/system/bin/linker64", "linker64", selected,
               "--init-file", bashrc, "-i", (char *)NULL);
+        /* Linker path failed; retain the direct execution fallback. */
+        execl(selected, name, "-i", (char *)NULL);
+    } else {
+        /* Other shells use the generic linker path first as well. */
+        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+        execl(selected, name, "-i", (char *)NULL);
     }
-
-    /* Generic linker path for other ELF shells. */
-    execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
 
     /* Never hide a failed Userland launch behind an unexplained shell switch. */
     dprintf(STDERR_FILENO,
