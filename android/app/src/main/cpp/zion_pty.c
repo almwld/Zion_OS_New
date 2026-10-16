@@ -217,10 +217,26 @@ static void exec_selected_shell(const char *shell_path) {
 
     execl(selected, name, "-i", (char *)NULL);
 
-    /* Android's linker lives on the system partition and can load the ELF. */
+    /*
+     * Bash's private-prefix ELF cannot be execve'd directly on some Android
+     * SELinux policies. Launch it through the platform linker and load the
+     * Zion interactive rc file. This does not bypass SELinux; it uses the
+     * linker path that was verified on-device.
+     */
+    const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
+    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
+    if (strcmp(selected, bash_real) == 0 && access(bashrc, F_OK) == 0) {
+        execl("/system/bin/linker64", "linker64", selected,
+              "--init-file", bashrc, "-i", (char *)NULL);
+    }
+
+    /* Generic linker path for other ELF shells. */
     execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
 
-    /* Keep a deterministic platform-shell fallback if Userland cannot start. */
+    /* Never hide a failed Userland launch behind an unexplained shell switch. */
+    dprintf(STDERR_FILENO,
+            "[Zion PTY] Userland shell launch failed for %s (errno=%d); trying Android sh.\\r\\n",
+            selected, errno);
     if (strcmp(selected, "/system/bin/sh") != 0) {
         execl("/system/bin/sh", "sh", "-i", (char *)NULL);
     }
