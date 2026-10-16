@@ -7,6 +7,8 @@ on:
       - 'android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt'
       - 'android/app/src/main/kotlin/com/zion/os/MainActivity.kt'
       - 'android/app/src/main/cpp/zion_pty.c'
+      - 'android/app/src/main/kotlin/com/zion/os/RootAccessManager.kt'
+      - 'lib/features/terminal/native_pty_adapter.dart'
       - '.github/workflows/userland-source-contract.yml'
   push:
     paths:
@@ -43,6 +45,14 @@ jobs:
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"
           grep -q '"/system/bin/linker64"' "$pty"
-          grep -q '"/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64"' "$pty"
+          grep -q 'snprintf(full_library_path' "$pty"
+          grep -q 'setenv("LD_LIBRARY_PATH", full_library_path, 1)' "$pty"
+          grep -q 'root-opt-in' "$pty"
+          grep -q 'exec_root_shell(selected_shell)' "$pty"
+          grep -q 'ROOT_CHANNEL' "$activity"
+          grep -q 'RootAccessManager.request()' "$activity"
+          grep -q 'Future<bool> startAsRoot' lib/features/terminal/native_pty_adapter.dart
+          grep -Fq "shell: 'root:\$shell'" lib/features/terminal/native_pty_adapter.dart
+          test -s android/app/src/main/kotlin/com/zion/os/RootAccessManager.kt
 
           echo 'Source contract passed. This is not an Android runtime test.'

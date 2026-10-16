@@ -191,6 +191,50 @@ static const char *select_shell(const char *configured_shell) {
     return NULL;
 }
 
+/*
+ * Explicit root mode: selected only by the "root:" PTY prefix. The shell path
+ * must pass the native allowlist before reaching this function. SELinux remains
+ * enabled and root launch failures never fall back to an unprivileged shell.
+ */
+static void exec_root_shell(const char *shell_path) {
+    if (shell_path == NULL || !is_allowed_shell(shell_path) ||
+        strncmp(shell_path, "kali:", 5) == 0) {
+        dprintf(STDERR_FILENO, "[Zion Root] Rejected shell path.\\r\\n");
+        _exit(126);
+    }
+
+    char real_path[512];
+    const char *selected = shell_path;
+    size_t length = strlen(shell_path);
+    if (length < sizeof(real_path) && length >= 5 &&
+        strcmp(shell_path + length - 5, "/bash") == 0) {
+        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        if (access(real_path, F_OK) == 0) selected = real_path;
+    }
+
+    char command[1200];
+    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
+    if (strncmp(selected, "/data/data/com.zion.os/files/usr/", strlen("/data/data/com.zion.os/files/usr/")) == 0) {
+        if (strcmp(selected, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 &&
+            access(bashrc, F_OK) == 0) {
+            snprintf(command, sizeof(command),
+                     "exec /system/bin/linker64 '%s' --init-file '%s' -i",
+                     selected, bashrc);
+        } else {
+            snprintf(command, sizeof(command),
+                     "exec /system/bin/linker64 '%s' -i", selected);
+        }
+    } else {
+        snprintf(command, sizeof(command), "exec '%s' -i", selected);
+    }
+
+    execlp("su", "su", "-c", command, (char *)NULL);
+    dprintf(STDERR_FILENO,
+            "[Zion Root] su launch failed (errno=%d). Check Magisk and its authorization prompt.\\r\\n",
+            errno);
+    _exit(127);
+}
+
 static void exec_kali_proot(const char *proot, const char *rootfs) {
     execl(proot, "proot",
           "--link2symlink", "-0", "-r", rootfs,
@@ -284,6 +328,19 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         }
     }
 
+    int root_mode = 0;
+    if (strncmp(configured_shell, "root:", 5) == 0) {
+        root_mode = 1;
+        memmove(configured_shell, configured_shell + 5,
+                strlen(configured_shell + 5) + 1);
+    }
+
+    if (root_mode && (!is_allowed_shell(configured_shell) ||
+        strncmp(configured_shell, "kali:", 5) == 0 ||
+        access(configured_shell, F_OK) != 0)) {
+        return 0;
+    }
+
     if (strncmp(configured_shell, "kali:", 5) == 0) {
         kali_mode = 1;
         const char *spec = configured_shell + 5;
@@ -340,13 +397,18 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     // heavily multi-threaded; calling malloc-backed functions such as
     // setenv()/mkdir() in the post-fork child can deadlock or crash.
     prepare_environment();
-    const char *selected_shell = select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
+    const char *selected_shell = root_mode
+        ? configured_shell
+        : select_shell(configured_shell[0] == '\0' ? NULL : configured_shell);
     if (selected_shell == NULL) {
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
     setenv("SHELL", selected_shell, 1);
+    if (root_mode) {
+        setenv("ZION_SHELL_MODE", "root-opt-in", 1);
+    }
     if (kali_mode) {
         setenv("PROOT_LOADER", kali_loader, 1);
         setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
@@ -403,6 +465,7 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
             _exit(126);
         }
         if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
+        if (root_mode) exec_root_shell(selected_shell);
         exec_selected_shell(selected_shell);
     }
 

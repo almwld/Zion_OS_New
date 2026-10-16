@@ -84,6 +84,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val WIFI_CHANNEL = "zion.os/wifi"
         private const val SECURITY_CHANNEL = "zion.os/security"
         private const val PTY_CHANNEL = "zion.os/pty"
+        private const val ROOT_CHANNEL = "zion.os/root"
         private const val PTY_EVENTS = "zion.os/pty/events"
         private const val RADAR_EVENTS = "zion.os/network/radar"
         private const val ZION_PKG_ACTION = "com.zion.os.ZION_PKG"
@@ -97,6 +98,22 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Root is strictly opt-in. Detection does not execute privileged commands;
+        // requesting access delegates the authorization decision to su/Magisk.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ROOT_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "detect" -> result.success(RootAccessManager.detect())
+                    "request" -> {
+                        terminalExecutor.execute {
+                            val status = RootAccessManager.request()
+                            runOnUiThread { result.success(status) }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         ZionToken.ensure(this)
         zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
         zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
