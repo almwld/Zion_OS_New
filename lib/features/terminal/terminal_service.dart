@@ -100,7 +100,7 @@ class TerminalService {
     'PREFIX': '/data/data/com.zion.os/files/usr',
     'TMPDIR': '/data/data/com.zion.os/files/tmp',
     'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin',
-    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec',
     'TERM': 'xterm-256color',
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
@@ -187,7 +187,38 @@ class TerminalService {
       final path = '$prefix/bin/$name';
       try {
         if (!await File(path).exists()) continue;
-        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+
+        // Android can reject direct exec of a Termux ELF in app-private
+        // storage even though the system linker can load it. Verify Bash via
+        // linker64 with Zion's explicit LD_LIBRARY_PATH before probing the
+        // wrapper with Process.run.
+        if (name == 'bash') {
+          final realPath = '$prefix/bin/bash.real';
+          if (await File(realPath).exists()) {
+            final linked = await Process.run(
+              '/system/bin/linker64',
+              <String>[realPath, '--version'],
+              runInShell: false,
+              environment: _userlandEnvironment,
+            ).timeout(const Duration(seconds: 4));
+            final versionOutput = linked.stdout.toString();
+            if (linked.exitCode == 0 && versionOutput.contains('GNU bash')) {
+              _emitOutput('[Userland] Verified Bash via Android linker: $realPath\r\n');
+              // Keep the public wrapper as the selected path. Native PTY
+              // launch maps /bash to bash.real and supplies the same library
+              // environment, so shell selection matches this successful probe.
+              return path;
+            }
+            _emitOutput('[Userland] linker64 Bash probe failed: exit ${linked.exitCode}; ${linked.stderr}\r\n');
+          }
+        }
+
+        final result = await Process.run(
+          path,
+          const <String>['-c', 'printf ZION_SHELL_OK'],
+          runInShell: false,
+          environment: _userlandEnvironment,
+        ).timeout(const Duration(seconds: 3));
         if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
           _emitOutput('[Userland] Using verified shell: $path\r\n');
           return path;
@@ -207,6 +238,7 @@ class TerminalService {
     }
     return null;
   }
+
   /// Collects on-device evidence for a Userland Bash launch failure.
   ///
   /// Dart does not expose every Android inode/security attribute directly, so
@@ -372,10 +404,18 @@ class TerminalService {
           onProgress: (message) => _emitOutput('$message\r\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          _emitOutput('[Terminal] ✓ Userland ready\r\n');
-          return _userlandBash;
+          // A preserved Bash file may still be blocked by Android's execution
+          // policy/linker. Verify an actual shell launch before selecting it;
+          // installer success must never suppress the Android shell fallback.
+          final installedShell = await _findUsableUserlandShell();
+          if (installedShell != null) {
+            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\r\n');
+            return installedShell;
+          }
+          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\r\n');
+        } else {
+          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
         }
-        _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
         final recoveredShell = await _findUsableUserlandShell();
         if (recoveredShell != null) {
           _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
@@ -624,14 +664,14 @@ class TerminalService {
               _cachedKaliRootfsPath = promoted.path;
               _emitOutput(
                 '[Kali] Recovered and validated existing staged rootfs at '
-                '${promoted.path}; no archive download or re-extraction was needed.\\r\\n',
+                '${promoted.path}; no archive download or re-extraction was needed.\r\n',
               );
               return promoted.path;
             }
           } catch (error) {
             _emitOutput(
               '[Kali] Safe rootfs promotion unavailable; preserving staged '
-              'rootfs at ${candidate.path}: $error\\r\\n',
+              'rootfs at ${candidate.path}: $error\r\n',
             );
           }
         }
@@ -640,12 +680,12 @@ class TerminalService {
         _cachedKaliRootfsPath = candidate.path;
         _emitOutput(
           '[Kali] Using validated existing staging rootfs: '
-          '${candidate.path}\\r\\n',
+          '${candidate.path}\r\n',
         );
         return candidate.path;
       }
     } catch (error) {
-      _emitOutput('[Kali] Staging recovery scan failed safely: $error\\r\\n');
+      _emitOutput('[Kali] Staging recovery scan failed safely: $error\r\n');
     }
     return null;
   }
@@ -671,10 +711,10 @@ class TerminalService {
       final state = await kaliBootstrap.state();
       final localPackage = await kaliBootstrap.findLocalPackage();
       if (state != ZionKaliInstallState.ready && localPackage != null) {
-        _emitOutput('[Kali] Local archive found; installing into the separate Kali rootfs (offline)...\\r\\n');
+        _emitOutput('[Kali] Local archive found; installing into the separate Kali rootfs (offline)...\r\n');
         final result = await kaliBootstrap.install(
           onProgress: (progress) => _emitOutput(
-            '[Kali ${progress.percent}%] ${progress.message}\\r\\n',
+            '[Kali ${progress.percent}%] ${progress.message}\r\n',
           ),
         );
         if (result.isSuccess && result.value != null &&
@@ -683,12 +723,12 @@ class TerminalService {
           _cachedKaliRootfsPath = result.value!.path;
           return result.value!.path;
         }
-        _emitOutput('[Kali] Local archive import failed: ${result.error}\\r\\n');
+        _emitOutput('[Kali] Local archive import failed: ${result.error}\r\n');
       } else if (state == ZionKaliInstallState.error) {
-        _emitOutput('[Kali] Previous local rootfs state is invalid; a verified local archive is required to reinstall.\\r\\n');
+        _emitOutput('[Kali] Previous local rootfs state is invalid; a verified local archive is required to reinstall.\r\n');
       }
     } catch (error) {
-      _emitOutput('[Kali] Local archive discovery/import failed: $error\\r\\n');
+      _emitOutput('[Kali] Local archive discovery/import failed: $error\r\n');
     }
 
     final cached = _cachedKaliRootfsPath;
@@ -771,6 +811,13 @@ class TerminalService {
       ZionTerminalLogs.add(stackTrace.toString());
     }
     try {
+      await _userlandInstaller.logUsrDiagnostics(
+        onProgress: ZionTerminalLogs.add,
+      );
+    } catch (error) {
+      ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
+    }
+    try {
       final inventory = await _pty.inspectRuntime();
       if (inventory != null) {
         final nativeDir = inventory['nativeLibraryDir'];
@@ -828,7 +875,7 @@ class TerminalService {
           path.contains('\\n') ||
           path.contains('\\r') ||
           path.contains('\\u0000')) {
-        _emitOutput('[Kali] Invalid local rootfs path.\\r\\n');
+        _emitOutput('[Kali] Invalid local rootfs path.\r\n');
         return false;
       }
       final rootfs = Directory(path);
@@ -840,16 +887,16 @@ class TerminalService {
           !await bash.exists() ||
           !await shellFile.exists() ||
           !await _isValidLocalKaliRootfs(path)) {
-        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\\r\\n');
+        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\r\n');
         return false;
       }
       final prootReady = await _pty.ensureProotRuntime();
       if (!prootReady || !await proot.exists() || !await loader.exists()) {
-        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\\r\\n');
+        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\r\n');
         return false;
       }
       shell = 'zion-kali@$path';
-      _emitOutput('[Kali] Starting local rootfs without copying it: $path\\r\\n');
+      _emitOutput('[Kali] Starting local rootfs without copying it: $path\r\n');
     } else {
       shell = await _findShell(installIfMissing: true);
     }
@@ -1096,7 +1143,7 @@ class TerminalService {
               duration: DateTime.now().difference(started),
               interactive: true,
             );
-            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\\r\\n');
+            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\r\n');
           } finally {
             if (!completed.isCompleted) completed.complete(124);
           }

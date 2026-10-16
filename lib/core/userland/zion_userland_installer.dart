@@ -81,6 +81,38 @@ class ZionUserlandInstaller {
     print('[Userland] state saved: $_stateFilePath');
   }
 
+  /// Startup/installer diagnostics. Never mutates or removes the Userland tree.
+  Future<void> logUsrDiagnostics({void Function(String message)? onProgress}) async {
+    final root = Directory(ZionBootstrap.prefix);
+    final bash = File('${ZionBootstrap.prefix}/bin/bash');
+    var totalBytes = 0;
+    var binCount = 0;
+    try {
+      if (await root.exists()) {
+        // Use Android's du rather than opening every file in a multi-GB tree.
+        try {
+          final du = await Process.run('/system/bin/du', <String>['-sk', root.path], runInShell: false)
+              .timeout(const Duration(seconds: 10));
+          if (du.exitCode == 0) {
+            final fields = du.stdout.toString().trim().split(RegExp(r'\s+'));
+            if (fields.isNotEmpty) totalBytes = (int.tryParse(fields.first) ?? 0) * 1024;
+          }
+        } catch (_) {}
+      }
+      final bin = Directory('${ZionBootstrap.prefix}/bin');
+      if (await bin.exists()) binCount = await bin.list(followLinks: false).length;
+      final exists = await bash.exists();
+      final size = exists ? await bash.length() : 0;
+      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} approxBytes=$totalBytes binEntries=$binCount bashExists=$exists bashBytes=$size bashPath=${bash.path}';
+      print(message);
+      onProgress?.call(message);
+    } catch (e) {
+      final message = '[Userland][DIAG] Failed to inspect usr without modifying it: $e';
+      print(message);
+      onProgress?.call(message);
+    }
+  }
+
   Future<void> uninstallState() async {
     final file = File(_stateFilePath);
     if (await file.exists()) await file.delete();
@@ -109,6 +141,7 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
+    await logUsrDiagnostics(onProgress: onProgress);
     // Check the local Kali archive first, even if Termux usr is already
     // installed: Kali rootfs and the Termux-compatible prefix are separate.
     // The method returns null only when no supported local archive exists.
@@ -137,6 +170,8 @@ class ZionUserlandInstaller {
     // Android file managers. Search only known backup roots; do not walk the
     // whole shared-storage tree or mistake a Kali rootfs for Termux usr.
     const backupCandidates = <String>[
+      // User-provided extracted, full Userland backup takes precedence.
+      '/storage/emulated/0/zion-bootstrap/usr',
       backupPath,
       '/storage/emulated/0/termux_usr_backup',
       '/storage/emulated/0/Download/Termux/usr',
@@ -426,6 +461,9 @@ class ZionUserlandInstaller {
     String sourcePath, {
     void Function(String message)? onProgress,
   }) async {
+    Directory? rollbackTarget;
+    Directory? rollbackSnapshot;
+    var hadRollbackTarget = false;
     try {
       final requestedSourceDir = Directory(sourcePath);
       if (!await requestedSourceDir.exists()) {
@@ -444,7 +482,6 @@ class ZionUserlandInstaller {
       }
       onProgress?.call('[Userland] Resolved backup root: ${sourceDir.path}');
       final targetDir = Directory(ZionBootstrap.prefix);
-      await targetDir.create(recursive: true);
 
       onProgress?.call('[Userland] Checking private storage...');
       final df = await Process.run('/system/bin/df', <String>['-k', targetDir.path], runInShell: false);
@@ -461,12 +498,71 @@ class ZionUserlandInstaller {
         }
       }
 
+      // Snapshot the existing prefix before touching any file. If the snapshot
+      // cannot be completed, abort without changing usr/ at all.
+      final hadTarget = await targetDir.exists();
+      final safetyBackup = Directory('${targetDir.path}.backup.${DateTime.now().millisecondsSinceEpoch}');
+      rollbackTarget = targetDir;
+      rollbackSnapshot = safetyBackup;
+      hadRollbackTarget = hadTarget;
+      if (hadTarget) {
+        try {
+          onProgress?.call('[Userland] Creating rollback snapshot: ${safetyBackup.path}');
+          final originalBash = File('${targetDir.path}/bin/bash');
+          final originalBashExists = await originalBash.exists();
+          final originalBashSize = originalBashExists ? await originalBash.length() : -1;
+          final originalTopEntries = await targetDir.list(followLinks: false).take(1).toList();
+          await _manualCopy(targetDir, safetyBackup);
+          if (!await safetyBackup.exists()) {
+            throw StateError('Safety snapshot directory was not created');
+          }
+          final snapshotBash = File('${safetyBackup.path}/bin/bash');
+          if (originalBashExists &&
+              (!await snapshotBash.exists() || await snapshotBash.length() != originalBashSize)) {
+            throw StateError('Safety snapshot did not preserve the existing Bash file');
+          }
+          final snapshotTopEntries = await safetyBackup.list(followLinks: false).take(1).toList();
+          if (originalTopEntries.isNotEmpty && snapshotTopEntries.isEmpty) {
+            throw StateError('Safety snapshot is unexpectedly empty');
+          }
+        } catch (e) {
+          try { if (await safetyBackup.exists()) await safetyBackup.delete(recursive: true); } catch (_) {}
+          return ZionUserlandInstallResult(
+            success: false,
+            message: 'تعذر إنشاء نسخة أمان من usr الحالي؛ أُلغيت العملية دون تعديل usr: $e',
+          );
+        }
+      }
+      Future<void> rollbackIfPossible() async {
+        if (!hadTarget || !await safetyBackup.exists()) {
+          onProgress?.call('[Userland] No verified previous usr snapshot; current files are being preserved (no destructive cleanup).');
+          return;
+        }
+        final failed = Directory('${targetDir.path}.failed.${DateTime.now().millisecondsSinceEpoch}');
+        try {
+          if (await targetDir.exists()) await targetDir.rename(failed.path);
+          await safetyBackup.rename(targetDir.path);
+          try { if (await failed.exists()) await failed.delete(recursive: true); } catch (_) {}
+          onProgress?.call('[Userland] Rollback completed; previous usr restored.');
+        } catch (e) {
+          onProgress?.call('[Userland] Rollback could not promote the snapshot: $e. Snapshot preserved at ${safetyBackup.path}.');
+          if (!await targetDir.exists() && await failed.exists()) {
+            try { await failed.rename(targetDir.path); } catch (_) {}
+          }
+        }
+      }
+
+      // Create the destination only after the existence check and snapshot decision.
+      // When usr did not exist before this attempt, a failure must not pretend
+      // an empty directory is a rollback copy or destructively remove partial data.
+      await targetDir.create(recursive: true);
       onProgress?.call('[Userland] Copying files...');
       final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
       if (result.exitCode == 124) {
+        await rollbackIfPossible();
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'انتهت مهلة نسخ Userland؛ تُركت الملفات المنسوخة لاستكمال التشخيص دون بدء نسخة ثانية تلقائيًا.',
+          message: 'انتهت مهلة نسخ Userland؛ تمت استعادة النسخة السابقة إن توفرت، ولم تُحذف usr دون نسخة أمان.',
         );
       }
       if (result.exitCode != 0) {
@@ -474,6 +570,7 @@ class ZionUserlandInstaller {
         try {
           await _manualCopy(sourceDir, targetDir);
         } catch (e) {
+          await rollbackIfPossible();
           return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${result.stderr}; fallback: $e');
         }
       }
@@ -486,18 +583,47 @@ class ZionUserlandInstaller {
 
       if (!await _hasCompatibleShell()) {
         await _diagnoseShellCandidates(onProgress: onProgress);
+        await rollbackIfPossible();
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'تم النسخ لكن لا توجد صدفة صالحة داخل usr/bin؛ سُجلت محتويات bin/ ونتائج فحص المرشحين. ستستخدم الطرفية /system/bin/sh.',
+          message: 'لم يجتز Userland فحص الصدفة؛ تمت استعادة النسخة السابقة إن توفرت، وستستخدم الطرفية /system/bin/sh عند الحاجة.',
         );
       }
       // Termux usr is useful as a Bash environment even when PRoot is absent.
       // PRoot is an optional tool, not a prerequisite for launching Bash.
       await ZionBootstrap.initializeRuntime();
       await _writeState(source: sourcePath, sizeBytes: 1400000000);
+      if (hadTarget && await safetyBackup.exists()) {
+        try { await safetyBackup.delete(recursive: true); } catch (e) {
+          onProgress?.call('[Userland] Installed successfully; retained safety snapshot at ${safetyBackup.path}: $e');
+        }
+      }
       onProgress?.call('[Userland] ✓ Ready');
       return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
     } catch (e) {
+      // Last-resort rollback for exceptions thrown by permission repair,
+      // symlink repair, runtime setup, or state writing. Never delete a prefix
+      // unless a safety snapshot exists and can be promoted into its place.
+      final target = rollbackTarget;
+      final snapshot = rollbackSnapshot;
+      if (target != null && snapshot != null && hadRollbackTarget) {
+        try {
+          if (await snapshot.exists()) {
+            final failed = Directory('${target.path}.failed.${DateTime.now().millisecondsSinceEpoch}');
+            if (await target.exists()) await target.rename(failed.path);
+            await snapshot.rename(target.path);
+            // Retain the rejected tree if cleanup fails; it is recoverable data.
+            try { if (await failed.exists()) await failed.delete(recursive: true); } catch (_) {}
+            onProgress?.call('[Userland] Exception rollback completed; prior usr restored.');
+          } else {
+            onProgress?.call('[Userland] Exception occurred but no rollback snapshot exists; usr was not deleted.');
+          }
+        } catch (rollbackError) {
+          onProgress?.call('[Userland] Exception rollback failed: $rollbackError. Current and snapshot trees were preserved where possible.');
+        }
+      } else {
+        onProgress?.call('[Userland] Exception occurred without a previous usr snapshot; current files were preserved.');
+      }
       return ZionUserlandInstallResult(success: false, message: 'فشل تثبيت النسخة المحلية: $e');
     }
   }
@@ -712,25 +838,33 @@ class ZionUserlandInstaller {
       print('[Permissions] Bash is missing; preserving Userland for sh/dash fallback.');
       return;
     }
-    final test = await Process.run(
-      bash.path, const <String>['-c', 'printf BASH_OK'],
-      runInShell: false,
-      environment: <String, String>{
-        ...Platform.environment,
-        'HOME': ZionBootstrap.home,
-        'PREFIX': ZionBootstrap.prefix,
-        'TMPDIR': ZionBootstrap.tmp,
-        'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
-        'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
-        'TERM': 'xterm-256color',
-        'LANG': 'C.UTF-8',
-        'LC_ALL': 'C.UTF-8',
-      },
-    ).timeout(const Duration(seconds: 5));
-    if (test.exitCode != 0 || !test.stdout.toString().contains('BASH_OK')) {
-      throw StateError('bash verification failed (exit=${test.exitCode}): ${test.stderr}');
+    // File integrity and execution are separate checks on Android. Some
+    // devices deny launching copied ELF files even when usr is intact. Never
+    // roll back or discard a recovered tree solely because Process.run fails.
+    try {
+      final test = await Process.run(
+        bash.path, const <String>['-c', 'printf BASH_OK'],
+        runInShell: false,
+        environment: <String, String>{
+          ...Platform.environment,
+          'HOME': ZionBootstrap.home,
+          'PREFIX': ZionBootstrap.prefix,
+          'TMPDIR': ZionBootstrap.tmp,
+          'PATH': '${root.path}/bin:${root.path}/sbin:/system/bin:/system/xbin',
+          'LD_LIBRARY_PATH': '${root.path}/lib:${root.path}/lib64',
+          'TERM': 'xterm-256color',
+          'LANG': 'C.UTF-8',
+          'LC_ALL': 'C.UTF-8',
+        },
+      ).timeout(const Duration(seconds: 5));
+      if (test.exitCode == 0 && test.stdout.toString().contains('BASH_OK')) {
+        print('[Permissions] ✓ Bash execution probe passed.');
+      } else {
+        print('[Permissions] Bash execution probe failed (exit=${test.exitCode}); preserving usr for PTY/linker diagnostics and /system/bin/sh fallback. stderr=${test.stderr}');
+      }
+    } catch (error) {
+      print('[Permissions] Bash execution probe unavailable: $error. Preserving usr and using runtime fallback if needed.');
     }
-    print('[Permissions] ✓ Critical Bash check passed; non-critical chmod errors were tolerated.');
   }
 
   Future<void> _recreateCoreutilsSymlinks(String binDir) async {
@@ -870,44 +1004,28 @@ class ZionUserlandInstaller {
     'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
     'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
   };
+  /// Checks shell payload integrity only. Execution is tested by TerminalService;
+  /// Android may deny Process.start for an intact ELF, which must not trigger
+  /// destructive restore/rollback of the entire Userland tree.
   Future<bool> _hasCompatibleShell() async {
     const candidates = <String>[
       '${ZionBootstrap.prefix}/bin/bash',
       '${ZionBootstrap.prefix}/bin/zsh',
       '${ZionBootstrap.prefix}/bin/fish',
       '${ZionBootstrap.prefix}/bin/ash',
+      '${ZionBootstrap.prefix}/bin/sh',
+      '${ZionBootstrap.prefix}/bin/dash',
     ];
-    final environment = <String, String>{
-      ...Platform.environment,
-      'HOME': ZionBootstrap.home,
-      'PREFIX': ZionBootstrap.prefix,
-      'TMPDIR': ZionBootstrap.tmp,
-      'PATH': '${ZionBootstrap.prefix}/bin:${ZionBootstrap.prefix}/sbin:/system/bin:/system/xbin',
-      'LD_LIBRARY_PATH': '${ZionBootstrap.prefix}/lib:${ZionBootstrap.prefix}/lib64',
-      'TERM': 'xterm-256color',
-      'LANG': 'C.UTF-8',
-      'LC_ALL': 'C.UTF-8',
-    };
-
     for (final path in candidates) {
       try {
-        final stat = await File(path).stat();
-        if (stat.type != FileSystemEntityType.file || (stat.mode & 0x49) == 0) {
+        final file = File(path);
+        final stat = await file.stat();
+        if (stat.type != FileSystemEntityType.file || stat.size < 4096) {
           continue;
         }
-        final result = await Process.run(
-          path,
-          const <String>['-c', 'printf ZionUserlandShellOK'],
-          runInShell: false,
-          environment: environment,
-        ).timeout(const Duration(seconds: 4));
-        if (result.exitCode == 0 &&
-            result.stdout.toString().contains('ZionUserlandShellOK')) {
-          return true;
-        }
+        return true;
       } catch (_) {
-        // Try the next supported shell; a missing shared library or broken
-        // executable must not be mistaken for a usable runtime.
+        // Metadata errors do not mutate or invalidate the existing usr tree.
       }
     }
     return false;

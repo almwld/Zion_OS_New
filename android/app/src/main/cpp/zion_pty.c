@@ -110,6 +110,8 @@ static void prepare_environment(void) {
     const char *directories[] = {
         "/data/data/com.zion.os/files/home",
         "/data/data/com.zion.os/files/tmp",
+        "/data/data/com.zion.os/files/tmp/proot",
+        "/data/data/com.zion.os/files/zion/tmp",
         "/data/data/com.zion.os/files/etc",
         "/data/data/com.zion.os/files/home/storage",
         "/data/data/com.zion.os/files/usr",
@@ -133,6 +135,9 @@ static void prepare_environment(void) {
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
+    setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+    setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1);
+    setenv("PROOT_NO_SECCOMP", "1", 1);
     char full_library_path[512];
     snprintf(full_library_path, sizeof(full_library_path), "%s:/data/data/com.zion.os/files/usr/libexec", library_path);
     setenv("LD_LIBRARY_PATH", full_library_path, 1);
@@ -236,17 +241,40 @@ static void exec_root_shell(const char *shell_path) {
 }
 
 static void exec_kali_proot(const char *proot, const char *rootfs) {
-    execl(proot, "proot",
+    /*
+     * The bundled PRoot ELF is stored under app-private data, where direct
+     * execve can be denied on some Android builds. Launch it through Android's
+     * linker, preserving the PREFIX LD_LIBRARY_PATH prepared before fork().
+     */
+    char lib_bind[1024];
+    char usr_lib_bind[1024];
+    const int lib_len = snprintf(lib_bind, sizeof(lib_bind),
+        "%s/lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu", rootfs);
+    const int usr_lib_len = snprintf(usr_lib_bind, sizeof(usr_lib_bind),
+        "%s/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu", rootfs);
+    if (lib_len <= 0 || (size_t)lib_len >= sizeof(lib_bind) ||
+        usr_lib_len <= 0 || (size_t)usr_lib_len >= sizeof(usr_lib_bind)) {
+        _exit(126);
+    }
+
+    /* PRoot temp and seccomp variables are prepared in the parent before fork(). */
+
+    execl("/system/bin/linker64", "linker64", proot,
           "--link2symlink", "-0", "-r", rootfs,
           "-b", "/dev", "-b", "/proc", "-b", "/sys",
           "-b", "/storage/emulated/0",
-          "-b", "/data/data/com.zion.os/files/home:/root", "-w", "/root",
+          "-b", "/data/data/com.zion.os/files/home:/root",
+          "-b", lib_bind,
+          "-b", usr_lib_bind,
+          "-w", "/root",
           "/usr/bin/env", "-i",
           "HOME=/root",
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "TERM=xterm-256color", "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
           "SHELL=/bin/bash", "ZION_KALI=1",
           "/bin/bash", "--login", (char *)NULL);
+    __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+        "Unable to launch PRoot via linker64: errno=%d (%s)", errno, strerror(errno));
     _exit(127);
 }
 
@@ -411,8 +439,10 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     }
     if (kali_mode) {
         setenv("PROOT_LOADER", kali_loader, 1);
-        setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
-        mkdir_p("/data/data/com.zion.os/files/zion/tmp", 0700);
+        setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1);
+        setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+        setenv("PROOT_NO_SECCOMP", "1", 1);
+        mkdir_p("/data/data/com.zion.os/files/tmp/proot", 0700);
         setenv("ZION_SHELL_MODE", "kali-proot", 1);
     } else if (strcmp(selected_shell, "/system/bin/sh") == 0) {
         // Android host-shell mode is intentionally independent of the broken
