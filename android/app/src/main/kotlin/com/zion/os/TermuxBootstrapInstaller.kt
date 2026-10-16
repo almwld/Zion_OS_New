@@ -34,6 +34,7 @@ internal object TermuxBootstrapInstaller {
         if (isBashBinary(bash) || isBashBinary(bashReal)) {
             return try {
                 configureBashRuntime(prefix, files)
+                installProotLibs(prefix)
                 report(true, "already-installed-runtime-configured",
                     "Termux Bootstrap موجود؛ تم تجهيز zion-bashrc وBash launcher دون إعادة استخراج usr.",
                     prefix, File(prefix, "bin/bash"))
@@ -194,6 +195,7 @@ internal object TermuxBootstrapInstaller {
             File(files, "home").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             configureBashRuntime(prefix, files)
+            installProotLibs(prefix)
 
             val backupNote = incompleteBackup?.let {
                 " تم حفظ النسخة غير المكتملة دون حذفها في ${it.absolutePath}."
@@ -350,6 +352,109 @@ internal object TermuxBootstrapInstaller {
             out.fd.sync()
         }
         Os.chmod(rcFile.absolutePath, 420) // 0644
+    }
+
+    /**
+     * Fill missing PRoot runtime dependencies from known local bootstrap
+     * folders. External files are never trusted by name alone: only regular
+     * ELF64 little-endian AArch64 libraries are copied, and each copy is
+     * validated before it can replace anything in the active PREFIX.
+     *
+     * This is best-effort; absence of an optional local library source must
+     * not make an otherwise usable Zion shell unavailable.
+     */
+    private fun installProotLibs(prefix: File) {
+        val libDir = File(prefix, "lib")
+        if (!libDir.isDirectory && !libDir.mkdirs() && !libDir.isDirectory) {
+            Log.w(TAG, "Cannot create PRoot library directory: ${libDir.absolutePath}")
+            return
+        }
+        val sourceDirs = listOf(
+            File("/storage/emulated/0/zion-libs-complete"),
+            File("/storage/emulated/0/lib-fix-all"),
+            File("/storage/emulated/0/bootstrap-extracted/usr/lib")
+        )
+        val requiredLibraries = listOf(
+            "libtalloc.so.2",
+            "libandroid-shmem.so",
+            "libandroid-support.so",
+            "libcap.so.2",
+            "libattr.so.1",
+            "libiconv.so",
+            "libpcre2-8.so"
+        )
+
+        fun validArm64Library(file: File): Boolean {
+            if (!file.isFile || file.length() < 4096L) return false
+            return try {
+                RandomAccessFile(file, "r").use { raf ->
+                    raf.readUnsignedByte() == 0x7f &&
+                        raf.readUnsignedByte() == 0x45 &&
+                        raf.readUnsignedByte() == 0x4c &&
+                        raf.readUnsignedByte() == 0x46 &&
+                        raf.readUnsignedByte() == 2 &&
+                        raf.readUnsignedByte() == 1 &&
+                        raf.readUnsignedByte() == 1 &&
+                        run {
+                            raf.seek(18L)
+                            raf.readUnsignedByte() == 183 && raf.readUnsignedByte() == 0
+                        }
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        for (name in requiredLibraries) {
+            val destination = File(libDir, name)
+            if (validArm64Library(destination)) continue
+
+            var installed = false
+            for (sourceDir in sourceDirs) {
+                try {
+                    val source = File(sourceDir, name)
+                    val canonicalSourceDir = sourceDir.canonicalFile
+                    if (!source.canonicalPath.startsWith(canonicalSourceDir.path + File.separator) ||
+                        !validArm64Library(source)) continue
+
+                    val staged = File(libDir, "$name.zion-staging")
+                    if (staged.exists() && !staged.delete()) continue
+                    source.inputStream().use { input ->
+                        FileOutputStream(staged).use { output ->
+                            input.copyTo(output)
+                            output.fd.sync()
+                        }
+                    }
+                    if (!validArm64Library(staged)) {
+                        staged.delete()
+                        continue
+                    }
+                    staged.setReadable(true, true)
+                    if (destination.exists()) {
+                        val backup = File(libDir, "$name.invalid-backup-${System.currentTimeMillis()}")
+                        if (!destination.renameTo(backup)) {
+                            staged.delete()
+                            continue
+                        }
+                    }
+                    if (!staged.renameTo(destination)) {
+                        staged.delete()
+                        continue
+                    }
+                    destination.setReadable(true, true)
+                    installed = validArm64Library(destination)
+                    if (installed) {
+                        Log.i(TAG, "Installed local PRoot dependency: $name from ${source.absolutePath}")
+                        break
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Skipped local PRoot dependency source for $name", t)
+                }
+            }
+            if (!installed && !validArm64Library(destination)) {
+                Log.i(TAG, "Optional local PRoot dependency unavailable: $name")
+            }
+        }
     }
 
     /**
