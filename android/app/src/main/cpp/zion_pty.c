@@ -235,7 +235,7 @@ static void exec_selected_shell(const char *shell_path) {
 
     /* Never hide a failed Userland launch behind an unexplained shell switch. */
     dprintf(STDERR_FILENO,
-            "[Zion PTY] Userland shell launch failed for %s (errno=%d); trying Android sh.\\r\\n",
+            "[Zion PTY] Userland shell launch failed for %s (errno=%d); trying Android sh.\r\n",
             selected, errno);
     if (strcmp(selected, "/system/bin/sh") != 0) {
         execl("/system/bin/sh", "sh", "-i", (char *)NULL);
