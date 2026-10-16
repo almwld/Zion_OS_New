@@ -11,6 +11,7 @@ import '../../security/core/security_core.dart';
 import '../../core/userland/zion_userland_installer.dart';
 import '../../core/userland/local_kali_bootstrap.dart';
 import 'native_pty_adapter.dart';
+import 'terminal_logs.dart';
 import 'terminal_capabilities.dart';
 
 class TerminalResult {
@@ -200,9 +201,7 @@ class TerminalService {
     const bashPath = _userlandBash;
     const prefix = '/data/data/com.zion.os/files/usr';
     void add(String line) {
-      final message = '[DIAG] $line';
-      print(message);
-      _emitOutput('$message\r\n');
+      ZionTerminalLogs.add(line);
     }
 
     add('========== Bash execution diagnosis ==========');
@@ -682,30 +681,28 @@ class TerminalService {
     try {
       await diagnoseBashExecution();
     } catch (error, stackTrace) {
-      final message = '[DIAG] diagnosis crashed: $error';
-      print(message);
-      _emitOutput('$message\r\n');
-      print(stackTrace);
+      ZionTerminalLogs.add('diagnosis crashed: $error');
+      ZionTerminalLogs.add(stackTrace.toString());
     }
     try {
       final inventory = await _pty.inspectRuntime();
       if (inventory != null) {
         final nativeDir = inventory['nativeLibraryDir'];
-        _emitOutput('[DIAG] APK nativeLibraryDir: $nativeDir\r\n');
+        ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
         final libraries = inventory['libraries'];
         if (libraries is Map) {
           for (final entry in libraries.entries) {
             final details = entry.value;
             if (details is Map) {
-              _emitOutput('[DIAG] ${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes\r\n');
+              ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
             }
           }
         }
-        _emitOutput('[DIAG] Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes\r\n');
-        _emitOutput('[DIAG] ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}\r\n');
+        ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
+        ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
       }
     } catch (error) {
-      _emitOutput('[DIAG] Runtime inventory unavailable: $error\r\n');
+      ZionTerminalLogs.add('Runtime inventory unavailable: $error');
     }
 
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
