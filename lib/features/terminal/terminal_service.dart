@@ -100,7 +100,7 @@ class TerminalService {
     'PREFIX': '/data/data/com.zion.os/files/usr',
     'TMPDIR': '/data/data/com.zion.os/files/tmp',
     'PATH': '/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin',
-    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
+    'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec',
     'TERM': 'xterm-256color',
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
