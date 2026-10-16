@@ -145,6 +145,7 @@ static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\0') return 0;
     return strncmp(shell, "kali:", 5) == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
+           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
            strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
@@ -153,20 +154,26 @@ static int is_allowed_shell(const char *shell) {
 
 static const char *select_shell(const char *configured_shell) {
     if (configured_shell != NULL && strncmp(configured_shell, "kali:", 5) == 0) return configured_shell;
-    if (is_allowed_shell(configured_shell) && access(configured_shell, X_OK) == 0) {
+    /*
+     * access(X_OK) can reject private-prefix ELF files even when Android's
+     * dynamic linker can load them. Use F_OK for candidate discovery; the
+     * actual launch path below determines whether the shell is runnable.
+     */
+    if (is_allowed_shell(configured_shell) && access(configured_shell, F_OK) == 0) {
         return configured_shell;
     }
 
     static const char *fallbacks[] = {
-        "/system/bin/sh",
+        "/data/data/com.zion.os/files/usr/bin/bash.real",
         "/data/data/com.zion.os/files/usr/bin/bash",
         "/data/data/com.zion.os/files/usr/bin/zsh",
         "/data/data/com.zion.os/files/usr/bin/fish",
         "/data/data/com.zion.os/files/usr/bin/ash",
+        "/system/bin/sh",
         NULL
     };
     for (int i = 0; fallbacks[i] != NULL; ++i) {
-        if (access(fallbacks[i], X_OK) == 0) return fallbacks[i];
+        if (access(fallbacks[i], F_OK) == 0) return fallbacks[i];
     }
     return NULL;
 }
@@ -187,70 +194,36 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
 }
 
 /*
- * Best-effort fallback for direct execution of a private-files ELF. This is
- * not a SELinux bypass: Android kernels may prohibit executable memfds too.
+ * Launch a Termux ELF through Android's dynamic linker when direct exec is
+ * rejected for a private app-data path. This is a supported loader path, not
+ * an attempt to bypass SELinux. It still requires valid ELF dependencies and
+ * device policy that permits the linker to load the binary.
  */
-static void exec_via_memfd(const char *src_path, char *const argv[], char *const envp[]) {
-#if defined(SYS_memfd_create)
-    int src = open(src_path, O_RDONLY | O_CLOEXEC);
-    if (src < 0) _exit(127);
-
-    struct stat st;
-    if (fstat(src, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) {
-        close(src);
-        _exit(127);
-    }
-
-    int fd = (int)syscall(SYS_memfd_create, "zion-shell", MFD_CLOEXEC);
-    if (fd < 0) {
-        close(src);
-        _exit(127);
-    }
-
-    char buf[65536];
-    for (;;) {
-        ssize_t n = read(src, buf, sizeof(buf));
-        if (n == 0) break;
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            close(src);
-            close(fd);
-            _exit(127);
-        }
-        ssize_t written = 0;
-        while (written < n) {
-            ssize_t w = write(fd, buf + written, (size_t)(n - written));
-            if (w < 0 && errno == EINTR) continue;
-            if (w <= 0) {
-                close(src);
-                close(fd);
-                _exit(127);
-            }
-            written += w;
-        }
-    }
-    close(src);
-
-    if (fchmod(fd, 0700) != 0 || lseek(fd, 0, SEEK_SET) < 0) {
-        close(fd);
-        _exit(127);
-    }
-
-    fexecve(fd, argv, envp);
-    close(fd);
-#endif
-    _exit(127);
-}
-
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
-    const char *name = shell_path;
-    for (const char *p = shell_path; *p != '\0'; ++p) {
-        if (*p == '/') name = p + 1;
+
+    char real_path[512];
+    const char *selected = shell_path;
+    size_t length = strlen(shell_path);
+    if (length < sizeof(real_path) &&
+        length >= 5 && strcmp(shell_path + length - 5, "/bash") == 0) {
+        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        if (access(real_path, F_OK) == 0) selected = real_path;
     }
-    char *const argv[] = {(char *)name, (char *)"-i", NULL};
-    execl(shell_path, name, "-i", (char *)NULL);
-    exec_via_memfd(shell_path, argv, environ);
+
+    const char *name = strrchr(selected, '/');
+    name = name ? name + 1 : selected;
+
+    execl(selected, name, "-i", (char *)NULL);
+
+    /* Android's linker lives on the system partition and can load the ELF. */
+    execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+
+    /* Keep a deterministic platform-shell fallback if Userland cannot start. */
+    if (strcmp(selected, "/system/bin/sh") != 0) {
+        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+    }
+    _exit(127);
 }
 
 JNIEXPORT jboolean JNICALL
