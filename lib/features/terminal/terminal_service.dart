@@ -377,12 +377,12 @@ class TerminalService {
           // installer success must never suppress the Android shell fallback.
           final installedShell = await _findUsableUserlandShell();
           if (installedShell != null) {
-            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\\r\\n');
+            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\r\n');
             return installedShell;
           }
-          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\\r\\n');
+          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\r\n');
         } else {
-          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\\r\\n');
+          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
         }
         final recoveredShell = await _findUsableUserlandShell();
         if (recoveredShell != null) {
@@ -632,14 +632,14 @@ class TerminalService {
               _cachedKaliRootfsPath = promoted.path;
               _emitOutput(
                 '[Kali] Recovered and validated existing staged rootfs at '
-                '${promoted.path}; no archive download or re-extraction was needed.\\r\\n',
+                '${promoted.path}; no archive download or re-extraction was needed.\r\n',
               );
               return promoted.path;
             }
           } catch (error) {
             _emitOutput(
               '[Kali] Safe rootfs promotion unavailable; preserving staged '
-              'rootfs at ${candidate.path}: $error\\r\\n',
+              'rootfs at ${candidate.path}: $error\r\n',
             );
           }
         }
@@ -648,12 +648,12 @@ class TerminalService {
         _cachedKaliRootfsPath = candidate.path;
         _emitOutput(
           '[Kali] Using validated existing staging rootfs: '
-          '${candidate.path}\\r\\n',
+          '${candidate.path}\r\n',
         );
         return candidate.path;
       }
     } catch (error) {
-      _emitOutput('[Kali] Staging recovery scan failed safely: $error\\r\\n');
+      _emitOutput('[Kali] Staging recovery scan failed safely: $error\r\n');
     }
     return null;
   }
@@ -679,10 +679,10 @@ class TerminalService {
       final state = await kaliBootstrap.state();
       final localPackage = await kaliBootstrap.findLocalPackage();
       if (state != ZionKaliInstallState.ready && localPackage != null) {
-        _emitOutput('[Kali] Local archive found; installing into the separate Kali rootfs (offline)...\\r\\n');
+        _emitOutput('[Kali] Local archive found; installing into the separate Kali rootfs (offline)...\r\n');
         final result = await kaliBootstrap.install(
           onProgress: (progress) => _emitOutput(
-            '[Kali ${progress.percent}%] ${progress.message}\\r\\n',
+            '[Kali ${progress.percent}%] ${progress.message}\r\n',
           ),
         );
         if (result.isSuccess && result.value != null &&
@@ -691,12 +691,12 @@ class TerminalService {
           _cachedKaliRootfsPath = result.value!.path;
           return result.value!.path;
         }
-        _emitOutput('[Kali] Local archive import failed: ${result.error}\\r\\n');
+        _emitOutput('[Kali] Local archive import failed: ${result.error}\r\n');
       } else if (state == ZionKaliInstallState.error) {
-        _emitOutput('[Kali] Previous local rootfs state is invalid; a verified local archive is required to reinstall.\\r\\n');
+        _emitOutput('[Kali] Previous local rootfs state is invalid; a verified local archive is required to reinstall.\r\n');
       }
     } catch (error) {
-      _emitOutput('[Kali] Local archive discovery/import failed: $error\\r\\n');
+      _emitOutput('[Kali] Local archive discovery/import failed: $error\r\n');
     }
 
     final cached = _cachedKaliRootfsPath;
@@ -836,7 +836,7 @@ class TerminalService {
           path.contains('\\n') ||
           path.contains('\\r') ||
           path.contains('\\u0000')) {
-        _emitOutput('[Kali] Invalid local rootfs path.\\r\\n');
+        _emitOutput('[Kali] Invalid local rootfs path.\r\n');
         return false;
       }
       final rootfs = Directory(path);
@@ -848,16 +848,16 @@ class TerminalService {
           !await bash.exists() ||
           !await shellFile.exists() ||
           !await _isValidLocalKaliRootfs(path)) {
-        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\\r\\n');
+        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\r\n');
         return false;
       }
       final prootReady = await _pty.ensureProotRuntime();
       if (!prootReady || !await proot.exists() || !await loader.exists()) {
-        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\\r\\n');
+        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\r\n');
         return false;
       }
       shell = 'zion-kali@$path';
-      _emitOutput('[Kali] Starting local rootfs without copying it: $path\\r\\n');
+      _emitOutput('[Kali] Starting local rootfs without copying it: $path\r\n');
     } else {
       shell = await _findShell(installIfMissing: true);
     }
@@ -1104,7 +1104,7 @@ class TerminalService {
               duration: DateTime.now().difference(started),
               interactive: true,
             );
-            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\\r\\n');
+            _emitOutput('[Super Agent] تعذر إعادة تشغيل PTY بعد انتهاء المهلة: $restartError\r\n');
           } finally {
             if (!completed.isCompleted) completed.complete(124);
           }
