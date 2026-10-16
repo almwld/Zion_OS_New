@@ -41,6 +41,8 @@ jobs:
 
           grep -q 'fun ensureInstalled(context: Context)' "$installer"
           grep -q 'usr.bootstrap-staging' "$installer"
+          grep -q 'isEmptyPlaceholderPrefix(prefix)' "$installer"
+          grep -q 'private fun isEmptyDirectoryTree' "$installer"
           grep -q 'safeChild(staging, name)' "$installer"
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"

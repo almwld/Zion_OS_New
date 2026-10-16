@@ -48,9 +48,14 @@ internal object TermuxBootstrapInstaller {
         // Do not overlay a partial installation. It may contain user data,
         // packages, or evidence needed to diagnose why Bash is missing.
         if (prefix.exists() && prefix.isDirectory && (prefix.list()?.isNotEmpty() == true)) {
-            return report(false, "preserved-prefix-conflict",
-                "مجلد usr موجود وغير فارغ لكن Bash غير صالح؛ احتُفظ بكل الملفات ولم يُستبدل المجلد.",
-                prefix, bash)
+            // Earlier PTY startup versions could create only empty PREFIX
+            // directories after a transient bootstrap read failure. Recover
+            // that known placeholder safely, but never remove files or symlinks.
+            if (!isEmptyPlaceholderPrefix(prefix) || !deleteTreeSafely(prefix)) {
+                return report(false, "preserved-prefix-conflict",
+                    "مجلد usr موجود وغير فارغ لكن Bash غير صالح؛ احتُفظ بكل الملفات ولم يُستبدل المجلد.",
+                    prefix, bash)
+            }
         }
         if (prefix.exists() && !prefix.isDirectory) {
             return report(false, "prefix-path-conflict", "المسار usr موجود لكنه ليس مجلدًا؛ لم يُحذف.",
@@ -183,6 +188,23 @@ internal object TermuxBootstrapInstaller {
             return report(false, "bootstrap-extraction-failed",
                 "فشل استخراج Bootstrap دون حذف usr: ${t.javaClass.simpleName}: ${t.message}", prefix, bash)
         }
+    }
+
+    private fun isEmptyPlaceholderPrefix(prefix: File): Boolean {
+        val allowed = setOf("bin", "sbin", "lib", "lib64", "etc", "include", "libexec", "share", "tmp", "var")
+        val children = prefix.listFiles() ?: return false
+        if (children.isEmpty() || children.any { it.name !in allowed }) return false
+        return isEmptyDirectoryTree(prefix)
+    }
+
+    private fun isEmptyDirectoryTree(directory: File): Boolean {
+        if (readlinkOrNull(directory.absolutePath) != null || !directory.isDirectory) return false
+        val children = directory.listFiles() ?: return false
+        for (child in children) {
+            if (readlinkOrNull(child.absolutePath) != null) return false
+            if (!child.isDirectory || !isEmptyDirectoryTree(child)) return false
+        }
+        return true
     }
 
     private fun isBashBinary(file: File): Boolean =
