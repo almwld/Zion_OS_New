@@ -43,6 +43,8 @@ jobs:
           grep -q 'usr.bootstrap-staging' "$installer"
           grep -q 'isEmptyPlaceholderPrefix(prefix)' "$installer"
           grep -q 'private fun isEmptyDirectoryTree' "$installer"
+          grep -q 'raf.readUnsignedByte() != 0x7f' "$installer"
+          grep -q 'isBashBinary(stagedBash)' "$installer"
           grep -q 'safeChild(staging, name)' "$installer"
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"

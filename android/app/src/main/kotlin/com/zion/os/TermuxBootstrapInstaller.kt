@@ -151,8 +151,8 @@ internal object TermuxBootstrapInstaller {
             }
 
             val stagedBash = File(staging, "bin/bash")
-            if (!stagedBash.isFile || stagedBash.length() < 100_000L) {
-                throw IllegalStateException("Extracted bootstrap does not contain a valid bin/bash")
+            if (!isBashBinary(stagedBash)) {
+                throw IllegalStateException("Extracted bootstrap bin/bash is not a valid ELF executable")
             }
             if (!File(staging, "bin/apt").exists()) {
                 throw IllegalStateException("Extracted bootstrap does not contain bin/apt")
@@ -207,8 +207,23 @@ internal object TermuxBootstrapInstaller {
         return true
     }
 
-    private fun isBashBinary(file: File): Boolean =
-        file.isFile && file.length() >= 100_000L
+    private fun isBashBinary(file: File): Boolean {
+        if (!file.isFile || file.length() < 100_000L) return false
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                if (raf.readUnsignedByte() != 0x7f ||
+                    raf.readUnsignedByte() != 0x45 ||
+                    raf.readUnsignedByte() != 0x4c ||
+                    raf.readUnsignedByte() != 0x46) return@use false
+                val elfClass = raf.readUnsignedByte()
+                val elfData = raf.readUnsignedByte()
+                val elfVersion = raf.readUnsignedByte()
+                elfClass in 1..2 && elfData in 1..2 && elfVersion == 1
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
 
     /**
      * Keep the real Bash ELF as bash.real and create a small launcher for
