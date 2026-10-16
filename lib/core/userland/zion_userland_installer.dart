@@ -1020,7 +1020,7 @@ class ZionUserlandInstaller {
       try {
         final file = File(path);
         final stat = await file.stat();
-        if (stat.type != FileSystemEntityType.file || stat.size < 4096 || (stat.mode & 0x49) == 0) {
+        if (stat.type != FileSystemEntityType.file || stat.size < 4096) {
           continue;
         }
         return true;
