@@ -430,14 +430,18 @@ internal object TermuxBootstrapInstaller {
                         continue
                     }
                     staged.setReadable(true, true)
+                    var backup: File? = null
                     if (destination.exists()) {
-                        val backup = File(libDir, "$name.invalid-backup-${System.currentTimeMillis()}")
+                        backup = File(libDir, "$name.invalid-backup-${System.currentTimeMillis()}")
                         if (!destination.renameTo(backup)) {
                             staged.delete()
                             continue
                         }
                     }
                     if (!staged.renameTo(destination)) {
+                        if (backup != null && !destination.exists()) {
+                            backup.renameTo(destination)
+                        }
                         staged.delete()
                         continue
                     }
