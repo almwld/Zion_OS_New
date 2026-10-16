@@ -222,12 +222,12 @@ internal object TermuxBootstrapInstaller {
             "export HOME=\"${File(files, "home").absolutePath}\"\n" +
             "export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
             "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64:\$PREFIX/libexec\"\n" +
-            "export TMPDIR=\"${File(files, \"tmp\").absolutePath}\"\n" +
+            "export TMPDIR=\"${File(files, "tmp").absolutePath}\"\n" +
             "export TERM=\"xterm-256color\"\n" +
             "export COLORTERM=\"truecolor\"\n" +
             "export LANG=\"C.UTF-8\"\n" +
             "export LC_ALL=\"C.UTF-8\"\n" +
-            "export SHELL=\"${File(prefix, \"bin/bash\").absolutePath}\"\n" +
+            "export SHELL=\"${File(prefix, "bin/bash").absolutePath}\"\n" +
             "export ZION_TERMINAL=1\n" +
             "export TERMINFO=\"\$PREFIX/share/terminfo\"\n" +
             "export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo\"\n" +
@@ -253,7 +253,7 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("export SHELL=\"${File(prefix, \"bin/bash\").absolutePath}\"")
         rc.appendLine("export LANG=C.UTF-8")
         rc.appendLine("export LC_ALL=C.UTF-8")
-rc.appendLine("export TERMINFO=\"\$PREFIX/share/terminfo\"")
+        rc.appendLine("export TERMINFO=\"\$PREFIX/share/terminfo\"")
         rc.appendLine("export TERMINFO_DIRS=\"\$PREFIX/share/terminfo:\$PREFIX/lib/terminfo:/system/usr/share/terminfo\"")
         rc.appendLine("if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi")
         rc.appendLine("export TERM=xterm-256color")
