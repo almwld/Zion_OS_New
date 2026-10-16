@@ -31,13 +31,9 @@ internal object TermuxBootstrapInstaller {
             return report(true, "already-installed", "Termux Bootstrap موجود بالفعل؛ لم يتم تغيير usr.", prefix, bash)
         }
 
-        // Do not overlay a partial installation. It may contain user data,
-        // packages, or evidence needed to diagnose why Bash is missing.
-        if (prefix.exists() && prefix.isDirectory && (prefix.list()?.isNotEmpty() == true)) {
-            return report(false, "preserved-prefix-conflict",
-                "مجلد usr موجود وغير فارغ لكن Bash غير صالح؛ احتُفظ بكل الملفات ولم يُستبدل المجلد.",
-                prefix, bash)
-        }
+        // An incomplete prefix must not block recovery forever. Keep it intact
+        // while extracting and validating a fresh bootstrap in isolation; only
+        // move it aside after the staged payload passes validation.
         if (prefix.exists() && !prefix.isDirectory) {
             return report(false, "prefix-path-conflict", "المسار usr موجود لكنه ليس مجلدًا؛ لم يُحذف.",
                 prefix, bash)
@@ -139,16 +135,30 @@ internal object TermuxBootstrapInstaller {
                 throw IllegalStateException("Extracted bootstrap does not contain bin/apt")
             }
 
-            // Prefix was absent or empty at entry. Delete only an empty
-            // directory, never recursively remove a populated Userland tree.
+            // Promote only after validation. If usr is the known broken skeleton,
+            // preserve it as a timestamped backup instead of treating it as a
+            // permanent conflict or deleting any of its contents.
+            var backup: File? = null
             if (prefix.exists()) {
                 val children = prefix.list()
-                if (children == null || children.isNotEmpty()) {
-                    throw IllegalStateException("PREFIX changed during install; refusing replacement")
+                    ?: throw IllegalStateException("Cannot inspect PREFIX before promotion")
+                if (children.isEmpty()) {
+                    if (!prefix.delete()) throw IllegalStateException("Cannot remove empty PREFIX directory")
+                } else {
+                    backup = File(files, "usr.incomplete-backup-${System.currentTimeMillis()}")
+                    if (!prefix.renameTo(backup)) {
+                        throw IllegalStateException("Cannot preserve incomplete PREFIX as ${backup.absolutePath}")
+                    }
                 }
-                if (!prefix.delete()) throw IllegalStateException("Cannot remove empty PREFIX directory")
             }
-            if (!staging.renameTo(prefix)) throw IllegalStateException("Cannot atomically promote staging to usr")
+            if (!staging.renameTo(prefix)) {
+                if (backup != null && !prefix.exists()) {
+                    if (!backup.renameTo(prefix)) {
+                        throw IllegalStateException("Promotion failed and PREFIX rollback failed; backup remains at ${backup.absolutePath}")
+                    }
+                }
+                throw IllegalStateException("Cannot atomically promote staging to usr")
+            }
 
             listOf("tmp", "var/tmp", "var/cache/apt/archives/partial", "var/lib/apt/lists/partial").forEach {
                 val dir = File(prefix, it)
@@ -160,7 +170,8 @@ internal object TermuxBootstrapInstaller {
             File(files, "home").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
 
-            return report(true, "installed", "تم استخراج Termux Bootstrap بنجاح إلى ${prefix.absolutePath}.",
+            val backupNote = if (backup != null) " تم حفظ النسخة غير المكتملة دون حذفها في ${backup.absolutePath}." else ""
+            return report(true, "installed", "تم استخراج Termux Bootstrap بنجاح إلى ${prefix.absolutePath}.$backupNote",
                 prefix, File(prefix, "bin/bash"))
         } catch (t: Throwable) {
             Log.e(TAG, "Bootstrap install failed; preserving active prefix", t)

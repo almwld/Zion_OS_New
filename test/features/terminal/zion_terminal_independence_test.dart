@@ -73,6 +73,23 @@ void main() {
       expect(downloader, contains('ARM64 فقط'));
     });
 
+    test('bounded terminal commands route through JNI PTY rather than Dart Process', () async {
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      final adapter = await File('lib/features/terminal/native_pty_adapter.dart').readAsString();
+      final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      final boundedStart = service.indexOf('Future<TerminalResult> _runBounded(');
+      final boundedEnd = service.indexOf('Future<TerminalResult> execute(', boundedStart);
+      expect(boundedStart, greaterThanOrEqualTo(0));
+      expect(boundedEnd, greaterThan(boundedStart));
+      final boundedRunner = service.substring(boundedStart, boundedEnd);
+      expect(boundedRunner, contains('_pty.runCommand('));
+      expect(boundedRunner, isNot(contains('Process.start(')));
+      expect(adapter, contains("MethodChannel('zion.os/pty')"));
+      expect(adapter, contains("invokeMethod<int>(\n        'start'"));
+      expect(native, contains('fork()'));
+      expect(native, contains('exec_kali_proot(kali_proot, kali_rootfs)'));
+    });
+
     test('Kali PTY binds Zion home into the Linux root home', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('"-b", "/storage/emulated/0"'));
