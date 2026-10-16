@@ -372,10 +372,18 @@ class TerminalService {
           onProgress: (message) => _emitOutput('$message\r\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          _emitOutput('[Terminal] ✓ Userland ready\r\n');
-          return _userlandBash;
+          // A preserved Bash file may still be blocked by Android's execution
+          // policy/linker. Verify an actual shell launch before selecting it;
+          // installer success must never suppress the Android shell fallback.
+          final installedShell = await _findUsableUserlandShell();
+          if (installedShell != null) {
+            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\\r\\n');
+            return installedShell;
+          }
+          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\\r\\n');
+        } else {
+          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\\r\\n');
         }
-        _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
         final recoveredShell = await _findUsableUserlandShell();
         if (recoveredShell != null) {
           _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
