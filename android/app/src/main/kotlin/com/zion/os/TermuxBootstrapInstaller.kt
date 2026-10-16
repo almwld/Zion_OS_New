@@ -277,7 +277,7 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("alias ll='ls -alF'")
         rc.appendLine("alias la='ls -A'")
         rc.appendLine("alias l='ls -CF'")
-        rc.appendLine("PS1='\\n\\[\\e[1;38;5;117m\\]╭─\\[\\e[1;38;5;39m\\][ZION]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;45m\\][OS]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;222m\\][\\w]\\[\\e[0m\\]\\n\\[\\e[1;38;5;117m\\]╰─\\[\\e[1;32m\\]" + '
+        rc.appendLine("PS1='\\n\\[\\e[1;38;5;117m\\]╭─\\[\\e[1;38;5;39m\\][ZION]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;45m\\][OS]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;222m\\][\\w]\\[\\e[0m\\]\\n\\[\\e[1;38;5;117m\\]╰─\\[\\e[1;32m\\]\\$\\[\\e[0m\\] '")
         val rcFile = File(etc, "zion-bashrc")
         FileOutputStream(rcFile).use { out ->
             out.write(rc.toString().toByteArray(Charsets.UTF_8))
