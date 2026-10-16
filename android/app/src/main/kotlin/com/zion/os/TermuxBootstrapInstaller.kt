@@ -217,12 +217,11 @@ internal object TermuxBootstrapInstaller {
             }
         }
 
-        val launcher = "#!/system/bin/sh\\n" +
-            "export PREFIX=\"$" + "PREFIX\"\\n" +
-            "export PREFIX=\"${prefix.absolutePath}\"\\n" +
-            "export HOME=\"${File(files, "home").absolutePath}\"\\n" +
-            "export LD_LIBRARY_PATH=\"\\$PREFIX/lib:\\$PREFIX/lib64\"\\n" +
-            "exec /system/bin/linker64 \"${real.absolutePath}\" \"\\$@\"\\n"
+        val launcher = "#!/system/bin/sh\n" +
+            "export PREFIX=\"${prefix.absolutePath}\"\n" +
+            "export HOME=\"${File(files, "home").absolutePath}\"\n" +
+            "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64\"\n" +
+            "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
         FileOutputStream(bash).use { out ->
             out.write(launcher.toByteArray(Charsets.UTF_8))
             out.fd.sync()
@@ -236,24 +235,24 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("# External ELF programs are invoked through Android's linker; this is not an SELinux bypass.")
         rc.appendLine("export PREFIX=\"${prefix.absolutePath}\"")
         rc.appendLine("export HOME=\"${File(files, "home").absolutePath}\"")
-        rc.appendLine("export PATH=\"\\$PREFIX/bin:\\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"")
-        rc.appendLine("export LD_LIBRARY_PATH=\"\\$PREFIX/lib:\\$PREFIX/lib64\"")
+        rc.appendLine("export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"")
+        rc.appendLine("export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64\"")
         rc.appendLine("export TERM=xterm-256color")
         rc.appendLine("export COLORTERM=truecolor")
         rc.appendLine("export ZION_TERMINAL=1")
         rc.appendLine("shopt -s expand_aliases")
-        rc.appendLine("alias bash='/system/bin/linker64 \"\\$PREFIX/bin/bash.real\"'")
+        rc.appendLine("alias bash='/system/bin/linker64 \"\$PREFIX/bin/bash.real\"'")
         if (coreutils.isFile) {
-            rc.appendLine("alias coreutils='/system/bin/linker64 \"\\$PREFIX/bin/coreutils\"'")
+            rc.appendLine("alias coreutils='/system/bin/linker64 \"\$PREFIX/bin/coreutils\"'")
             listOf("ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "tee",
                 "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "basename", "dirname",
                 "date", "df", "du", "id", "readlink", "realpath", "stat", "test", "whoami").forEach { applet ->
-                rc.appendLine("alias $applet='/system/bin/linker64 \"\\$PREFIX/bin/coreutils\" --coreutils-prog=$applet'")
+                rc.appendLine("alias $applet='/system/bin/linker64 \"\$PREFIX/bin/coreutils\" --coreutils-prog=$applet'")
             }
         }
         listOf("grep", "sed", "gawk", "find", "python3", "node").forEach { tool ->
             if (File(bin, tool).isFile) {
-                rc.appendLine("alias $tool='/system/bin/linker64 \"\\$PREFIX/bin/$tool\"'")
+                rc.appendLine("alias $tool='/system/bin/linker64 \"\$PREFIX/bin/$tool\"'")
             }
         }
         val rcFile = File(etc, "zion-bashrc")
