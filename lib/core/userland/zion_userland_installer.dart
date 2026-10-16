@@ -72,17 +72,21 @@ class ZionUserlandInstaller {
     var binCount = 0;
     try {
       if (await root.exists()) {
-        await for (final entity in root.list(recursive: true, followLinks: false)) {
-          try {
-            if (entity is File) totalBytes += await entity.length();
-          } catch (_) {}
-        }
+        // Use Android's du rather than opening every file in a multi-GB tree.
+        try {
+          final du = await Process.run('/system/bin/du', <String>['-sk', root.path], runInShell: false)
+              .timeout(const Duration(seconds: 10));
+          if (du.exitCode == 0) {
+            final fields = du.stdout.toString().trim().split(RegExp(r'\\s+'));
+            if (fields.isNotEmpty) totalBytes = (int.tryParse(fields.first) ?? 0) * 1024;
+          }
+        } catch (_) {}
       }
       final bin = Directory('${ZionBootstrap.prefix}/bin');
       if (await bin.exists()) binCount = await bin.list(followLinks: false).length;
       final exists = await bash.exists();
       final size = exists ? await bash.length() : 0;
-      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} bytes=$totalBytes binEntries=$binCount bashExists=$exists bashBytes=$size bashPath=${bash.path}';
+      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} approxBytes=$totalBytes binEntries=$binCount bashExists=$exists bashBytes=$size bashPath=${bash.path}';
       print(message);
       onProgress?.call(message);
     } catch (e) {
