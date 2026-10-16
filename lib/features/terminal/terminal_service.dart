@@ -187,19 +187,50 @@ class TerminalService {
       final path = '$prefix/bin/$name';
       try {
         if (!await File(path).exists()) continue;
-        final result = await Process.run(path, const <String>['-c', 'printf ZION_SHELL_OK'], runInShell: false, environment: _userlandEnvironment).timeout(const Duration(seconds: 3));
+
+        // Android can reject direct exec of a Termux ELF in app-private
+        // storage even though the system linker can load it. Verify Bash via
+        // linker64 with Zion's explicit LD_LIBRARY_PATH before probing the
+        // wrapper with Process.run.
+        if (name == 'bash') {
+          final realPath = '$prefix/bin/bash.real';
+          if (await File(realPath).exists()) {
+            final linked = await Process.run(
+              '/system/bin/linker64',
+              <String>[realPath, '--version'],
+              runInShell: false,
+              environment: _userlandEnvironment,
+            ).timeout(const Duration(seconds: 4));
+            final versionOutput = linked.stdout.toString();
+            if (linked.exitCode == 0 && versionOutput.contains('GNU bash')) {
+              _emitOutput('[Userland] Verified Bash via Android linker: $realPath\\r\\n');
+              // Keep the public wrapper as the selected path. Native PTY
+              // launch maps /bash to bash.real and supplies the same library
+              // environment, so shell selection matches this successful probe.
+              return path;
+            }
+            _emitOutput('[Userland] linker64 Bash probe failed: exit ${linked.exitCode}; ${linked.stderr}\\r\\n');
+          }
+        }
+
+        final result = await Process.run(
+          path,
+          const <String>['-c', 'printf ZION_SHELL_OK'],
+          runInShell: false,
+          environment: _userlandEnvironment,
+        ).timeout(const Duration(seconds: 3));
         if (result.exitCode == 0 && result.stdout.toString().contains('ZION_SHELL_OK')) {
-          _emitOutput('[Userland] Using verified shell: $path\r\n');
+          _emitOutput('[Userland] Using verified shell: $path\\r\\n');
           return path;
         }
-        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\r\n');
+        _emitOutput('[Userland] Shell candidate failed: $path (exit ${result.exitCode}; ${result.stderr})\\r\\n');
         if (name == 'bash') {
           await diagnoseBashExecution(
             launchError: 'Process.run returned exit ${result.exitCode}; stdout=${result.stdout}; stderr=${result.stderr}',
           );
         }
       } catch (error) {
-        _emitOutput('[Userland] Cannot execute $path: $error\r\n');
+        _emitOutput('[Userland] Cannot execute $path: $error\\r\\n');
         if (name == 'bash') {
           await diagnoseBashExecution(launchError: error);
         }
@@ -207,6 +238,7 @@ class TerminalService {
     }
     return null;
   }
+
   /// Collects on-device evidence for a Userland Bash launch failure.
   ///
   /// Dart does not expose every Android inode/security attribute directly, so
