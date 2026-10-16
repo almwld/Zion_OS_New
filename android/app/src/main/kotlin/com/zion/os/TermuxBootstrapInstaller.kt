@@ -8,6 +8,7 @@ import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.io.InputStreamReader
 import java.util.zip.ZipInputStream
 
@@ -18,6 +19,8 @@ import java.util.zip.ZipInputStream
  */
 internal object TermuxBootstrapInstaller {
     private const val TAG = "ZionBootstrap"
+    private const val BOOTSTRAP_BLOB_OFFSET = 0x520L
+    private const val BOOTSTRAP_BLOB_SIZE = 0x1766da7L
     private const val MAX_ARCHIVE_BYTES = 512L * 1024L * 1024L
     private const val MAX_ENTRIES = 100_000
     private const val MAX_UNCOMPRESSED_BYTES = 512L * 1024L * 1024L
@@ -46,11 +49,11 @@ internal object TermuxBootstrapInstaller {
         val staging = File(files, "usr.bootstrap-staging")
         try {
             val archive = try {
-                TermuxInstaller.getZip()
+                loadBootstrapArchive(context)
             } catch (t: Throwable) {
-                Log.e(TAG, "Unable to load libtermux-bootstrap.so/getZip JNI", t)
+                Log.e(TAG, "Unable to read Termux Bootstrap ZIP stream from JNI or ELF blob", t)
                 return report(false, "bootstrap-library-load-failed",
-                    "تعذر تحميل libtermux-bootstrap.so أو دالة getZip: ${t.javaClass.simpleName}: ${t.message}",
+                    "تعذر قراءة Bootstrap من JNI أو من ZIP blob داخل المكتبة: ${t.javaClass.simpleName}: ${t.message}",
                     prefix, bash)
             }
             if (archive.isEmpty() || archive.size.toLong() > MAX_ARCHIVE_BYTES) {
@@ -169,6 +172,53 @@ internal object TermuxBootstrapInstaller {
                 "فشل استخراج Bootstrap دون حذف usr: ${t.javaClass.simpleName}: ${t.message}", prefix, bash)
         }
     }
+
+    /**
+     * Prefer the official JNI accessor. Some packaged builds expose the ZIP
+     * payload only as a raw stream embedded in the ELF shared object, without
+     * a ZIP central directory/EOCD. ZipInputStream is a streaming reader and
+     * does not require the EOCD record.
+     */
+    private fun loadBootstrapArchive(context: Context): ByteArray {
+        var jniError: Throwable? = null
+        try {
+            val bytes = TermuxInstaller.getZip()
+            if (looksLikeZipStream(bytes)) return bytes
+            jniError = IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream")
+        } catch (t: Throwable) {
+            jniError = t
+            Log.w(TAG, "JNI getZip unavailable; trying the embedded ZIP blob", t)
+        }
+
+        val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
+        if (!soFile.isFile) {
+            throw IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}", jniError)
+        }
+        val offset = BOOTSTRAP_BLOB_OFFSET
+        val size = BOOTSTRAP_BLOB_SIZE
+        RandomAccessFile(soFile, "r").use { raf ->
+            if (raf.length() < offset + size) {
+                throw IllegalStateException(
+                    "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}",
+                    jniError
+                )
+            }
+            raf.seek(offset)
+            val bytes = ByteArray(size.toInt())
+            raf.readFully(bytes)
+            if (!looksLikeZipStream(bytes)) {
+                throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header", jniError)
+            }
+            return bytes
+        }
+    }
+
+    private fun looksLikeZipStream(bytes: ByteArray): Boolean =
+        bytes.size >= 4 &&
+            bytes[0] == 0x50.toByte() &&
+            bytes[1] == 0x4b.toByte() &&
+            bytes[2] == 0x03.toByte() &&
+            bytes[3] == 0x04.toByte()
 
     private fun report(success: Boolean, status: String, message: String, prefix: File, bash: File) =
         mapOf<String, Any?>(
