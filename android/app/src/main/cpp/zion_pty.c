@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -199,7 +200,7 @@ static const char *select_shell(const char *configured_shell) {
 static void exec_root_shell(const char *shell_path) {
     if (shell_path == NULL || !is_allowed_shell(shell_path) ||
         strncmp(shell_path, "kali:", 5) == 0) {
-        dprintf(STDERR_FILENO, "[Zion Root] Rejected shell path.\\r\\n");
+        __android_log_print(ANDROID_LOG_WARN, "ZionPTY", "Root shell rejected by native allowlist");
         _exit(126);
     }
 
@@ -229,9 +230,8 @@ static void exec_root_shell(const char *shell_path) {
     }
 
     execlp("su", "su", "-c", command, (char *)NULL);
-    dprintf(STDERR_FILENO,
-            "[Zion Root] su launch failed (errno=%d). Check Magisk and its authorization prompt.\\r\\n",
-            errno);
+    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
+                        "Root shell launch failed (errno=%d); check Magisk authorization", errno);
     _exit(127);
 }
 
@@ -290,9 +290,9 @@ static void exec_selected_shell(const char *shell_path) {
     }
 
     /* Never hide a failed Userland launch behind an unexplained shell switch. */
-    dprintf(STDERR_FILENO,
-            "[Zion PTY] Userland shell launch failed for %s (errno=%d); trying Android sh.\r\n",
-            selected, errno);
+    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
+                        "Userland shell launch failed for %s (errno=%d); trying Android sh",
+                        selected, errno);
     if (strcmp(selected, "/system/bin/sh") != 0) {
         execl("/system/bin/sh", "sh", "-i", (char *)NULL);
     }
