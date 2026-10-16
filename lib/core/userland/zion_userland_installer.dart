@@ -482,7 +482,6 @@ class ZionUserlandInstaller {
       }
       onProgress?.call('[Userland] Resolved backup root: ${sourceDir.path}');
       final targetDir = Directory(ZionBootstrap.prefix);
-      await targetDir.create(recursive: true);
 
       onProgress?.call('[Userland] Checking private storage...');
       final df = await Process.run('/system/bin/df', <String>['-k', targetDir.path], runInShell: false);
@@ -541,6 +540,10 @@ class ZionUserlandInstaller {
         }
       }
 
+      // Create the destination only after the existence check and snapshot decision.
+      // When usr did not exist before this attempt, a failure must not pretend
+      // an empty directory is a rollback copy or destructively remove partial data.
+      await targetDir.create(recursive: true);
       onProgress?.call('[Userland] Copying files...');
       final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
       if (result.exitCode == 124) {
