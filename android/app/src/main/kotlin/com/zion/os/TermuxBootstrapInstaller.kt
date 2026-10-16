@@ -30,8 +30,19 @@ internal object TermuxBootstrapInstaller {
         val files = context.filesDir
         val prefix = File(files, "usr")
         val bash = File(prefix, "bin/bash")
-        if (bash.isFile && bash.length() >= 100_000L) {
-            return report(true, "already-installed", "Termux Bootstrap موجود بالفعل؛ لم يتم تغيير usr.", prefix, bash)
+        val bashReal = File(prefix, "bin/bash.real")
+        if (isBashBinary(bash) || isBashBinary(bashReal)) {
+            return try {
+                configureBashRuntime(prefix, files)
+                report(true, "already-installed-runtime-configured",
+                    "Termux Bootstrap موجود؛ تم تجهيز zion-bashrc وBash launcher دون إعادة استخراج usr.",
+                    prefix, File(prefix, "bin/bash"))
+            } catch (t: Throwable) {
+                Log.e(TAG, "Unable to configure existing Bash runtime", t)
+                report(false, "bash-runtime-configuration-failed",
+                    "تعذر إعداد Bash runtime: ${t.javaClass.simpleName}: ${t.message}",
+                    prefix, File(prefix, "bin/bash"))
+            }
         }
 
         // Do not overlay a partial installation. It may contain user data,
@@ -162,8 +173,9 @@ internal object TermuxBootstrapInstaller {
             }
             File(files, "home").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
+            configureBashRuntime(prefix, files)
 
-            return report(true, "installed", "تم استخراج Termux Bootstrap بنجاح إلى ${prefix.absolutePath}.",
+            return report(true, "installed", "تم استخراج Termux Bootstrap وتجهيز Bash runtime في ${prefix.absolutePath}.",
                 prefix, File(prefix, "bin/bash"))
         } catch (t: Throwable) {
             Log.e(TAG, "Bootstrap install failed; preserving active prefix", t)
@@ -171,6 +183,85 @@ internal object TermuxBootstrapInstaller {
             return report(false, "bootstrap-extraction-failed",
                 "فشل استخراج Bootstrap دون حذف usr: ${t.javaClass.simpleName}: ${t.message}", prefix, bash)
         }
+    }
+
+    private fun isBashBinary(file: File): Boolean =
+        file.isFile && file.length() >= 100_000L
+
+    /**
+     * Keep the real Bash ELF as bash.real and create a small launcher for
+     * environments that can invoke scripts. PTY startup itself uses linker64
+     * directly because SELinux may reject execve on app-private ELF files.
+     */
+    private fun configureBashRuntime(prefix: File, files: File) {
+        val bin = File(prefix, "bin")
+        val etc = File(prefix, "etc")
+        if (!bin.isDirectory && !bin.mkdirs()) {
+            throw IllegalStateException("Cannot create Userland bin directory")
+        }
+        if (!etc.isDirectory && !etc.mkdirs()) {
+            throw IllegalStateException("Cannot create Userland etc directory")
+        }
+
+        val bash = File(bin, "bash")
+        val real = File(bin, "bash.real")
+        if (!isBashBinary(real)) {
+            if (!isBashBinary(bash)) {
+                throw IllegalStateException("Neither bin/bash nor bin/bash.real is a valid Bash ELF")
+            }
+            if (real.exists() && !real.delete()) {
+                throw IllegalStateException("Cannot replace invalid bash.real")
+            }
+            if (!bash.renameTo(real)) {
+                throw IllegalStateException("Cannot move Bash ELF to bash.real")
+            }
+        }
+
+        val launcher = "#!/system/bin/sh\\n" +
+            "export PREFIX=\"$" + "PREFIX\"\\n" +
+            "export PREFIX=\"${prefix.absolutePath}\"\\n" +
+            "export HOME=\"${File(files, "home").absolutePath}\"\\n" +
+            "export LD_LIBRARY_PATH=\"\\$PREFIX/lib:\\$PREFIX/lib64\"\\n" +
+            "exec /system/bin/linker64 \"${real.absolutePath}\" \"\\$@\"\\n"
+        FileOutputStream(bash).use { out ->
+            out.write(launcher.toByteArray(Charsets.UTF_8))
+            out.fd.sync()
+        }
+        Os.chmod(bash.absolutePath, 493) // 0755
+        Os.chmod(real.absolutePath, 493) // 0755
+
+        val coreutils = File(bin, "coreutils")
+        val rc = StringBuilder()
+        rc.appendLine("# Zion interactive Bash configuration")
+        rc.appendLine("# External ELF programs are invoked through Android's linker; this is not an SELinux bypass.")
+        rc.appendLine("export PREFIX=\"${prefix.absolutePath}\"")
+        rc.appendLine("export HOME=\"${File(files, "home").absolutePath}\"")
+        rc.appendLine("export PATH=\"\\$PREFIX/bin:\\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"")
+        rc.appendLine("export LD_LIBRARY_PATH=\"\\$PREFIX/lib:\\$PREFIX/lib64\"")
+        rc.appendLine("export TERM=xterm-256color")
+        rc.appendLine("export COLORTERM=truecolor")
+        rc.appendLine("export ZION_TERMINAL=1")
+        rc.appendLine("shopt -s expand_aliases")
+        rc.appendLine("alias bash='/system/bin/linker64 \"\\$PREFIX/bin/bash.real\"'")
+        if (coreutils.isFile) {
+            rc.appendLine("alias coreutils='/system/bin/linker64 \"\\$PREFIX/bin/coreutils\"'")
+            listOf("ls", "cat", "head", "tail", "wc", "sort", "uniq", "cut", "tr", "tee",
+                "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "basename", "dirname",
+                "date", "df", "du", "id", "readlink", "realpath", "stat", "test", "whoami").forEach { applet ->
+                rc.appendLine("alias $applet='/system/bin/linker64 \"\\$PREFIX/bin/coreutils\" --coreutils-prog=$applet'")
+            }
+        }
+        listOf("grep", "sed", "gawk", "find", "python3", "node").forEach { tool ->
+            if (File(bin, tool).isFile) {
+                rc.appendLine("alias $tool='/system/bin/linker64 \"\\$PREFIX/bin/$tool\"'")
+            }
+        }
+        val rcFile = File(etc, "zion-bashrc")
+        FileOutputStream(rcFile).use { out ->
+            out.write(rc.toString().toByteArray(Charsets.UTF_8))
+            out.fd.sync()
+        }
+        Os.chmod(rcFile.absolutePath, 420) // 0644
     }
 
     /**
