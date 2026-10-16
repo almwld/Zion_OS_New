@@ -220,7 +220,9 @@ internal object TermuxBootstrapInstaller {
         val launcher = "#!/system/bin/sh\n" +
             "export PREFIX=\"${prefix.absolutePath}\"\n" +
             "export HOME=\"${File(files, "home").absolutePath}\"\n" +
+            "export PATH=\"\$PREFIX/bin:\$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin\"\n" +
             "export LD_LIBRARY_PATH=\"\$PREFIX/lib:\$PREFIX/lib64\"\n" +
+            "export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"\n" +
             "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
         FileOutputStream(bash).use { out ->
             out.write(launcher.toByteArray(Charsets.UTF_8))
@@ -240,6 +242,10 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("export TERM=xterm-256color")
         rc.appendLine("export COLORTERM=truecolor")
         rc.appendLine("export ZION_TERMINAL=1")
+        // Non-interactive Bash does not read --init-file/.bashrc. BASH_ENV makes
+        // the same linker-backed aliases available to scripts, where direct
+        // execve of app-private ELF tools can be denied by Android SELinux.
+        rc.appendLine("export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"")
         rc.appendLine("shopt -s expand_aliases")
         rc.appendLine("alias bash='/system/bin/linker64 \"\$PREFIX/bin/bash.real\"'")
         if (coreutils.isFile) {
