@@ -64,6 +64,34 @@ class ZionUserlandInstaller {
     }
   }
 
+  /// Startup/installer diagnostics. Never mutates or removes the Userland tree.
+  Future<void> _logUsrDiagnostics({void Function(String message)? onProgress}) async {
+    final root = Directory(ZionBootstrap.prefix);
+    final bash = File('${ZionBootstrap.prefix}/bin/bash');
+    var totalBytes = 0;
+    var binCount = 0;
+    try {
+      if (await root.exists()) {
+        await for (final entity in root.list(recursive: true, followLinks: false)) {
+          try {
+            if (entity is File) totalBytes += await entity.length();
+          } catch (_) {}
+        }
+      }
+      final bin = Directory('${ZionBootstrap.prefix}/bin');
+      if (await bin.exists()) binCount = await bin.list(followLinks: false).length;
+      final exists = await bash.exists();
+      final size = exists ? await bash.length() : 0;
+      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} bytes=$totalBytes binEntries=$binCount bashExists=$exists bashBytes=$size bashPath=${bash.path}';
+      print(message);
+      onProgress?.call(message);
+    } catch (e) {
+      final message = '[Userland][DIAG] Failed to inspect usr without modifying it: $e';
+      print(message);
+      onProgress?.call(message);
+    }
+  }
+
   Future<void> _writeState({required String source, required int sizeBytes}) async {
     final file = File(_stateFilePath);
     await file.parent.create(recursive: true);
@@ -109,6 +137,7 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
+    await _logUsrDiagnostics(onProgress: onProgress);
     // Check the local Kali archive first, even if Termux usr is already
     // installed: Kali rootfs and the Termux-compatible prefix are separate.
     // The method returns null only when no supported local archive exists.
@@ -137,6 +166,8 @@ class ZionUserlandInstaller {
     // Android file managers. Search only known backup roots; do not walk the
     // whole shared-storage tree or mistake a Kali rootfs for Termux usr.
     const backupCandidates = <String>[
+      // User-provided extracted, full Userland backup takes precedence.
+      '/storage/emulated/0/zion-bootstrap/usr',
       backupPath,
       '/storage/emulated/0/termux_usr_backup',
       '/storage/emulated/0/Download/Termux/usr',
@@ -461,12 +492,52 @@ class ZionUserlandInstaller {
         }
       }
 
+      // Snapshot the existing prefix before touching any file. If the snapshot
+      // cannot be completed, abort without changing usr/ at all.
+      final hadTarget = await targetDir.exists();
+      final safetyBackup = Directory('${targetDir.path}.backup.${DateTime.now().millisecondsSinceEpoch}');
+      if (hadTarget) {
+        try {
+          onProgress?.call('[Userland] Creating rollback snapshot: ${safetyBackup.path}');
+          await _manualCopy(targetDir, safetyBackup);
+          if (!await File('${safetyBackup.path}/bin/bash').exists() &&
+              !await Directory(safetyBackup.path).exists()) {
+            throw StateError('Safety snapshot verification failed');
+          }
+        } catch (e) {
+          try { if (await safetyBackup.exists()) await safetyBackup.delete(recursive: true); } catch (_) {}
+          return ZionUserlandInstallResult(
+            success: false,
+            message: 'تعذر إنشاء نسخة أمان من usr الحالي؛ أُلغيت العملية دون تعديل usr: $e',
+          );
+        }
+      }
+      Future<void> rollbackIfPossible() async {
+        if (!hadTarget || !await safetyBackup.exists()) {
+          onProgress?.call('[Userland] No verified previous usr snapshot; current files are being preserved (no destructive cleanup).');
+          return;
+        }
+        final failed = Directory('${targetDir.path}.failed.${DateTime.now().millisecondsSinceEpoch}');
+        try {
+          if (await targetDir.exists()) await targetDir.rename(failed.path);
+          await safetyBackup.rename(targetDir.path);
+          try { if (await failed.exists()) await failed.delete(recursive: true); } catch (_) {}
+          onProgress?.call('[Userland] Rollback completed; previous usr restored.');
+        } catch (e) {
+          onProgress?.call('[Userland] Rollback could not promote the snapshot: $e. Snapshot preserved at ${safetyBackup.path}.');
+          if (!await targetDir.exists() && await failed.exists()) {
+            try { await failed.rename(targetDir.path); } catch (_) {}
+          }
+        }
+      }
+
       onProgress?.call('[Userland] Copying files...');
       final result = await _copyDirectoryWithProgress(sourceDir.path, targetDir.path, onProgress: onProgress);
       if (result.exitCode == 124) {
+        await rollbackIfPossible();
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'انتهت مهلة نسخ Userland؛ تُركت الملفات المنسوخة لاستكمال التشخيص دون بدء نسخة ثانية تلقائيًا.',
+          message: 'انتهت مهلة نسخ Userland؛ تمت استعادة النسخة السابقة إن توفرت، ولم تُحذف usr دون نسخة أمان.',
         );
       }
       if (result.exitCode != 0) {
@@ -474,6 +545,7 @@ class ZionUserlandInstaller {
         try {
           await _manualCopy(sourceDir, targetDir);
         } catch (e) {
+          await rollbackIfPossible();
           return ZionUserlandInstallResult(success: false, message: 'فشل نسخ النسخة المحلية: ${result.stderr}; fallback: $e');
         }
       }
@@ -486,15 +558,21 @@ class ZionUserlandInstaller {
 
       if (!await _hasCompatibleShell()) {
         await _diagnoseShellCandidates(onProgress: onProgress);
+        await rollbackIfPossible();
         return const ZionUserlandInstallResult(
           success: false,
-          message: 'تم النسخ لكن لا توجد صدفة صالحة داخل usr/bin؛ سُجلت محتويات bin/ ونتائج فحص المرشحين. ستستخدم الطرفية /system/bin/sh.',
+          message: 'لم يجتز Userland فحص الصدفة؛ تمت استعادة النسخة السابقة إن توفرت، وستستخدم الطرفية /system/bin/sh عند الحاجة.',
         );
       }
       // Termux usr is useful as a Bash environment even when PRoot is absent.
       // PRoot is an optional tool, not a prerequisite for launching Bash.
       await ZionBootstrap.initializeRuntime();
       await _writeState(source: sourcePath, sizeBytes: 1400000000);
+      if (hadTarget && await safetyBackup.exists()) {
+        try { await safetyBackup.delete(recursive: true); } catch (e) {
+          onProgress?.call('[Userland] Installed successfully; retained safety snapshot at ${safetyBackup.path}: $e');
+        }
+      }
       onProgress?.call('[Userland] ✓ Ready');
       return ZionUserlandInstallResult(success: true, message: 'تم نسخ Termux usr وإصلاح الصلاحيات والروابط والتحقق من Bash: ${targetDir.path}');
     } catch (e) {
