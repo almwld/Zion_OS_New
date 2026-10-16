@@ -46,8 +46,10 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import com.zion.os.security.ZionToken
 
 class MainActivity : FlutterFragmentActivity() {
@@ -63,6 +65,10 @@ class MainActivity : FlutterFragmentActivity() {
     private val terminalLifecycleLock = Any()
     private var terminalSink: EventChannel.EventSink? = null
     private var radarSink: EventChannel.EventSink? = null
+    private var terminalLogSink: EventChannel.EventSink? = null
+    @Volatile private var logcatRunning = false
+    @Volatile private var logcatProcess: Process? = null
+    private var logcatThread: Thread? = null
     @Volatile private var radarRunning = false
     private var radarThread: Thread? = null
     private var radarNetworkCallback: ConnectivityManager.NetworkCallback? = null
@@ -87,6 +93,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val ROOT_CHANNEL = "zion.os/root"
         private const val PTY_EVENTS = "zion.os/pty/events"
         private const val RADAR_EVENTS = "zion.os/network/radar"
+        private const val TERMINAL_LOG_EVENTS = "zion.os/terminal/logs"
         private const val ZION_PKG_ACTION = "com.zion.os.ZION_PKG"
         private const val ZION_PKG_CHANNEL = "zion.os/pkg-external"
         private const val STORAGE_CHANNEL = "zion.os/storage"
@@ -365,6 +372,18 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             })
 
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, TERMINAL_LOG_EVENTS)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    terminalLogSink = events
+                    startTerminalLogStream()
+                }
+                override fun onCancel(arguments: Any?) {
+                    terminalLogSink = null
+                    stopTerminalLogStream()
+                }
+            })
+
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, RADAR_EVENTS)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -383,6 +402,46 @@ class MainActivity : FlutterFragmentActivity() {
         setIntent(intent)
         if (::zionApiChannel.isInitialized) handleZionApiIntent(intent)
         if (::zionPkgChannel.isInitialized) handleZionPkgIntent(intent)
+    }
+
+    /** Stream only terminal/bootstrap diagnostic tags; never merge logcat into PTY stdout. */
+    private fun startTerminalLogStream() {
+        synchronized(this) {
+            if (logcatRunning) return
+            logcatRunning = true
+            logcatThread = Thread({
+                var process: Process? = null
+                try {
+                    process = ProcessBuilder(
+                        "logcat", "-v", "time", "-s",
+                        "ZionBootstrap:V", "ZionPTY:V", "ZionTerminal:V"
+                    ).redirectErrorStream(true).start()
+                    logcatProcess = process
+                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
+                        while (logcatRunning) {
+                            val line = reader.readLine() ?: break
+                            val sink = terminalLogSink ?: continue
+                            runOnUiThread { if (logcatRunning && terminalLogSink === sink) sink.success(line) }
+                        }
+                    }
+                } catch (t: Throwable) {
+                    if (logcatRunning) android.util.Log.w("ZionTerminal", "Terminal log stream stopped: ${t.message}")
+                } finally {
+                    try { process?.destroy() } catch (_: Throwable) {}
+                    if (logcatProcess === process) logcatProcess = null
+                    logcatRunning = false
+                }
+            }, "zion-terminal-logcat").apply { isDaemon = true; start() }
+        }
+    }
+
+    private fun stopTerminalLogStream() {
+        logcatRunning = false
+        try { logcatProcess?.destroy() } catch (_: Throwable) {}
+        try { logcatProcess?.destroyForcibly() } catch (_: Throwable) {}
+        logcatProcess = null
+        logcatThread?.interrupt()
+        logcatThread = null
     }
 
     private fun handleZionApiIntent(intent: Intent) {
@@ -1063,6 +1122,7 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onDestroy() {
+        stopTerminalLogStream()
         stopNetworkRadar()
         stopAllTerminals()
         wakeLock?.let { if (it.isHeld) it.release() }
