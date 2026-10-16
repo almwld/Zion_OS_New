@@ -551,7 +551,10 @@ class MainActivity : FlutterFragmentActivity() {
                 android.util.Log.w("ZionBootstrap", bootstrapReport["message"]?.toString() ?: "Bootstrap unavailable")
             }
             ensureTerminalEnvironment()
-            if (!nativePtyAvailable()) return 0
+            if (!nativePtyAvailable()) {
+                android.util.Log.e("ZionTerminal", "PTY startup aborted: native PTY is unavailable")
+                return 0
+            }
             fun validRootfs(rootfs: File): Boolean =
                 rootfs.isDirectory && File(rootfs, "bin/sh").isFile && File(rootfs, "bin/bash").isFile
             val nativeShell = when {
@@ -577,7 +580,10 @@ class MainActivity : FlutterFragmentActivity() {
             }
 
             val handle = nativeStartPty(rows, cols, nativeShell)
-            if (handle <= 0) return 0
+            if (handle <= 0) {
+                android.util.Log.e("ZionTerminal", "nativeStartPty failed: handle=$handle shell=${nativeShell ?: "auto"}")
+                return 0
+            }
 
             // Register the reader before starting it. A short-lived shell may
             // exit immediately; registering after start could leave a stale entry.
@@ -625,7 +631,8 @@ class MainActivity : FlutterFragmentActivity() {
                 try { nativeStopPty(handle) } catch (_: Throwable) {}
                 0
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            android.util.Log.e("ZionTerminal", "PTY startup failed", t)
             0
         }
     }

@@ -48,6 +48,8 @@ jobs:
           grep -q 'safeChild(staging, name)' "$installer"
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"
+          grep -q 'PTY startup failed' "$activity"
+          grep -q 'nativeStartPty failed: handle=' "$activity"
           grep -q '"/system/bin/linker64"' "$pty"
           grep -q 'snprintf(full_library_path' "$pty"
           grep -q 'setenv("LD_LIBRARY_PATH", full_library_path, 1)' "$pty"
