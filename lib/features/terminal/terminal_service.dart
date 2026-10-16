@@ -91,6 +91,8 @@ class TerminalService {
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
+    'SHELL': '/system/bin/sh',
+    'ZION_TERMINAL': '1',
   };
   static const String _userlandBash = '/data/data/com.zion.os/files/usr/bin/bash';
   static const Map<String, String> _userlandEnvironment = <String, String>{
@@ -103,13 +105,26 @@ class TerminalService {
     'COLORTERM': 'truecolor',
     'LANG': 'C.UTF-8',
     'LC_ALL': 'C.UTF-8',
+    'SHELL': '/data/data/com.zion.os/files/usr/bin/bash',
+    'ZION_TERMINAL': '1',
   };
   static const ZionUserlandInstaller _userlandInstaller = ZionUserlandInstaller();
 
-  Map<String, String> _environmentFor(String shell) =>
-      shell == _userlandBash || shell.startsWith('/data/data/com.zion.os/files/usr/bin/')
-          ? _userlandEnvironment
-          : _androidEnvironment;
+  Map<String, String> _environmentFor(String shell) {
+    final isUserland = shell == _userlandBash ||
+        shell.startsWith('/data/data/com.zion.os/files/usr/bin/');
+    final environment = Map<String, String>.from(
+      isUserland ? _userlandEnvironment : _androidEnvironment,
+    );
+    if (isUserland) {
+      const certificate = '/data/data/com.zion.os/files/usr/etc/tls/cert.pem';
+      if (File(certificate).existsSync()) {
+        environment['SSL_CERT_FILE'] = certificate;
+        environment['CURL_CA_BUNDLE'] = certificate;
+      }
+    }
+    return environment;
+  }
 
   final SecurityCore _securityCore;
   final NativePtyAdapter _pty = NativePtyAdapter();
