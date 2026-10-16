@@ -82,7 +82,7 @@ class ZionUserlandInstaller {
   }
 
   /// Startup/installer diagnostics. Never mutates or removes the Userland tree.
-  Future<void> _logUsrDiagnostics({void Function(String message)? onProgress}) async {
+  Future<void> logUsrDiagnostics({void Function(String message)? onProgress}) async {
     final root = Directory(ZionBootstrap.prefix);
     final bash = File('${ZionBootstrap.prefix}/bin/bash');
     var totalBytes = 0;
@@ -141,7 +141,7 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
-    await _logUsrDiagnostics(onProgress: onProgress);
+    await logUsrDiagnostics(onProgress: onProgress);
     // Check the local Kali archive first, even if Termux usr is already
     // installed: Kali rootfs and the Termux-compatible prefix are separate.
     // The method returns null only when no supported local archive exists.
