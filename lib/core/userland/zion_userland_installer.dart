@@ -64,6 +64,23 @@ class ZionUserlandInstaller {
     }
   }
 
+  Future<void> _writeState({required String source, required int sizeBytes}) async {
+    final file = File(_stateFilePath);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(jsonEncode(<String, Object>{
+      'installed': true,
+      'installedAt': DateTime.now().toUtc().toIso8601String(),
+      'bashPath': '${ZionBootstrap.prefix}/bin/bash',
+      'version': '1.0',
+      'source': source,
+      'sizeBytes': sizeBytes,
+    }), flush: true);
+    try {
+      await Process.run('/system/bin/chmod', <String>['600', _stateFilePath], runInShell: false);
+    } catch (_) {}
+    print('[Userland] state saved: $_stateFilePath');
+  }
+
   /// Startup/installer diagnostics. Never mutates or removes the Userland tree.
   Future<void> _logUsrDiagnostics({void Function(String message)? onProgress}) async {
     final root = Directory(ZionBootstrap.prefix);
@@ -94,23 +111,6 @@ class ZionUserlandInstaller {
       print(message);
       onProgress?.call(message);
     }
-  }
-
-  Future<void> _writeState({required String source, required int sizeBytes}) async {
-    final file = File(_stateFilePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(jsonEncode(<String, Object>{
-      'installed': true,
-      'installedAt': DateTime.now().toUtc().toIso8601String(),
-      'bashPath': '${ZionBootstrap.prefix}/bin/bash',
-      'version': '1.0',
-      'source': source,
-      'sizeBytes': sizeBytes,
-    }), flush: true);
-    try {
-      await Process.run('/system/bin/chmod', <String>['600', _stateFilePath], runInShell: false);
-    } catch (_) {}
-    print('[Userland] state saved: $_stateFilePath');
   }
 
   Future<void> uninstallState() async {
