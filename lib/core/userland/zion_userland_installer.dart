@@ -342,7 +342,11 @@ class ZionUserlandInstaller {
     // installer and shell validation before replacing usr.
     if (Platform.isAndroid && directBackupFound && directBackupFailure != null) {
       final safRestore = await _restoreUserlandFromDocumentTree(onProgress: onProgress);
-      if (safRestore != null) return safRestore;
+      if (safRestore?.success == true) return safRestore!;
+      if (safRestore != null) {
+        directBackupFailure = '${directBackupFailure ?? 'local backup failed'}; SAF: ${safRestore.message}';
+        onProgress?.call('[Userland] SAF restore was not valid; continuing to app-private recovery.');
+      }
     }
 
     // A release marker and a working PRoot do not prove that the shell
