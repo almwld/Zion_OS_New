@@ -40,7 +40,7 @@ void main() {
       final launcher = source.substring(bashStart, bashEnd);
       expect(launcher, contains('execl("/system/bin/linker64", "linker64", selected'));
       expect(launcher, contains('"--init-file", bashrc, "-i"'));
-      expect(launcher, contains('LD_LIBRARY_PATH'));
+      expect(source, contains('setenv("LD_LIBRARY_PATH", library_path, 1)'));
       expect(launcher, isNot(contains('execl("/system/bin/sh", "sh", "-c", bash_command')));
     });
 
