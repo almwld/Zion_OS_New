@@ -116,6 +116,22 @@ void main() {
       expect(source, contains('TermuxInstaller.getZip()'));
     });
 
+    test('native PTY lifecycle uses generation handles, safe initialization and bounded writes', () async {
+      final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
+      final adapter = await File('lib/features/terminal/native_pty_adapter.dart').readAsString();
+      expect(native, contains('pthread_once(&g_sessions_once, init_sessions_once)'));
+      expect(native, contains('session->generation != generation'));
+      expect(native, contains('make_session_handle(slot, generation)'));
+      expect(native, contains('attempt < 10'));
+      expect(native, contains('5000 - (int)elapsed_ms'));
+      expect(native, contains('Java_com_zion_os_MainActivity_nativeSetPaths'));
+      expect(activity, contains('nativeSetPaths(filesDir.absolutePath)'));
+      expect(activity, contains('nativeWritePty(handle, input).coerceIn(0, input.size)'));
+      expect(adapter, contains("invokeMethod<int>('write'"));
+      expect(adapter, contains('Write incomplete:'));
+    });
+
     test('local recovery is offline-only and leaves Android shell available', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
