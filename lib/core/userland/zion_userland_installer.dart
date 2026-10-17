@@ -29,19 +29,28 @@ class ZionUserlandInstaller {
   Future<bool> isInstalled({void Function(String message)? onProgress}) async {
     final bashPath = '${ZionBootstrap.prefix}/bin/bash';
     final bashFile = File(bashPath);
+    final bashRealFile = File('${ZionBootstrap.prefix}/bin/bash.real');
     try {
-      if (await bashFile.exists()) {
-        final stat = await bashFile.stat();
-        if (stat.size >= 100000) {
+      // Zion's launcher may be a small POSIX wrapper which invokes the real
+      // Bash ELF through /system/bin/linker64. Validate bash.real first so
+      // that a healthy 800-KB Bash is not mistaken for a missing shell just
+      // because bin/bash itself is only a few hundred bytes.
+      for (final candidate in <File>[bashRealFile, bashFile]) {
+        try {
+          if (!await candidate.exists()) continue;
+          final stat = await candidate.stat();
+          if (stat.type == FileSystemEntityType.file && stat.size >= 100000) {
+            onProgress?.call(
+              '[Userland] Bash payload present at ${candidate.path} (${stat.size} bytes); execution is checked separately. Keeping usr/ in place.',
+            );
+            return true;
+          }
           onProgress?.call(
-            '[Userland] Bash file present (${stat.size} bytes); execution is checked separately. Keeping usr/ in place.',
+            '[Userland] Shell candidate ${candidate.path} is not a full Bash payload (${stat.size} bytes); preserving usr/ for diagnosis.',
           );
-          return true;
+        } catch (error) {
+          onProgress?.call('[Userland] Could not inspect shell candidate ${candidate.path}: $error');
         }
-        onProgress?.call(
-          '[Userland] Bash file is unusually small (${stat.size} bytes); preserving usr/ for diagnosis.',
-        );
-        return false;
       }
 
       // Do not delete the prefix or its state marker on a failed probe. A
@@ -1097,6 +1106,7 @@ class ZionUserlandInstaller {
   /// destructive restore/rollback of the entire Userland tree.
   Future<bool> _hasCompatibleShell() async {
     const candidates = <String>[
+      '${ZionBootstrap.prefix}/bin/bash.real',
       '${ZionBootstrap.prefix}/bin/bash',
       '${ZionBootstrap.prefix}/bin/zsh',
       '${ZionBootstrap.prefix}/bin/fish',
@@ -1108,7 +1118,10 @@ class ZionUserlandInstaller {
       try {
         final file = File(path);
         final stat = await file.stat();
-        if (stat.type != FileSystemEntityType.file || stat.size < 4096) {
+        final minimumBytes = path.endsWith('/bash.real') || path.endsWith('/bash')
+            ? 100000
+            : 4096;
+        if (stat.type != FileSystemEntityType.file || stat.size < minimumBytes) {
           continue;
         }
         return true;
