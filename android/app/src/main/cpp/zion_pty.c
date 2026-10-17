@@ -311,9 +311,7 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
     /* PRoot temp and seccomp variables are prepared in the parent before fork(). */
 
     char home_bind[PATH_MAX * 2];
-    char proot_tmp[PATH_MAX];
     (void)snprintf(home_bind, sizeof(home_bind), "%s/home:/root", g_files_dir);
-    path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
     execl("/system/bin/linker64", "linker64", proot,
           "--link2symlink", "-0", "-r", rootfs,
           "-b", "/dev", "-b", "/proc", "-b", "/sys",
