@@ -116,6 +116,13 @@ void main() {
       expect(pkg, contains("const <String>['/system/bin', '/system/xbin']"));
     });
 
+    test('Zion shell startup preserves all Userland dynamic-library directories', () async {
+      final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      final terminal = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      expect(bootstrap, contains("export LD_LIBRARY_PATH=\\\"'+prefix+'/lib:'+prefix+'/lib64:'+prefix+'/libexec\\\""));
+      expect(terminal, contains("'/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec'"));
+    });
+
     test('runtime probes reject non-executable files and handle empty shared storage', () async {
       final runtime = await File('lib/features/terminal/zion_runtime_service.dart').readAsString();
       final proot = await File('lib/core/userland/zion_proot.dart').readAsString();
