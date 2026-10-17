@@ -123,6 +123,14 @@ void main() {
       expect(terminal, contains("'/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec'"));
     });
 
+    test('on-device runtime verifier exports Zion library paths before linker64', () async {
+      final verifier = await File('scripts/verify-zion-userland-runtime.sh').readAsString();
+      expect(verifier, contains('export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:$PREFIX/libexec"'));
+      expect(verifier.indexOf('export LD_LIBRARY_PATH'),
+          lessThan(verifier.indexOf('out=$("$LINKER" "$BASH_REAL" --version')));
+      expect(verifier, contains('Bash loads through linker64 with Zion LD_LIBRARY_PATH'));
+    });
+
     test('runtime probes reject non-executable files and handle empty shared storage', () async {
       final runtime = await File('lib/features/terminal/zion_runtime_service.dart').readAsString();
       final proot = await File('lib/core/userland/zion_proot.dart').readAsString();
