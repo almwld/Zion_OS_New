@@ -612,6 +612,34 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     return handle;
 }
 
+static void *zion_reap_child_thread(void *argument) {
+    pid_t pid = *((pid_t *)argument);
+    free(argument);
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    return NULL;
+}
+
+static void reap_child_after_eof(pid_t pid) {
+    if (pid <= 0) return;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        int status = 0;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid || (result < 0 && errno == ECHILD)) return;
+        if (result < 0 && errno != EINTR) return;
+        usleep(10000);
+    }
+    pid_t *child = (pid_t *)malloc(sizeof(pid_t));
+    if (child == NULL) return;
+    *child = pid;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, zion_reap_child_thread, child) == 0) {
+        (void)pthread_detach(thread);
+    } else {
+        free(child);
+    }
+}
+
 JNIEXPORT jbyteArray JNICALL
 Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint handle) {
     (void)thiz;
@@ -639,18 +667,15 @@ Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint hand
         return (*env)->NewByteArray(env, 0);
     }
 
-    // EIO/EOF means the slave side closed. Close and reap so the native slot
-    // is reusable and the child cannot become a zombie.
+    // Invalidate the generation-tagged handle before reaping. Retrying outside
+    // the session lock prevents a slow child exit from blocking other PTYs.
     pid_t pid = session->child_pid;
     int fd = session->master_fd;
     session->master_fd = -1;
     session->child_pid = -1;
     if (fd >= 0) close(fd);
-    if (pid > 0) {
-        int status = 0;
-        (void)waitpid(pid, &status, WNOHANG);
-    }
     pthread_mutex_unlock(&g_sessions_lock);
+    reap_child_after_eof(pid);
     return NULL;
 }
 
@@ -659,9 +684,6 @@ Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint han
     (void)thiz;
     if (data == NULL) return -1;
 
-    // Duplicate the master descriptor while the session table is locked, then
-    // release the global lock before polling/writing. A slow paste must never
-    // stall PTY readers, resize, or teardown for every terminal session.
     pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
     if (!session) {
@@ -679,10 +701,19 @@ Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint han
         return -1;
     }
 
+    struct timespec started;
+    (void)clock_gettime(CLOCK_MONOTONIC, &started);
     jsize written = 0;
     while (written < len) {
+        struct timespec now;
+        (void)clock_gettime(CLOCK_MONOTONIC, &now);
+        int64_t elapsed_ms = (int64_t)(now.tv_sec - started.tv_sec) * 1000LL +
+            (int64_t)(now.tv_nsec - started.tv_nsec) / 1000000LL;
+        int remaining_ms = 5000 - (int)elapsed_ms;
+        if (remaining_ms <= 0) break;
+
         struct pollfd pfd = {fd, POLLOUT, 0};
-        int ready = poll(&pfd, 1, 1000);
+        int ready = poll(&pfd, 1, remaining_ms);
         if (ready < 0 && errno == EINTR) continue;
         if (ready <= 0 || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
         ssize_t n = write(fd, bytes + written, (size_t)(len - written));
