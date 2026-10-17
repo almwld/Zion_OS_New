@@ -49,15 +49,28 @@ void main() {
       expect(source, contains("'/data/data/com.zion.os/files/usr'"));
     });
 
-    test('native PTY Bash launcher exports the same runtime environment as the verified linker probe', () async {
+    test('native PTY Bash launcher inherits Zion runtime environment before linker64', () async {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
-      expect(source, contains('exec /system/bin/linker64'));
-      expect(source, contains('export LD_LIBRARY_PATH=/data/data/com.zion.os/files/usr/lib:'));
-      expect(source, contains('export SHELL=/data/data/com.zion.os/files/usr/bin/bash;'));
-      expect(source, contains('export COLORTERM=truecolor;'));
-      expect(source, contains('export TERMINFO=/data/data/com.zion.os/files/usr/share/terminfo;'));
-      expect(source, contains('export TERMINFO_DIRS=/data/data/com.zion.os/files/usr/share/terminfo:'));
-      expect(source, contains('export BASH_ENV=/data/data/com.zion.os/files/usr/etc/zion-bashrc;'));
+      final environmentStart = source.indexOf('static void prepare_environment(');
+      final environmentEnd = source.indexOf('static int is_allowed_shell(', environmentStart);
+      expect(environmentStart, greaterThanOrEqualTo(0));
+      expect(environmentEnd, greaterThan(environmentStart));
+      final environment = source.substring(environmentStart, environmentEnd);
+      expect(environment, contains('setenv("LD_LIBRARY_PATH", full_library_path, 1)'));
+      expect(environment, contains('/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64'));
+      expect(environment, contains('/data/data/com.zion.os/files/usr/libexec'));
+      expect(environment, contains('setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1)'));
+      expect(environment, contains('setenv("COLORTERM", "truecolor", 1)'));
+      expect(environment, contains('setenv("TERMINFO", "/data/data/com.zion.os/files/usr/share/terminfo", 1)'));
+      expect(environment, contains('setenv("BASH_ENV", "/data/data/com.zion.os/files/usr/etc/zion-bashrc", 1)'));
+      final launcherStart = source.indexOf('static void exec_selected_shell(');
+      final launcherEnd = source.indexOf('JNIEXPORT jboolean JNICALL', launcherStart);
+      expect(launcherStart, greaterThanOrEqualTo(0));
+      expect(launcherEnd, greaterThan(launcherStart));
+      final launcher = source.substring(launcherStart, launcherEnd);
+      expect(launcher, contains('execl("/system/bin/linker64", "linker64", bash_real'));
+      expect(launcher, contains('"--init-file", bashrc, "-i"'));
+      expect(launcher, isNot(contains('exec /system/bin/linker64')));
     });
 
     test('local recovery is offline-only and leaves Android shell available', () async {
