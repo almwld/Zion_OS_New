@@ -308,11 +308,11 @@ static void exec_selected_shell(const char *shell_path) {
     const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
     if (strcmp(selected, bash_real) == 0) {
         /*
-         * Match the verified on-device launch exactly: export Zion's private
-         * library directories in a fresh Android sh process, then exec
-         * linker64. This makes the loader environment explicit at the final
-         * exec boundary instead of relying only on inherited app/PTY state.
-         * Paths are fixed app-private constants, not user-provided input.
+         * Always launch through Android's linker with an explicit Zion
+         * environment. bash.real's embedded RUNPATH points at Termux, so
+         * LD_LIBRARY_PATH must be set in the process that invokes linker64.
+         * Keep the init file optional: a missing rc file must not force the
+         * terminal to silently fall back to Android sh.
          */
         const char *bash_command =
             "export PREFIX=/data/data/com.zion.os/files/usr; "
@@ -328,43 +328,19 @@ static void exec_selected_shell(const char *shell_path) {
             "export LANG=C.UTF-8; export LC_ALL=C.UTF-8; "
             "export SHELL=/data/data/com.zion.os/files/usr/bin/bash; "
             "export TERMINFO=/data/data/com.zion.os/files/usr/share/terminfo; "
-            "export TERMINFO_DIRS=/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo; "
+            "export TERMINFO_DIRS=/data/data/com.zion.os/files/usr/share/terminfo:"
+                "/data/data/com.zion.os/files/usr/lib/terminfo; "
             "export BASH_ENV=/data/data/com.zion.os/files/usr/etc/zion-bashrc; "
             "export ZION_TERMINAL=1; "
-            "exec /system/bin/linker64 "
-                "/data/data/com.zion.os/files/usr/bin/bash.real -i";
-        if (access(bashrc, F_OK) == 0) {
-            execl("/system/bin/sh", "sh", "-c",
-                  "export PREFIX=/data/data/com.zion.os/files/usr; "
-                  "export HOME=/data/data/com.zion.os/files/home; "
-                  "export LD_LIBRARY_PATH=/data/data/com.zion.os/files/usr/lib:"
-                      "/data/data/com.zion.os/files/usr/lib64:"
-                      "/data/data/com.zion.os/files/usr/libexec; "
-                  "export TMPDIR=/data/data/com.zion.os/files/tmp; "
-                  "export PATH=/data/data/com.zion.os/files/usr/bin:"
-                      "/data/data/com.zion.os/files/usr/sbin:"
-                      "/system/bin:/system/xbin:/vendor/bin; "
-                  "export TERM=xterm-256color; export COLORTERM=truecolor; "
-                  "export LANG=C.UTF-8; export LC_ALL=C.UTF-8; "
-                  "export SHELL=/data/data/com.zion.os/files/usr/bin/bash; "
-                  "export TERMINFO=/data/data/com.zion.os/files/usr/share/terminfo; "
-                  "export TERMINFO_DIRS=/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo; "
-                  "export BASH_ENV=/data/data/com.zion.os/files/usr/etc/zion-bashrc; "
-                  "export ZION_TERMINAL=1; "
-                  "exec /system/bin/linker64 "
-                      "/data/data/com.zion.os/files/usr/bin/bash.real "
-                      "--init-file /data/data/com.zion.os/files/usr/etc/zion-bashrc -i",
-                  (char *)NULL);
-        } else {
-            execl("/system/bin/sh", "sh", "-c", bash_command,
-                  (char *)NULL);
-        }
-        /* Preserve the direct fallback if the explicit launcher fails. */
-        execl(selected, name, "-i", (char *)NULL);
-    } else {
-        /* Other shells use the generic linker path first as well. */
-        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
-        execl(selected, name, "-i", (char *)NULL);
+            "if [ -f /data/data/com.zion.os/files/usr/etc/zion-bashrc ]; then "
+                "exec /system/bin/linker64 "
+                    "/data/data/com.zion.os/files/usr/bin/bash.real "
+                    "--init-file /data/data/com.zion.os/files/usr/etc/zion-bashrc -i; "
+            "else "
+                "exec /system/bin/linker64 "
+                    "/data/data/com.zion.os/files/usr/bin/bash.real -i; "
+            "fi";
+        execl("/system/bin/sh", "sh", "-c", bash_command, (char *)NULL);
     }
 
     /* Never hide a failed Userland launch behind an unexplained shell switch. */
