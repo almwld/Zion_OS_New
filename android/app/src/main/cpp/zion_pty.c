@@ -146,7 +146,7 @@ static void mkdir_p(const char *path, mode_t mode) {
 static void prepare_environment(void) {
     char home[PATH_MAX], prefix[PATH_MAX], tmp[PATH_MAX], proot_tmp[PATH_MAX];
     char bin[PATH_MAX], sbin[PATH_MAX], lib[PATH_MAX], lib64[PATH_MAX], libexec[PATH_MAX];
-    char bashrc[PATH_MAX], terminfo[PATH_MAX], terminfo_dirs[PATH_MAX], cert[PATH_MAX];
+    char bashrc[PATH_MAX], terminfo[PATH_MAX], lib_terminfo[PATH_MAX], terminfo_dirs[PATH_MAX], cert[PATH_MAX];
     char path[PATH_MAX * 2], library_path[PATH_MAX * 3];
     path_join(home, sizeof(home), "home");
     path_join(prefix, sizeof(prefix), "usr");
@@ -159,11 +159,11 @@ static void prepare_environment(void) {
     path_join(libexec, sizeof(libexec), "usr/libexec");
     path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
     path_join(terminfo, sizeof(terminfo), "usr/share/terminfo");
-    path_join(terminfo_dirs, sizeof(terminfo_dirs), "usr/share/terminfo");
+    path_join(lib_terminfo, sizeof(lib_terminfo), "usr/lib/terminfo");
     (void)snprintf(path, sizeof(path), "%s:%s:/system/bin:/system/xbin:/vendor/bin", bin, sbin);
     (void)snprintf(library_path, sizeof(library_path), "%s:%s:%s", lib, lib64, libexec);
     (void)snprintf(terminfo_dirs, sizeof(terminfo_dirs), "%s:%s:/system/usr/share/terminfo",
-                   terminfo, lib);
+                   terminfo, lib_terminfo);
 
     const char *directories[] = {
         "home", "tmp", "tmp/proot", "zion/tmp", "etc", "home/storage",
