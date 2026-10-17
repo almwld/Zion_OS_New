@@ -98,6 +98,24 @@ void main() {
       expect(launcher, contains('execl("/system/bin/sh", "sh", "-i", (char *)NULL)'));
     });
 
+    test('shared-storage Userland restore retries through SAF after raw reads fail', () async {
+      final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      final native = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
+      expect(installer, contains('_restoreUserlandFromDocumentTree'));
+      expect(installer, contains("invokeMethod<Map<dynamic, dynamic>>('pickTree')"));
+      expect(installer, contains("'copyDocumentToPrivate'"));
+      expect(installer, contains('_installFromDirectory(staging.path'));
+      expect(native, contains('DocumentsContract.getDocumentId(tree)'));
+    });
+
+    test('bootstrap ZIP discovery validates payload instead of relying on a fixed ELF offset', () async {
+      final source = await File('android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt').readAsString();
+      expect(source, contains('BOOTSTRAP_BLOB_OFFSET.toInt()'));
+      expect(source, contains('isBootstrapZipStream'));
+      expect(source, contains('No valid bootstrap ZIP stream found in ELF'));
+      expect(source, contains('TermuxInstaller.getZip()'));
+    });
+
     test('local recovery is offline-only and leaves Android shell available', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
