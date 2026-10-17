@@ -1052,8 +1052,8 @@ class ZionUserlandInstaller {
             '/lib64',
       };
       final version = await Process.run(
-        target.path,
-        const <String>['--version'],
+        '/system/bin/linker64',
+        <String>[target.path, '--version'],
         runInShell: false,
         environment: environment,
       ).timeout(const Duration(seconds: 5));
@@ -1064,8 +1064,8 @@ class ZionUserlandInstaller {
         return false;
       }
       final help = await Process.run(
-        target.path,
-        const <String>['--help'],
+        '/system/bin/linker64',
+        <String>[target.path, '--help'],
         runInShell: false,
         environment: environment,
       ).timeout(const Duration(seconds: 5));
