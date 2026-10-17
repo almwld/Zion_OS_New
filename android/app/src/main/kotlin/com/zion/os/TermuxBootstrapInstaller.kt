@@ -484,62 +484,98 @@ internal object TermuxBootstrapInstaller {
      * does not require the EOCD record.
      */
     private fun loadBootstrapArchive(context: Context): ByteArray {
-        // The packaged library's known payload is a raw ZIP stream embedded
-        // in an ELF, and intentionally has no ZIP EOCD/central directory.
-        // Try this path first; ZipInputStream consumes local entries in order.
+        // The bootstrap may be stored as a raw ZIP stream inside the ELF. Builds
+        // can change section layout, so the old fixed offset is only a fast path;
+        // validate the entries and scan for a real stream before attempting JNI.
         var blobError: Throwable? = null
         val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
         try {
-            if (soFile.isFile) {
-                val offset = BOOTSTRAP_BLOB_OFFSET
-                val size = BOOTSTRAP_BLOB_SIZE
-                RandomAccessFile(soFile, "r").use { raf ->
-                    if (raf.length() < offset + size) {
-                        throw IllegalStateException(
-                            "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}"
-                        )
-                    }
-                    raf.seek(offset)
-                    val bytes = ByteArray(size.toInt())
-                    raf.readFully(bytes)
-                    if (!looksLikeZipStream(bytes)) {
-                        throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header")
-                    }
-                    return bytes
-                }
+            if (!soFile.isFile || soFile.length() == 0L) {
+                throw IllegalStateException("Bootstrap ELF not found or empty: ${soFile.absolutePath}")
             }
-            blobError = IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}")
+            if (soFile.length() > MAX_ARCHIVE_BYTES + 64L * 1024L * 1024L) {
+                throw IllegalStateException("Bootstrap ELF exceeds the bounded scan size: ${soFile.length()}")
+            }
+            val elf = soFile.readBytes()
+            val candidates = LinkedHashSet<Int>()
+            if (BOOTSTRAP_BLOB_OFFSET >= 0L && BOOTSTRAP_BLOB_OFFSET < elf.size.toLong()) {
+                candidates.add(BOOTSTRAP_BLOB_OFFSET.toInt())
+            }
+            var i = 0
+            while (i + 4 <= elf.size && candidates.size < 128) {
+                if (elf[i] == 0x50.toByte() && elf[i + 1] == 0x4b.toByte() &&
+                    elf[i + 2] == 0x03.toByte() && elf[i + 3] == 0x04.toByte()) {
+                    candidates.add(i)
+                    i += 3
+                }
+                i++
+            }
+
+            for (offset in candidates) {
+                val remaining = elf.size - offset
+                if (remaining < 4) continue
+                val length = if (offset == BOOTSTRAP_BLOB_OFFSET.toInt() &&
+                    BOOTSTRAP_BLOB_SIZE > 0L && BOOTSTRAP_BLOB_SIZE <= remaining.toLong()) {
+                    BOOTSTRAP_BLOB_SIZE.toInt()
+                } else {
+                    remaining
+                }
+                if (!isBootstrapZipStream(elf, offset, length)) continue
+                Log.i(TAG, "Validated embedded bootstrap ZIP stream at ELF offset=$offset length=$length")
+                return elf.copyOfRange(offset, offset + length)
+            }
+            throw IllegalStateException(
+                "No valid bootstrap ZIP stream found in ELF; size=${elf.size}, candidates=${candidates.size}"
+            )
         } catch (t: Throwable) {
             blobError = t
-            Log.w(TAG, "Embedded bootstrap blob unavailable; trying JNI getZip", t)
+            Log.w(TAG, "Embedded bootstrap ZIP scan unavailable; trying JNI getZip", t)
         }
 
         try {
             val bytes = TermuxInstaller.getZip()
-            if (looksLikeZipStream(bytes)) return bytes
-            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream", blobError)
+            if (isBootstrapZipStream(bytes, 0, bytes.size)) return bytes
+            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid bootstrap ZIP stream", blobError)
         } catch (t: Throwable) {
-            throw IllegalStateException("Unable to read bootstrap ZIP stream from ELF blob or JNI", t)
+            throw IllegalStateException(
+                "Unable to read bootstrap ZIP stream from ELF blob or JNI (ELF: ${blobError?.message})", t
+            )
         }
     }
 
-    private fun looksLikeZipStream(bytes: ByteArray): Boolean =
-        bytes.size >= 4 &&
-            bytes[0] == 0x50.toByte() &&
-            bytes[1] == 0x4b.toByte() &&
-            bytes[2] == 0x03.toByte() &&
-            bytes[3] == 0x04.toByte()
-
-    private fun report(success: Boolean, status: String, message: String, prefix: File, bash: File) =
-        mapOf<String, Any?>(
-            "success" to success,
-            "status" to status,
-            "message" to message,
-            "prefix" to prefix.absolutePath,
-            "prefixExists" to prefix.isDirectory,
-            "bashExists" to bash.isFile,
-            "bashSizeBytes" to if (bash.isFile) bash.length() else 0L
-        )
+    /** Validate real bootstrap entries, not a coincidental PK local-header byte sequence. */
+    private fun isBootstrapZipStream(bytes: ByteArray, offset: Int, length: Int): Boolean {
+        if (offset < 0 || length < 4 || offset.toLong() + length > bytes.size.toLong()) return false
+        var hasBash = false
+        var hasApt = false
+        var hasSymlinks = false
+        var entries = 0
+        var expanded = 0L
+        val buffer = ByteArray(8 * 1024)
+        return try {
+            ZipInputStream(ByteArrayInputStream(bytes, offset, length)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (++entries > MAX_ENTRIES) return false
+                    val name = entry.name.removePrefix("./").trimStart('/')
+                    if (name == "bin/bash" || name == "usr/bin/bash") hasBash = true
+                    if (name == "bin/apt" || name == "usr/bin/apt") hasApt = true
+                    if (name == "SYMLINKS.txt" || name == "usr/SYMLINKS.txt") hasSymlinks = true
+                    while (true) {
+                        val count = zip.read(buffer)
+                        if (count < 0) break
+                        expanded += count.toLong()
+                        if (expanded > MAX_UNCOMPRESSED_BYTES) return false
+                    }
+                    zip.closeEntry()
+                }
+            }
+            hasBash && hasApt && hasSymlinks
+        } catch (t: Throwable) {
+            Log.v(TAG, "ZIP candidate rejected at offset=$offset: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
 
     private fun safeChild(root: File, relative: String): File {
         if (relative.startsWith("/") || relative.contains('\u0000')) {
