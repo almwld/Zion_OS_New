@@ -49,6 +49,17 @@ void main() {
       expect(source, contains("'/data/data/com.zion.os/files/usr'"));
     });
 
+    test('native PTY Bash launcher exports the same runtime environment as the verified linker probe', () async {
+      final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      expect(source, contains('exec /system/bin/linker64'));
+      expect(source, contains('export LD_LIBRARY_PATH=/data/data/com.zion.os/files/usr/lib:'));
+      expect(source, contains('export SHELL=/data/data/com.zion.os/files/usr/bin/bash;'));
+      expect(source, contains('export COLORTERM=truecolor;'));
+      expect(source, contains('export TERMINFO=/data/data/com.zion.os/files/usr/share/terminfo;'));
+      expect(source, contains('export TERMINFO_DIRS=/data/data/com.zion.os/files/usr/share/terminfo:'));
+      expect(source, contains('export BASH_ENV=/data/data/com.zion.os/files/usr/etc/zion-bashrc;'));
+    });
+
     test('local recovery is offline-only and leaves Android shell available', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
