@@ -31,6 +31,19 @@ void main() {
       expect(await File('lib/features/terminal/termux_api.dart').exists(), isFalse);
     });
 
+    test('native PTY launches Bash directly through linker64 with inherited Zion library paths', () async {
+      final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      final bashStart = source.indexOf('static void exec_selected_shell(');
+      final bashEnd = source.indexOf('JNIEXPORT jboolean JNICALL', bashStart);
+      expect(bashStart, greaterThanOrEqualTo(0));
+      expect(bashEnd, greaterThan(bashStart));
+      final launcher = source.substring(bashStart, bashEnd);
+      expect(launcher, contains('execl("/system/bin/linker64", "linker64", bash_real'));
+      expect(launcher, contains('"--init-file", bashrc, "-i"'));
+      expect(launcher, contains('LD_LIBRARY_PATH'));
+      expect(launcher, isNot(contains('execl("/system/bin/sh", "sh", "-c", bash_command')));
+    });
+
     test('native PTY does not export legacy Termux environment variables', () async {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(source, isNot(contains('TERMUX_HOME')));
