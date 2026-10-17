@@ -179,7 +179,16 @@ class ZionUserlandInstaller {
     // installed: Kali rootfs and the Termux-compatible prefix are separate.
     // The method returns null only when no supported local archive exists.
     final kaliResult = await _installFromKaliArchive(onProgress: onProgress);
-    if (kaliResult != null) return kaliResult;
+    if (kaliResult?.success == true) return kaliResult!;
+    if (kaliResult != null) {
+      // Kali is a separate distro rootfs, not the Zion/Termux-compatible usr
+      // prefix. A denied or invalid Kali archive must not prevent restoring a
+      // valid local Userland backup, nor should it trigger the same failure loop
+      // before every Android-shell launch.
+      onProgress?.call(
+        '[Userland] Kali archive import did not complete; continuing independent Userland recovery: ${kaliResult.message}',
+      );
+    }
 
     if (await isInstalled(onProgress: onProgress)) {
       onProgress?.call('[Userland] Already installed; skipping copy.');
