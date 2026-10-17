@@ -359,8 +359,9 @@ static void exec_selected_shell(const char *shell_path) {
             execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
         }
         __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
-                            "linker64 exec for Bash failed (errno=%d: %s)",
+                            "linker64 exec for Bash failed (errno=%d: %s); falling back to Android sh",
                             errno, strerror(errno));
+        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
         _exit(127);
     }
 
