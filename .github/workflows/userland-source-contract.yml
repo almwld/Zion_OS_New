@@ -56,6 +56,8 @@ jobs:
           grep -q 'pthread_once(&g_sessions_once, init_sessions_once)' "$pty"
           grep -q 'make_session_handle(slot, generation)' "$pty"
           grep -q 'session->generation != generation' "$pty"
+          grep -q 'static char g_shell_candidates' "$pty"
+          grep -q 'return g_shell_candidates\[i\]' "$pty"
           grep -q '5000 - (int)elapsed_ms' "$pty"
           grep -q 'attempt < 10' "$pty"
           grep -q 'Java_com_zion_os_MainActivity_nativeSetPaths' "$pty"
