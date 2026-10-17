@@ -141,6 +141,28 @@ class ZionUserlandInstaller {
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
+    // Request Android's supported shared-storage access before probing any
+    // /storage/emulated/0 path. Directory.exists() can return true for a
+    // visible parent while opening its children still fails with EACCES; the
+    // previous "request only when no backup directory exists" check therefore
+    // skipped the permission flow for precisely the broken-device state.
+    if (Platform.isAndroid) {
+      try {
+        final granted = await _storageChannel
+                .invokeMethod<bool>('ensureAllFilesAccess')
+                .timeout(const Duration(minutes: 5)) ??
+            false;
+        if (!granted) {
+          onProgress?.call(
+            '[Userland] Shared-storage access was not granted. Local paths will be probed non-destructively; Android may still require selecting the archive through the system document picker.',
+          );
+        } else {
+          onProgress?.call('[Userland] Android shared-storage access is available.');
+        }
+      } catch (e) {
+        onProgress?.call('[Userland] Shared-storage permission flow unavailable: $e');
+      }
+    }
     await logUsrDiagnostics(onProgress: onProgress);
     // Check the local Kali archive first, even if Termux usr is already
     // installed: Kali rootfs and the Termux-compatible prefix are separate.
@@ -449,11 +471,12 @@ class ZionUserlandInstaller {
         releaseTag: 'local-kali-rootfs',
       );
     } catch (error) {
-      onProgress?.call('[Kali] Local archive installation failed: $error');
-      return ZionUserlandInstallResult(
-        success: false,
-        message: 'تعذر تثبيت أرشيف Kali المحلي: $error. لم تُحذف ملفات المستخدم.',
-      );
+      onProgress?.call('[Kali] Cannot read the shared-storage archive directly: $error');
+      // A raw /storage/emulated/0 path may be blocked by scoped storage even
+      // though the file is visible in a file manager. Do not let that one
+      // inaccessible Kali archive abort recovery of the separate Termux usr
+      // backup or the app-private rollback snapshot.
+      return null;
     }
   }
 
