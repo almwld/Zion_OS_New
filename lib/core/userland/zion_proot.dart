@@ -41,8 +41,8 @@ class ZionProot {
     };
     try {
       final result = await Process.run(
-        executable,
-        const <String>['--version'],
+        '/system/bin/linker64',
+        <String>[executable, '--version'],
         runInShell: false,
         environment: environment,
       ).timeout(const Duration(seconds: 5));
@@ -57,8 +57,8 @@ class ZionProot {
         );
       }
       final help = await Process.run(
-        executable,
-        const <String>['--help'],
+        '/system/bin/linker64',
+        <String>[executable, '--help'],
         runInShell: false,
         environment: environment,
       ).timeout(const Duration(seconds: 5));
@@ -163,8 +163,8 @@ class ZionProot {
     if (environment != null) processEnvironment.addAll(environment);
 
     return Process.start(
-      info.executable!,
-      args,
+      '/system/bin/linker64',
+      <String>[info.executable!, ...args],
       environment: processEnvironment,
       runInShell: false,
     );
