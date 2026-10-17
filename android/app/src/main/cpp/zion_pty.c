@@ -330,6 +330,18 @@ static void exec_selected_shell(const char *shell_path) {
         _exit(127);
     }
 
+    /* The Android system shell is a valid selected runtime, not a failed Userland shell.
+     * Execute it directly; otherwise the old fallback branch immediately _exit(127)s
+     * when select_shell() has already selected /system/bin/sh, closing the PTY at once.
+     */
+    if (strcmp(selected, "/system/bin/sh") == 0) {
+        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "Android system shell exec failed (errno=%d: %s)",
+                            errno, strerror(errno));
+        _exit(127);
+    }
+
     /* Never hide a failed Userland launch behind an unexplained shell switch. */
     __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
                         "Userland shell launch failed for %s (errno=%d); trying Android sh",

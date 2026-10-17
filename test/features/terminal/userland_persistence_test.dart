@@ -87,6 +87,17 @@ void main() {
       expect(launcher, isNot(contains('exec /system/bin/linker64')));
     });
 
+    test('native PTY executes the selected Android system shell instead of exiting', () async {
+      final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      final start = source.indexOf('static void exec_selected_shell(');
+      final end = source.indexOf('JNIEXPORT jboolean JNICALL', start);
+      expect(start, greaterThanOrEqualTo(0));
+      expect(end, greaterThan(start));
+      final launcher = source.substring(start, end);
+      expect(launcher, contains('if (strcmp(selected, "/system/bin/sh") == 0)'));
+      expect(launcher, contains('execl("/system/bin/sh", "sh", "-i", (char *)NULL)'));
+    });
+
     test('local recovery is offline-only and leaves Android shell available', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
