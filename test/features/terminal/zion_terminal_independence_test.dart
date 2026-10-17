@@ -38,7 +38,7 @@ void main() {
       expect(bashStart, greaterThanOrEqualTo(0));
       expect(bashEnd, greaterThan(bashStart));
       final launcher = source.substring(bashStart, bashEnd);
-      expect(launcher, contains('execl("/system/bin/linker64", "linker64", bash_real'));
+      expect(launcher, contains('execl("/system/bin/linker64", "linker64", selected'));
       expect(launcher, contains('"--init-file", bashrc, "-i"'));
       expect(launcher, contains('LD_LIBRARY_PATH'));
       expect(launcher, isNot(contains('execl("/system/bin/sh", "sh", "-c", bash_command')));
@@ -50,7 +50,9 @@ void main() {
       expect(source, contains('ZION_TERMINAL'));
       expect(source, contains('/system/bin/sh'));
       expect(source, isNot(contains('android-posix')));
-      expect(source, contains('"-b", "/data/data/com.zion.os/files/home:/root"'));
+      expect(source, contains('snprintf(home_bind'));
+      expect(source, contains('%s/home:/root'));
+      expect(source, contains('"-b", home_bind'));
     });
 
     test('terminal uses Android system shell without a Userland prerequisite', () async {
@@ -106,7 +108,9 @@ void main() {
     test('Kali PTY binds Zion home into the Linux root home', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('"-b", "/storage/emulated/0"'));
-      expect(native, contains('"/data/data/com.zion.os/files/home:/root"'));
+      expect(native, contains('snprintf(home_bind'));
+      expect(native, contains('%s/home:/root'));
+      expect(native, contains('"-b", home_bind'));
     });
 
     test('Userland recovery stays offline and avoids platform-only path provider calls', () async {
