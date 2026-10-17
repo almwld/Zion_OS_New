@@ -226,6 +226,37 @@ internal object TermuxBootstrapInstaller {
         }
     }
 
+    /**
+     * Keep the bootstrap channel response stable for Dart diagnostics and tests.
+     * Include inventory only; never execute files while reporting installation state.
+     */
+    private fun report(
+        success: Boolean,
+        status: String,
+        message: String,
+        prefix: File,
+        bash: File
+    ): Map<String, Any?> {
+        val bin = File(prefix, "bin")
+        val bashReal = File(bin, "bash.real")
+        val entries = try { bin.list()?.size ?: 0 } catch (_: Throwable) { -1 }
+        return mapOf(
+            "success" to success,
+            "status" to status,
+            "message" to message,
+            "prefix" to prefix.absolutePath,
+            "prefixExists" to prefix.isDirectory,
+            "binExists" to bin.isDirectory,
+            "binEntryCount" to entries,
+            "bashPath" to bash.absolutePath,
+            "bashExists" to bash.isFile,
+            "bashBytes" to if (bash.isFile) bash.length() else 0L,
+            "bashRealPath" to bashReal.absolutePath,
+            "bashRealExists" to bashReal.isFile,
+            "bashRealBytes" to if (bashReal.isFile) bashReal.length() else 0L
+        )
+    }
+
     private fun isEmptyPlaceholderPrefix(prefix: File): Boolean {
         val allowed = setOf("bin", "sbin", "lib", "lib64", "etc", "include", "libexec", "share", "tmp", "var")
         val children = prefix.listFiles() ?: return false
