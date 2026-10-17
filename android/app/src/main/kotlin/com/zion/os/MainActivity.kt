@@ -1207,7 +1207,8 @@ class MainActivity : FlutterFragmentActivity() {
         if (uriString.isBlank()) return mapOf("available" to false, "status" to "INVALID", "items" to emptyList<Map<String, Any?>>())
         return try {
             val tree = Uri.parse(uriString)
-            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            // Use the current document id, not always the tree root id, so SAF can recursively list nested usr directories.
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(tree))
             val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
             val items = mutableListOf<Map<String, Any?>>()
             contentResolver.query(children, projection, null, null, DocumentsContract.Document.COLUMN_DISPLAY_NAME) ?.use { cursor ->
