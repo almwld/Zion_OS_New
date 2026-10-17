@@ -38,7 +38,9 @@ void main() {
 
     test('native Kali launch uses linker64, app-private PRoot temp, and guest loader binds', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
-      expect(native, contains('setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1)'));
+      expect(native, contains('setenv("PROOT_TMP_DIR", proot_tmp, 1)'));
+      expect(native, contains('snprintf(proot_tmp'));
+      expect(native, contains('g_files_dir'));
       expect(native, contains('setenv("PROOT_NO_SECCOMP", "1", 1)'));
       expect(native, contains('execl("/system/bin/linker64", "linker64", proot'));
       expect(native, contains('lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu'));
