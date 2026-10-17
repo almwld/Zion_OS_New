@@ -382,10 +382,28 @@ class ZionUserlandInstaller {
       return null;
     }
 
-    final archivePath = archive.path;
+    var archivePath = archive.path;
     onProgress?.call('[Kali] Found local rootfs archive: $archivePath');
     try {
-      final stat = await archive.stat();
+      File selectedArchive = archive;
+      FileStat stat;
+      try {
+        stat = await selectedArchive.stat();
+      } on FileSystemException catch (error) {
+        // Android scoped storage may expose a path to Dart but deny opening
+        // it. Import the same file through ACTION_OPEN_DOCUMENT instead of
+        // abandoning the local Kali installation or trying the network.
+        onProgress?.call('[Kali] Direct file access denied; opening Android document picker: $error');
+        final importedPath = await _pickKaliArchiveThroughDocumentProvider(
+          onProgress: onProgress,
+        );
+        if (importedPath == null) return null;
+        selectedArchive = File(importedPath);
+        archivePath = selectedArchive.path;
+        stat = await selectedArchive.stat();
+        onProgress?.call('[Kali] Imported selected archive into app-private storage: $archivePath');
+      }
+      archive = selectedArchive;
       const minimumArchiveBytes = 100 * 1024 * 1024;
       if (stat.size <= minimumArchiveBytes) {
         return ZionUserlandInstallResult(
@@ -476,6 +494,53 @@ class ZionUserlandInstaller {
       // though the file is visible in a file manager. Do not let that one
       // inaccessible Kali archive abort recovery of the separate Termux usr
       // backup or the app-private rollback snapshot.
+      return null;
+    }
+  }
+
+  /// Imports the known Kali rootfs using Android's Storage Access
+  /// Framework. This avoids raw shared-storage reads that fail with EACCES
+  /// on Android 11+ even when the user can see the file in Downloads.
+  Future<String?> _pickKaliArchiveThroughDocumentProvider({
+    void Function(String message)? onProgress,
+  }) async {
+    try {
+      final picked = await _storageChannel
+          .invokeMethod<Map<dynamic, dynamic>>('pickKaliPackage')
+          .timeout(const Duration(minutes: 5));
+      if (picked == null || picked['available'] != true ||
+          picked['status'] != 'AVAILABLE') {
+        onProgress?.call(
+          '[Kali] Document picker cancelled or a different file was selected; continuing Userland recovery.',
+        );
+        return null;
+      }
+      final uri = picked['uri']?.toString() ?? '';
+      final name = picked['name']?.toString() ?? '';
+      if (uri.isEmpty || name != 'kali-nethunter-rootfs-minimal-arm64.tar.xz') {
+        onProgress?.call('[Kali] Selected document is not the expected NetHunter rootfs archive.');
+        return null;
+      }
+      final privateFiles = Directory(ZionBootstrap.home).parent;
+      await privateFiles.create(recursive: true);
+      final destination = '${privateFiles.path}/$name';
+      final copied = await _storageChannel.invokeMethod<bool>(
+            'copyDocumentToPrivate',
+            <String, Object>{'uri': uri, 'destination': destination},
+          ) ??
+          false;
+      if (!copied) {
+        onProgress?.call('[Kali] Android could not copy the selected archive into private storage.');
+        return null;
+      }
+      final file = File(destination);
+      if (!await file.exists() || await file.length() < 100 * 1024 * 1024) {
+        onProgress?.call('[Kali] Imported archive failed the size/existence check; source was left untouched.');
+        return null;
+      }
+      return file.path;
+    } catch (error) {
+      onProgress?.call('[Kali] SAF import failed without modifying source data: $error');
       return null;
     }
   }
