@@ -12,7 +12,9 @@ void main() {
       expect(end, greaterThan(start));
       final method = source.substring(start, end);
       expect(method, contains('final bashFile = File(bashPath)'));
-      expect(method, contains('final stat = await bashFile.stat()'));
+      expect(method, contains('final bashRealFile = File'));
+      expect(method, contains('for (final candidate in <File>[bashRealFile, bashFile])'));
+      expect(method, contains('final stat = await candidate.stat()'));
       expect(method, contains('stat.size >= 100000'));
       expect(method, contains('Keeping usr/ in place'));
       expect(method, isNot(contains('Process.run(')));
@@ -47,6 +49,18 @@ void main() {
       expect(method.indexOf('_findUsableUserlandShell()'), lessThan(method.indexOf('_userlandInstaller.installLatest(')));
       expect(source, contains("'/data/data/com.zion.os/files/home'"));
       expect(source, contains("'/data/data/com.zion.os/files/usr'"));
+    });
+
+    test('Bash ELF payload is accepted when bin/bash is a small linker wrapper', () async {
+      final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      final start = installer.indexOf('Future<bool> _hasCompatibleShell()');
+      final end = installer.indexOf('Future<bool> _hasCompatibleProot()', start);
+      expect(start, greaterThanOrEqualTo(0));
+      expect(end, greaterThan(start));
+      final method = installer.substring(start, end);
+      expect(method, contains("'/bin/bash.real'"));
+      expect(method, contains("path.endsWith('/bash.real') || path.endsWith('/bash')"));
+      expect(method, contains('minimumBytes = 100000'));
     });
 
     test('native PTY Bash launcher inherits Zion runtime environment before linker64', () async {
