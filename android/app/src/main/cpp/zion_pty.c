@@ -306,10 +306,50 @@ static void exec_selected_shell(const char *shell_path) {
      */
     const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
     const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
-    if (strcmp(selected, bash_real) == 0 && access(bashrc, F_OK) == 0) {
-        execl("/system/bin/linker64", "linker64", selected,
-              "--init-file", bashrc, "-i", (char *)NULL);
-        /* Linker path failed; retain the direct execution fallback. */
+    if (strcmp(selected, bash_real) == 0) {
+        /*
+         * Match the verified on-device launch exactly: export Zion's private
+         * library directories in a fresh Android sh process, then exec
+         * linker64. This makes the loader environment explicit at the final
+         * exec boundary instead of relying only on inherited app/PTY state.
+         * Paths are fixed app-private constants, not user-provided input.
+         */
+        const char *bash_command =
+            "export PREFIX=/data/data/com.zion.os/files/usr; "
+            "export HOME=/data/data/com.zion.os/files/home; "
+            "export LD_LIBRARY_PATH=/data/data/com.zion.os/files/usr/lib:"
+                "/data/data/com.zion.os/files/usr/lib64:"
+                "/data/data/com.zion.os/files/usr/libexec; "
+            "export TMPDIR=/data/data/com.zion.os/files/tmp; "
+            "export PATH=/data/data/com.zion.os/files/usr/bin:"
+                "/data/data/com.zion.os/files/usr/sbin:"
+                "/system/bin:/system/xbin:/vendor/bin; "
+            "export TERM=xterm-256color; export LANG=C.UTF-8; "
+            "export LC_ALL=C.UTF-8; export ZION_TERMINAL=1; "
+            "exec /system/bin/linker64 "
+                "/data/data/com.zion.os/files/usr/bin/bash.real";
+        if (access(bashrc, F_OK) == 0) {
+            execl("/system/bin/sh", "sh", "-c",
+                  "export PREFIX=/data/data/com.zion.os/files/usr; "
+                  "export HOME=/data/data/com.zion.os/files/home; "
+                  "export LD_LIBRARY_PATH=/data/data/com.zion.os/files/usr/lib:"
+                      "/data/data/com.zion.os/files/usr/lib64:"
+                      "/data/data/com.zion.os/files/usr/libexec; "
+                  "export TMPDIR=/data/data/com.zion.os/files/tmp; "
+                  "export PATH=/data/data/com.zion.os/files/usr/bin:"
+                      "/data/data/com.zion.os/files/usr/sbin:"
+                      "/system/bin:/system/xbin:/vendor/bin; "
+                  "export TERM=xterm-256color; export LANG=C.UTF-8; "
+                  "export LC_ALL=C.UTF-8; export ZION_TERMINAL=1; "
+                  "exec /system/bin/linker64 "
+                      "/data/data/com.zion.os/files/usr/bin/bash.real "
+                      "--init-file /data/data/com.zion.os/files/usr/etc/zion-bashrc -i",
+                  (char *)NULL);
+        } else {
+            execl("/system/bin/sh", "sh", "-c", bash_command,
+                  (char *)NULL);
+        }
+        /* Preserve the direct fallback if the explicit launcher fails. */
         execl(selected, name, "-i", (char *)NULL);
     } else {
         /* Other shells use the generic linker path first as well. */
