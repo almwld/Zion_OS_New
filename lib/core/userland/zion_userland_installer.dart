@@ -94,6 +94,7 @@ class ZionUserlandInstaller {
   Future<void> logUsrDiagnostics({void Function(String message)? onProgress}) async {
     final root = Directory(ZionBootstrap.prefix);
     final bash = File('${ZionBootstrap.prefix}/bin/bash');
+    final bashReal = File('${ZionBootstrap.prefix}/bin/bash.real');
     var totalBytes = 0;
     var binCount = 0;
     try {
@@ -111,8 +112,9 @@ class ZionUserlandInstaller {
       final bin = Directory('${ZionBootstrap.prefix}/bin');
       if (await bin.exists()) binCount = await bin.list(followLinks: false).length;
       final exists = await bash.exists();
-      final size = exists ? await bash.length() : 0;
-      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} approxBytes=$totalBytes binEntries=$binCount bashExists=$exists bashBytes=$size bashPath=${bash.path}';
+      final realExists = await bashReal.exists();
+      final size = realExists ? await bashReal.length() : (exists ? await bash.length() : 0);
+      final message = '[Userland][DIAG] usr=${root.path} exists=${await root.exists()} approxBytes=$totalBytes binEntries=$binCount bashExists=$exists bashRealExists=$realExists bashBytes=$size bashPath=${bash.path} bashRealPath=${bashReal.path}';
       print(message);
       onProgress?.call(message);
     } catch (e) {
