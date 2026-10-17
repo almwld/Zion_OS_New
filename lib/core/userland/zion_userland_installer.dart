@@ -559,19 +559,20 @@ class ZionUserlandInstaller {
       File selectedArchive = archive;
       FileStat stat;
       try {
-        stat = await selectedArchive.stat();
+        // File.exists/stat may succeed for a shared-storage path even when
+        // Android denies opening its contents. Probe a real read before handing
+        // the path to Isolate/archive_io, otherwise the install fails later
+        // during extraction and leaves a fresh staging directory on every tap.
+        stat = await _probeReadableArchive(selectedArchive);
       } on FileSystemException catch (error) {
-        // Android scoped storage may expose a path to Dart but deny opening
-        // it. Import the same file through ACTION_OPEN_DOCUMENT instead of
-        // abandoning the local Kali installation or trying the network.
-        onProgress?.call('[Kali] Direct file access denied; opening Android document picker: $error');
+        onProgress?.call('[Kali] Direct file read denied; importing through Android document picker: $error');
         final importedPath = await _pickKaliArchiveThroughDocumentProvider(
           onProgress: onProgress,
         );
         if (importedPath == null) return null;
         selectedArchive = File(importedPath);
         archivePath = selectedArchive.path;
-        stat = await selectedArchive.stat();
+        stat = await _probeReadableArchive(selectedArchive);
         onProgress?.call('[Kali] Imported selected archive into app-private storage: $archivePath');
       }
       archive = selectedArchive;
@@ -706,6 +707,18 @@ class ZionUserlandInstaller {
   /// Imports the known Kali rootfs using Android's Storage Access
   /// Framework. This avoids raw shared-storage reads that fail with EACCES
   /// on Android 11+ even when the user can see the file in Downloads.
+  Future<FileStat> _probeReadableArchive(File file) async {
+    final handle = await file.open(mode: FileMode.read);
+    try {
+      // A rootfs archive is never empty; reading a byte forces the provider to
+      // validate actual content access instead of trusting metadata alone.
+      await handle.read(1);
+    } finally {
+      await handle.close();
+    }
+    return file.stat();
+  }
+
   Future<String?> _pickKaliArchiveThroughDocumentProvider({
     void Function(String message)? onProgress,
   }) async {
