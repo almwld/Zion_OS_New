@@ -332,6 +332,15 @@ class ZionUserlandInstaller {
       onProgress?.call('[Userland] $localArchiveFailure Checking the app-private known-good backup next.');
     }
 
+    // If raw shared-storage reads failed for a discovered Userland directory,
+    // retry through Android's Storage Access Framework. The selected tree is
+    // copied to private staging and still passes the normal rollback-safe
+    // installer and shell validation before replacing usr.
+    if (Platform.isAndroid && directBackupFound && directBackupFailure != null) {
+      final safRestore = await _restoreUserlandFromDocumentTree(onProgress: onProgress);
+      if (safRestore != null) return safRestore;
+    }
+
     // A release marker and a working PRoot do not prove that the shell
     // executable is present. This was allowing a damaged/incomplete prefix
     // to be reported as "already installed", after which PTY startup failed.
@@ -367,6 +376,136 @@ class ZionUserlandInstaller {
       success: false,
       message: 'لم يتم العثور على Userland صالح. النسخة المباشرة: $directFailureText؛ الأرشيف المحلي: $archiveFailureText؛ النسخة الداخلية: غير صالحة أو غير موجودة. لم تتم محاولة الاتصال بالإنترنت.',
     );
+  }
+
+  Future<ZionUserlandInstallResult?> _restoreUserlandFromDocumentTree({
+    void Function(String message)? onProgress,
+  }) async {
+    final response = await _storageChannel
+        .invokeMethod<Map<dynamic, dynamic>>('pickTree')
+        .timeout(const Duration(minutes: 5));
+    if (response == null || response['available'] != true ||
+        response['status'] != 'AVAILABLE') {
+      onProgress?.call('[Userland] SAF folder picker cancelled; existing files remain untouched.');
+      return null;
+    }
+    final rootUri = response['uri']?.toString() ?? '';
+    if (rootUri.isEmpty) return null;
+
+    final staging = Directory(
+      '${ZionBootstrap.base}/.userland-saf-staging-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    var copiedEntries = 0;
+    var copiedBytes = 0;
+    const maxEntries = 100000;
+    const maxDepth = 64;
+
+    Future<Map<String, dynamic>> listChildren(String uri) async {
+      final raw = await _storageChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'listTree',
+        <String, Object>{'uri': uri},
+      );
+      if (raw == null || raw['available'] != true) {
+        throw StateError('تعذر قراءة محتويات المجلد المحدد عبر Android SAF: ${raw?['reason'] ?? 'unknown error'}');
+      }
+      return Map<String, dynamic>.from(raw);
+    }
+
+    try {
+      await staging.create(recursive: true);
+      var sourceUri = rootUri;
+      var rootListing = await listChildren(sourceUri);
+      var rootItems = (rootListing['items'] as List? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      bool containsBin(List<Map<String, dynamic>> items) =>
+          items.any((item) => item['name'] == 'bin' && item['isDirectory'] == true);
+      if (!containsBin(rootItems)) {
+        Map<String, dynamic>? nestedUsr;
+        for (final item in rootItems) {
+          if (item['name'] == 'usr' && item['isDirectory'] == true && item['uri'] is String) {
+            nestedUsr = item;
+            break;
+          }
+        }
+        if (nestedUsr != null) {
+          sourceUri = nestedUsr['uri'] as String;
+          rootListing = await listChildren(sourceUri);
+          rootItems = (rootListing['items'] as List? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        }
+      }
+      if (!containsBin(rootItems)) {
+        throw StateError('المجلد المحدد ليس جذر usr صالحًا؛ اختر zion-bootstrap/usr أو المجلد الأب الذي يحتوي usr.');
+      }
+
+      Future<void> copyItems(
+        List<Map<String, dynamic>> items,
+        Directory destination,
+        int depth,
+      ) async {
+        if (depth > maxDepth) throw StateError('SAF Userland tree exceeded the depth limit.');
+        for (final item in items) {
+          if (++copiedEntries > maxEntries) {
+            throw StateError('SAF Userland tree exceeded the file-count limit.');
+          }
+          final name = item['name']?.toString() ?? '';
+          final uri = item['uri']?.toString() ?? '';
+          if (name.isEmpty || name == '.' || name == '..' ||
+              name.contains('/') || name.contains(r'\') || name.contains('\u0000') || uri.isEmpty) {
+            throw StateError('رفض اسم ملف غير آمن في النسخة المحلية: $name');
+          }
+          final path = '${destination.path}/$name';
+          if (item['isDirectory'] == true) {
+            final child = Directory(path);
+            await child.create(recursive: true);
+            final listing = await listChildren(uri);
+            final children = (listing['items'] as List? ?? const <dynamic>[])
+                .whereType<Map>()
+                .map((value) => Map<String, dynamic>.from(value))
+                .toList();
+            await copyItems(children, child, depth + 1);
+          } else {
+            final size = item['size'];
+            if (size is num) copiedBytes += size.toInt();
+            final ok = await _storageChannel.invokeMethod<bool>(
+                  'copyDocumentToPrivate',
+                  <String, Object>{'uri': uri, 'destination': path},
+                ) ??
+                false;
+            if (!ok) throw StateError('تعذر نسخ الملف المحلي عبر SAF: $name');
+          }
+          if (copiedEntries % 100 == 0) {
+            onProgress?.call('[Userland] SAF restore: copied $copiedEntries entries, metadata size ~${(copiedBytes / (1024 * 1024)).round()} MiB.');
+          }
+        }
+      }
+
+      await copyItems(rootItems, staging, 0);
+      if (!await Directory('${staging.path}/bin').exists()) {
+        throw StateError('نسخة SAF لا تحتوي على مجلد bin.');
+      }
+      final bash = File('${staging.path}/bin/bash');
+      final bashReal = File('${staging.path}/bin/bash.real');
+      if (!await bash.exists() && !await bashReal.exists()) {
+        throw StateError('نسخة SAF لا تحتوي على bin/bash أو bin/bash.real.');
+      }
+      onProgress?.call('[Userland] SAF copy complete ($copiedEntries entries); validating and activating with rollback protection.');
+      return await _installFromDirectory(staging.path, onProgress: onProgress);
+    } catch (error) {
+      onProgress?.call('[Userland] SAF restore failed without changing the active usr: $error');
+      return ZionUserlandInstallResult(
+        success: false,
+        message: 'تعذرت استعادة النسخة المحلية عبر منتقي Android: $error',
+      );
+    } finally {
+      try {
+        if (await staging.exists()) await staging.delete(recursive: true);
+      } catch (_) {}
+    }
   }
 
   /// Installs the explicitly supported local Kali NetHunter rootfs archive.
