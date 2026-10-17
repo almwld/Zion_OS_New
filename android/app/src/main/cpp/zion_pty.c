@@ -39,6 +39,9 @@ static ZionPtySession g_sessions[ZION_MAX_PTY_SESSIONS];
 static pthread_mutex_t g_sessions_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t g_sessions_once = PTHREAD_ONCE_INIT;
 static char g_files_dir[PATH_MAX] = "/data/data/com.zion.os/files";
+/* select_shell() returns one of these paths to nativeStartPty; keep storage
+ * alive until fork rather than returning a pointer into a local stack array. */
+static char g_shell_candidates[5][PATH_MAX];
 
 static void init_sessions_once(void) {
     for (int i = 0; i < ZION_MAX_PTY_SESSIONS; ++i) {
@@ -227,11 +230,11 @@ static const char *select_shell(const char *configured_shell) {
         return configured_shell;
     }
 
-    char dynamic[5][PATH_MAX];
     const char *names[] = {"bash.real", "bash", "zsh", "fish", "ash"};
     for (int i = 0; i < 5; ++i) {
-        (void)snprintf(dynamic[i], sizeof(dynamic[i]), "%s/usr/bin/%s", g_files_dir, names[i]);
-        if (access(dynamic[i], F_OK) == 0) return dynamic[i];
+        (void)snprintf(g_shell_candidates[i], sizeof(g_shell_candidates[i]),
+                       "%s/usr/bin/%s", g_files_dir, names[i]);
+        if (access(g_shell_candidates[i], F_OK) == 0) return g_shell_candidates[i];
     }
     static const char *fallbacks[] = {
         "/data/data/com.zion.os/files/usr/bin/bash.real",
