@@ -2,6 +2,9 @@
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdint.h>
+#include <time.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
@@ -29,26 +32,64 @@ extern char **environ;
 typedef struct {
     int master_fd;
     pid_t child_pid;
+    uint32_t generation;
 } ZionPtySession;
 
 static ZionPtySession g_sessions[ZION_MAX_PTY_SESSIONS];
 static pthread_mutex_t g_sessions_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t g_sessions_once = PTHREAD_ONCE_INIT;
+static char g_files_dir[PATH_MAX] = "/data/data/com.zion.os/files";
 
-static void init_sessions(void) {
-    static int initialized = 0;
-    if (initialized) return;
+static void init_sessions_once(void) {
     for (int i = 0; i < ZION_MAX_PTY_SESSIONS; ++i) {
         g_sessions[i].master_fd = -1;
         g_sessions[i].child_pid = -1;
+        g_sessions[i].generation = 0;
     }
-    initialized = 1;
+}
+
+static void ensure_sessions_init(void) {
+    (void)pthread_once(&g_sessions_once, init_sessions_once);
+}
+
+static void path_join(char *out, size_t capacity, const char *suffix) {
+    if (out == NULL || capacity == 0) return;
+    const char *base = g_files_dir[0] ? g_files_dir : "/data/data/com.zion.os/files";
+    const char *tail = suffix ? suffix : "";
+    (void)snprintf(out, capacity, "%s/%s", base, tail);
+}
+
+static int is_userland_path(const char *path) {
+    if (path == NULL) return 0;
+    char prefix[PATH_MAX];
+    path_join(prefix, sizeof(prefix), "usr/");
+    if (strncmp(path, prefix, strlen(prefix)) == 0) return 1;
+    return strncmp(path, "/data/data/com.zion.os/files/usr/",
+                   strlen("/data/data/com.zion.os/files/usr/")) == 0;
+}
+
+static int is_bash_real_path(const char *path) {
+    if (path == NULL) return 0;
+    char expected[PATH_MAX];
+    path_join(expected, sizeof(expected), "usr/bin/bash.real");
+    return strcmp(path, expected) == 0 ||
+           strcmp(path, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0;
 }
 
 static ZionPtySession *get_session(jint handle) {
-    init_sessions();
-    if (handle <= 0 || handle > ZION_MAX_PTY_SESSIONS) return NULL;
-    ZionPtySession *session = &g_sessions[handle - 1];
-    return session->master_fd >= 0 ? session : NULL;
+    ensure_sessions_init();
+    if (handle <= 0) return NULL;
+    const uint32_t raw = (uint32_t)handle;
+    const uint32_t slot_code = raw & 0xffU;
+    const uint32_t generation = raw >> 8;
+    if (slot_code == 0 || slot_code > ZION_MAX_PTY_SESSIONS || generation == 0) return NULL;
+    ZionPtySession *session = &g_sessions[slot_code - 1U];
+    if (session->master_fd < 0 || session->generation != generation) return NULL;
+    return session;
+}
+
+static jint make_session_handle(int slot, uint32_t generation) {
+    return (jint)((generation << 8) | (uint32_t)(slot + 1));
 }
 
 static void configure_terminal(int fd) {
@@ -103,50 +144,52 @@ static void mkdir_p(const char *path, mode_t mode) {
 }
 
 static void prepare_environment(void) {
-    const char *home = "/data/data/com.zion.os/files/home";
-    const char *prefix = "/data/data/com.zion.os/files/usr";
-    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin";
-    const char *library_path = "/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64";
+    char home[PATH_MAX], prefix[PATH_MAX], tmp[PATH_MAX], proot_tmp[PATH_MAX];
+    char bin[PATH_MAX], sbin[PATH_MAX], lib[PATH_MAX], lib64[PATH_MAX], libexec[PATH_MAX];
+    char bashrc[PATH_MAX], terminfo[PATH_MAX], terminfo_dirs[PATH_MAX], cert[PATH_MAX];
+    char path[PATH_MAX * 2], library_path[PATH_MAX * 3];
+    path_join(home, sizeof(home), "home");
+    path_join(prefix, sizeof(prefix), "usr");
+    path_join(tmp, sizeof(tmp), "tmp");
+    path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
+    path_join(bin, sizeof(bin), "usr/bin");
+    path_join(sbin, sizeof(sbin), "usr/sbin");
+    path_join(lib, sizeof(lib), "usr/lib");
+    path_join(lib64, sizeof(lib64), "usr/lib64");
+    path_join(libexec, sizeof(libexec), "usr/libexec");
+    path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
+    path_join(terminfo, sizeof(terminfo), "usr/share/terminfo");
+    path_join(terminfo_dirs, sizeof(terminfo_dirs), "usr/share/terminfo");
+    (void)snprintf(path, sizeof(path), "%s:%s:/system/bin:/system/xbin:/vendor/bin", bin, sbin);
+    (void)snprintf(library_path, sizeof(library_path), "%s:%s:%s", lib, lib64, libexec);
+    (void)snprintf(terminfo_dirs, sizeof(terminfo_dirs), "%s:%s:/system/usr/share/terminfo",
+                   terminfo, lib);
+
     const char *directories[] = {
-        "/data/data/com.zion.os/files/home",
-        "/data/data/com.zion.os/files/tmp",
-        "/data/data/com.zion.os/files/tmp/proot",
-        "/data/data/com.zion.os/files/zion/tmp",
-        "/data/data/com.zion.os/files/etc",
-        "/data/data/com.zion.os/files/home/storage",
-        "/data/data/com.zion.os/files/usr",
-        "/data/data/com.zion.os/files/usr/bin",
-        "/data/data/com.zion.os/files/usr/sbin",
-        "/data/data/com.zion.os/files/usr/etc",
-        "/data/data/com.zion.os/files/usr/include",
-        "/data/data/com.zion.os/files/usr/lib",
-        "/data/data/com.zion.os/files/usr/libexec",
-        "/data/data/com.zion.os/files/usr/share",
-        "/data/data/com.zion.os/files/usr/tmp",
-        "/data/data/com.zion.os/files/usr/var",
-        "/data/data/com.zion.os/files/usr/var/lib",
-        "/data/data/com.zion.os/files/usr/var/lib/zion-pkg",
-        "/data/data/com.zion.os/files/usr/var/cache",
-        "/data/data/com.zion.os/files/usr/var/log",
+        "home", "tmp", "tmp/proot", "zion/tmp", "etc", "home/storage",
+        "usr", "usr/bin", "usr/sbin", "usr/etc", "usr/include", "usr/lib",
+        "usr/libexec", "usr/share", "usr/tmp", "usr/var", "usr/var/lib",
+        "usr/var/lib/zion-pkg", "usr/var/cache", "usr/var/log"
     };
     for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); ++i) {
-        mkdir_p(directories[i], 0700);
+        char directory[PATH_MAX];
+        path_join(directory, sizeof(directory), directories[i]);
+        mkdir_p(directory, 0700);
     }
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
-    setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
-    setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1);
+    setenv("TMPDIR", tmp, 1);
+    setenv("PROOT_TMP_DIR", proot_tmp, 1);
     setenv("PROOT_NO_SECCOMP", "1", 1);
-    char full_library_path[512];
-    snprintf(full_library_path, sizeof(full_library_path), "%s:/data/data/com.zion.os/files/usr/libexec", library_path);
-    setenv("LD_LIBRARY_PATH", full_library_path, 1);
-    setenv("BASH_ENV", "/data/data/com.zion.os/files/usr/etc/zion-bashrc", 1);
-    setenv("TERMINFO", "/data/data/com.zion.os/files/usr/share/terminfo", 1);
-    setenv("TERMINFO_DIRS", "/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo:/system/usr/share/terminfo", 1);
-    if (access("/data/data/com.zion.os/files/usr/etc/tls/cert.pem", R_OK) == 0) {
-        setenv("SSL_CERT_FILE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
-        setenv("CURL_CA_BUNDLE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+    setenv("LD_LIBRARY_PATH", library_path, 1);
+    setenv("BASH_ENV", bashrc, 1);
+    setenv("TERMINFO", terminfo, 1);
+    setenv("TERMINFO_DIRS", terminfo_dirs, 1);
+    path_join(cert, sizeof(cert), "usr/etc/tls/cert.pem");
+    if (access(cert, R_OK) == 0) {
+        setenv("SSL_CERT_FILE", cert, 1);
+        setenv("CURL_CA_BUNDLE", cert, 1);
     } else {
         unsetenv("SSL_CERT_FILE");
         unsetenv("CURL_CA_BUNDLE");
@@ -156,32 +199,40 @@ static void prepare_environment(void) {
     setenv("PS1", "$ ", 1);
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C.UTF-8", 1);
-    setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1);
+    char shell[PATH_MAX];
+    path_join(shell, sizeof(shell), "usr/bin/bash");
+    setenv("SHELL", shell, 1);
     setenv("ZION_TERMINAL", "1", 1);
 }
 
 static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\0') return 0;
-    return strncmp(shell, "kali:", 5) == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
-           strcmp(shell, "/system/bin/sh") == 0;
+    if (strncmp(shell, "kali:", 5) == 0 || strcmp(shell, "/system/bin/sh") == 0) return 1;
+    char candidate[PATH_MAX];
+    const char *allowed_names[] = {"bash", "bash.real", "zsh", "fish", "ash", NULL};
+    for (int i = 0; allowed_names[i] != NULL; ++i) {
+        (void)snprintf(candidate, sizeof(candidate), "%s/usr/bin/%s", g_files_dir, allowed_names[i]);
+        if (strcmp(shell, candidate) == 0) return 1;
+        (void)snprintf(candidate, sizeof(candidate), "/data/data/com.zion.os/files/usr/bin/%s", allowed_names[i]);
+        if (strcmp(shell, candidate) == 0) return 1;
+    }
+    return 0;
 }
 
 static const char *select_shell(const char *configured_shell) {
     if (configured_shell != NULL && strncmp(configured_shell, "kali:", 5) == 0) return configured_shell;
-    /*
-     * access(X_OK) can reject private-prefix ELF files even when Android's
-     * dynamic linker can load them. Use F_OK for candidate discovery; the
-     * actual launch path below determines whether the shell is runnable.
-     */
+    /* access(X_OK) can reject private-prefix ELF files even when Android's
+     * dynamic linker can load them. Use F_OK for candidate discovery. */
     if (is_allowed_shell(configured_shell) && access(configured_shell, F_OK) == 0) {
         return configured_shell;
     }
 
+    char dynamic[5][PATH_MAX];
+    const char *names[] = {"bash.real", "bash", "zsh", "fish", "ash"};
+    for (int i = 0; i < 5; ++i) {
+        (void)snprintf(dynamic[i], sizeof(dynamic[i]), "%s/usr/bin/%s", g_files_dir, names[i]);
+        if (access(dynamic[i], F_OK) == 0) return dynamic[i];
+    }
     static const char *fallbacks[] = {
         "/data/data/com.zion.os/files/usr/bin/bash.real",
         "/data/data/com.zion.os/files/usr/bin/bash",
