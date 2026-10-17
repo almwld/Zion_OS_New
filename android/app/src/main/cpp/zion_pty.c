@@ -403,6 +403,25 @@ static void exec_selected_shell(const char *shell_path) {
     _exit(127);
 }
 
+JNIEXPORT void JNICALL
+Java_com_zion_os_MainActivity_nativeSetPaths(JNIEnv *env, jobject thiz, jstring files_dir) {
+    (void)thiz;
+    if (files_dir == NULL) return;
+    const char *path = (*env)->GetStringUTFChars(env, files_dir, NULL);
+    if (path == NULL) return;
+    size_t length = strlen(path);
+    if (length > 0 && length < sizeof(g_files_dir) &&
+        path[0] == '/' && strstr(path, "/../") == NULL) {
+        pthread_mutex_lock(&g_sessions_lock);
+        memcpy(g_files_dir, path, length + 1);
+        while (length > 1 && g_files_dir[length - 1] == '/') {
+            g_files_dir[--length] = '\0';
+        }
+        pthread_mutex_unlock(&g_sessions_lock);
+    }
+    (*env)->ReleaseStringUTFChars(env, files_dir, path);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_zion_os_MainActivity_nativePtyAvailable(JNIEnv *env, jobject thiz) {
     (void)env; (void)thiz;
@@ -460,12 +479,13 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         memcpy(kali_proot, spec, pLen); kali_proot[pLen] = '\0';
         memcpy(kali_rootfs, sep1 + 1, rLen); kali_rootfs[rLen] = '\0';
         memcpy(kali_loader, sep2 + 1, lLen); kali_loader[lLen] = '\0';
-        if (access(kali_proot, X_OK) != 0 || access(kali_rootfs, R_OK) != 0 ||
-            access(kali_loader, X_OK) != 0) return 0;
+        if (access(kali_proot, R_OK) != 0 ||
+            access(kali_rootfs, R_OK | X_OK) != 0 ||
+            access(kali_loader, R_OK) != 0) return 0;
     }
 
     pthread_mutex_lock(&g_sessions_lock);
-    init_sessions();
+    ensure_sessions_init();
 
     int slot = -1;
     for (int i = 0; i < ZION_MAX_PTY_SESSIONS; ++i) {
@@ -478,6 +498,10 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
+
+    uint32_t generation = (g_sessions[slot].generation + 1U) & 0x007fffffU;
+    if (generation == 0U) generation = 1U;
+    g_sessions[slot].generation = generation;
 
     int master = open("/dev/ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
     if (master < 0) {
@@ -515,16 +539,22 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     }
     if (kali_mode) {
         setenv("PROOT_LOADER", kali_loader, 1);
-        setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/tmp/proot", 1);
-        setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+        char proot_tmp[PATH_MAX], tmp[PATH_MAX];
+        path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
+        path_join(tmp, sizeof(tmp), "tmp");
+        setenv("PROOT_TMP_DIR", proot_tmp, 1);
+        setenv("TMPDIR", tmp, 1);
         setenv("PROOT_NO_SECCOMP", "1", 1);
-        mkdir_p("/data/data/com.zion.os/files/tmp/proot", 0700);
+        mkdir_p(proot_tmp, 0700);
         setenv("ZION_SHELL_MODE", "kali-proot", 1);
     } else if (strcmp(selected_shell, "/system/bin/sh") == 0) {
         // Android host-shell mode is intentionally independent of the broken
         // Userland prefix: keep PATH limited to Android's shipped commands.
-        setenv("HOME", "/data/data/com.zion.os/files/home", 1);
-        setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+        char home[PATH_MAX], tmp[PATH_MAX];
+        path_join(home, sizeof(home), "home");
+        path_join(tmp, sizeof(tmp), "tmp");
+        setenv("HOME", home, 1);
+        setenv("TMPDIR", tmp, 1);
         setenv("PATH", "/system/bin:/system/xbin:/vendor/bin", 1);
         setenv("LD_LIBRARY_PATH", "", 1);
         setenv("TERM", "xterm-256color", 1);
@@ -567,9 +597,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
 
-        if (chdir("/data/data/com.zion.os/files/home") != 0) {
-            _exit(126);
-        }
+        char home[PATH_MAX];
+        path_join(home, sizeof(home), "home");
+        if (chdir(home) != 0) _exit(126);
         if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
         if (root_mode) exec_root_shell(selected_shell);
         exec_selected_shell(selected_shell);
@@ -577,8 +607,9 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
 
     g_sessions[slot].master_fd = master;
     g_sessions[slot].child_pid = pid;
+    const jint handle = make_session_handle(slot, generation);
     pthread_mutex_unlock(&g_sessions_lock);
-    return slot + 1;
+    return handle;
 }
 
 JNIEXPORT jbyteArray JNICALL
