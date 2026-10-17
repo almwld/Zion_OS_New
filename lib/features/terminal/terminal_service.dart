@@ -800,16 +800,11 @@ class TerminalService {
   }
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
-    // Always emit on-device Bash diagnostics before any Userland discovery,
-    // installation, Kali validation, or Android-shell fallback. This is
-    // intentionally best-effort: diagnostics must never prevent the terminal
-    // from starting when Userland is missing or broken.
-    try {
-      await diagnoseBashExecution();
-    } catch (error, stackTrace) {
-      ZionTerminalLogs.add('diagnosis crashed: $error');
-      ZionTerminalLogs.add(stackTrace.toString());
-    }
+    // Do not run the full multi-process Bash diagnostic on every PTY start:
+    // it can spend several seconds invoking logcat/readelf and delays the
+    // Android-shell fallback. _findUsableUserlandShell() runs this diagnostic
+    // only when an existing Bash candidate actually fails to launch; missing
+    // files are covered by the bounded usr inventory below.
     try {
       await _userlandInstaller.logUsrDiagnostics(
         onProgress: ZionTerminalLogs.add,
