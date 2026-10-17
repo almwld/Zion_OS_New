@@ -545,6 +545,7 @@ class ZionUserlandInstaller {
     }
 
     var archivePath = archive.path;
+    Directory? stagingForCleanup;
     onProgress?.call('[Kali] Found local rootfs archive: $archivePath');
     try {
       File selectedArchive = archive;
@@ -594,6 +595,7 @@ class ZionUserlandInstaller {
       final staging = Directory(
         '${distDir.path}/rootfs.staging-${DateTime.now().microsecondsSinceEpoch}',
       );
+      stagingForCleanup = staging;
       await staging.create(recursive: false);
       onProgress?.call('[Kali] Extracting archive into isolated staging directory: ${staging.path}');
 
@@ -652,6 +654,25 @@ class ZionUserlandInstaller {
       );
     } catch (error) {
       onProgress?.call('[Kali] Local archive read/extraction failed: $error');
+      // If reading the source failed before extraction wrote anything, remove
+      // only this attempt's empty staging directory. Keep non-empty staging
+      // trees as diagnostic evidence and never touch an existing rootfs.
+      final failedStaging = stagingForCleanup;
+      if (failedStaging != null) {
+        try {
+          if (await failedStaging.exists()) {
+            final empty = await failedStaging.list(followLinks: false).isEmpty;
+            if (empty) {
+              await failedStaging.delete();
+              onProgress?.call('[Kali] Removed empty staging directory from failed read; existing rootfs was untouched.');
+            } else {
+              onProgress?.call('[Kali] Preserved non-empty staging directory for diagnosis: ${failedStaging.path}');
+            }
+          }
+        } catch (cleanupError) {
+          onProgress?.call('[Kali] Could not clean empty failed staging directory: $cleanupError');
+        }
+      }
       // Some Android document providers allow metadata/stat but deny opening
       // the actual byte stream. If that happens during extraction, import
       // through SAF and retry once from app-private storage. A preferred
