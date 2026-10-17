@@ -379,22 +379,25 @@ class ZionUserlandInstaller {
   /// to a timestamped sibling before promotion.
   Future<ZionUserlandInstallResult?> _installFromKaliArchive({
     void Function(String message)? onProgress,
+    String? preferredArchivePath,
   }) async {
     const candidates = <String>[
       '/storage/emulated/0/Download/kali-nethunter-rootfs-minimal-arm64.tar.xz',
       '/storage/emulated/0/kali-nethunter-rootfs-minimal-arm64.tar.xz',
     ];
 
-    File? archive;
-    for (final path in candidates) {
-      try {
-        final candidate = File(path);
-        if (await candidate.exists()) {
-          archive = candidate;
-          break;
+    File? archive = preferredArchivePath == null ? null : File(preferredArchivePath);
+    if (archive == null) {
+      for (final path in candidates) {
+        try {
+          final candidate = File(path);
+          if (await candidate.exists()) {
+            archive = candidate;
+            break;
+          }
+        } catch (_) {
+          // Continue through the known local paths only.
         }
-      } catch (_) {
-        // Continue through the known local paths only.
       }
     }
     if (archive == null) {
@@ -509,11 +512,25 @@ class ZionUserlandInstaller {
         releaseTag: 'local-kali-rootfs',
       );
     } catch (error) {
-      onProgress?.call('[Kali] Cannot read the shared-storage archive directly: $error');
-      // A raw /storage/emulated/0 path may be blocked by scoped storage even
-      // though the file is visible in a file manager. Do not let that one
-      // inaccessible Kali archive abort recovery of the separate Termux usr
-      // backup or the app-private rollback snapshot.
+      onProgress?.call('[Kali] Local archive read/extraction failed: $error');
+      // Some Android document providers allow metadata/stat but deny opening
+      // the actual byte stream. If that happens during extraction, import
+      // through SAF and retry once from app-private storage. A preferred
+      // private path suppresses recursive picker retries.
+      if (preferredArchivePath == null &&
+          archivePath.startsWith('/storage/emulated/0/')) {
+        final importedPath = await _pickKaliArchiveThroughDocumentProvider(
+          onProgress: onProgress,
+        );
+        if (importedPath != null) {
+          return _installFromKaliArchive(
+            onProgress: onProgress,
+            preferredArchivePath: importedPath,
+          );
+        }
+      }
+      // Do not let one inaccessible Kali archive abort recovery of the
+      // separate Termux usr backup or the app-private rollback snapshot.
       return null;
     }
   }
