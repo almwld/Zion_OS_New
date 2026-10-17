@@ -6,6 +6,13 @@ PREFIX="/data/data/com.zion.os/files/usr"
 HOME_DIR="/data/data/com.zion.os/files/home"
 LINKER="/system/bin/linker64"
 BASH_REAL="$PREFIX/bin/bash.real"
+# bash.real was built with a Termux RUNPATH. Always point the Android linker
+# at Zion's private libraries before asking it to resolve libreadline.so.8.
+export PREFIX
+export HOME="$HOME_DIR"
+export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:$PREFIX/libexec"
+export TMPDIR="/data/data/com.zion.os/files/tmp"
+export PATH="$PREFIX/bin:$PREFIX/sbin:/system/bin:/system/xbin:/vendor/bin"
 fail=0
 
 pass() { printf '[PASS] %s\n' "$1"; }
@@ -20,7 +27,7 @@ bad() { printf '[FAIL] %s\n' "$1"; fail=1; }
 
 if [ -x "$LINKER" ] && [ -f "$BASH_REAL" ]; then
   out=$("$LINKER" "$BASH_REAL" --version 2>&1)
-  case "$out" in *"GNU bash"*) pass "Bash loads through linker64";; *) bad "Bash linker launch failed: $out";; esac
+  case "$out" in *"GNU bash"*) pass "Bash loads through linker64 with Zion LD_LIBRARY_PATH";; *) bad "Bash linker launch failed: $out";; esac
 
   cat > "$HOME_DIR/.zion-runtime-check.sh" <<'EOS'
 set -e
