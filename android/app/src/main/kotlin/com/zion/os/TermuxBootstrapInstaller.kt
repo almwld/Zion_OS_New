@@ -514,15 +514,20 @@ internal object TermuxBootstrapInstaller {
             for (offset in candidates) {
                 val remaining = elf.size - offset
                 if (remaining < 4) continue
-                val length = if (offset == BOOTSTRAP_BLOB_OFFSET.toInt() &&
-                    BOOTSTRAP_BLOB_SIZE > 0L && BOOTSTRAP_BLOB_SIZE <= remaining.toLong()) {
-                    BOOTSTRAP_BLOB_SIZE.toInt()
+                // Prefer the known payload length at every discovered header,
+                // not only the historical offset. If the payload was rebuilt
+                // with a different size, also test the remaining ELF tail.
+                val lengths = if (BOOTSTRAP_BLOB_SIZE > 0L &&
+                    BOOTSTRAP_BLOB_SIZE <= remaining.toLong()) {
+                    listOf(BOOTSTRAP_BLOB_SIZE.toInt(), remaining).distinct()
                 } else {
-                    remaining
+                    listOf(remaining)
                 }
-                if (!isBootstrapZipStream(elf, offset, length)) continue
-                Log.i(TAG, "Validated embedded bootstrap ZIP stream at ELF offset=$offset length=$length")
-                return elf.copyOfRange(offset, offset + length)
+                for (length in lengths) {
+                    if (!isBootstrapZipStream(elf, offset, length)) continue
+                    Log.i(TAG, "Validated embedded bootstrap ZIP stream at ELF offset=$offset length=$length")
+                    return elf.copyOfRange(offset, offset + length)
+                }
             }
             throw IllegalStateException(
                 "No valid bootstrap ZIP stream found in ELF; size=${elf.size}, candidates=${candidates.size}"
