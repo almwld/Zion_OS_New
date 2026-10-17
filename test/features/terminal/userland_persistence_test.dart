@@ -124,6 +124,9 @@ void main() {
       final adapter = await File('lib/features/terminal/native_pty_adapter.dart').readAsString();
       expect(native, contains('pthread_once(&g_sessions_once, init_sessions_once)'));
       expect(native, contains('session->generation != generation'));
+      expect(native, contains('static char g_shell_candidates[5][PATH_MAX]'));
+      expect(native, contains('return g_shell_candidates[i]'));
+      expect(native, isNot(contains('char dynamic[5][PATH_MAX]')));
       expect(native, contains('make_session_handle(slot, generation)'));
       expect(native, contains('attempt < 10'));
       expect(native, contains('5000 - (int)elapsed_ms'));
