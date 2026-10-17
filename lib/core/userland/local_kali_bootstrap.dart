@@ -119,17 +119,65 @@ class ZionLocalKaliBootstrap {
       );
       progress(ZionKaliInstallState.copying, 0,
           'نسخ حزمة Kali إلى مساحة Zion الخاصة...');
+      var copied = false;
+      Object? directCopyError;
       if (direct != null) {
-        await _copyFileWithProgress(direct, internal, (p) {
-          progress(ZionKaliInstallState.copying, p, 'نسخ الحزمة...');
-        });
-      } else {
-        await _storage.invokeMethod<void>('copyDocumentToPrivate', <String, Object>{
-          'uri': discovered.first['uri'] as String,
-          'destination': internal.path,
-        });
-        progress(ZionKaliInstallState.copying, 100, 'تم نسخ الحزمة.');
+        try {
+          await _copyFileWithProgress(direct, internal, (p) {
+            progress(ZionKaliInstallState.copying, p, 'نسخ الحزمة...');
+          });
+          copied = true;
+        } catch (error) {
+          // File.exists() can succeed for a shared-storage path while Android
+          // denies direct reads under scoped storage. Retry through ACTION_OPEN_DOCUMENT
+          // and ContentResolver rather than failing the install immediately.
+          directCopyError = error;
+          progress(
+            ZionKaliInstallState.copying,
+            0,
+            'تعذر الوصول المباشر إلى Download؛ طلب إذن قراءة آمن عبر منتقي الملفات...',
+          );
+        }
+      } else if (discovered.isNotEmpty && discovered.first['uri'] is String) {
+        final result = await _storage.invokeMethod<bool>(
+          'copyDocumentToPrivate',
+          <String, Object>{
+            'uri': discovered.first['uri'] as String,
+            'destination': internal.path,
+          },
+        );
+        copied = result == true;
       }
+
+      if (!copied) {
+        Map<String, dynamic>? picked;
+        try {
+          final response = await _storage.invokeMethod<Map<dynamic, dynamic>>(
+            'pickKaliPackage',
+          );
+          if (response != null) picked = Map<String, dynamic>.from(response);
+        } catch (error) {
+          if (directCopyError == null) directCopyError = error;
+        }
+        if (picked?['available'] == true && picked?['uri'] is String) {
+          final result = await _storage.invokeMethod<bool>(
+            'copyDocumentToPrivate',
+            <String, Object>{
+              'uri': picked!['uri'] as String,
+              'destination': internal.path,
+            },
+          );
+          copied = result == true;
+        }
+      }
+      if (!copied) {
+        throw StateError(
+          'تعذر نسخ أرشيف Kali إلى مساحة Zion الخاصة. '
+          'امنح التطبيق حق اختيار الملف عبر منتقي Android ثم أعد المحاولة.'
+          '${directCopyError == null ? '' : ' تفاصيل الوصول المباشر: $directCopyError'}',
+        );
+      }
+      progress(ZionKaliInstallState.copying, 100, 'تم نسخ الحزمة إلى مساحة Zion الخاصة.');
 
       final size = await internal.length();
       if (size != ZionLocalKaliConfig.expectedSize) {
