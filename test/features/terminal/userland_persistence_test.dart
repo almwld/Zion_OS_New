@@ -60,7 +60,7 @@ void main() {
       final method = installer.substring(start, end);
       expect(method, contains("'/bin/bash.real'"));
       expect(method, contains("path.endsWith('/bash.real') || path.endsWith('/bash')"));
-      expect(method, contains('minimumBytes = 100000'));
+      expect(method, contains('? 100000'));
     });
 
     test('native PTY Bash launcher inherits Zion runtime environment before linker64', () async {
