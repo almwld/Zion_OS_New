@@ -260,29 +260,29 @@ static void exec_root_shell(const char *shell_path) {
         _exit(126);
     }
 
-    char real_path[512];
+    char real_path[PATH_MAX];
     const char *selected = shell_path;
     size_t length = strlen(shell_path);
     if (length < sizeof(real_path) && length >= 5 &&
         strcmp(shell_path + length - 5, "/bash") == 0) {
-        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        (void)snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
         if (access(real_path, F_OK) == 0) selected = real_path;
     }
 
-    char command[1200];
-    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
-    if (strncmp(selected, "/data/data/com.zion.os/files/usr/", strlen("/data/data/com.zion.os/files/usr/")) == 0) {
-        if (strcmp(selected, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 &&
-            access(bashrc, F_OK) == 0) {
-            snprintf(command, sizeof(command),
-                     "exec /system/bin/linker64 '%s' --init-file '%s' -i",
-                     selected, bashrc);
+    char bashrc[PATH_MAX], command[PATH_MAX * 3];
+    path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
+    if (is_userland_path(selected)) {
+        if (is_bash_real_path(selected) && access(bashrc, R_OK) == 0) {
+            (void)snprintf(command, sizeof(command),
+                "export LD_LIBRARY_PATH='%s/usr/lib:%s/usr/lib64:%s/usr/libexec'; exec /system/bin/linker64 '%s' --init-file '%s' -i",
+                g_files_dir, g_files_dir, g_files_dir, selected, bashrc);
         } else {
-            snprintf(command, sizeof(command),
-                     "exec /system/bin/linker64 '%s' -i", selected);
+            (void)snprintf(command, sizeof(command),
+                "export LD_LIBRARY_PATH='%s/usr/lib:%s/usr/lib64:%s/usr/libexec'; exec /system/bin/linker64 '%s' -i",
+                g_files_dir, g_files_dir, g_files_dir, selected);
         }
     } else {
-        snprintf(command, sizeof(command), "exec '%s' -i", selected);
+        (void)snprintf(command, sizeof(command), "exec '%s' -i", selected);
     }
 
     execlp("su", "su", "-c", command, (char *)NULL);
@@ -310,11 +310,15 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
 
     /* PRoot temp and seccomp variables are prepared in the parent before fork(). */
 
+    char home_bind[PATH_MAX * 2];
+    char proot_tmp[PATH_MAX];
+    (void)snprintf(home_bind, sizeof(home_bind), "%s/home:/root", g_files_dir);
+    path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
     execl("/system/bin/linker64", "linker64", proot,
           "--link2symlink", "-0", "-r", rootfs,
           "-b", "/dev", "-b", "/proc", "-b", "/sys",
           "-b", "/storage/emulated/0",
-          "-b", "/data/data/com.zion.os/files/home:/root",
+          "-b", home_bind,
           "-b", lib_bind,
           "-b", usr_lib_bind,
           "-w", "/root",
@@ -338,42 +342,23 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
 
-    char real_path[512];
+    char real_path[PATH_MAX];
     const char *selected = shell_path;
     size_t length = strlen(shell_path);
-    if (length < sizeof(real_path) &&
-        length >= 5 && strcmp(shell_path + length - 5, "/bash") == 0) {
-        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+    if (length < sizeof(real_path) && length >= 5 &&
+        strcmp(shell_path + length - 5, "/bash") == 0) {
+        (void)snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
         if (access(real_path, F_OK) == 0) selected = real_path;
     }
 
-    const char *name = strrchr(selected, '/');
-    name = name ? name + 1 : selected;
-
-    /*
-     * Prefer linker64 for Bash so the Zion rc file is always loaded. A direct
-     * exec may succeed on some builds but would skip the configured prompt,
-     * aliases, TLS paths, and bionic() helper.
-     */
-    const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
-    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
-    if (strcmp(selected, bash_real) == 0) {
-        /*
-         * prepare_environment() has already set PREFIX, HOME, PATH, TMPDIR,
-         * LD_LIBRARY_PATH, TERMINFO, BASH_ENV and the Zion locale before fork().
-         * Invoke linker64 directly rather than going through "sh -c": this
-         * makes the library search path inherited by the linker unambiguous
-         * and avoids shell quoting/expansion from changing the argv.
-         *
-         * bash.real has a Termux RUNPATH, so LD_LIBRARY_PATH is mandatory.
-         * The rc file is optional; its absence must not prevent Bash startup.
-         */
+    if (is_bash_real_path(selected)) {
+        char bashrc[PATH_MAX];
+        path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
         if (access(bashrc, R_OK) == 0) {
-            execl("/system/bin/linker64", "linker64", bash_real,
+            execl("/system/bin/linker64", "linker64", selected,
                   "--init-file", bashrc, "-i", (char *)NULL);
         } else {
-            execl("/system/bin/linker64", "linker64", bash_real,
-                  "-i", (char *)NULL);
+            execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
         }
         __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
                             "linker64 exec for Bash failed (errno=%d: %s)",
@@ -381,10 +366,6 @@ static void exec_selected_shell(const char *shell_path) {
         _exit(127);
     }
 
-    /* The Android system shell is a valid selected runtime, not a failed Userland shell.
-     * Execute it directly; otherwise the old fallback branch immediately _exit(127)s
-     * when select_shell() has already selected /system/bin/sh, closing the PTY at once.
-     */
     if (strcmp(selected, "/system/bin/sh") == 0) {
         execl("/system/bin/sh", "sh", "-i", (char *)NULL);
         __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
@@ -393,13 +374,21 @@ static void exec_selected_shell(const char *shell_path) {
         _exit(127);
     }
 
-    /* Never hide a failed Userland launch behind an unexplained shell switch. */
-    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
-                        "Userland shell launch failed for %s (errno=%d); trying Android sh",
-                        selected, errno);
-    if (strcmp(selected, "/system/bin/sh") != 0) {
-        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+    // Other allowlisted Userland shells are ELF files too; launch through the
+    // Android linker because direct exec may be denied for app-private paths.
+    if (is_userland_path(selected)) {
+        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "linker64 exec for Userland shell %s failed (errno=%d: %s)",
+                            selected, errno, strerror(errno));
+    } else {
+        execl(selected, selected, "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "exec for shell %s failed (errno=%d: %s)",
+                            selected, errno, strerror(errno));
     }
+
+    execl("/system/bin/sh", "sh", "-i", (char *)NULL);
     _exit(127);
 }
 
