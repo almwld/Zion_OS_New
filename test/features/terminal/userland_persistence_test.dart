@@ -58,7 +58,7 @@ void main() {
       expect(start, greaterThanOrEqualTo(0));
       expect(end, greaterThan(start));
       final method = installer.substring(start, end);
-      expect(method, contains("'/bin/bash.real'"));
+      expect(method, contains('/bin/bash.real'));
       expect(method, contains("path.endsWith('/bash.real') || path.endsWith('/bash')"));
       expect(method, contains('? 100000'));
     });
