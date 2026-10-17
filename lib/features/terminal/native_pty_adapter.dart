@@ -291,13 +291,24 @@ class NativePtyAdapter {
     final handle = _handle;
     if (!_running || handle == null || bytes.isEmpty) return;
     try {
-      await _channel.invokeMethod<void>('write', <String, Object>{
+      final written = await _channel.invokeMethod<int>('write', <String, Object>{
         'handle': handle,
         'input': bytes,
       });
-    } on PlatformException {
+      if (written != bytes.length) {
+        // Never resend a partial write: that could duplicate characters already
+        // accepted by the PTY. Surface the exact count so Enter/input failures
+        // are visible instead of silently dropping data.
+        _output.add(
+          '\r\n[PTY] Write incomplete: sent ${written ?? 0}/${bytes.length} bytes; '
+          'input was not resent.\r\n',
+        );
+      }
+    } on PlatformException catch (error) {
+      _output.add('\r\n[PTY] Write failed: ${error.message ?? error.code}.\r\n');
       _running = false;
     } on MissingPluginException {
+      _output.add('\r\n[PTY] Write failed: native PTY channel unavailable.\r\n');
       _running = false;
     }
   }
