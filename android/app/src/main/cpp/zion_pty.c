@@ -617,13 +617,19 @@ static void reap_child_after_eof(pid_t pid) {
         usleep(10000);
     }
     pid_t *child = (pid_t *)malloc(sizeof(pid_t));
-    if (child == NULL) return;
+    if (child == NULL) {
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+        return;
+    }
     *child = pid;
     pthread_t thread;
     if (pthread_create(&thread, NULL, zion_reap_child_thread, child) == 0) {
         (void)pthread_detach(thread);
     } else {
         free(child);
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     }
 }
 
