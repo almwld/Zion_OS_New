@@ -66,6 +66,22 @@ internal object TermuxBootstrapInstaller {
                 prefix, bash)
         }
 
+        // The JNI archive reader depends on libtermux-bootstrap.so being
+        // packaged in this APK. Check before touching JNI: calling
+        // System.loadLibrary when the library is absent poisons the class
+        // initializer and caused the same stack trace on every terminal start.
+        // The caller can still recover from an existing local Userland backup.
+        val bootstrapLibrary = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
+        if (!bootstrapLibrary.isFile || bootstrapLibrary.length() == 0L) {
+            return report(
+                false,
+                "bootstrap-library-missing",
+                "مكتبة libtermux-bootstrap.so غير موجودة داخل APK؛ لم تتم محاولة JNI ولم تُمس ملفات usr. استعادة Userland المحلي ما زالت متاحة.",
+                prefix,
+                bash
+            )
+        }
+
         val staging = File(files, "usr.bootstrap-staging")
         try {
             val archive = try {
