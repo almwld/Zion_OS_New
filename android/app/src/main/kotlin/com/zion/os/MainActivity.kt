@@ -139,6 +139,22 @@ class MainActivity : FlutterFragmentActivity() {
         zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
         handleZionApiIntent(intent)
         Handler(Looper.getMainLooper()).postDelayed({ handleZionPkgIntent(intent) }, 500L)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zion.os/usbwifi")
+            .setMethodCallHandler { call, result ->
+                val bridge = UsbWifiMonitorBridge(this)
+                when (call.method) {
+                    "isInstalled" -> result.success(bridge.isInstalled())
+                    "startCapture" -> {
+                        val channel = call.argument<Int>("channel") ?: 6
+                        val pcapName = call.argument<String>("pcapName") ?: "capture.pcap"
+                        bridge.startCapture(result, channel, pcapName)
+                    }
+                    "stopCapture" -> bridge.stopCapture(result)
+                    "openPcapFolder" -> bridge.openPcapFolder(result)
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIFI_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
