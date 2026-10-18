@@ -326,7 +326,7 @@ class ZionUserlandInstaller {
     // retry through Android's Storage Access Framework. The selected tree is
     // copied to private staging and still passes the normal rollback-safe
     // installer and shell validation before replacing usr.
-    if (Platform.isAndroid && directBackupFound && directBackupFailure != null) {
+    if (Platform.isAndroid && directBackupFailure != null) {
       final safRestore = await _restoreUserlandFromDocumentTree(onProgress: onProgress);
       if (safRestore?.success == true) return safRestore!;
       if (safRestore != null) {
