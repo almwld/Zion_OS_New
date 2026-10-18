@@ -888,6 +888,9 @@ class TerminalService {
     // is still attempted above because PRoot itself may be supplied by PREFIX.
     await _ensureTerminalEnvironment();
     String? shell;
+    // Keep the session label separate from the native PRoot launch protocol.
+    // zion_pty.c parses: kali:<proot>|<rootfs>|<loader>.
+    String? nativeShellOverride;
     if (kaliRootfsPath != null) {
       final path = kaliRootfsPath.trim();
       if (!path.startsWith('/') ||
@@ -916,6 +919,7 @@ class TerminalService {
         return false;
       }
       shell = 'zion-kali@$path';
+      nativeShellOverride = 'kali:${proot.path}|$path|${loader.path}';
       _emitOutput('[Kali] Starting local rootfs without copying it: $path\r\n');
     } else {
       shell = await _findShell(installIfMissing: true);
@@ -948,7 +952,11 @@ class TerminalService {
       }
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = _pty.output.listen(_emitOutput);
-      final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
+      final startedPty = await _pty.start(
+        rows: 40,
+        cols: 120,
+        shell: nativeShellOverride ?? shell,
+      );
       if (!startedPty) {
         _emitOutput('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(
