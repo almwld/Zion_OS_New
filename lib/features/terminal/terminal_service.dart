@@ -197,13 +197,13 @@ class TerminalService {
           environment: _userlandEnvironment,
         ).timeout(const Duration(seconds: 4));
         if (linked.exitCode == 0 && linked.stdout.toString().contains('GNU bash')) {
-          _emitOutput('[Userland] Verified Bash ELF via Android linker: $realBashPath\\r\\n');
+          _emitOutput('[Userland] Verified Bash ELF via Android linker: $realBashPath\r\n');
           return realBashPath;
         }
-        _emitOutput('[Userland] Bash ELF probe failed: exit ${linked.exitCode}; ${linked.stderr}\\r\\n');
+        _emitOutput('[Userland] Bash ELF probe failed: exit ${linked.exitCode}; ${linked.stderr}\r\n');
       }
     } catch (error) {
-      _emitOutput('[Userland] Could not probe Bash ELF via linker64: $error\\r\\n');
+      _emitOutput('[Userland] Could not probe Bash ELF via linker64: $error\r\n');
     }
 
     for (final name in const <String>['bash', 'sh', 'dash']) {
@@ -931,8 +931,8 @@ class TerminalService {
       return false;
     }
     _emitOutput(shell == _userlandBash || shell.startsWith('/data/data/com.zion.os/files/usr/bin/')
-        ? 'Userland Bash ready: $shell\\r\\n'
-        : 'Android shell ready: $shell\\r\\n');
+        ? 'Userland Bash ready: $shell\r\n'
+        : 'Android shell ready: $shell\r\n');
 
     // The interactive terminal must use the native PTY. A pipe-backed
     // Process.start() session is not a terminal: it cannot provide job
