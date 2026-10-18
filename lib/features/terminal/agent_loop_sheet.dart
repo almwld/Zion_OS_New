@@ -193,7 +193,8 @@ class _AgentLoopSheetState extends State<AgentLoopSheet> {
     if (!modelReady) {
       _log('model', 'لا يوجد نموذج محمّل؛ أحاول اكتشاف نموذج GGUF صالح وتحميله تلقائياً.');
       try {
-        modelReady = await widget.ai.autoLoadBestModel(threads: 2);
+        final discoveredModel = await widget.ai.autoLoadBestModel(threads: 2);
+        modelReady = discoveredModel != null;
         if (!modelReady) {
           final imported = await widget.ai.pickAndImportModel();
           if (imported != null) {
