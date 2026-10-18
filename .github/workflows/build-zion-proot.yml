@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/build-zion-proot.yml'
       - 'android/app/src/main/cpp/**'
+      - 'android/app/src/main/jniLibs/arm64-v8a/libproot*.so'
+      - 'android/app/src/main/assets/proot-aarch64'
 
 jobs:
   build-proot-arm64:
@@ -25,33 +27,64 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Build PRoot + Android loaders
+      - name: Build PRoot Android runtime
         working-directory: .ci/openminis
+        env:
+          ANDROID_NDK_HOME: ${{ runner.tool_cache }}/Android/Sdk/ndk/28.0.13004108
         run: |
+          # GitHub hosted runners may expose a different installed NDK revision;
+          # resolve the newest installed NDK r28+ instead of assuming one path.
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/.android}"
+          if [ ! -d "$ANDROID_NDK_HOME" ]; then
+            NDK_ROOT="$ANDROID_SDK_ROOT/ndk"
+            NDK_VERSION="$(find "$NDK_ROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)"
+            test -n "$NDK_VERSION"
+            case "$NDK_VERSION" in 28.*|29.*|30.*) ;; *) echo "Expected Android NDK r28+, got $NDK_VERSION" >&2; exit 1 ;; esac
+            export ANDROID_NDK_HOME="$NDK_ROOT/$NDK_VERSION"
+          fi
           chmod +x deps/build_proot.sh
-          ./deps/build_proot.sh
+          ./deps/build_proot.sh clean
           test -s src/android/app/src/main/assets/proot-aarch64
-          test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
-          test -f src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
+          test -s src/android/app/src/main/jniLibs/arm64-v8a/libproot.so
+          test -s src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+          test -s src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
 
-      - name: Import runtime artifacts
+      - name: Import complete PRoot runtime
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/assets
           cp .ci/openminis/src/android/app/src/main/assets/proot-aarch64 android/app/src/main/assets/proot-aarch64
-          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so android/app/src/main/jniLibs/arm64-v8a/
-          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot.so android/app/src/main/jniLibs/arm64-v8a/libproot.so
+          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
+          cp .ci/openminis/src/android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
 
-      - name: Verify artifacts
+      - name: Verify ELF architecture and runtime completeness
         run: |
-          file android/app/src/main/assets/proot-aarch64
-          file android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
-          file android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
+          set -eu
+          for f in \
+            android/app/src/main/assets/proot-aarch64 \
+            android/app/src/main/jniLibs/arm64-v8a/libproot.so \
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so \
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so; do
+            test -s "$f"
+            file "$f"
+          done
+          readelf -h android/app/src/main/assets/proot-aarch64 | grep -q 'AArch64'
+          readelf -h android/app/src/main/jniLibs/arm64-v8a/libproot.so | grep -q 'AArch64'
+          readelf -h android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so | grep -q 'AArch64'
+          readelf -h android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so | grep -q 'ARM'
+          sha256sum \
+            android/app/src/main/assets/proot-aarch64 \
+            android/app/src/main/jniLibs/arm64-v8a/libproot.so \
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so \
+            android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
 
-      - name: Upload PRoot runtime artifact
+      - name: Upload complete PRoot runtime
         uses: actions/upload-artifact@v4
         with:
           name: zion-proot-arm64
+          if-no-files-found: error
           path: |
             android/app/src/main/assets/proot-aarch64
+            android/app/src/main/jniLibs/arm64-v8a/libproot.so
             android/app/src/main/jniLibs/arm64-v8a/libproot-loader.so
             android/app/src/main/jniLibs/arm64-v8a/libproot-loader32.so
