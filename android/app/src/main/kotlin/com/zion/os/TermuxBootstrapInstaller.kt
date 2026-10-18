@@ -354,6 +354,16 @@ internal object TermuxBootstrapInstaller {
             "if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi\n" +
             "export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"\n" +
             "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
+        // Bootstrap archives may leave bin/bash as a symlink to the ELF or
+        // as a read-only executable. FileOutputStream follows symlinks and
+        // then fails with EACCES instead of replacing the path. Keep the
+        // previous entry as a recoverable backup, then create a fresh launcher.
+        if (bash.exists() || readlinkOrNull(bash.absolutePath) != null) {
+            val backup = File(bin, "bash.pre-zion-launcher-${System.currentTimeMillis()}")
+            if (!bash.renameTo(backup)) {
+                throw IllegalStateException("Cannot preserve existing bin/bash before creating launcher")
+            }
+        }
         FileOutputStream(bash).use { out ->
             out.write(launcher.toByteArray(Charsets.UTF_8))
             out.fd.sync()
