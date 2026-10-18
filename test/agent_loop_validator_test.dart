@@ -14,7 +14,7 @@ void main() {
     test('rejects empty, NUL-containing, and excessively long tasks', () {
       expect(validator.validTarget(''), isFalse);
       expect(validator.validTarget('   '), isFalse);
-      expect(validator.validTarget('x' * 2001), isFalse);
+      expect(validator.validTarget(List.filled(2001, 'x').join()), isFalse);
     });
   });
 
@@ -29,7 +29,7 @@ void main() {
 
     test('rejects empty, oversized and NUL-containing commands', () {
       expect(validator.validateCommand('', 'task'), isNotNull);
-      expect(validator.validateCommand('x' * 4001, 'task'), isNotNull);
+      expect(validator.validateCommand(List.filled(4001, 'x').join(), 'task'), isNotNull);
       expect(validator.validateCommand('echo\u0000bad', 'task'), isNotNull);
     });
 
