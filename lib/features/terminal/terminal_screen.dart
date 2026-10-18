@@ -14,6 +14,7 @@ import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
+import 'terminal_theme_loader.dart';
 import 'terminal_service.dart';
 import 'logs_screen.dart';
 import '../../widgets/toast_bar.dart';
@@ -71,12 +72,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    unawaited(_loadPackagedPalette());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
         unawaited(_initializeFirstTab());
       }
     });
+  }
+
+  Future<void> _loadPackagedPalette() async {
+    final loaded = await TerminalThemeLoader.loadFirstPackagedPalette();
+    if (!mounted || loaded == null) return;
+    setState(() => _palette = loaded);
   }
 
   static const int _maxSessions = 8;
@@ -396,7 +404,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             Slider(value: _fontSize.clamp(8, 24).toDouble(), min: 8, max: 24, divisions: 16, activeColor: _palette.accent,
               onChanged: (value) { setSheetState(() => _fontSize = value); setState(() {}); }),
             Text('نوع الخط', style: TextStyle(color: _palette.foreground)),
-            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono'].map((font) => ChoiceChip(
+            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono', 'Musnad'].map((font) => ChoiceChip(
               label: Text(font, style: TextStyle(color: _palette.foreground)), selected: _fontFamily == font,
               selectedColor: _palette.accent.withOpacity(0.25),
               onSelected: (_) { setSheetState(() => _fontFamily = font); setState(() {}); },
