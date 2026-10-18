@@ -157,12 +157,14 @@ class ZionUserlandInstaller {
     // visible parent while opening its children still fails with EACCES; the
     // previous "request only when no backup directory exists" check therefore
     // skipped the permission flow for precisely the broken-device state.
+    var sharedStorageAccessGranted = !Platform.isAndroid;
     if (Platform.isAndroid) {
       try {
         final granted = await _storageChannel
                 .invokeMethod<bool>('ensureAllFilesAccess')
                 .timeout(const Duration(minutes: 5)) ??
             false;
+        sharedStorageAccessGranted = granted;
         if (!granted) {
           onProgress?.call(
             '[Userland] Shared-storage access was not granted. Local paths will be probed non-destructively; Android may still require selecting the archive through the system document picker.',
@@ -326,7 +328,8 @@ class ZionUserlandInstaller {
     // retry through Android's Storage Access Framework. The selected tree is
     // copied to private staging and still passes the normal rollback-safe
     // installer and shell validation before replacing usr.
-    if (Platform.isAndroid && directBackupFailure != null) {
+    if (Platform.isAndroid && directBackupFailure != null &&
+        (directBackupFound || !sharedStorageAccessGranted)) {
       final safRestore = await _restoreUserlandFromDocumentTree(onProgress: onProgress);
       if (safRestore?.success == true) return safRestore!;
       if (safRestore != null) {
