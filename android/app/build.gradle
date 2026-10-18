@@ -21,7 +21,9 @@ android {
     defaultConfig {
         applicationId = "com.zion.os"
         minSdk = 21
-        targetSdk = 36
+        // Compatibility experiment requested for PRoot/Userland investigation.
+        // This does not bypass SELinux or guarantee app-private ELF execution.
+        targetSdk = 28
         versionCode = 45002
         versionName = "4.5.0"
     }
