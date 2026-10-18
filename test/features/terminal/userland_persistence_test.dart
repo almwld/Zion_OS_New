@@ -51,6 +51,20 @@ void main() {
       expect(source, contains("'/data/data/com.zion.os/files/usr'"));
     });
 
+    test('preserved bash.real is probed even when the bin/bash wrapper is missing', () async {
+      final source = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      final start = source.indexOf('Future<String?> _findUsableUserlandShell() async {');
+      final end = source.indexOf('Future<void> diagnoseBashExecution(', start);
+      expect(start, greaterThanOrEqualTo(0));
+      expect(end, greaterThan(start));
+      final method = source.substring(start, end);
+      expect(method, contains("final realBashPath = '\$prefix/bin/bash.real'"));
+      expect(method, contains("Process.run(\n          '/system/bin/linker64'"));
+      expect(method, contains("return realBashPath;"));
+      expect(method.indexOf('final realBashPath'), lessThan(method.indexOf("for (final name in const <String>['bash', 'sh', 'dash'])")));
+      expect(source, contains("'/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec'"));
+    });
+
     test('Bash ELF payload is accepted when bin/bash is a small linker wrapper', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final start = installer.indexOf('Future<bool> _hasCompatibleShell()');
