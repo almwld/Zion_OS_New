@@ -81,7 +81,9 @@ class TerminalService {
   static const _historyKey = 'zion_terminal_history_v1';
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
-  static const _commandTimeout = Duration(seconds: 30);
+  // Repairs, package installs and diagnostic scripts can legitimately take minutes.
+  // Keep a finite timeout so a stuck child cannot hold the PTY forever.
+  static const _commandTimeout = Duration(minutes: 5);
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
   static const Map<String, String> _androidEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
