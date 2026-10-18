@@ -14,8 +14,7 @@ void main() {
     );
     expect(nativeSource, contains('strncmp(configured_shell, "kali:", 5)'));
     expect(nativeSource, contains('setenv("PROOT_LOADER", kali_loader, 1)'));
-    expect(nativeSource, contains('"PROOT_NO_SECCOMP", "1", 1'));
-    expect(nativeSource, contains('" -w ", "/"')); // checked separately below for the actual argv token
-    expect(nativeSource, contains('" -w "')); // defensive source contract
+    expect(nativeSource, contains('setenv("PROOT_NO_SECCOMP", "1", 1)'));
+    expect(nativeSource, contains('"-w", "/"'));
   });
 }
