@@ -570,8 +570,10 @@ class MainActivity : FlutterFragmentActivity() {
     private fun ensureProotRuntime(): Boolean {
         val prefix = File(filesDir, "usr")
         val proot = File(prefix, "bin/proot")
-        val loader = File(prefix, "libexec/proot")
-        val sourceLoader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+        // Android 10+ W^X policy prevents executing a copied loader from
+        // app-private files/. Keep the loader in nativeLibraryDir, where the
+        // package manager extracts APK native libraries for this purpose.
+        val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
 
         fun validArm64Elf(file: File, minimumBytes: Long): Boolean {
             if (!file.isFile || file.length() < minimumBytes) return false
@@ -649,16 +651,22 @@ class MainActivity : FlutterFragmentActivity() {
         val executableReady = install(proot, 64 * 1024L, true) {
             assets.open("proot-aarch64")
         }
-        val loaderReady = install(loader, 8 * 1024L, true) {
-            java.io.FileInputStream(sourceLoader)
-        }
+        // Do not copy libproot-loader.so into files/usr/libexec: that path is
+        // labelled app_data_file and is subject to Android's no-exec W^X
+        // policy. PRoot must receive the packaged nativeLibraryDir path.
+        val loaderReady = validArm64Elf(loader, 8 * 1024L) && loader.canRead()
         if (!executableReady || !loaderReady) {
             android.util.Log.w(
                 "ZionProot",
-                "PRoot unavailable: executableReady=$executableReady loaderReady=$loaderReady asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
+                "PRoot unavailable: executableReady=$executableReady loaderReady=$loaderReady " +
+                    "loaderPath=${loader.absolutePath} asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
             )
             return false
         }
+        android.util.Log.i(
+            "ZionProot",
+            "PRoot runtime ready: executable=${proot.absolutePath} loader=${loader.absolutePath}"
+        )
         return true
     }
 
@@ -689,8 +697,8 @@ class MainActivity : FlutterFragmentActivity() {
                     if (!prootReady) return 0
                     val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
                     val proot = File(filesDir, "usr/bin/proot")
-                    val loader = File(filesDir, "usr/libexec/proot")
-                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 shell?.startsWith("zion-kali@") == true -> {
@@ -701,8 +709,8 @@ class MainActivity : FlutterFragmentActivity() {
                         rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
                     val rootfs = File(rootfsPath)
                     val proot = File(filesDir, "usr/bin/proot")
-                    val loader = File(filesDir, "usr/libexec/proot")
-                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 else -> shell
