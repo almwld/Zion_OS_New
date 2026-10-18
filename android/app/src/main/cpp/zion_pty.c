@@ -2,6 +2,9 @@
 #include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdint.h>
+#include <time.h>
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
@@ -29,26 +32,67 @@ extern char **environ;
 typedef struct {
     int master_fd;
     pid_t child_pid;
+    uint32_t generation;
 } ZionPtySession;
 
 static ZionPtySession g_sessions[ZION_MAX_PTY_SESSIONS];
 static pthread_mutex_t g_sessions_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t g_sessions_once = PTHREAD_ONCE_INIT;
+static char g_files_dir[PATH_MAX] = "/data/data/com.zion.os/files";
+/* select_shell() returns one of these paths to nativeStartPty; keep storage
+ * alive until fork rather than returning a pointer into a local stack array. */
+static char g_shell_candidates[5][PATH_MAX];
 
-static void init_sessions(void) {
-    static int initialized = 0;
-    if (initialized) return;
+static void init_sessions_once(void) {
     for (int i = 0; i < ZION_MAX_PTY_SESSIONS; ++i) {
         g_sessions[i].master_fd = -1;
         g_sessions[i].child_pid = -1;
+        g_sessions[i].generation = 0;
     }
-    initialized = 1;
+}
+
+static void ensure_sessions_init(void) {
+    (void)pthread_once(&g_sessions_once, init_sessions_once);
+}
+
+static void path_join(char *out, size_t capacity, const char *suffix) {
+    if (out == NULL || capacity == 0) return;
+    const char *base = g_files_dir[0] ? g_files_dir : "/data/data/com.zion.os/files";
+    const char *tail = suffix ? suffix : "";
+    (void)snprintf(out, capacity, "%s/%s", base, tail);
+}
+
+static int is_userland_path(const char *path) {
+    if (path == NULL) return 0;
+    char prefix[PATH_MAX];
+    path_join(prefix, sizeof(prefix), "usr/");
+    if (strncmp(path, prefix, strlen(prefix)) == 0) return 1;
+    return strncmp(path, "/data/data/com.zion.os/files/usr/",
+                   strlen("/data/data/com.zion.os/files/usr/")) == 0;
+}
+
+static int is_bash_real_path(const char *path) {
+    if (path == NULL) return 0;
+    char expected[PATH_MAX];
+    path_join(expected, sizeof(expected), "usr/bin/bash.real");
+    return strcmp(path, expected) == 0 ||
+           strcmp(path, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0;
 }
 
 static ZionPtySession *get_session(jint handle) {
-    init_sessions();
-    if (handle <= 0 || handle > ZION_MAX_PTY_SESSIONS) return NULL;
-    ZionPtySession *session = &g_sessions[handle - 1];
-    return session->master_fd >= 0 ? session : NULL;
+    ensure_sessions_init();
+    if (handle <= 0) return NULL;
+    const uint32_t raw = (uint32_t)handle;
+    const uint32_t slot_code = raw & 0xffU;
+    const uint32_t generation = raw >> 8;
+    if (slot_code == 0 || slot_code > ZION_MAX_PTY_SESSIONS || generation == 0) return NULL;
+    ZionPtySession *session = &g_sessions[slot_code - 1U];
+    if (session->master_fd < 0 || session->generation != generation) return NULL;
+    return session;
+}
+
+static jint make_session_handle(int slot, uint32_t generation) {
+    return (jint)((generation << 8) | (uint32_t)(slot + 1));
 }
 
 static void configure_terminal(int fd) {
@@ -103,45 +147,52 @@ static void mkdir_p(const char *path, mode_t mode) {
 }
 
 static void prepare_environment(void) {
-    const char *home = "/data/data/com.zion.os/files/home";
-    const char *prefix = "/data/data/com.zion.os/files/usr";
-    const char *path = "/data/data/com.zion.os/files/usr/bin:/data/data/com.zion.os/files/usr/sbin:/system/bin:/system/xbin:/vendor/bin";
-    const char *library_path = "/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64";
+    char home[PATH_MAX], prefix[PATH_MAX], tmp[PATH_MAX], proot_tmp[PATH_MAX];
+    char bin[PATH_MAX], sbin[PATH_MAX], lib[PATH_MAX], lib64[PATH_MAX], libexec[PATH_MAX];
+    char bashrc[PATH_MAX], terminfo[PATH_MAX], lib_terminfo[PATH_MAX], terminfo_dirs[PATH_MAX], cert[PATH_MAX];
+    char path[PATH_MAX * 2], library_path[PATH_MAX * 3];
+    path_join(home, sizeof(home), "home");
+    path_join(prefix, sizeof(prefix), "usr");
+    path_join(tmp, sizeof(tmp), "tmp");
+    path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
+    path_join(bin, sizeof(bin), "usr/bin");
+    path_join(sbin, sizeof(sbin), "usr/sbin");
+    path_join(lib, sizeof(lib), "usr/lib");
+    path_join(lib64, sizeof(lib64), "usr/lib64");
+    path_join(libexec, sizeof(libexec), "usr/libexec");
+    path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
+    path_join(terminfo, sizeof(terminfo), "usr/share/terminfo");
+    path_join(lib_terminfo, sizeof(lib_terminfo), "usr/lib/terminfo");
+    (void)snprintf(path, sizeof(path), "%s:%s:/system/bin:/system/xbin:/vendor/bin", bin, sbin);
+    (void)snprintf(library_path, sizeof(library_path), "%s:%s:%s", lib, lib64, libexec);
+    (void)snprintf(terminfo_dirs, sizeof(terminfo_dirs), "%s:%s:/system/usr/share/terminfo",
+                   terminfo, lib_terminfo);
+
     const char *directories[] = {
-        "/data/data/com.zion.os/files/home",
-        "/data/data/com.zion.os/files/tmp",
-        "/data/data/com.zion.os/files/etc",
-        "/data/data/com.zion.os/files/home/storage",
-        "/data/data/com.zion.os/files/usr",
-        "/data/data/com.zion.os/files/usr/bin",
-        "/data/data/com.zion.os/files/usr/sbin",
-        "/data/data/com.zion.os/files/usr/etc",
-        "/data/data/com.zion.os/files/usr/include",
-        "/data/data/com.zion.os/files/usr/lib",
-        "/data/data/com.zion.os/files/usr/libexec",
-        "/data/data/com.zion.os/files/usr/share",
-        "/data/data/com.zion.os/files/usr/tmp",
-        "/data/data/com.zion.os/files/usr/var",
-        "/data/data/com.zion.os/files/usr/var/lib",
-        "/data/data/com.zion.os/files/usr/var/lib/zion-pkg",
-        "/data/data/com.zion.os/files/usr/var/cache",
-        "/data/data/com.zion.os/files/usr/var/log",
+        "home", "tmp", "tmp/proot", "zion/tmp", "etc", "home/storage",
+        "usr", "usr/bin", "usr/sbin", "usr/etc", "usr/include", "usr/lib",
+        "usr/libexec", "usr/share", "usr/tmp", "usr/var", "usr/var/lib",
+        "usr/var/lib/zion-pkg", "usr/var/cache", "usr/var/log"
     };
     for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); ++i) {
-        mkdir_p(directories[i], 0700);
+        char directory[PATH_MAX];
+        path_join(directory, sizeof(directory), directories[i]);
+        mkdir_p(directory, 0700);
     }
     setenv("HOME", home, 1);
     setenv("PREFIX", prefix, 1);
     setenv("PATH", path, 1);
-    char full_library_path[512];
-    snprintf(full_library_path, sizeof(full_library_path), "%s:/data/data/com.zion.os/files/usr/libexec", library_path);
-    setenv("LD_LIBRARY_PATH", full_library_path, 1);
-    setenv("BASH_ENV", "/data/data/com.zion.os/files/usr/etc/zion-bashrc", 1);
-    setenv("TERMINFO", "/data/data/com.zion.os/files/usr/share/terminfo", 1);
-    setenv("TERMINFO_DIRS", "/data/data/com.zion.os/files/usr/share/terminfo:/data/data/com.zion.os/files/usr/lib/terminfo:/system/usr/share/terminfo", 1);
-    if (access("/data/data/com.zion.os/files/usr/etc/tls/cert.pem", R_OK) == 0) {
-        setenv("SSL_CERT_FILE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
-        setenv("CURL_CA_BUNDLE", "/data/data/com.zion.os/files/usr/etc/tls/cert.pem", 1);
+    setenv("TMPDIR", tmp, 1);
+    setenv("PROOT_TMP_DIR", proot_tmp, 1);
+    setenv("PROOT_NO_SECCOMP", "1", 1);
+    setenv("LD_LIBRARY_PATH", library_path, 1);
+    setenv("BASH_ENV", bashrc, 1);
+    setenv("TERMINFO", terminfo, 1);
+    setenv("TERMINFO_DIRS", terminfo_dirs, 1);
+    path_join(cert, sizeof(cert), "usr/etc/tls/cert.pem");
+    if (access(cert, R_OK) == 0) {
+        setenv("SSL_CERT_FILE", cert, 1);
+        setenv("CURL_CA_BUNDLE", cert, 1);
     } else {
         unsetenv("SSL_CERT_FILE");
         unsetenv("CURL_CA_BUNDLE");
@@ -151,32 +202,40 @@ static void prepare_environment(void) {
     setenv("PS1", "$ ", 1);
     setenv("LANG", "C.UTF-8", 1);
     setenv("LC_ALL", "C.UTF-8", 1);
-    setenv("SHELL", "/data/data/com.zion.os/files/usr/bin/bash", 1);
+    char shell[PATH_MAX];
+    path_join(shell, sizeof(shell), "usr/bin/bash");
+    setenv("SHELL", shell, 1);
     setenv("ZION_TERMINAL", "1", 1);
 }
 
 static int is_allowed_shell(const char *shell) {
     if (shell == NULL || shell[0] == '\0') return 0;
-    return strncmp(shell, "kali:", 5) == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/zsh") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/fish") == 0 ||
-           strcmp(shell, "/data/data/com.zion.os/files/usr/bin/ash") == 0 ||
-           strcmp(shell, "/system/bin/sh") == 0;
+    if (strncmp(shell, "kali:", 5) == 0 || strcmp(shell, "/system/bin/sh") == 0) return 1;
+    char candidate[PATH_MAX];
+    const char *allowed_names[] = {"bash", "bash.real", "zsh", "fish", "ash", NULL};
+    for (int i = 0; allowed_names[i] != NULL; ++i) {
+        (void)snprintf(candidate, sizeof(candidate), "%s/usr/bin/%s", g_files_dir, allowed_names[i]);
+        if (strcmp(shell, candidate) == 0) return 1;
+        (void)snprintf(candidate, sizeof(candidate), "/data/data/com.zion.os/files/usr/bin/%s", allowed_names[i]);
+        if (strcmp(shell, candidate) == 0) return 1;
+    }
+    return 0;
 }
 
 static const char *select_shell(const char *configured_shell) {
     if (configured_shell != NULL && strncmp(configured_shell, "kali:", 5) == 0) return configured_shell;
-    /*
-     * access(X_OK) can reject private-prefix ELF files even when Android's
-     * dynamic linker can load them. Use F_OK for candidate discovery; the
-     * actual launch path below determines whether the shell is runnable.
-     */
+    /* access(X_OK) can reject private-prefix ELF files even when Android's
+     * dynamic linker can load them. Use F_OK for candidate discovery. */
     if (is_allowed_shell(configured_shell) && access(configured_shell, F_OK) == 0) {
         return configured_shell;
     }
 
+    const char *names[] = {"bash.real", "bash", "zsh", "fish", "ash"};
+    for (int i = 0; i < 5; ++i) {
+        (void)snprintf(g_shell_candidates[i], sizeof(g_shell_candidates[i]),
+                       "%s/usr/bin/%s", g_files_dir, names[i]);
+        if (access(g_shell_candidates[i], F_OK) == 0) return g_shell_candidates[i];
+    }
     static const char *fallbacks[] = {
         "/data/data/com.zion.os/files/usr/bin/bash.real",
         "/data/data/com.zion.os/files/usr/bin/bash",
@@ -204,29 +263,29 @@ static void exec_root_shell(const char *shell_path) {
         _exit(126);
     }
 
-    char real_path[512];
+    char real_path[PATH_MAX];
     const char *selected = shell_path;
     size_t length = strlen(shell_path);
     if (length < sizeof(real_path) && length >= 5 &&
         strcmp(shell_path + length - 5, "/bash") == 0) {
-        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+        (void)snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
         if (access(real_path, F_OK) == 0) selected = real_path;
     }
 
-    char command[1200];
-    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
-    if (strncmp(selected, "/data/data/com.zion.os/files/usr/", strlen("/data/data/com.zion.os/files/usr/")) == 0) {
-        if (strcmp(selected, "/data/data/com.zion.os/files/usr/bin/bash.real") == 0 &&
-            access(bashrc, F_OK) == 0) {
-            snprintf(command, sizeof(command),
-                     "exec /system/bin/linker64 '%s' --init-file '%s' -i",
-                     selected, bashrc);
+    char bashrc[PATH_MAX], command[PATH_MAX * 3];
+    path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
+    if (is_userland_path(selected)) {
+        if (is_bash_real_path(selected) && access(bashrc, R_OK) == 0) {
+            (void)snprintf(command, sizeof(command),
+                "export LD_LIBRARY_PATH='%s/usr/lib:%s/usr/lib64:%s/usr/libexec'; exec /system/bin/linker64 '%s' --init-file '%s' -i",
+                g_files_dir, g_files_dir, g_files_dir, selected, bashrc);
         } else {
-            snprintf(command, sizeof(command),
-                     "exec /system/bin/linker64 '%s' -i", selected);
+            (void)snprintf(command, sizeof(command),
+                "export LD_LIBRARY_PATH='%s/usr/lib:%s/usr/lib64:%s/usr/libexec'; exec /system/bin/linker64 '%s' -i",
+                g_files_dir, g_files_dir, g_files_dir, selected);
         }
     } else {
-        snprintf(command, sizeof(command), "exec '%s' -i", selected);
+        (void)snprintf(command, sizeof(command), "exec '%s' -i", selected);
     }
 
     execlp("su", "su", "-c", command, (char *)NULL);
@@ -236,17 +295,42 @@ static void exec_root_shell(const char *shell_path) {
 }
 
 static void exec_kali_proot(const char *proot, const char *rootfs) {
-    execl(proot, "proot",
+    /*
+     * The bundled PRoot ELF is stored under app-private data, where direct
+     * execve can be denied on some Android builds. Launch it through Android's
+     * linker, preserving the PREFIX LD_LIBRARY_PATH prepared before fork().
+     */
+    char lib_bind[1024];
+    char usr_lib_bind[1024];
+    const int lib_len = snprintf(lib_bind, sizeof(lib_bind),
+        "%s/lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu", rootfs);
+    const int usr_lib_len = snprintf(usr_lib_bind, sizeof(usr_lib_bind),
+        "%s/usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu", rootfs);
+    if (lib_len <= 0 || (size_t)lib_len >= sizeof(lib_bind) ||
+        usr_lib_len <= 0 || (size_t)usr_lib_len >= sizeof(usr_lib_bind)) {
+        _exit(126);
+    }
+
+    /* PRoot temp and seccomp variables are prepared in the parent before fork(). */
+
+    char home_bind[PATH_MAX * 2];
+    (void)snprintf(home_bind, sizeof(home_bind), "%s/home:/root", g_files_dir);
+    execl("/system/bin/linker64", "linker64", proot,
           "--link2symlink", "-0", "-r", rootfs,
           "-b", "/dev", "-b", "/proc", "-b", "/sys",
           "-b", "/storage/emulated/0",
-          "-b", "/data/data/com.zion.os/files/home:/root", "-w", "/root",
+          "-b", home_bind,
+          "-b", lib_bind,
+          "-b", usr_lib_bind,
+          "-w", "/root",
           "/usr/bin/env", "-i",
           "HOME=/root",
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "TERM=xterm-256color", "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
           "SHELL=/bin/bash", "ZION_KALI=1",
           "/bin/bash", "--login", (char *)NULL);
+    __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+        "Unable to launch PRoot via linker64: errno=%d (%s)", errno, strerror(errno));
     _exit(127);
 }
 
@@ -259,44 +343,74 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
 static void exec_selected_shell(const char *shell_path) {
     if (shell_path == NULL || shell_path[0] == '\0') _exit(127);
 
-    char real_path[512];
+    char real_path[PATH_MAX];
     const char *selected = shell_path;
     size_t length = strlen(shell_path);
-    if (length < sizeof(real_path) &&
-        length >= 5 && strcmp(shell_path + length - 5, "/bash") == 0) {
-        snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
+    if (length < sizeof(real_path) && length >= 5 &&
+        strcmp(shell_path + length - 5, "/bash") == 0) {
+        (void)snprintf(real_path, sizeof(real_path), "%s.real", shell_path);
         if (access(real_path, F_OK) == 0) selected = real_path;
     }
 
-    const char *name = strrchr(selected, '/');
-    name = name ? name + 1 : selected;
-
-    /*
-     * Prefer linker64 for Bash so the Zion rc file is always loaded. A direct
-     * exec may succeed on some builds but would skip the configured prompt,
-     * aliases, TLS paths, and bionic() helper.
-     */
-    const char *bash_real = "/data/data/com.zion.os/files/usr/bin/bash.real";
-    const char *bashrc = "/data/data/com.zion.os/files/usr/etc/zion-bashrc";
-    if (strcmp(selected, bash_real) == 0 && access(bashrc, F_OK) == 0) {
-        execl("/system/bin/linker64", "linker64", selected,
-              "--init-file", bashrc, "-i", (char *)NULL);
-        /* Linker path failed; retain the direct execution fallback. */
-        execl(selected, name, "-i", (char *)NULL);
-    } else {
-        /* Other shells use the generic linker path first as well. */
-        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
-        execl(selected, name, "-i", (char *)NULL);
-    }
-
-    /* Never hide a failed Userland launch behind an unexplained shell switch. */
-    __android_log_print(ANDROID_LOG_WARN, "ZionPTY",
-                        "Userland shell launch failed for %s (errno=%d); trying Android sh",
-                        selected, errno);
-    if (strcmp(selected, "/system/bin/sh") != 0) {
+    if (is_bash_real_path(selected)) {
+        char bashrc[PATH_MAX];
+        path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
+        if (access(bashrc, R_OK) == 0) {
+            execl("/system/bin/linker64", "linker64", selected,
+                  "--init-file", bashrc, "-i", (char *)NULL);
+        } else {
+            execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+        }
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "linker64 exec for Bash failed (errno=%d: %s); falling back to Android sh",
+                            errno, strerror(errno));
         execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+        _exit(127);
     }
+
+    if (strcmp(selected, "/system/bin/sh") == 0) {
+        execl("/system/bin/sh", "sh", "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "Android system shell exec failed (errno=%d: %s)",
+                            errno, strerror(errno));
+        _exit(127);
+    }
+
+    // Other allowlisted Userland shells are ELF files too; launch through the
+    // Android linker because direct exec may be denied for app-private paths.
+    if (is_userland_path(selected)) {
+        execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "linker64 exec for Userland shell %s failed (errno=%d: %s)",
+                            selected, errno, strerror(errno));
+    } else {
+        execl(selected, selected, "-i", (char *)NULL);
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+                            "exec for shell %s failed (errno=%d: %s)",
+                            selected, errno, strerror(errno));
+    }
+
+    execl("/system/bin/sh", "sh", "-i", (char *)NULL);
     _exit(127);
+}
+
+JNIEXPORT void JNICALL
+Java_com_zion_os_MainActivity_nativeSetPaths(JNIEnv *env, jobject thiz, jstring files_dir) {
+    (void)thiz;
+    if (files_dir == NULL) return;
+    const char *path = (*env)->GetStringUTFChars(env, files_dir, NULL);
+    if (path == NULL) return;
+    size_t length = strlen(path);
+    if (length > 0 && length < sizeof(g_files_dir) &&
+        path[0] == '/' && strstr(path, "/../") == NULL) {
+        pthread_mutex_lock(&g_sessions_lock);
+        memcpy(g_files_dir, path, length + 1);
+        while (length > 1 && g_files_dir[length - 1] == '/') {
+            g_files_dir[--length] = '\0';
+        }
+        pthread_mutex_unlock(&g_sessions_lock);
+    }
+    (*env)->ReleaseStringUTFChars(env, files_dir, path);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -356,12 +470,13 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         memcpy(kali_proot, spec, pLen); kali_proot[pLen] = '\0';
         memcpy(kali_rootfs, sep1 + 1, rLen); kali_rootfs[rLen] = '\0';
         memcpy(kali_loader, sep2 + 1, lLen); kali_loader[lLen] = '\0';
-        if (access(kali_proot, X_OK) != 0 || access(kali_rootfs, R_OK) != 0 ||
-            access(kali_loader, X_OK) != 0) return 0;
+        if (access(kali_proot, R_OK) != 0 ||
+            access(kali_rootfs, R_OK | X_OK) != 0 ||
+            access(kali_loader, R_OK) != 0) return 0;
     }
 
     pthread_mutex_lock(&g_sessions_lock);
-    init_sessions();
+    ensure_sessions_init();
 
     int slot = -1;
     for (int i = 0; i < ZION_MAX_PTY_SESSIONS; ++i) {
@@ -374,6 +489,10 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
+
+    uint32_t generation = (g_sessions[slot].generation + 1U) & 0x007fffffU;
+    if (generation == 0U) generation = 1U;
+    g_sessions[slot].generation = generation;
 
     int master = open("/dev/ptmx", O_RDWR | O_NOCTTY | O_CLOEXEC | O_NONBLOCK);
     if (master < 0) {
@@ -411,14 +530,22 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
     }
     if (kali_mode) {
         setenv("PROOT_LOADER", kali_loader, 1);
-        setenv("PROOT_TMP_DIR", "/data/data/com.zion.os/files/zion/tmp", 1);
-        mkdir_p("/data/data/com.zion.os/files/zion/tmp", 0700);
+        char proot_tmp[PATH_MAX], tmp[PATH_MAX];
+        path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot");
+        path_join(tmp, sizeof(tmp), "tmp");
+        setenv("PROOT_TMP_DIR", proot_tmp, 1);
+        setenv("TMPDIR", tmp, 1);
+        setenv("PROOT_NO_SECCOMP", "1", 1);
+        mkdir_p(proot_tmp, 0700);
         setenv("ZION_SHELL_MODE", "kali-proot", 1);
     } else if (strcmp(selected_shell, "/system/bin/sh") == 0) {
         // Android host-shell mode is intentionally independent of the broken
         // Userland prefix: keep PATH limited to Android's shipped commands.
-        setenv("HOME", "/data/data/com.zion.os/files/home", 1);
-        setenv("TMPDIR", "/data/data/com.zion.os/files/tmp", 1);
+        char home[PATH_MAX], tmp[PATH_MAX];
+        path_join(home, sizeof(home), "home");
+        path_join(tmp, sizeof(tmp), "tmp");
+        setenv("HOME", home, 1);
+        setenv("TMPDIR", tmp, 1);
         setenv("PATH", "/system/bin:/system/xbin:/vendor/bin", 1);
         setenv("LD_LIBRARY_PATH", "", 1);
         setenv("TERM", "xterm-256color", 1);
@@ -431,14 +558,30 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("ZION_SHELL_MODE", "zion-userland", 1);
     }
 
+    // Synchronize PTY startup with the child opening the slave. Without this
+    // handshake, the parent reader can race the child's open(slave_name), see
+    // EIO on the master before the slave exists, and incorrectly close a healthy
+    // session immediately after the UI reports it connected.
+    int startup_pipe[2];
+    if (pipe(startup_pipe) != 0) {
+        close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
+    (void)fcntl(startup_pipe[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(startup_pipe[1], F_SETFD, FD_CLOEXEC);
+
     pid_t pid = fork();
     if (pid < 0) {
+        close(startup_pipe[0]);
+        close(startup_pipe[1]);
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
 
     if (pid == 0) {
+        close(startup_pipe[0]);
         // After fork(), never unlock g_sessions_lock here: if another thread
         // held it at fork time, the inherited pthread mutex is not safely
         // unlockable in the child and can deadlock the PTY process.
@@ -447,7 +590,13 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         // can leave a stopped shell session looking alive.
         close(master);
         int slave = open(slave_name, O_RDWR | O_NOCTTY);
-        if (slave < 0) _exit(127);
+        if (slave < 0) {
+            close(startup_pipe[1]);
+            _exit(127);
+        }
+        const unsigned char ready = 1;
+        (void)write(startup_pipe[1], &ready, sizeof(ready));
+        close(startup_pipe[1]);
         configure_terminal(slave);
 
         prctl(PR_SET_PDEATHSIG, SIGHUP);
@@ -461,18 +610,75 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
 
-        if (chdir("/data/data/com.zion.os/files/home") != 0) {
-            _exit(126);
-        }
+        char home[PATH_MAX];
+        path_join(home, sizeof(home), "home");
+        if (chdir(home) != 0) _exit(126);
         if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
         if (root_mode) exec_root_shell(selected_shell);
         exec_selected_shell(selected_shell);
     }
 
+    close(startup_pipe[1]);
+    struct pollfd startup_wait = {startup_pipe[0], POLLIN | POLLHUP, 0};
+    int startup_ready;
+    do {
+        startup_ready = poll(&startup_wait, 1, 1500);
+    } while (startup_ready < 0 && errno == EINTR);
+    unsigned char ready = 0;
+    ssize_t ready_bytes = startup_ready > 0
+        ? read(startup_pipe[0], &ready, sizeof(ready))
+        : -1;
+    close(startup_pipe[0]);
+    if (ready_bytes != (ssize_t)sizeof(ready) || ready != 1) {
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+            "PTY child did not open its slave within 1500ms (poll=%d errno=%d); refusing a dead session",
+            startup_ready, errno);
+        close(master);
+        (void)kill(pid, SIGKILL);
+        while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
+
     g_sessions[slot].master_fd = master;
     g_sessions[slot].child_pid = pid;
+    const jint handle = make_session_handle(slot, generation);
     pthread_mutex_unlock(&g_sessions_lock);
-    return slot + 1;
+    return handle;
+}
+
+static void *zion_reap_child_thread(void *argument) {
+    pid_t pid = *((pid_t *)argument);
+    free(argument);
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    return NULL;
+}
+
+static void reap_child_after_eof(pid_t pid) {
+    if (pid <= 0) return;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        int status = 0;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid || (result < 0 && errno == ECHILD)) return;
+        if (result < 0 && errno != EINTR) return;
+        usleep(10000);
+    }
+    pid_t *child = (pid_t *)malloc(sizeof(pid_t));
+    if (child == NULL) {
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+        return;
+    }
+    *child = pid;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, zion_reap_child_thread, child) == 0) {
+        (void)pthread_detach(thread);
+    } else {
+        free(child);
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    }
 }
 
 JNIEXPORT jbyteArray JNICALL
@@ -502,18 +708,15 @@ Java_com_zion_os_MainActivity_nativeReadPty(JNIEnv *env, jobject thiz, jint hand
         return (*env)->NewByteArray(env, 0);
     }
 
-    // EIO/EOF means the slave side closed. Close and reap so the native slot
-    // is reusable and the child cannot become a zombie.
+    // Invalidate the generation-tagged handle before reaping. Retrying outside
+    // the session lock prevents a slow child exit from blocking other PTYs.
     pid_t pid = session->child_pid;
     int fd = session->master_fd;
     session->master_fd = -1;
     session->child_pid = -1;
     if (fd >= 0) close(fd);
-    if (pid > 0) {
-        int status = 0;
-        (void)waitpid(pid, &status, WNOHANG);
-    }
     pthread_mutex_unlock(&g_sessions_lock);
+    reap_child_after_eof(pid);
     return NULL;
 }
 
@@ -522,9 +725,6 @@ Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint han
     (void)thiz;
     if (data == NULL) return -1;
 
-    // Duplicate the master descriptor while the session table is locked, then
-    // release the global lock before polling/writing. A slow paste must never
-    // stall PTY readers, resize, or teardown for every terminal session.
     pthread_mutex_lock(&g_sessions_lock);
     ZionPtySession *session = get_session(handle);
     if (!session) {
@@ -542,10 +742,19 @@ Java_com_zion_os_MainActivity_nativeWritePty(JNIEnv *env, jobject thiz, jint han
         return -1;
     }
 
+    struct timespec started;
+    (void)clock_gettime(CLOCK_MONOTONIC, &started);
     jsize written = 0;
     while (written < len) {
+        struct timespec now;
+        (void)clock_gettime(CLOCK_MONOTONIC, &now);
+        int64_t elapsed_ms = (int64_t)(now.tv_sec - started.tv_sec) * 1000LL +
+            (int64_t)(now.tv_nsec - started.tv_nsec) / 1000000LL;
+        int remaining_ms = 5000 - (int)elapsed_ms;
+        if (remaining_ms <= 0) break;
+
         struct pollfd pfd = {fd, POLLOUT, 0};
-        int ready = poll(&pfd, 1, 1000);
+        int ready = poll(&pfd, 1, remaining_ms);
         if (ready < 0 && errno == EINTR) continue;
         if (ready <= 0 || (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) break;
         ssize_t n = write(fd, bytes + written, (size_t)(len - written));

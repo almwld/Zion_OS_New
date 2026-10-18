@@ -31,13 +31,28 @@ void main() {
       expect(await File('lib/features/terminal/termux_api.dart').exists(), isFalse);
     });
 
+    test('native PTY launches Bash directly through linker64 with inherited Zion library paths', () async {
+      final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      final bashStart = source.indexOf('static void exec_selected_shell(');
+      final bashEnd = source.indexOf('JNIEXPORT jboolean JNICALL', bashStart);
+      expect(bashStart, greaterThanOrEqualTo(0));
+      expect(bashEnd, greaterThan(bashStart));
+      final launcher = source.substring(bashStart, bashEnd);
+      expect(launcher, contains('execl("/system/bin/linker64", "linker64", selected'));
+      expect(launcher, contains('"--init-file", bashrc, "-i"'));
+      expect(source, contains('setenv("LD_LIBRARY_PATH", library_path, 1)'));
+      expect(launcher, isNot(contains('execl("/system/bin/sh", "sh", "-c", bash_command')));
+    });
+
     test('native PTY does not export legacy Termux environment variables', () async {
       final source = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(source, isNot(contains('TERMUX_HOME')));
       expect(source, contains('ZION_TERMINAL'));
       expect(source, contains('/system/bin/sh'));
       expect(source, isNot(contains('android-posix')));
-      expect(source, contains('"-b", "/data/data/com.zion.os/files/home:/root"'));
+      expect(source, contains('snprintf(home_bind'));
+      expect(source, contains('%s/home:/root'));
+      expect(source, contains('"-b", home_bind'));
     });
 
     test('terminal uses Android system shell without a Userland prerequisite', () async {
@@ -93,7 +108,9 @@ void main() {
     test('Kali PTY binds Zion home into the Linux root home', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('"-b", "/storage/emulated/0"'));
-      expect(native, contains('"/data/data/com.zion.os/files/home:/root"'));
+      expect(native, contains('snprintf(home_bind'));
+      expect(native, contains('%s/home:/root'));
+      expect(native, contains('"-b", home_bind'));
     });
 
     test('Userland recovery stays offline and avoids platform-only path provider calls', () async {
@@ -114,6 +131,21 @@ void main() {
       expect(pkg, contains("'DEBIAN_FRONTEND': 'noninteractive'"));
       expect(pkg, isNot(contains("Process.run('/system/bin/sh'")));
       expect(pkg, contains("const <String>['/system/bin', '/system/xbin']"));
+    });
+
+    test('Zion shell startup preserves all Userland dynamic-library directories', () async {
+      final bootstrap = await File('lib/core/userland/zion_bootstrap.dart').readAsString();
+      final terminal = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      expect(bootstrap, contains("export LD_LIBRARY_PATH=\"'+prefix+'/lib:'+prefix+'/lib64:'+prefix+'/libexec\""));
+      expect(terminal, contains("'/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64:/data/data/com.zion.os/files/usr/libexec'"));
+    });
+
+    test('on-device runtime verifier exports Zion library paths before linker64', () async {
+      final verifier = await File('scripts/verify-zion-userland-runtime.sh').readAsString();
+      expect(verifier, contains(r'export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib64:$PREFIX/libexec"'));
+      expect(verifier.indexOf('export LD_LIBRARY_PATH'),
+          lessThan(verifier.indexOf(r'out=$("$LINKER" "$BASH_REAL" --version')));
+      expect(verifier, contains('Bash loads through linker64 with Zion LD_LIBRARY_PATH'));
     });
 
     test('runtime probes reject non-executable files and handle empty shared storage', () async {

@@ -11,6 +11,7 @@ import android.net.LinkProperties
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.StatFs
@@ -53,6 +54,18 @@ import java.io.InputStreamReader
 import com.zion.os.security.ZionToken
 
 class MainActivity : FlutterFragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Keep native PTY paths aligned with Android's actual per-app filesDir
+        // instead of assuming the /data/data compatibility alias.
+        try {
+            nativeSetPaths(filesDir.absolutePath)
+        } catch (t: Throwable) {
+            android.util.Log.e("ZionPTY", "Unable to configure native app files path", t)
+        }
+    }
+
+    private external fun nativeSetPaths(filesDir: String)
     private external fun nativePtyAvailable(): Boolean
     private external fun nativeStartPty(rows: Int, cols: Int, shell: String?): Int
     private external fun nativeReadPty(handle: Int): ByteArray?
@@ -753,13 +766,14 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun writeTerminal(handle: Int, input: ByteArray): Boolean =
+    private fun writeTerminal(handle: Int, input: ByteArray): Int =
         synchronized(terminalLifecycleLock) {
-            if (handle <= 0 || input.isEmpty()) return@synchronized false
+            if (handle <= 0 || input.isEmpty()) return@synchronized 0
             try {
-                nativeWritePty(handle, input) == input.size
-            } catch (_: Throwable) {
-                false
+                nativeWritePty(handle, input).coerceIn(0, input.size)
+            } catch (t: Throwable) {
+                android.util.Log.w("ZionPTY", "PTY write failed for handle=$handle", t)
+                -1
             }
         }
 
@@ -1207,7 +1221,15 @@ class MainActivity : FlutterFragmentActivity() {
         if (uriString.isBlank()) return mapOf("available" to false, "status" to "INVALID", "items" to emptyList<Map<String, Any?>>())
         return try {
             val tree = Uri.parse(uriString)
-            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+            // ACTION_OPEN_DOCUMENT_TREE may return only /tree/<id>, while
+            // nested child URIs include /document/<id>. Resolve the appropriate
+            // parent id so both the selected root and nested usr directories work.
+            val parentId = if (tree.pathSegments.contains("document")) {
+                DocumentsContract.getDocumentId(tree)
+            } else {
+                DocumentsContract.getTreeDocumentId(tree)
+            }
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
             val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
             val items = mutableListOf<Map<String, Any?>>()
             contentResolver.query(children, projection, null, null, DocumentsContract.Document.COLUMN_DISPLAY_NAME) ?.use { cursor ->

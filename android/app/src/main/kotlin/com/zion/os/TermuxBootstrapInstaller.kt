@@ -25,6 +25,11 @@ internal object TermuxBootstrapInstaller {
     private const val MAX_ENTRIES = 100_000
     private const val MAX_UNCOMPRESSED_BYTES = 512L * 1024L * 1024L
 
+    // A failed embedded-payload probe is stable for the lifetime of this APK.
+    // Cache it for this process so every PTY restart does not rescan a large ELF.
+    @Volatile private var cachedFailedLibrarySignature: String? = null
+    @Volatile private var cachedFailedBootstrapMessage: String? = null
+
     @Synchronized
     fun ensureInstalled(context: Context): Map<String, Any?> {
         val files = context.filesDir
@@ -34,6 +39,7 @@ internal object TermuxBootstrapInstaller {
         if (isBashBinary(bash) || isBashBinary(bashReal)) {
             return try {
                 configureBashRuntime(prefix, files)
+                installProotLibs(prefix)
                 report(true, "already-installed-runtime-configured",
                     "Termux Bootstrap موجود؛ تم تجهيز zion-bashrc وBash launcher دون إعادة استخراج usr.",
                     prefix, File(prefix, "bin/bash"))
@@ -65,16 +71,43 @@ internal object TermuxBootstrapInstaller {
                 prefix, bash)
         }
 
+        // The JNI archive reader depends on libtermux-bootstrap.so being
+        // packaged in this APK. Check before touching JNI: calling
+        // System.loadLibrary when the library is absent poisons the class
+        // initializer and caused the same stack trace on every terminal start.
+        // The caller can still recover from an existing local Userland backup.
+        val bootstrapLibrary = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
+        if (!bootstrapLibrary.isFile || bootstrapLibrary.length() == 0L) {
+            return report(
+                false,
+                "bootstrap-library-missing",
+                "مكتبة libtermux-bootstrap.so غير موجودة داخل APK؛ لم تتم محاولة JNI ولم تُمس ملفات usr. استعادة Userland المحلي ما زالت متاحة.",
+                prefix,
+                bash
+            )
+        }
+
+        val librarySignature = "${bootstrapLibrary.length()}:${bootstrapLibrary.lastModified()}"
+        if (cachedFailedLibrarySignature == librarySignature) {
+            return report(false, "bootstrap-library-load-cached-failure",
+                "تم تخطي إعادة فحص Bootstrap الفاشل لهذا الملف الثابت؛ ${cachedFailedBootstrapMessage ?: "payload unavailable"}. استمر إصلاح Userland المحلي دون حذف الملفات.",
+                prefix, bash)
+        }
+
         val staging = File(files, "usr.bootstrap-staging")
         try {
             val archive = try {
                 loadBootstrapArchive(context)
             } catch (t: Throwable) {
+                cachedFailedLibrarySignature = librarySignature
+                cachedFailedBootstrapMessage = "${t.javaClass.simpleName}: ${t.message}"
                 Log.e(TAG, "Unable to read Termux Bootstrap ZIP stream from JNI or ELF blob", t)
                 return report(false, "bootstrap-library-load-failed",
                     "تعذر قراءة Bootstrap من JNI أو من ZIP blob داخل المكتبة: ${t.javaClass.simpleName}: ${t.message}",
                     prefix, bash)
             }
+            cachedFailedLibrarySignature = null
+            cachedFailedBootstrapMessage = null
             if (archive.isEmpty() || archive.size.toLong() > MAX_ARCHIVE_BYTES) {
                 return report(false, "invalid-archive-size", "حجم أرشيف Bootstrap غير صالح: ${archive.size} bytes.",
                     prefix, bash)
@@ -194,6 +227,7 @@ internal object TermuxBootstrapInstaller {
             File(files, "home").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             File(files, "tmp").apply { if (!exists()) mkdirs(); Os.chmod(absolutePath, 448) }
             configureBashRuntime(prefix, files)
+            installProotLibs(prefix)
 
             val backupNote = incompleteBackup?.let {
                 " تم حفظ النسخة غير المكتملة دون حذفها في ${it.absolutePath}."
@@ -206,6 +240,37 @@ internal object TermuxBootstrapInstaller {
             return report(false, "bootstrap-extraction-failed",
                 "فشل استخراج Bootstrap دون حذف usr: ${t.javaClass.simpleName}: ${t.message}", prefix, bash)
         }
+    }
+
+    /**
+     * Keep the bootstrap channel response stable for Dart diagnostics and tests.
+     * Include inventory only; never execute files while reporting installation state.
+     */
+    private fun report(
+        success: Boolean,
+        status: String,
+        message: String,
+        prefix: File,
+        bash: File
+    ): Map<String, Any?> {
+        val bin = File(prefix, "bin")
+        val bashReal = File(bin, "bash.real")
+        val entries = try { bin.list()?.size ?: 0 } catch (_: Throwable) { -1 }
+        return mapOf(
+            "success" to success,
+            "status" to status,
+            "message" to message,
+            "prefix" to prefix.absolutePath,
+            "prefixExists" to prefix.isDirectory,
+            "binExists" to bin.isDirectory,
+            "binEntryCount" to entries,
+            "bashPath" to bash.absolutePath,
+            "bashExists" to bash.isFile,
+            "bashBytes" to if (bash.isFile) bash.length() else 0L,
+            "bashRealPath" to bashReal.absolutePath,
+            "bashRealExists" to bashReal.isFile,
+            "bashRealBytes" to if (bashReal.isFile) bashReal.length() else 0L
+        )
     }
 
     private fun isEmptyPlaceholderPrefix(prefix: File): Boolean {
@@ -353,68 +418,216 @@ internal object TermuxBootstrapInstaller {
     }
 
     /**
+     * Fill missing PRoot runtime dependencies from known local bootstrap
+     * folders. External files are never trusted by name alone: only regular
+     * ELF64 little-endian AArch64 libraries are copied, and each copy is
+     * validated before it can replace anything in the active PREFIX.
+     *
+     * This is best-effort; absence of an optional local library source must
+     * not make an otherwise usable Zion shell unavailable.
+     */
+    private fun installProotLibs(prefix: File) {
+        val libDir = File(prefix, "lib")
+        if (!libDir.isDirectory && !libDir.mkdirs() && !libDir.isDirectory) {
+            Log.w(TAG, "Cannot create PRoot library directory: ${libDir.absolutePath}")
+            return
+        }
+        val sourceDirs = listOf(
+            File("/storage/emulated/0/zion-libs-complete"),
+            File("/storage/emulated/0/lib-fix-all"),
+            File("/storage/emulated/0/bootstrap-extracted/usr/lib")
+        )
+        val requiredLibraries = listOf(
+            "libtalloc.so.2",
+            "libandroid-shmem.so",
+            "libandroid-support.so",
+            "libcap.so.2",
+            "libattr.so.1",
+            "libiconv.so",
+            "libpcre2-8.so"
+        )
+
+        fun validArm64Library(file: File): Boolean {
+            if (!file.isFile || file.length() < 4096L) return false
+            return try {
+                RandomAccessFile(file, "r").use { raf ->
+                    raf.readUnsignedByte() == 0x7f &&
+                        raf.readUnsignedByte() == 0x45 &&
+                        raf.readUnsignedByte() == 0x4c &&
+                        raf.readUnsignedByte() == 0x46 &&
+                        raf.readUnsignedByte() == 2 &&
+                        raf.readUnsignedByte() == 1 &&
+                        raf.readUnsignedByte() == 1 &&
+                        run {
+                            raf.seek(18L)
+                            raf.readUnsignedByte() == 183 && raf.readUnsignedByte() == 0
+                        }
+                }
+            } catch (_: Throwable) {
+                false
+            }
+        }
+
+        for (name in requiredLibraries) {
+            val destination = File(libDir, name)
+            if (validArm64Library(destination)) continue
+
+            var installed = false
+            for (sourceDir in sourceDirs) {
+                try {
+                    val source = File(sourceDir, name)
+                    val canonicalSourceDir = sourceDir.canonicalFile
+                    if (!source.canonicalPath.startsWith(canonicalSourceDir.path + File.separator) ||
+                        !validArm64Library(source)) continue
+
+                    val staged = File(libDir, "$name.zion-staging")
+                    if (staged.exists() && !staged.delete()) continue
+                    source.inputStream().use { input ->
+                        FileOutputStream(staged).use { output ->
+                            input.copyTo(output)
+                            output.fd.sync()
+                        }
+                    }
+                    if (!validArm64Library(staged)) {
+                        staged.delete()
+                        continue
+                    }
+                    staged.setReadable(true, true)
+                    var backup: File? = null
+                    if (destination.exists()) {
+                        backup = File(libDir, "$name.invalid-backup-${System.currentTimeMillis()}")
+                        if (!destination.renameTo(backup)) {
+                            staged.delete()
+                            continue
+                        }
+                    }
+                    if (!staged.renameTo(destination)) {
+                        if (backup != null && !destination.exists()) {
+                            backup.renameTo(destination)
+                        }
+                        staged.delete()
+                        continue
+                    }
+                    destination.setReadable(true, true)
+                    installed = validArm64Library(destination)
+                    if (installed) {
+                        Log.i(TAG, "Installed local PRoot dependency: $name from ${source.absolutePath}")
+                        break
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Skipped local PRoot dependency source for $name", t)
+                }
+            }
+            if (!installed && !validArm64Library(destination)) {
+                Log.i(TAG, "Optional local PRoot dependency unavailable: $name")
+            }
+        }
+    }
+
+    /**
      * Prefer the official JNI accessor. Some packaged builds expose the ZIP
      * payload only as a raw stream embedded in the ELF shared object, without
      * a ZIP central directory/EOCD. ZipInputStream is a streaming reader and
      * does not require the EOCD record.
      */
     private fun loadBootstrapArchive(context: Context): ByteArray {
-        // The packaged library's known payload is a raw ZIP stream embedded
-        // in an ELF, and intentionally has no ZIP EOCD/central directory.
-        // Try this path first; ZipInputStream consumes local entries in order.
+        // The bootstrap may be stored as a raw ZIP stream inside the ELF. Builds
+        // can change section layout, so the old fixed offset is only a fast path;
+        // validate the entries and scan for a real stream before attempting JNI.
         var blobError: Throwable? = null
         val soFile = File(context.applicationInfo.nativeLibraryDir, "libtermux-bootstrap.so")
         try {
-            if (soFile.isFile) {
-                val offset = BOOTSTRAP_BLOB_OFFSET
-                val size = BOOTSTRAP_BLOB_SIZE
-                RandomAccessFile(soFile, "r").use { raf ->
-                    if (raf.length() < offset + size) {
-                        throw IllegalStateException(
-                            "Bootstrap ELF is too small for the expected blob: size=${raf.length()}, required=${offset + size}"
-                        )
-                    }
-                    raf.seek(offset)
-                    val bytes = ByteArray(size.toInt())
-                    raf.readFully(bytes)
-                    if (!looksLikeZipStream(bytes)) {
-                        throw IllegalStateException("Embedded bootstrap blob does not begin with a ZIP local header")
-                    }
-                    return bytes
+            if (!soFile.isFile || soFile.length() == 0L) {
+                throw IllegalStateException("Bootstrap ELF not found or empty: ${soFile.absolutePath}")
+            }
+            if (soFile.length() > MAX_ARCHIVE_BYTES + 64L * 1024L * 1024L) {
+                throw IllegalStateException("Bootstrap ELF exceeds the bounded scan size: ${soFile.length()}")
+            }
+            val elf = soFile.readBytes()
+            val candidates = LinkedHashSet<Int>()
+            if (BOOTSTRAP_BLOB_OFFSET >= 0L && BOOTSTRAP_BLOB_OFFSET < elf.size.toLong()) {
+                candidates.add(BOOTSTRAP_BLOB_OFFSET.toInt())
+            }
+            var i = 0
+            while (i + 4 <= elf.size && candidates.size < 128) {
+                if (elf[i] == 0x50.toByte() && elf[i + 1] == 0x4b.toByte() &&
+                    elf[i + 2] == 0x03.toByte() && elf[i + 3] == 0x04.toByte()) {
+                    candidates.add(i)
+                    i += 3
+                }
+                i++
+            }
+
+            for (offset in candidates) {
+                val remaining = elf.size - offset
+                if (remaining < 4) continue
+                // Prefer the known payload length at every discovered header,
+                // not only the historical offset. If the payload was rebuilt
+                // with a different size, also test the remaining ELF tail.
+                val lengths = if (BOOTSTRAP_BLOB_SIZE > 0L &&
+                    BOOTSTRAP_BLOB_SIZE <= remaining.toLong()) {
+                    listOf(BOOTSTRAP_BLOB_SIZE.toInt(), remaining).distinct()
+                } else {
+                    listOf(remaining)
+                }
+                for (length in lengths) {
+                    if (!isBootstrapZipStream(elf, offset, length)) continue
+                    Log.i(TAG, "Validated embedded bootstrap ZIP stream at ELF offset=$offset length=$length")
+                    return elf.copyOfRange(offset, offset + length)
                 }
             }
-            blobError = IllegalStateException("Bootstrap ELF not found: ${soFile.absolutePath}")
+            throw IllegalStateException(
+                "No valid bootstrap ZIP stream found in ELF; size=${elf.size}, candidates=${candidates.size}"
+            )
         } catch (t: Throwable) {
             blobError = t
-            Log.w(TAG, "Embedded bootstrap blob unavailable; trying JNI getZip", t)
+            Log.w(TAG, "Embedded bootstrap ZIP scan unavailable; trying JNI getZip", t)
         }
 
         try {
             val bytes = TermuxInstaller.getZip()
-            if (looksLikeZipStream(bytes)) return bytes
-            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid ZIP stream", blobError)
+            if (isBootstrapZipStream(bytes, 0, bytes.size)) return bytes
+            throw IllegalStateException("TermuxInstaller.getZip() returned an invalid bootstrap ZIP stream", blobError)
         } catch (t: Throwable) {
-            throw IllegalStateException("Unable to read bootstrap ZIP stream from ELF blob or JNI", t)
+            throw IllegalStateException(
+                "Unable to read bootstrap ZIP stream from ELF blob or JNI (ELF: ${blobError?.message})", t
+            )
         }
     }
 
-    private fun looksLikeZipStream(bytes: ByteArray): Boolean =
-        bytes.size >= 4 &&
-            bytes[0] == 0x50.toByte() &&
-            bytes[1] == 0x4b.toByte() &&
-            bytes[2] == 0x03.toByte() &&
-            bytes[3] == 0x04.toByte()
-
-    private fun report(success: Boolean, status: String, message: String, prefix: File, bash: File) =
-        mapOf<String, Any?>(
-            "success" to success,
-            "status" to status,
-            "message" to message,
-            "prefix" to prefix.absolutePath,
-            "prefixExists" to prefix.isDirectory,
-            "bashExists" to bash.isFile,
-            "bashSizeBytes" to if (bash.isFile) bash.length() else 0L
-        )
+    /** Validate real bootstrap entries, not a coincidental PK local-header byte sequence. */
+    private fun isBootstrapZipStream(bytes: ByteArray, offset: Int, length: Int): Boolean {
+        if (offset < 0 || length < 4 || offset.toLong() + length > bytes.size.toLong()) return false
+        var hasBash = false
+        var hasApt = false
+        var hasSymlinks = false
+        var entries = 0
+        var expanded = 0L
+        val buffer = ByteArray(8 * 1024)
+        return try {
+            ZipInputStream(ByteArrayInputStream(bytes, offset, length)).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    if (++entries > MAX_ENTRIES) return false
+                    val name = entry.name.removePrefix("./").trimStart('/')
+                    if (name == "bin/bash" || name == "usr/bin/bash") hasBash = true
+                    if (name == "bin/apt" || name == "usr/bin/apt") hasApt = true
+                    if (name == "SYMLINKS.txt" || name == "usr/SYMLINKS.txt") hasSymlinks = true
+                    while (true) {
+                        val count = zip.read(buffer)
+                        if (count < 0) break
+                        expanded += count.toLong()
+                        if (expanded > MAX_UNCOMPRESSED_BYTES) return false
+                    }
+                    zip.closeEntry()
+                }
+            }
+            hasBash && hasApt && hasSymlinks
+        } catch (t: Throwable) {
+            Log.v(TAG, "ZIP candidate rejected at offset=$offset: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
+    }
 
     private fun safeChild(root: File, relative: String): File {
         if (relative.startsWith("/") || relative.contains('\u0000')) {

@@ -210,14 +210,26 @@ class ZionBootstrap {
         await _copyDirectory(backup, staging);
         if (await current.exists()) await current.rename(failed.path);
         await staging.rename(current.path);
-        if (await failed.exists()) await failed.delete(recursive: true);
         await _config();
-        return await isInstalled();
+        final valid = await isInstalled();
+        if (!valid) throw StateError('Restored prefix failed final validation');
+        // Delete the old tree only after config and validation both succeed.
+        if (await failed.exists()) await failed.delete(recursive: true);
+        return true;
       } catch (_) {
         try {
           if (await staging.exists()) await staging.delete(recursive: true);
         } catch (_) {}
-        if (!await current.exists() && await failed.exists()) {
+        if (await current.exists() && await failed.exists()) {
+          // Preserve the failed candidate, then restore the prior usr atomically.
+          final rejected = Directory(base + '/.usr-rejected-' + DateTime.now().microsecondsSinceEpoch.toString());
+          try {
+            await current.rename(rejected.path);
+            await failed.rename(current.path);
+          } catch (_) {
+            // Do not delete either tree if recovery itself fails.
+          }
+        } else if (!await current.exists() && await failed.exists()) {
           try { await failed.rename(current.path); } catch (_) {}
         }
       }
@@ -290,13 +302,22 @@ class ZionBootstrap {
       final previousPrefix = await _activate(stagingDir);
       try {
         await _config();
-      } catch (_) {
+      } catch (error) {
         final current = Directory(prefix);
-        if (await current.exists()) {
-          try { await current.delete(recursive: true); } catch (_) {}
-        }
+        // Never remove the active prefix unless a verified previous prefix is
+        // available to restore. If no snapshot exists, preserve current usr.
         if (previousPrefix != null && await previousPrefix.exists()) {
-          try { await previousPrefix.rename(current.path); } catch (_) {}
+          final failed = Directory(base + '/.usr-config-failed-' + DateTime.now().microsecondsSinceEpoch.toString());
+          try {
+            if (await current.exists()) await current.rename(failed.path);
+            await previousPrefix.rename(current.path);
+            try { if (await failed.exists()) await failed.delete(recursive: true); } catch (_) {}
+          } catch (rollbackError) {
+            // Keep both the failed prefix and previous snapshot for manual recovery.
+            throw StateError('Configuration failed: $error; rollback failed: $rollbackError; previous prefix: ${previousPrefix.path}');
+          }
+        } else {
+          throw StateError('Configuration failed: $error. No previous usr snapshot existed; current usr was preserved at ${current.path}.');
         }
         rethrow;
       }
@@ -546,7 +567,7 @@ exec "${PREFIX:-/data/data/com.zion.os/files/usr}/bin/zion-api-dispatch" brightn
   static Future<void> initializeRuntime() async => _config();
   static Future<void> _config() async {
     await Directory(home).create(recursive:true);
-    await File(home+'/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
+    await File(home+'/.zionrc').writeAsString('export ZION_HOME="'+home+'"\nexport PREFIX="'+prefix+'"\nexport PATH="'+prefix+'/bin:'+prefix+'/sbin:/system/bin:/system/xbin"\nexport LD_LIBRARY_PATH="'+prefix+'/lib:'+prefix+'/lib64:'+prefix+'/libexec"\nexport TMPDIR="'+tmp+'"\nexport TERM="xterm-256color"\nexport COLORTERM="truecolor"\nexport LANG="C.UTF-8"\nexport LC_ALL="C.UTF-8"\n');
     final h=File(home+'/.zion_history');if(!await h.exists())await h.writeAsString('');
     final hosts=File(prefix+'/etc/hosts');if(!await hosts.exists())await hosts.writeAsString('127.0.0.1 localhost\n::1 localhost\n');
     final db=File(prefix+'/var/lib/zion-pkg/installed.json');if(!await db.exists())await db.writeAsString('[]');

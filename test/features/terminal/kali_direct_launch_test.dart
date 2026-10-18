@@ -36,6 +36,28 @@ void main() {
       expect(native, contains('"kali:"'));
     });
 
+    test('native Kali launch uses linker64, app-private PRoot temp, and guest loader binds', () async {
+      final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      expect(native, contains('setenv("PROOT_TMP_DIR", proot_tmp, 1)'));
+      expect(native, contains('path_join(proot_tmp, sizeof(proot_tmp), "tmp/proot")'));
+      expect(native, contains('g_files_dir'));
+      expect(native, contains('setenv("PROOT_NO_SECCOMP", "1", 1)'));
+      expect(native, contains('execl("/system/bin/linker64", "linker64", proot'));
+      expect(native, contains('lib/aarch64-linux-gnu:/lib/aarch64-linux-gnu'));
+      expect(native, contains('usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu'));
+      expect(native, isNot(contains('PROOT_TMP_DIR", "/storage/emulated/0')));
+    });
+
+    test('bootstrap installer validates local PRoot libraries before copying', () async {
+      final installer = await File(
+        'android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt',
+      ).readAsString();
+      expect(installer, contains('private fun installProotLibs(prefix: File)'));
+      expect(installer, contains('libtalloc.so.2'));
+      expect(installer, contains('libandroid-shmem.so'));
+      expect(installer, contains('validArm64Library(staged)'));
+    });
+
     test('Kali services reuse the same saved local rootfs path', () async {
       final source = await File('lib/core/services/kali_loader_service.dart').readAsString();
       expect(source, contains("static const String _localRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1'"));
