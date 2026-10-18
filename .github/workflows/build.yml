@@ -108,7 +108,10 @@ jobs:
             echo "ZION_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Build APK (split per ABI)
+      - name: Build diagnostic APK (API 28, sideload only)
+        # This experiment tests runtime compatibility; it is not a Play Store artifact.
+        env:
+          ORG_GRADLE_PROJECT_zionTargetSdk: "28"
         run: flutter build apk --release --split-per-abi
 
       - name: Build Android App Bundle
