@@ -123,7 +123,7 @@ void main() {
       expect(source, contains('cachedFailedLibrarySignature'));
       expect(source, contains('cachedFailedBootstrapMessage'));
       expect(source, contains('bootstrap-library-load-cached-failure'));
-      expect(source, contains('librarySignature = "${bootstrapLibrary.length()}:${bootstrapLibrary.lastModified()}"'));
+      expect(source, contains(r'librarySignature = "${bootstrapLibrary.length()}:${bootstrapLibrary.lastModified()}"'));
       expect(source, contains('cachedFailedLibrarySignature = librarySignature'));
       expect(source, contains('cachedFailedLibrarySignature = null'));
     });
