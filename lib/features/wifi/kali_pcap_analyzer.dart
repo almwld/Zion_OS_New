@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
 
 /// Copies a user-selected capture into the app's existing Kali rootfs and
 /// runs a read-only PCAP analysis. No injection or password cracking is run.
@@ -10,6 +9,7 @@ class KaliPcapAnalyzer {
       '/data/data/com.zion.os/files/usr/bin/proot';
   static const String _rootfs =
       '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
+  static const String _appHome = '/data/data/com.zion.os/files/home';
 
   static bool _validName(String name) =>
       RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.pcap$', caseSensitive: false)
@@ -26,9 +26,11 @@ class KaliPcapAnalyzer {
     if (!await rootfs.exists()) {
       throw FileSystemException('Kali rootfs was not found', _rootfs);
     }
-    final dstDir = Directory(p.join(_rootfs, 'root', 'captures'));
+    // The existing PRoot launch binds app HOME onto /root, so place captures
+    // in HOME/captures rather than the shadowed rootfs/root directory.
+    final dstDir = Directory('$_appHome/captures');
     await dstDir.create(recursive: true);
-    final dst = p.join(dstDir.path, pcapName);
+    final dst = '${dstDir.path}/$pcapName';
     await src.copy(dst);
     return dst;
   }
@@ -46,7 +48,7 @@ class KaliPcapAnalyzer {
     if (!await File(_proot).exists()) {
       throw FileSystemException('PRoot executable was not found', _proot);
     }
-    if (!await File(p.join(_rootfs, 'bin', 'sh')).exists()) {
+    if (!await File('$_rootfs/bin/sh').exists()) {
       throw FileSystemException('Kali rootfs is missing /bin/sh', _rootfs);
     }
 
