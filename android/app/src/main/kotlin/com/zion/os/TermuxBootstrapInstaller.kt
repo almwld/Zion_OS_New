@@ -25,6 +25,11 @@ internal object TermuxBootstrapInstaller {
     private const val MAX_ENTRIES = 100_000
     private const val MAX_UNCOMPRESSED_BYTES = 512L * 1024L * 1024L
 
+    // A failed embedded-payload probe is stable for the lifetime of this APK.
+    // Cache it for this process so every PTY restart does not rescan a large ELF.
+    @Volatile private var cachedFailedLibrarySignature: String? = null
+    @Volatile private var cachedFailedBootstrapMessage: String? = null
+
     @Synchronized
     fun ensureInstalled(context: Context): Map<String, Any?> {
         val files = context.filesDir
@@ -82,16 +87,27 @@ internal object TermuxBootstrapInstaller {
             )
         }
 
+        val librarySignature = "${bootstrapLibrary.length()}:${bootstrapLibrary.lastModified()}"
+        if (cachedFailedLibrarySignature == librarySignature) {
+            return report(false, "bootstrap-library-load-cached-failure",
+                "تم تخطي إعادة فحص Bootstrap الفاشل لهذا الملف الثابت؛ ${cachedFailedBootstrapMessage ?: "payload unavailable"}. استمر إصلاح Userland المحلي دون حذف الملفات.",
+                prefix, bash)
+        }
+
         val staging = File(files, "usr.bootstrap-staging")
         try {
             val archive = try {
                 loadBootstrapArchive(context)
             } catch (t: Throwable) {
+                cachedFailedLibrarySignature = librarySignature
+                cachedFailedBootstrapMessage = "${t.javaClass.simpleName}: ${t.message}"
                 Log.e(TAG, "Unable to read Termux Bootstrap ZIP stream from JNI or ELF blob", t)
                 return report(false, "bootstrap-library-load-failed",
                     "تعذر قراءة Bootstrap من JNI أو من ZIP blob داخل المكتبة: ${t.javaClass.simpleName}: ${t.message}",
                     prefix, bash)
             }
+            cachedFailedLibrarySignature = null
+            cachedFailedBootstrapMessage = null
             if (archive.isEmpty() || archive.size.toLong() > MAX_ARCHIVE_BYTES) {
                 return report(false, "invalid-archive-size", "حجم أرشيف Bootstrap غير صالح: ${archive.size} bytes.",
                     prefix, bash)
