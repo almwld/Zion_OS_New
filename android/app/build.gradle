@@ -4,6 +4,12 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// Production defaults to a current target SDK. The old target is an explicit
+// sideload-only diagnostic experiment for testing app-private Userland/PRoot.
+def zionTargetSdk = providers.gradleProperty("zionTargetSdk")
+    .map { it.toInteger() }
+    .getOrElse(36)
+
 android {
     namespace = "com.zion.os"
     compileSdk = 36
@@ -21,9 +27,9 @@ android {
     defaultConfig {
         applicationId = "com.zion.os"
         minSdk = 21
-        // Compatibility experiment requested for PRoot/Userland investigation.
-        // This does not bypass SELinux or guarantee app-private ELF execution.
-        targetSdk = 28
+        // Default production/AAB target remains modern. Only the dedicated
+        // CI diagnostic APK opts into API 28; this is not a SELinux bypass.
+        targetSdk = zionTargetSdk
         versionCode = 45002
         versionName = "4.5.0"
     }
@@ -45,6 +51,15 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+
+    lint {
+        // API 28 is used only by the sideload diagnostic APK. Google Play
+        // rejects this target, so suppress this single lint check only for
+        // that explicit experiment; the normal target-36 build keeps lint on.
+        if (zionTargetSdk < 33) {
+            disable += "ExpiredTargetSdkVersion"
         }
     }
 
