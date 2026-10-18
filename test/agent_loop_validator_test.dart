@@ -4,80 +4,40 @@ import 'package:project_zion/features/terminal/agent_loop_validator.dart';
 void main() {
   const validator = AgentLoopValidator();
 
-  group('AgentLoopValidator.validTarget', () {
-    test('accepts IPv4 and DNS hostnames', () {
-      expect(validator.validTarget('192.168.1.10'), isTrue);
-      expect(validator.validTarget('example.org'), isTrue);
-      expect(validator.validTarget('scan.example.org.'), isTrue);
+  group('AgentLoopValidator.validTarget (task description)', () {
+    test('accepts ordinary repair tasks and shell-oriented requests', () {
+      expect(validator.validTarget('تشخيص خطأ chdir/getcwd في PRoot'), isTrue);
+      expect(validator.validTarget('Find broken Flutter imports; run tests and fix failures'), isTrue);
+      expect(validator.validTarget('apt update && inspect package errors'), isTrue);
     });
 
-    test('rejects malformed or command-shaped targets', () {
-      expect(validator.validTarget('999.1.1.1'), isFalse);
-      expect(validator.validTarget('example.org/path'), isFalse);
-      expect(validator.validTarget('example.org;whoami'), isFalse);
+    test('rejects empty, NUL-containing, and excessively long tasks', () {
       expect(validator.validTarget(''), isFalse);
-      expect(validator.validTarget('user@example.org'), isFalse);
+      expect(validator.validTarget('   '), isFalse);
+      expect(validator.validTarget('x' * 2001), isFalse);
     });
   });
 
   group('AgentLoopValidator.validateCommand', () {
-    test('accepts bounded reconnaissance for the exact target', () {
-      expect(
-        validator.validateCommand(
-          'nmap -sV -p 22,53,80,443 example.org',
-          'example.org',
-        ),
-        isNull,
-      );
-      expect(
-        validator.validateCommand('curl -I https://example.org/status', 'example.org'),
-        isNull,
-      );
-      expect(
-        validator.validateCommand('dig example.org', 'example.org'),
-        isNull,
-      );
+    test('allows general shell commands, pipes, redirects and package operations', () {
+      expect(validator.validateCommand('pwd && ls -la', 'inspect the environment'), isNull);
+      expect(validator.validateCommand('grep -R "chdir" lib | head -20', 'find the implementation'), isNull);
+      expect(validator.validateCommand('apt update && apt install -y curl', 'repair packages'), isNull);
+      expect(validator.validateCommand('python3 -c "import os; print(os.getcwd())"', 'test getcwd'), isNull);
+      expect(validator.validateCommand('git status --short', 'inspect repository'), isNull);
     });
 
-    test('rejects hostnames that only contain or extend the target', () {
-      expect(
-        validator.validateCommand('nmap -sV example.org.attacker.test', 'example.org'),
-        isNotNull,
-      );
-      expect(
-        validator.validateCommand('nmap -sV attacker-example.org', 'example.org'),
-        isNotNull,
-      );
+    test('rejects empty, oversized and NUL-containing commands', () {
+      expect(validator.validateCommand('', 'task'), isNotNull);
+      expect(validator.validateCommand('x' * 4001, 'task'), isNotNull);
+      expect(validator.validateCommand('echo\u0000bad', 'task'), isNotNull);
     });
 
-    test('rejects shell chaining and unrestricted options', () {
-      expect(
-        validator.validateCommand('nmap example.org; whoami', 'example.org'),
-        isNotNull,
-      );
-      expect(
-        validator.validateCommand('nmap -p- example.org', 'example.org'),
-        isNotNull,
-      );
-      expect(
-        validator.validateCommand('curl -X POST https://example.org', 'example.org'),
-        isNotNull,
-      );
-      expect(
-        validator.validateCommand('hydra -l admin example.org', 'example.org'),
-        isNotNull,
-      );
-    });
-
-    test('matches URL host exactly, not URL text', () {
-      expect(
-        validator.validateCommand('curl -I https://attacker.test/?next=example.org', 'example.org'),
-        isNotNull,
-      );
-      expect(
-        validator.validateCommand('curl -I https://example.org/path', 'example.org'),
-        isNull,
-      );
+    test('blocks catastrophic device and filesystem destruction patterns', () {
+      expect(validator.validateCommand('rm -rf /', 'cleanup'), isNotNull);
+      expect(validator.validateCommand('mkfs.ext4 /dev/block/mmcblk0', 'format'), isNotNull);
+      expect(validator.validateCommand('dd if=/dev/zero of=/dev/block/sda', 'write disk'), isNotNull);
+      expect(validator.validateCommand('sudo rm -rf /', 'cleanup'), isNotNull);
     });
   });
 }
