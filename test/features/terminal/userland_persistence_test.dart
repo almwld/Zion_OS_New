@@ -118,6 +118,15 @@ void main() {
       expect(source, contains('TermuxInstaller.getZip()'));
     });
 
+    test('native PTY waits for child slave-open handshake before reporting a session', () async {
+      final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
+      expect(native, contains('int startup_pipe[2]'));
+      expect(native, contains('write(startup_pipe[1], &ready, sizeof(ready))'));
+      expect(native, contains('poll(&startup_wait, 1, 1500)'));
+      expect(native, contains('refusing a dead session'));
+      expect(native.indexOf('poll(&startup_wait, 1, 1500)'), lessThan(native.indexOf('g_sessions[slot].master_fd = master')));
+    });
+
     test('native PTY lifecycle uses generation handles, safe initialization and bounded writes', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       final activity = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
