@@ -645,7 +645,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (!ready) {
       if (mounted) setState(() => _aiLoading = true);
       try {
-        ready = await _ai.autoLoadBestModel(threads: 2);
+        final discoveredModel = await _ai.autoLoadBestModel(threads: 2);
+        ready = discoveredModel != null;
         if (!ready) {
           final imported = await _ai.pickAndImportModel();
           if (imported != null) {
