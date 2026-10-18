@@ -366,8 +366,11 @@ static void exec_selected_shell(const char *shell_path) {
         char bashrc[PATH_MAX];
         path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
         if (access(bashrc, R_OK) == 0) {
+            // Bypass the binary's compiled Termux system bashrc path. This
+            // app owns its runtime under files/usr; only Zion's generated rc
+            // should be loaded in the interactive PTY.
             execl("/system/bin/linker64", "linker64", selected,
-                  "--init-file", bashrc, "-i", (char *)NULL);
+                  "--noprofile", "--norc", "--init-file", bashrc, "-i", (char *)NULL);
         } else {
             execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
         }
