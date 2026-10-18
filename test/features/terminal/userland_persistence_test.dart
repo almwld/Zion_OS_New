@@ -118,6 +118,16 @@ void main() {
       expect(source, contains('TermuxInstaller.getZip()'));
     });
 
+    test('bootstrap payload scan failure is cached across repeated PTY starts', () async {
+      final source = await File('android/app/src/main/kotlin/com/zion/os/TermuxBootstrapInstaller.kt').readAsString();
+      expect(source, contains('cachedFailedLibrarySignature'));
+      expect(source, contains('cachedFailedBootstrapMessage'));
+      expect(source, contains('bootstrap-library-load-cached-failure'));
+      expect(source, contains('librarySignature = "${bootstrapLibrary.length()}:${bootstrapLibrary.lastModified()}"'));
+      expect(source, contains('cachedFailedLibrarySignature = librarySignature'));
+      expect(source, contains('cachedFailedLibrarySignature = null'));
+    });
+
     test('native PTY waits for child slave-open handshake before reporting a session', () async {
       final native = await File('android/app/src/main/cpp/zion_pty.c').readAsString();
       expect(native, contains('int startup_pipe[2]'));
