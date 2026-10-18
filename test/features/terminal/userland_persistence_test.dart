@@ -137,6 +137,15 @@ void main() {
       expect(adapter, contains('Write incomplete:'));
     });
 
+    test('generic Userland startup does not import Kali archives', () async {
+      final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
+      final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
+      expect(installer, isNot(contains('_installFromKaliArchive(')));
+      expect(installer, contains('Keep distro installation out of the generic shell-startup path'));
+      expect(service, contains('final kaliBootstrap = const ZionLocalKaliBootstrap()'));
+      expect(service, contains('if (kaliRootfsPath != null)'));
+    });
+
     test('local recovery is offline-only and leaves Android shell available', () async {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final service = await File('lib/features/terminal/terminal_service.dart').readAsString();
