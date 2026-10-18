@@ -118,6 +118,8 @@ void main() {
       final installer = await File('lib/core/userland/zion_userland_installer.dart').readAsString();
       final native = await File('android/app/src/main/kotlin/com/zion/os/MainActivity.kt').readAsString();
       expect(installer, contains('_restoreUserlandFromDocumentTree'));
+      expect(installer, contains('if (Platform.isAndroid && directBackupFailure != null)'));
+      expect(installer, isNot(contains('Platform.isAndroid && directBackupFound && directBackupFailure != null')));
       expect(installer, contains("invokeMethod<Map<dynamic, dynamic>>('pickTree')"));
       expect(installer, contains("'copyDocumentToPrivate'"));
       expect(installer, contains('_installFromDirectory(staging.path'));
