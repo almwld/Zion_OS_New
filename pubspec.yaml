@@ -60,10 +60,10 @@ flutter:
     - assets/icons/svg_colors/
     - assets/images/
     - assets/fonts/
+    - assets/colors/
     - assets/repository/
     - assets/agent_skills/
     - assets/agent_skills/community/
-    - assets/repository/
 
 flutter_launcher_icons:
   android: true
