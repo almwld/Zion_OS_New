@@ -558,14 +558,30 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         setenv("ZION_SHELL_MODE", "zion-userland", 1);
     }
 
+    // Synchronize PTY startup with the child opening the slave. Without this
+    // handshake, the parent reader can race the child's open(slave_name), see
+    // EIO on the master before the slave exists, and incorrectly close a healthy
+    // session immediately after the UI reports it connected.
+    int startup_pipe[2];
+    if (pipe(startup_pipe) != 0) {
+        close(master);
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
+    }
+    (void)fcntl(startup_pipe[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(startup_pipe[1], F_SETFD, FD_CLOEXEC);
+
     pid_t pid = fork();
     if (pid < 0) {
+        close(startup_pipe[0]);
+        close(startup_pipe[1]);
         close(master);
         pthread_mutex_unlock(&g_sessions_lock);
         return 0;
     }
 
     if (pid == 0) {
+        close(startup_pipe[0]);
         // After fork(), never unlock g_sessions_lock here: if another thread
         // held it at fork time, the inherited pthread mutex is not safely
         // unlockable in the child and can deadlock the PTY process.
@@ -574,7 +590,13 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         // can leave a stopped shell session looking alive.
         close(master);
         int slave = open(slave_name, O_RDWR | O_NOCTTY);
-        if (slave < 0) _exit(127);
+        if (slave < 0) {
+            close(startup_pipe[1]);
+            _exit(127);
+        }
+        const unsigned char ready = 1;
+        (void)write(startup_pipe[1], &ready, sizeof(ready));
+        close(startup_pipe[1]);
         configure_terminal(slave);
 
         prctl(PR_SET_PDEATHSIG, SIGHUP);
@@ -594,6 +616,28 @@ Java_com_zion_os_MainActivity_nativeStartPty(JNIEnv *env, jobject thiz, jint row
         if (kali_mode) exec_kali_proot(kali_proot, kali_rootfs);
         if (root_mode) exec_root_shell(selected_shell);
         exec_selected_shell(selected_shell);
+    }
+
+    close(startup_pipe[1]);
+    struct pollfd startup_wait = {startup_pipe[0], POLLIN | POLLHUP, 0};
+    int startup_ready;
+    do {
+        startup_ready = poll(&startup_wait, 1, 1500);
+    } while (startup_ready < 0 && errno == EINTR);
+    unsigned char ready = 0;
+    ssize_t ready_bytes = startup_ready > 0
+        ? read(startup_pipe[0], &ready, sizeof(ready))
+        : -1;
+    close(startup_pipe[0]);
+    if (ready_bytes != (ssize_t)sizeof(ready) || ready != 1) {
+        __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
+            "PTY child did not open its slave within 1500ms (poll=%d errno=%d); refusing a dead session",
+            startup_ready, errno);
+        close(master);
+        (void)kill(pid, SIGKILL);
+        while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+        pthread_mutex_unlock(&g_sessions_lock);
+        return 0;
     }
 
     g_sessions[slot].master_fd = master;
