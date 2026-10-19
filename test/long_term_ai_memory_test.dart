@@ -13,11 +13,11 @@ void main() {
     final memory = LongTermAIMemory();
     await memory.remember(
       kind: 'agent-step',
-      text: 'تحليل طويل ' * 600,
+      text: List<String>.filled(600, 'تحليل طويل ').join(),
       metadata: <String, dynamic>{
         'tool': 'shell',
         'success': true,
-        'details': 'معلومات تفصيلية ' * 200,
+        'details': List<String>.filled(200, 'معلومات تفصيلية ').join(),
       },
     );
 
