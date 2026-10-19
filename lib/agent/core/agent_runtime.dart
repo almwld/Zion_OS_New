@@ -159,8 +159,13 @@ class AgentRuntime {
     ));
   }
 
+  /// Starts a clean visible conversation without disposing the shared runtime.
+  /// Long-term memory remains intact; only transient session state is cleared.
   void clearSession() {
+    if (canCancel) return;
     _active = null;
+    _lastResult = null;
+    _history.clear();
   }
 
   Future<void> dispose() async {
