@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,68 @@ import 'agent_lab_screen.dart';
 import 'agent_subagents_screen.dart';
 import 'obsidian_vault_screen.dart';
 import 'agent_intelligence_hub.dart';
+
+class _SuperAgentTypingDots extends StatefulWidget {
+  const _SuperAgentTypingDots();
+
+  @override
+  State<_SuperAgentTypingDots> createState() => _SuperAgentTypingDotsState();
+}
+
+class _SuperAgentTypingDotsState extends State<_SuperAgentTypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 32,
+        height: 16,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) => Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: List<Widget>.generate(3, (index) {
+              final phase = (_controller.value * 2 * math.pi) -
+                  (index * 2 * math.pi / 3);
+              final scale = 0.65 + (0.55 * ((math.sin(phase) + 1) / 2));
+              final dotScale = scale.clamp(0.65, 1.2);
+              const cyan = Color(0xFF38BDF8);
+              return Padding(
+                padding: const EdgeInsetsDirectional.only(end: 4),
+                child: Transform.scale(
+                  scale: dotScale,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: cyan.withValues(alpha: 0.65 + (dotScale - 0.65) * 0.7),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: cyan.withValues(alpha: 0.20 + (dotScale - 0.65) * 0.28),
+                          blurRadius: 6,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+}
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -810,17 +873,60 @@ Engineering loop:
   );
 
   Widget _workingBanner(String title, String detail) => Container(
-    margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(13),
-    decoration: BoxDecoration(color: const Color(0xFF102633), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFF28718A).withOpacity(.6))),
-    child: Row(children: [
-      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF35D3E8))),
-      const SizedBox(width: 11),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
-        const SizedBox(height: 3),
-        Text(detail, style: const TextStyle(color: Color(0xFF9BC5D2), fontSize: 11, height: 1.4)),
-      ])),
-    ]),
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(
+      color: const Color(0xFF1E293B),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: const Color(0xFF38BDF8).withValues(alpha: .30),
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFF38BDF8).withValues(alpha: .06),
+          blurRadius: 12,
+          spreadRadius: 1,
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.auto_awesome_rounded, color: Color(0xFF38BDF8), size: 21),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title == 'الوكيل يعمل' ? 'Zion Super Agent يعمل الآن' : title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const _SuperAgentTypingDots(),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                detail,
+                style: const TextStyle(color: Color(0xFF9BAFBE), fontSize: 11, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
   );
 
   Future<void> _copyMessage(String text) async {
