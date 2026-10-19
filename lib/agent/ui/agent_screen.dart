@@ -132,7 +132,11 @@ class _AgentScreenState extends State<AgentScreen> {
     _persistentTerminal ??= _agentTerminal;
     if (isFirstRuntime && !_ownsAgentTerminal) _agentTerminal.retainForAgent();
     _ptySubscription = _agentTerminal.output.listen((chunk) {
-      _ptyConsole.write(chunk);
+      _ptyConsole.write(chunk
+          .replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '')
+          .replaceAll('\u0000', '')
+          .replaceAll('\r\n', '\n')
+          .replaceAll('\r', '\n'));
       if (_ptyConsole.length > 18000) {
         final current = _ptyConsole.toString();
         _ptyConsole
@@ -148,6 +152,7 @@ class _AgentScreenState extends State<AgentScreen> {
       _persistentRuntime = AgentRuntime(orchestrator: AgentOrchestrator(ai: ai, tools: tools));
     }
     _runtime = _persistentRuntime!;
+    _result = _runtime.lastResult;
     // Let the agent window render before requesting native model discovery.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_discoverModel());
