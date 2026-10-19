@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,19 +7,69 @@ import '../core/agent_models.dart';
 /// Read-only observability view for the current Super Agent session.
 /// It visualizes real AgentEvents; specialist lanes are orchestration roles,
 /// not claims of independently running model processes.
-class AgentIntelligenceHub extends StatelessWidget {
+class AgentIntelligenceHub extends StatefulWidget {
   const AgentIntelligenceHub({
     super.key,
     required this.events,
     required this.task,
     required this.result,
     required this.overthinkerEnabled,
+    this.eventStream,
+    this.resultProvider,
   });
 
   final List<AgentEvent> events;
   final String task;
   final AgentResult? result;
   final bool overthinkerEnabled;
+  final Stream<AgentEvent>? eventStream;
+  final AgentResult? Function()? resultProvider;
+
+  @override
+  State<AgentIntelligenceHub> createState() => _AgentIntelligenceHubState();
+}
+
+class _AgentIntelligenceHubState extends State<AgentIntelligenceHub> {
+  late final List<AgentEvent> _liveEvents;
+  StreamSubscription<AgentEvent>? _eventSubscription;
+
+  List<AgentEvent> get events => _liveEvents;
+  String get task => widget.task;
+  AgentResult? get result => widget.resultProvider?.call() ?? widget.result;
+  bool get overthinkerEnabled => widget.overthinkerEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _liveEvents = List<AgentEvent>.of(widget.events);
+    _eventSubscription = widget.eventStream?.listen((event) {
+      if (!mounted) return;
+      setState(() {
+        _liveEvents.add(event);
+        if (_liveEvents.length > 500) {
+          _liveEvents.removeRange(0, _liveEvents.length - 500);
+        }
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AgentIntelligenceHub oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.eventStream != widget.eventStream) {
+      unawaited(_eventSubscription?.cancel());
+      _eventSubscription = widget.eventStream?.listen((event) {
+        if (!mounted) return;
+        setState(() => _liveEvents.add(event));
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_eventSubscription?.cancel());
+    super.dispose();
+  }
 
   static const _bg = Color(0xFF08111B);
   static const _panel = Color(0xFF111F2C);
