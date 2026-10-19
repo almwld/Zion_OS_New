@@ -153,6 +153,7 @@ class _AgentScreenState extends State<AgentScreen> {
       if (mounted) unawaited(_discoverModel());
     });
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
+    _events.addAll(_runtime.history.where((event) => !_events.any((existing) => identical(existing, event))));
     _sub=_runtime.events.listen((e){
       if(!mounted)return;
       setState(() {
