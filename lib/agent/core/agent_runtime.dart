@@ -44,6 +44,8 @@ class AgentRuntime {
   final AgentOrchestrator orchestrator;
   CancellationToken? _token;
   AgentSession? _active;
+  AgentResult? _lastResult;
+  AgentResult? get lastResult => _lastResult;
   StreamSubscription<AgentEvent>? _subscription;
   bool _starting = false;
   final StreamController<AgentEvent> _events = StreamController<AgentEvent>.broadcast();
@@ -86,6 +88,7 @@ class AgentRuntime {
       state: AgentState.planning,
     );
     _active = session;
+    _lastResult = null;
     _starting = true;
     final token = CancellationToken();
     _token = token;
@@ -120,6 +123,7 @@ class AgentRuntime {
         ..addAll(result.steps);
       session.error = result.error;
       session.touch();
+      _lastResult = result;
       return result;
     } finally {
       _starting = false;
