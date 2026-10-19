@@ -118,6 +118,8 @@ class _AgentScreenState extends State<AgentScreen> {
   String _modelStatus='جارٍ البحث عن نموذج GGUF محلي…';
   String? _modelName;
   LlamaModel? _candidateModel;
+  List<LlamaModel> _availableModels = <LlamaModel>[];
+  final Set<String> _collaborationModels = <String>{};
 
   @override void initState(){
     super.initState();
@@ -245,6 +247,8 @@ class _AgentScreenState extends State<AgentScreen> {
         });
       final nativeReady = await _runtime.orchestrator.ai.refreshLoadedState();
       if (mounted) setState(() {
+        _availableModels = candidates;
+        _collaborationModels.removeWhere((path) => !candidates.any((model) => model.path == path));
         _candidateModel = candidates.isEmpty ? null : candidates.first;
         _modelReady = nativeReady;
         _modelName = nativeReady
@@ -336,8 +340,52 @@ Engineering loop:
     await _persistMessages();
     _scrollEnd();
     try {
+      var executionTask = task;
+      final selectedModels = _availableModels
+          .where((model) => _collaborationModels.contains(model.path))
+          .toList(growable: false);
+      if (selectedModels.length > 1) {
+        final sharedNotes = <String>[];
+        for (var i = 0; i < selectedModels.length; i++) {
+          final model = selectedModels[i];
+          if (mounted) setState(() {
+            _modelLoading = true;
+            _modelStatus = 'تعاون النماذج ${i + 1}/${selectedModels.length}: ${model.name}';
+          });
+          final loaded = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
+          if (!loaded) {
+            throw StateError('تعذر تحميل نموذج التعاون: ${model.name}. تحقق من الملف أو الذاكرة المتاحة.');
+          }
+          final prompt = '''أنت مشارك في جلسة متعددة النماذج تعمل محلياً على Zion OS.
+المهمة الأصلية: $rawTask
+ملخصات النماذج السابقة:
+${sharedNotes.isEmpty ? 'لا توجد مساهمات سابقة؛ قدّم تحليلك المستقل.' : sharedNotes.join('\n\n')}
+اسم نموذجك: ${model.name}
+قدّم تحليلاً عملياً موجزاً، وحدد الافتراضات والمخاطر وخطوة التحقق. لا تدّع تنفيذ أوامر أو تغييرات لم تنفذها فعلياً.''';
+          final contribution = (await _runtime.orchestrator.ai.generate(
+            prompt,
+            maxTokens: 512,
+            temperature: 0.25,
+          )).trim();
+          if (contribution.isEmpty || contribution.startsWith('ERROR:')) {
+            throw StateError('فشل إخراج نموذج ${model.name}: ${contribution.isEmpty ? 'رد فارغ' : contribution}');
+          }
+          sharedNotes.add('مساهمة ${model.name}:\n$contribution');
+        }
+        executionTask = '''المهمة الأصلية المطلوب تنفيذها: $rawTask
+
+مراجعة تعاونية فعلية من النماذج المحلية المختارة (تم تشغيل كل نموذج بالتتابع، وليس بالتوازي):
+${sharedNotes.join('\n\n')}
+
+استخدم هذه المساهمات كسياق مساعد لا كحقائق مؤكدة. نفّذ المهمة بالأدوات المسجلة، وافحص المخرجات الحقيقية، وبيّن أي تعارض أو إخفاق. لا تعتبر التحليل السابق دليلاً على تنفيذ المهمة.''';
+        if (mounted) setState(() {
+          _modelName = selectedModels.last.name;
+          _modelReady = true;
+          _modelStatus = 'اكتمل تحليل ${selectedModels.length} نماذج محلية بالتتابع؛ يجري التنفيذ والتحقق الآن.';
+        });
+      }
       final result = await _runtime.run(
-        task,
+        executionTask,
         approveReviewed: false,
         stepTimeout: const Duration(minutes: 16),
         maxRecoveryAttempts: 8,
@@ -790,6 +838,30 @@ Engineering loop:
                 _outlineAction(Icons.refresh, 'فحص النموذج', (_modelLoading || _runtime.canCancel) ? null : () => unawaited(_discoverModel())),
                 _statusTag(Icons.lock_outline, 'موافقة للخطوات الحساسة', const Color(0xFFFFB454)),
               ]),
+              if (_availableModels.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('نماذج التعاون في الجلسة', style: TextStyle(color: Color(0xFFD9EAF2), fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(height: 3),
+                const Text('اختر نموذجين أو أكثر. سيعملون بالتتابع ويتبادلون ملخصات التحليل؛ يُحمّل نموذج واحد فقط في كل مرة لتقليل ضغط الذاكرة.', style: TextStyle(color: Color(0xFF9BAFBE), fontSize: 10, height: 1.4)),
+                const SizedBox(height: 5),
+                ..._availableModels.map((model) => CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  activeColor: const Color(0xFF35D3E8),
+                  checkColor: const Color(0xFF07131B),
+                  value: _collaborationModels.contains(model.path),
+                  onChanged: (_modelLoading || _submitting || _runtime.canCancel) ? null : (selected) => setState(() {
+                    if (selected == true) {
+                      _collaborationModels.add(model.path);
+                    } else {
+                      _collaborationModels.remove(model.path);
+                    }
+                  }),
+                  title: Text(model.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11)),
+                  subtitle: Text('${(model.sizeBytes / (1024 * 1024)).toStringAsFixed(0)} MiB${_modelName == model.name ? ' · النموذج الحالي' : ''}', style: const TextStyle(color: Color(0xFF8197A7), fontSize: 9)),
+                )),
+              ],
             ],
           ]),
         ),
