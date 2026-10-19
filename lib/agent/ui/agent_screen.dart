@@ -218,13 +218,18 @@ class _AgentScreenState extends State<AgentScreen> {
 
   void _restoreCompletedResultIntoMessages() {
     final latest = _runtime.lastResult;
-    if (latest == null) return;
+    // Never display a prior task's result in an empty/new conversation.
+    if (latest == null ||
+        !_messages.any((message) => message['role'] == 'user')) {
+      _result = null;
+      return;
+    }
     _result = latest;
-    // Only restore a result when this conversation contains a user task.
-    if (!_messages.any((message) => message['role'] == 'user')) return;
     final summary = _visibleResultSummary(latest);
     final alreadyShown = _messages.any((message) =>
-        message['role'] == 'assistant' && message['text'] == summary);
+        message['role'] == 'assistant' &&
+        (message['text'] == summary ||
+            (message['text'] ?? '').contains(summary)));
     if (alreadyShown) return;
     _appendMessage({
       'role': 'assistant',
@@ -518,6 +523,7 @@ ${sharedNotes.join('\n\n')}
           IconButton(
             tooltip: 'محادثة جديدة',
             onPressed: (!_historyReady || _runtime.canCancel || _submitting) ? null : () {
+              _runtime.clearSession();
               setState(() {
                 _messages..clear()..add(const {'role': 'assistant', 'text': 'محادثة جديدة جاهزة. ما المهمة التي تريد إنجازها؟'});
                 _events.clear();
