@@ -398,7 +398,7 @@ class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final String title;
   @override Widget build(BuildContext context) => Row(children: [
-    Icon(icon, color: AgentIntelligenceHub._cyan, size: 19),
+    Icon(icon, color: _AgentIntelligenceHubState._cyan, size: 19),
     const SizedBox(width: 8),
     Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13))),
   ]);
