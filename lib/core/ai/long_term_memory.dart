@@ -119,7 +119,7 @@ class LongTermAIMemory {
   }
 
   List<AIMemoryEntry> search(String query, {int limit = 20}) {
-    final safeLimit = limit.clamp(1, 100);
+    final safeLimit = limit.clamp(1, 100).toInt();
     final q = query.trim().toLowerCase();
     if (q.isEmpty) {
       return _entries.reversed.take(safeLimit).toList(growable: false);
