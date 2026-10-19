@@ -87,12 +87,18 @@ class AgentScreen extends StatefulWidget {
 }
 
 class _AgentScreenState extends State<AgentScreen> {
+  // Keep execution alive across route changes; this widget is only a view.
+  static AgentRuntime? _persistentRuntime;
+  static TerminalService? _persistentTerminal;
+  static LlamaService? _persistentAi;
+  static final StringBuffer _persistentPtyConsole = StringBuffer();
+
   late final AgentRuntime _runtime;
   late final TerminalService _agentTerminal;
   late final bool _ownsAgentTerminal;
   late final bool _usingSharedTerminal;
   StreamSubscription<String>? _ptySubscription;
-  final StringBuffer _ptyConsole = StringBuffer();
+  final StringBuffer _ptyConsole = _persistentPtyConsole;
   int _ptyOutputVersion = 0;
   final _input=TextEditingController();
   final _scroll=ScrollController();
@@ -115,14 +121,15 @@ class _AgentScreenState extends State<AgentScreen> {
 
   @override void initState(){
     super.initState();
-    final ai = LlamaService();
-    final activeTerminal = TerminalService.activeInteractiveService;
+    final ai = _persistentAi ??= LlamaService();
+    final activeTerminal = _persistentTerminal ?? TerminalService.activeInteractiveService;
     _usingSharedTerminal = activeTerminal != null;
     _ownsAgentTerminal = activeTerminal == null;
     _agentTerminal = activeTerminal ?? TerminalService(context.read<SecurityCore>());
-    if (!_ownsAgentTerminal) _agentTerminal.retainForAgent();
+    final isFirstRuntime = _persistentRuntime == null;
+    _persistentTerminal ??= _agentTerminal;
+    if (isFirstRuntime && !_ownsAgentTerminal) _agentTerminal.retainForAgent();
     _ptySubscription = _agentTerminal.output.listen((chunk) {
-      if (!mounted) return;
       _ptyConsole.write(chunk);
       if (_ptyConsole.length > 18000) {
         final current = _ptyConsole.toString();
@@ -130,11 +137,15 @@ class _AgentScreenState extends State<AgentScreen> {
           ..clear()
           ..write(current.substring(current.length - 18000));
       }
+      if (!mounted) return;
       setState(() => _ptyOutputVersion++);
       _scrollEnd();
     });
-    final tools = ToolRegistry(ai: ai, customTools: [TerminalPtyTool(_agentTerminal)]);
-    _runtime = AgentRuntime(orchestrator: AgentOrchestrator(ai: ai, tools: tools));
+    if (isFirstRuntime) {
+      final tools = ToolRegistry(ai: ai, customTools: [TerminalPtyTool(_agentTerminal)]);
+      _persistentRuntime = AgentRuntime(orchestrator: AgentOrchestrator(ai: ai, tools: tools));
+    }
+    _runtime = _persistentRuntime!;
     // Let the agent window render before requesting native model discovery.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_discoverModel());
@@ -1270,14 +1281,10 @@ Engineering loop:
   };
 
   @override void dispose(){
-    _sub?.cancel();
-    _ptySubscription?.cancel();
-    _runtime.dispose();
-    if (_ownsAgentTerminal) {
-      unawaited(_agentTerminal.dispose());
-    } else {
-      unawaited(_agentTerminal.releaseForAgent());
-    }
+    // Detach route listeners only. Do not cancel the active session or close
+    // its PTY when the user navigates to another screen.
+    unawaited(_sub?.cancel());
+    unawaited(_ptySubscription?.cancel());
     _input.dispose();
     _scroll.dispose();
     super.dispose();
