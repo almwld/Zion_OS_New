@@ -63,7 +63,7 @@ class _TypingDotsState extends State<_TypingDots>
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
+    const color = Color(0xFF38BDF8);
     return SizedBox(
       width: 34,
       height: 16,
@@ -76,16 +76,29 @@ class _TypingDotsState extends State<_TypingDots>
             final phase = (_controller.value * 2 * math.pi) -
                 (index * 2 * math.pi / 3);
             final scale = 0.65 + (0.55 * ((math.sin(phase) + 1) / 2));
+            const glowColor = Color(0xFF38BDF8);
+            final dotScale = scale.clamp(0.65, 1.2);
             return Padding(
               padding: const EdgeInsetsDirectional.only(end: 4),
               child: Transform.scale(
-                scale: scale,
+                scale: dotScale,
                 child: Container(
-                  width: 6,
-                  height: 6,
+                  width: 7,
+                  height: 7,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.55 + (scale - 0.65) * 0.7),
+                    color: glowColor.withValues(
+                      alpha: 0.65 + (dotScale - 0.65) * 0.7,
+                    ),
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: glowColor.withValues(
+                          alpha: 0.20 + (dotScale - 0.65) * 0.28,
+                        ),
+                        blurRadius: 6,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
                 ),
               ),
