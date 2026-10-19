@@ -212,9 +212,22 @@ class _AgentScreenState extends State<AgentScreen> {
       // A task can finish after this route has been removed. AgentRuntime owns
       // the result, so recover it into the transcript when the screen returns.
       _restoreCompletedResultIntoMessages();
+      _restoreInterruptedTaskIfNeeded();
       await _persistMessages();
       if (mounted) setState(() => _historyReady = true);
     }
+  }
+
+  void _restoreInterruptedTaskIfNeeded() {
+    if (_runtime.canCancel || _runtime.lastResult != null || _result != null) return;
+    final lastUserIndex = _messages.lastIndexWhere((message) => message['role'] == 'user');
+    final lastAssistantIndex = _messages.lastIndexWhere((message) => message['role'] == 'assistant');
+    if (lastUserIndex < 0 || lastUserIndex <= lastAssistantIndex) return;
+    final task = _messages[lastUserIndex]['text'] ?? '';
+    if (task.trim().isEmpty) return;
+    const reason = 'انقطعت الجلسة قبل تسجيل نتيجة نهائية. لم تُستأنف المهمة تلقائياً لتجنب تكرار أوامر قد تُحدث تغييرات. يمكنك مراجعة الطلب ثم الضغط على إعادة المحاولة.';
+    _result = AgentResult.error(task, reason);
+    _appendMessage({'role': 'assistant', 'text': reason});
   }
 
   void _restoreCompletedResultIntoMessages() {
