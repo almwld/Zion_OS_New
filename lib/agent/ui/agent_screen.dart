@@ -202,8 +202,26 @@ class _AgentScreenState extends State<AgentScreen> {
         await prefs.remove(_historyKey);
       } catch (_) {}
     } finally {
+      // A task can finish after this route has been removed. AgentRuntime owns
+      // the result, so recover it into the transcript when the screen returns.
+      _restoreCompletedResultIntoMessages();
+      await _persistMessages();
       if (mounted) setState(() => _historyReady = true);
     }
+  }
+
+  void _restoreCompletedResultIntoMessages() {
+    final latest = _runtime.lastResult;
+    if (latest == null) return;
+    _result = latest;
+    final summary = _visibleResultSummary(latest);
+    final alreadyShown = _messages.any((message) =>
+        message['role'] == 'assistant' && message['text'] == summary);
+    if (alreadyShown) return;
+    _appendMessage({
+      'role': 'assistant',
+      'text': 'نتيجة مستعادة من جلسة الوكيل السابقة\\n$summary',
+    });
   }
 
   Future<void> _persistMessages() async {
