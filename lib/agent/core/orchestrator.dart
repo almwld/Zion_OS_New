@@ -324,10 +324,10 @@ class AgentOrchestrator {
     final injectedPlanBuilder = planBuilder;
     if (injectedPlanBuilder != null) return injectedPlanBuilder(task);
     await memory.load();
-    // Keep input well below the native 2048-token context so both planning
+    // Keep input within the native 2048-token context so both planning
     // and recovery remain reliable on-device. The local model still authors
     // every plan; no guessed or heuristic plan is substituted.
-    final boundedTask = task.length > 800 ? task.substring(0, 800) : task;
+    final boundedTask = task.length > 1500 ? task.substring(0, 1500) : task;
     final relevantMemory = memory.search(task, limit: 6).map((entry) => <String, dynamic>{
       'kind': entry.kind,
       'text': entry.text.length > 180 ? entry.text.substring(0, 180) : entry.text,
