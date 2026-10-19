@@ -119,6 +119,39 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zion.os/agent_background")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        val task = call.argument<String>("task").orEmpty()
+                        val intent = Intent(this, ZionAgentForegroundService::class.java).apply {
+                            action = ZionAgentForegroundService.ACTION_START
+                            putExtra(ZionAgentForegroundService.EXTRA_TASK, task)
+                        }
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                androidx.core.content.ContextCompat.startForegroundService(this, intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(true)
+                        } catch (t: Throwable) {
+                            android.util.Log.e("ZionAgent", "Could not start foreground session service", t)
+                            result.error("AGENT_BACKGROUND_START_FAILED", t.message ?: "Unable to start foreground service", null)
+                        }
+                    }
+                    "stop" -> {
+                        try {
+                            stopService(Intent(this, ZionAgentForegroundService::class.java))
+                            result.success(true)
+                        } catch (t: Throwable) {
+                            result.error("AGENT_BACKGROUND_STOP_FAILED", t.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // Root is strictly opt-in. Detection does not execute privileged commands;
         // requesting access delegates the authorization decision to su/Magisk.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ROOT_CHANNEL)
