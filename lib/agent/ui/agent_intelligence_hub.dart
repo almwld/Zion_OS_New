@@ -74,6 +74,75 @@ class AgentIntelligenceHub extends StatelessWidget {
     }
   }
 
+  void _openExpandedMonitor(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        child: Scaffold(
+          backgroundColor: _bg,
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0E1722),
+            title: const Text('مراقبة الأداء المباشرة'),
+            leading: IconButton(
+              tooltip: 'إغلاق الشاشة الموسعة',
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const _SectionTitle(icon: Icons.hub_outlined, title: 'مسار التنفيذ المسجل'),
+                const SizedBox(height: 4),
+                const Text('يعرض هذا المخطط أحداث الجلسة الحقيقية التي وصلت إلى واجهة المراقبة، وليس قياسات داخلية غير متاحة للنموذج.', style: TextStyle(color: _muted, fontSize: 11, height: 1.5)),
+                const SizedBox(height: 8),
+                SizedBox(height: 320, width: double.infinity, child: CustomPaint(
+                  painter: _NeuralMapPainter(
+                    activity: events.isNotEmpty,
+                    hasResult: result != null,
+                    hasFailure: result?.success == false || (result?.steps.any((step) => !step.success) ?? false),
+                    waiting: events.any((event) => event.state == AgentState.waitingApproval),
+                  ),
+                )),
+              ])),
+              const SizedBox(height: 12),
+              _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _SectionTitle(icon: Icons.timeline_outlined, title: 'سجل الأحداث الفعلي · ${events.length}'),
+                const SizedBox(height: 8),
+                if (events.isEmpty)
+                  const Text('لا توجد أحداث مسجلة بعد.', style: TextStyle(color: _muted))
+                else
+                  ...events.reversed.map((event) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFF0C1823), borderRadius: BorderRadius.circular(10), border: Border.all(color: _line)),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 5), decoration: BoxDecoration(color: _stateColor(event.state), shape: BoxShape.circle)),
+                      const SizedBox(width: 9),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${event.timestamp.toLocal().toString().split('.').first} · ${_stateName(event.state)}', style: const TextStyle(color: _muted, fontSize: 10)),
+                        const SizedBox(height: 3),
+                        SelectableText(event.message, style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.4)),
+                      ])),
+                    ]),
+                  )),
+              ])),
+              const SizedBox(height: 12),
+              _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const _SectionTitle(icon: Icons.fact_check_outlined, title: 'نتيجة التحقق'),
+                const SizedBox(height: 8),
+                SelectableText(task.isEmpty ? 'لا توجد مهمة محددة.' : task, style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.5)),
+                const SizedBox(height: 8),
+                Text(result == null ? 'الجلسة لم تسجل نتيجة نهائية بعد.' : result!.success ? 'نجاح حسب نتائج الأدوات' : 'تحتاج إلى مراجعة: ${result!.error ?? 'لم يقدم المحرك سبباً محدداً'}', style: TextStyle(color: result == null ? _muted : result!.success ? const Color(0xFF47D6A0) : const Color(0xFFFF7777), fontWeight: FontWeight.w700, fontSize: 12)),
+              ])),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final success = result?.steps.where((s) => s.success).length ?? 0;
@@ -89,6 +158,11 @@ class AgentIntelligenceHub extends StatelessWidget {
         backgroundColor: const Color(0xFF0E1722),
         title: const Text('Agent Intelligence Lab', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
         actions: [
+          IconButton(
+            tooltip: 'توسيع مراقبة الأداء',
+            onPressed: () => _openExpandedMonitor(context),
+            icon: const Icon(Icons.open_in_full_rounded, color: _cyan),
+          ),
           IconButton(
             tooltip: 'تصدير إلى Obsidian',
             onPressed: () => _openObsidian(context),
@@ -294,15 +368,16 @@ class _NeuralMapPainter extends CustomPainter {
   final bool activity, hasResult, hasFailure, waiting;
   @override
   void paint(Canvas canvas, Size size) {
+    // RTL flow: the session starts on the right and advances leftward.
     final nodes = <Offset>[
-      Offset(size.width * .5, size.height * .10),
-      Offset(size.width * .22, size.height * .31),
-      Offset(size.width * .78, size.height * .31),
-      Offset(size.width * .22, size.height * .57),
-      Offset(size.width * .78, size.height * .57),
-      Offset(size.width * .5, size.height * .83),
+      Offset(size.width * .82, size.height * .10),
+      Offset(size.width * .62, size.height * .31),
+      Offset(size.width * .28, size.height * .31),
+      Offset(size.width * .62, size.height * .57),
+      Offset(size.width * .28, size.height * .57),
+      Offset(size.width * .50, size.height * .83),
     ];
-    final edges = <(int, int)>[(0,1),(0,2),(1,3),(2,4),(3,5),(4,5),(1,2),(3,4)];
+    final edges = <(int, int)>[(0,1),(1,2),(1,3),(2,4),(3,4),(4,5),(3,5)];
     final line = Paint()..color = _NeuralColors.cyan.withOpacity(.55)..strokeWidth = 1.4;
     for (final edge in edges) canvas.drawLine(nodes[edge.$1], nodes[edge.$2], line);
     final labels = ['Super Agent','Planner','Executor','Risk review','Verifier','Result'];
