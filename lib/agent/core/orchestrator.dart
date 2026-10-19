@@ -328,9 +328,10 @@ class AgentOrchestrator {
     // and recovery remain reliable on-device. The local model still authors
     // every plan; no guessed or heuristic plan is substituted.
     final boundedTask = task.length > 800 ? task.substring(0, 800) : task;
-    final relevantMemory = memory.search(task, limit: 3).map((entry) => <String, dynamic>{
+    final relevantMemory = memory.search(task, limit: 8).map((entry) => <String, dynamic>{
       'kind': entry.kind,
-      'text': entry.text.length > 140 ? entry.text.substring(0, 140) : entry.text,
+      'text': entry.text.length > 220 ? entry.text.substring(0, 220) : entry.text,
+      'metadata': entry.metadata,
     }).toList(growable: false);
     final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
     final knowledgeHints = rankedKnowledge.expand((entry) => <String>[
