@@ -35,7 +35,7 @@ class LongTermAIMemory {
   Future<void> remember({required String kind,required String text,Map<String,dynamic> metadata=const {}}) async {
     await load();
     _entries.add(AIMemoryEntry(id:'m_'+DateTime.now().microsecondsSinceEpoch.toString(),kind:kind,text:text,timestamp:DateTime.now(),metadata:metadata));
-    if(_entries.length>500)_entries.removeRange(0,_entries.length-500);
+    if(_entries.length>2000)_entries.removeRange(0,_entries.length-2000);
     await _save();
   }
   List<AIMemoryEntry> search(String query,{int limit=20}) {
