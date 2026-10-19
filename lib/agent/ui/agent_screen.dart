@@ -1197,7 +1197,25 @@ Engineering loop:
     if (data == null) return '';
     String value;
     try {
-      value = data is String ? data : const JsonEncoder.withIndent('  ').convert(data);
+      if (data is String) {
+        value = data
+            .replaceAll(RegExp(r'\x1B\\[[0-?]*[ -/]*[@-~]'), '')
+            .replaceAll('\u0000', '')
+            .replaceAll('\r\n', '\n')
+            .replaceAll('\r', '\n')
+            .trim();
+        // Normalize JSON-encoded tool output so every tool uses one readable
+        // presentation instead of leaking escaped maps or quoted JSON strings.
+        if ((value.startsWith('{') && value.endsWith('}')) ||
+            (value.startsWith('[') && value.endsWith(']'))) {
+          try {
+            final decoded = jsonDecode(value);
+            value = const JsonEncoder.withIndent('  ').convert(decoded);
+          } catch (_) {}
+        }
+      } else {
+        value = const JsonEncoder.withIndent('  ').convert(data);
+      }
     } catch (_) {
       value = data.toString();
     }
