@@ -503,6 +503,8 @@ ${sharedNotes.join('\n\n')}
                     task: _runtime.activeSession?.task ?? _input.text.trim(),
                     result: _result,
                     overthinkerEnabled: _overthinkerEnabled,
+                    eventStream: _runtime.events,
+                    resultProvider: () => _result,
                   ),
                 ));
               } else if (value == 'overthinker') {
