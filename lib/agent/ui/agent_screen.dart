@@ -93,6 +93,7 @@ class _AgentScreenState extends State<AgentScreen> {
   static TerminalService? _persistentTerminal;
   static LlamaService? _persistentAi;
   static final StringBuffer _persistentPtyConsole = StringBuffer();
+  static final Set<String> _persistentConsoleEventKeys = <String>{};
 
   late final AgentRuntime _runtime;
   late final TerminalService _agentTerminal;
@@ -160,6 +161,9 @@ class _AgentScreenState extends State<AgentScreen> {
     });
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _events.addAll(_runtime.history.where((event) => !_events.any((existing) => identical(existing, event))));
+    for (final event in _runtime.history) {
+      _appendAgentEventToConsole(event);
+    }
     _sub=_runtime.events.listen((e){
       _appendAgentEventToConsole(e);
       if(!mounted)return;
@@ -629,6 +633,11 @@ ${sharedNotes.join('\n\n')}
 
 
   void _appendAgentEventToConsole(AgentEvent event) {
+    final key = '${event.timestamp.microsecondsSinceEpoch}|${event.state.name}|${event.message}';
+    if (!_persistentConsoleEventKeys.add(key)) return;
+    if (_persistentConsoleEventKeys.length > 1000) {
+      _persistentConsoleEventKeys.remove(_persistentConsoleEventKeys.first);
+    }
     final timestamp = event.timestamp.toLocal().toIso8601String().split('T').last.split('.').first;
     final line = '[AGENT][$timestamp][${_stateLabel(event.state)}] ${event.message}\\n';
     _ptyConsole.write(line);
