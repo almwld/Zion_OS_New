@@ -12,6 +12,7 @@ import '../../features/terminal/terminal_service.dart';
 import '../../security/core/security_core.dart';
 import '../core/agent_models.dart';
 import '../core/agent_runtime.dart';
+import '../core/agent_background_service.dart';
 import '../../ai/llama_service.dart';
 import 'kali_agent_loop_screen.dart';
 import 'agent_lab_screen.dart';
@@ -364,6 +365,8 @@ Engineering loop:
     await _persistMessages();
     _scrollEnd();
     try {
+      // Keep Android process importance elevated while the shared runtime executes.
+      await AgentBackgroundService.start(rawTask);
       var executionTask = task;
       final selectedModels = _availableModels
           .where((model) => _collaborationModels.contains(model.path))
@@ -432,6 +435,7 @@ ${sharedNotes.join('\n\n')}
       });
       await _persistMessages();
     } finally {
+      await AgentBackgroundService.stop();
       if (mounted) setState(() {
         _submitting = false;
         _modelLoading = false;
