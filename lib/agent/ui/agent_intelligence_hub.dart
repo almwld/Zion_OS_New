@@ -35,7 +35,7 @@ class _AgentIntelligenceHubState extends State<AgentIntelligenceHub> {
 
   List<AgentEvent> get events => _liveEvents;
   String get task => widget.task;
-  AgentResult? get result => widget.resultProvider?.call() ?? widget.result;
+  AgentResult? get result => widget.resultProvider != null ? widget.resultProvider!() : widget.result;
   bool get overthinkerEnabled => widget.overthinkerEnabled;
 
   @override
