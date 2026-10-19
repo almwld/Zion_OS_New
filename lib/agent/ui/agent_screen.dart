@@ -162,7 +162,7 @@ class _AgentScreenState extends State<AgentScreen> {
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _events.addAll(_runtime.history.where((event) => !_events.any((existing) => identical(existing, event))));
     for (final event in _runtime.history) {
-      _appendAgentEventToConsole(event);
+      _appendAgentEventToConsole(event, refresh: false);
     }
     _sub=_runtime.events.listen((e){
       _appendAgentEventToConsole(e);
@@ -632,14 +632,14 @@ ${sharedNotes.join('\n\n')}
   }
 
 
-  void _appendAgentEventToConsole(AgentEvent event) {
+  void _appendAgentEventToConsole(AgentEvent event, {bool refresh = true}) {
     final key = '${event.timestamp.microsecondsSinceEpoch}|${event.state.name}|${event.message}';
     if (!_persistentConsoleEventKeys.add(key)) return;
     if (_persistentConsoleEventKeys.length > 1000) {
       _persistentConsoleEventKeys.remove(_persistentConsoleEventKeys.first);
     }
     final timestamp = event.timestamp.toLocal().toIso8601String().split('T').last.split('.').first;
-    final line = '[AGENT][$timestamp][${_stateLabel(event.state)}] ${event.message}\\n';
+    final line = '[AGENT][$timestamp][${_stateLabel(event.state)}] ${event.message}\n';
     _ptyConsole.write(line);
     if (_ptyConsole.length > 24000) {
       final current = _ptyConsole.toString();
@@ -647,7 +647,7 @@ ${sharedNotes.join('\n\n')}
         ..clear()
         ..write(current.substring(current.length - 24000));
     }
-    if (mounted) setState(() => _ptyOutputVersion++);
+    if (mounted && refresh) setState(() => _ptyOutputVersion++);
   }
 
   Widget _ptyConsoleCard({bool expanded = false}) {
