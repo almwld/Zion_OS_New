@@ -161,6 +161,7 @@ class _AgentScreenState extends State<AgentScreen> {
     _messages.add(const {'role':'assistant','text':'مرحباً. أنا Zion Super Agent المحلي. صف لي ما تريد إنجازه بلغة طبيعية، وسأخطط للخطوات وأعرض التنفيذ والنتائج أمامك.'});
     _events.addAll(_runtime.history.where((event) => !_events.any((existing) => identical(existing, event))));
     _sub=_runtime.events.listen((e){
+      _appendAgentEventToConsole(e);
       if(!mounted)return;
       setState(() {
         _events.add(e);
@@ -612,6 +613,13 @@ ${sharedNotes.join('\n\n')}
               if (_result != null) _resultCard()
               else if (_workspaceTab == 2)
                 _emptyWorkspace('لا توجد نتائج بعد', 'ستظهر هنا خلاصة المهمة ومخرجات الأدوات وأزمنة التنفيذ بعد انتهاء المهمة.', Icons.fact_check_outlined),
+            if (_workspaceTab == 3) ...[
+              const Padding(
+                padding: EdgeInsets.only(bottom: 10),
+                child: Text('سير الوكيل ومخرجات PTY الفعلية — الأحداث الموسومة [AGENT] من سجل التنفيذ، ومخرجات الأوامر من جلسة الطرفية.', style: TextStyle(color: Color(0xFF9BAFBE), fontSize: 11, height: 1.5)),
+              ),
+              _ptyConsoleCard(expanded: true),
+            ],
           ],
         )),
         _composer(),
@@ -620,7 +628,20 @@ ${sharedNotes.join('\n\n')}
   }
 
 
-  Widget _ptyConsoleCard() {
+  void _appendAgentEventToConsole(AgentEvent event) {
+    final timestamp = event.timestamp.toLocal().toIso8601String().split('T').last.split('.').first;
+    final line = '[AGENT][$timestamp][${_stateLabel(event.state)}] ${event.message}\\n';
+    _ptyConsole.write(line);
+    if (_ptyConsole.length > 24000) {
+      final current = _ptyConsole.toString();
+      _ptyConsole
+        ..clear()
+        ..write(current.substring(current.length - 24000));
+    }
+    if (mounted) setState(() => _ptyOutputVersion++);
+  }
+
+  Widget _ptyConsoleCard({bool expanded = false}) {
     final output = _ptyConsole.toString().trimRight();
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -638,7 +659,7 @@ ${sharedNotes.join('\n\n')}
               const Icon(Icons.terminal, size: 17, color: Color(0xFF48D9C0)),
               const SizedBox(width: 7),
               const Expanded(child: Text(
-                'مخرجات Zion PTY الحية',
+                expanded ? 'سير الوكلاء ومخرجات Zion PTY' : 'مخرجات Zion PTY الحية',
                 style: TextStyle(color: Color(0xFFE4F1F5), fontSize: 12, fontWeight: FontWeight.w700),
               )),
               Text(
@@ -657,7 +678,7 @@ ${sharedNotes.join('\n\n')}
             ]),
           ),
           Container(
-            constraints: const BoxConstraints(minHeight: 64, maxHeight: 230),
+            constraints: BoxConstraints(minHeight: expanded ? 320 : 64, maxHeight: expanded ? 520 : 230),
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: SingleChildScrollView(
@@ -682,8 +703,8 @@ ${sharedNotes.join('\n\n')}
   }
 
   Widget _workspaceTabs() {
-    const labels = ['المحادثة', 'النشاط والخطة', 'النتائج'];
-    const icons = [Icons.forum_outlined, Icons.account_tree_outlined, Icons.fact_check_outlined];
+    const labels = ['المحادثة', 'النشاط والخطة', 'النتائج', 'الطرفية'];
+    const icons = [Icons.forum_outlined, Icons.account_tree_outlined, Icons.fact_check_outlined, Icons.terminal_rounded];
     return Container(
       color: const Color(0xFF0E1722),
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
