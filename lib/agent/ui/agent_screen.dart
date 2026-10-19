@@ -215,6 +215,8 @@ class _AgentScreenState extends State<AgentScreen> {
     final latest = _runtime.lastResult;
     if (latest == null) return;
     _result = latest;
+    // Only restore a result when this conversation contains a user task.
+    if (!_messages.any((message) => message['role'] == 'user')) return;
     final summary = _visibleResultSummary(latest);
     final alreadyShown = _messages.any((message) =>
         message['role'] == 'assistant' && message['text'] == summary);
