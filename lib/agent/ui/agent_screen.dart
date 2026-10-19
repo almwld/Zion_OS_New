@@ -111,6 +111,7 @@ class _AgentScreenState extends State<AgentScreen> {
   bool _modelLoading=false;
   bool _modelReady=false;
   bool _submitting=false;
+  bool _preflightCancelRequested = false;
   bool _historyReady=false;
   bool _workspaceDetailsExpanded=false;
   bool _overthinkerEnabled = false;
@@ -351,6 +352,20 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
+  void _cancelCurrentWork() {
+    if (_runtime.canCancel) {
+      unawaited(_runtime.cancel());
+      return;
+    }
+    if (_submitting) {
+      _preflightCancelRequested = true;
+      unawaited(_runtime.orchestrator.ai.cancelGeneration());
+      if (mounted) setState(() {
+        _modelStatus = 'جارٍ إيقاف التحليل المحلي…';
+      });
+    }
+  }
+
   Future<void> _run() async {
     final rawTask = _input.text.trim();
     final task = _overthinkerEnabled
@@ -368,6 +383,7 @@ Engineering loop:
     if (rawTask.isEmpty || !_historyReady || _runtime.canCancel || _submitting) return;
     // Deterministic tool tasks can run without a loaded model. Complex planning
     // uses the local GGUF model when it is available.
+    _preflightCancelRequested = false;
     setState(() {
       _submitting = true;
       _input.clear();
@@ -391,7 +407,10 @@ Engineering loop:
             _modelLoading = true;
             _modelStatus = 'تعاون النماذج ${i + 1}/${selectedModels.length}: ${model.name}';
           });
-          final loaded = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2);
+          if (_preflightCancelRequested) throw StateError('تم إلغاء المهمة بناءً على طلب المستخدم.');
+          final loaded = await _runtime.orchestrator.ai.loadModel(model.path, threads: 2)
+              .timeout(const Duration(minutes: 3));
+          if (_preflightCancelRequested) throw StateError('تم إلغاء المهمة بناءً على طلب المستخدم.');
           if (!loaded) {
             throw StateError('تعذر تحميل نموذج التعاون: ${model.name}. تحقق من الملف أو الذاكرة المتاحة.');
           }
@@ -401,11 +420,13 @@ Engineering loop:
 ${sharedNotes.isEmpty ? 'لا توجد مساهمات سابقة؛ قدّم تحليلك المستقل.' : sharedNotes.join('\n\n')}
 اسم نموذجك: ${model.name}
 قدّم تحليلاً عملياً موجزاً، وحدد الافتراضات والمخاطر وخطوة التحقق. لا تدّع تنفيذ أوامر أو تغييرات لم تنفذها فعلياً.''';
+          if (_preflightCancelRequested) throw StateError('تم إلغاء المهمة بناءً على طلب المستخدم.');
           final contribution = (await _runtime.orchestrator.ai.generate(
             prompt,
             maxTokens: 512,
             temperature: 0.25,
-          )).trim();
+          ).timeout(const Duration(minutes: 8))).trim();
+          if (_preflightCancelRequested) throw StateError('تم إلغاء المهمة بناءً على طلب المستخدم.');
           if (contribution.isEmpty || contribution.startsWith('ERROR:')) {
             throw StateError('فشل إخراج نموذج ${model.name}: ${contribution.isEmpty ? 'رد فارغ' : contribution}');
           }
@@ -443,7 +464,12 @@ ${sharedNotes.join('\n\n')}
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _appendMessage({'role': 'assistant', 'text': 'تعذر إكمال المهمة: $error'});
+        _appendMessage({
+          'role': 'assistant',
+          'text': _preflightCancelRequested
+              ? 'تم إيقاف المهمة قبل بدء التنفيذ بناءً على طلبك.'
+              : 'تعذر إكمال المهمة: $error',
+        });
       });
       await _persistMessages();
     } finally {
@@ -863,9 +889,9 @@ ${sharedNotes.join('\n\n')}
               Container(width: 9, height: 9, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
               const SizedBox(width: 8),
               Expanded(child: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.w700, fontSize: 12))),
-              if (_runtime.canCancel)
+              if (_runtime.canCancel || _submitting)
                 TextButton.icon(
-                  onPressed: _runtime.cancel,
+                  onPressed: _cancelCurrentWork,
                   icon: const Icon(Icons.stop_circle_outlined, size: 17),
                   label: const Text('إيقاف'),
                   style: TextButton.styleFrom(foregroundColor: const Color(0xFFFF8585), visualDensity: VisualDensity.compact),
