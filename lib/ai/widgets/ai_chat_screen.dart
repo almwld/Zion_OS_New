@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,62 @@ class _LocalChatSession {
     'updatedAt': updatedAt.toIso8601String(),
     'messages': messages.map((m) => {'role': m.role, 'content': m.content}).toList(),
   };
+}
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return SizedBox(
+      width: 34,
+      height: 16,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List<Widget>.generate(3, (index) {
+            final phase = (_controller.value * 2 * math.pi) -
+                (index * 2 * math.pi / 3);
+            final scale = 0.65 + (0.55 * ((math.sin(phase) + 1) / 2));
+            return Padding(
+              padding: const EdgeInsetsDirectional.only(end: 4),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.55 + (scale - 0.65) * 0.7),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 }
 
 class AIChatScreen extends StatefulWidget {
@@ -630,15 +687,65 @@ class _AIChatScreenState extends State<AIChatScreen> {
               ]),
           ),
           if (_generating)
-            Padding(padding: const EdgeInsets.fromLTRB(18, 0, 18, 8), child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: colors.surfaceContainerLow, borderRadius: BorderRadius.circular(13)),
-              child: Row(children: [
-                const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)), const SizedBox(width: 10),
-                Expanded(child: Text(_cancelRequested ? 'جارٍ إيقاف الاستدلال...' : 'النموذج يعالج طلبك...', style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant))),
-                TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف')),
-              ]),
-            )),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  border: Border.all(color: colors.outlineVariant.withValues(alpha: .45)),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: colors.primary.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Icon(Icons.auto_awesome_rounded, size: 18, color: colors.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _cancelRequested ? 'جارٍ إيقاف التوليد' : 'Zion AI يكتب الآن',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: colors.onSurface,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: [
+                              if (_cancelRequested)
+                                SizedBox(
+                                  width: 13,
+                                  height: 13,
+                                  child: CircularProgressIndicator(strokeWidth: 1.8, color: colors.primary),
+                                )
+                              else
+                                const _TypingDots(),
+                              const SizedBox(width: 8),
+                              Text(
+                                _cancelRequested ? 'لحظة من فضلك...' : 'يعالج طلبك محلياً',
+                                style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(onPressed: _cancelGeneration, child: const Text('إيقاف')),
+                  ],
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             decoration: BoxDecoration(color: colors.surface, border: Border(top: BorderSide(color: colors.outlineVariant.withValues(alpha: .5)))),
