@@ -673,9 +673,9 @@ ${sharedNotes.join('\n\n')}
             child: Row(children: [
               const Icon(Icons.terminal, size: 17, color: Color(0xFF48D9C0)),
               const SizedBox(width: 7),
-              const Expanded(child: Text(
+              Expanded(child: Text(
                 expanded ? 'سير الوكلاء ومخرجات Zion PTY' : 'مخرجات Zion PTY الحية',
-                style: TextStyle(color: Color(0xFFE4F1F5), fontSize: 12, fontWeight: FontWeight.w700),
+                style: const TextStyle(color: Color(0xFFE4F1F5), fontSize: 12, fontWeight: FontWeight.w700),
               )),
               Text(
                 _usingSharedTerminal ? 'جلسة الطرفية المحددة' : 'جلسة PTY للوكيل',
