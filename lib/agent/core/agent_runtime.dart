@@ -47,6 +47,14 @@ class AgentRuntime {
   StreamSubscription<AgentEvent>? _subscription;
   bool _starting = false;
   final StreamController<AgentEvent> _events = StreamController<AgentEvent>.broadcast();
+  final List<AgentEvent> _history = <AgentEvent>[];
+  List<AgentEvent> get history => List<AgentEvent>.unmodifiable(_history);
+
+  void _publish(AgentEvent event) {
+    _history.add(event);
+    if (_history.length > 500) _history.removeRange(0, _history.length - 500);
+    _events.add(event);
+  }
 
   AgentRuntime({AgentOrchestrator? orchestrator})
       : orchestrator = orchestrator ?? AgentOrchestrator();
@@ -86,12 +94,12 @@ class AgentRuntime {
     _subscription = orchestrator.events.listen((event) {
       session.state = event.state;
       session.touch();
-      _events.add(event);
+      _publish(event);
     });
 
     try {
       // Publish a cancellable busy state before the first asynchronous gap.
-      _events.add(AgentEvent(
+      _publish(AgentEvent(
         timestamp: DateTime.now(),
         message: 'تم قبول المهمة وبدء إعداد جلسة التنفيذ.',
         state: AgentState.planning,
@@ -140,7 +148,7 @@ class AgentRuntime {
     _token?.cancel();
     session.state = AgentState.cancelled;
     session.touch();
-    _events.add(AgentEvent(
+    _publish(AgentEvent(
       timestamp: DateTime.now(),
       message: 'تم إلغاء المهمة الحالية.',
       state: AgentState.cancelled,
