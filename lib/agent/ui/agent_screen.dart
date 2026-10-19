@@ -371,7 +371,8 @@ ${sharedNotes.isEmpty ? 'لا توجد مساهمات سابقة؛ قدّم تح
           if (contribution.isEmpty || contribution.startsWith('ERROR:')) {
             throw StateError('فشل إخراج نموذج ${model.name}: ${contribution.isEmpty ? 'رد فارغ' : contribution}');
           }
-          sharedNotes.add('مساهمة ${model.name}:\n$contribution');
+          final conciseContribution = contribution.length > 250 ? '${contribution.substring(0, 250)}…' : contribution;
+          sharedNotes.add('مساهمة ${model.name}:\n$conciseContribution');
         }
         executionTask = '''المهمة الأصلية المطلوب تنفيذها: $rawTask
 
@@ -857,7 +858,7 @@ ${sharedNotes.join('\n\n')}
                   activeColor: const Color(0xFF35D3E8),
                   checkColor: const Color(0xFF07131B),
                   value: _collaborationModels.contains(model.path),
-                  onChanged: (_modelLoading || _submitting || _runtime.canCancel) ? null : (selected) => setState(() {
+                  onChanged: (_modelLoading || _submitting || _runtime.canCancel || (!_collaborationModels.contains(model.path) && _collaborationModels.length >= 3)) ? null : (selected) => setState(() {
                     if (selected == true) {
                       _collaborationModels.add(model.path);
                     } else {
