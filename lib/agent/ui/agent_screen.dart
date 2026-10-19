@@ -234,7 +234,7 @@ class _AgentScreenState extends State<AgentScreen> {
     if (alreadyShown) return;
     _appendMessage({
       'role': 'assistant',
-      'text': 'نتيجة مستعادة من جلسة الوكيل السابقة\\n$summary',
+      'text': 'نتيجة مستعادة من جلسة الوكيل السابقة\n$summary',
     });
   }
 
