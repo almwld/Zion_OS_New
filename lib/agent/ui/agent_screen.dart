@@ -407,7 +407,10 @@ ${sharedNotes.join('\n\n')}
       });
       await _persistMessages();
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) setState(() {
+        _submitting = false;
+        _modelLoading = false;
+      });
     }
   }
 
@@ -1271,7 +1274,7 @@ ${sharedNotes.join('\n\n')}
     try {
       if (data is String) {
         value = data
-            .replaceAll(RegExp(r'\x1B\\[[0-?]*[ -/]*[@-~]'), '')
+            .replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '')
             .replaceAll('\u0000', '')
             .replaceAll('\r\n', '\n')
             .replaceAll('\r', '\n')
