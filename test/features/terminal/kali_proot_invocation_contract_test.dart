@@ -14,6 +14,8 @@ void main() {
     expect(terminal, isNot(contains("usr/libexec/proot")));
     expect(activity, contains('File(applicationInfo.nativeLibraryDir, "libproot-loader.so")'));
     expect(activity, contains('val prootReady = install(proot, 64 * 1024L, false)'));
+    expect(activity, contains('forceReplace = refreshProot'));
+    expect(activity, contains('.zion-proot-runtime-version'));
     expect(activity, contains('shell?.startsWith("zion-kali@") == true'));
     expect(native, contains('setenv("PROOT_LOADER", kali_loader, 1)'));
     expect(native, contains('"--link2symlink", "-0", "-r", rootfs'));
