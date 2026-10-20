@@ -603,8 +603,9 @@ class MainActivity : FlutterFragmentActivity() {
     private fun ensureProotRuntime(): Boolean {
         val prefix = File(filesDir, "usr")
         val proot = File(prefix, "bin/proot")
-        val loader = File(prefix, "libexec/proot")
-        val sourceLoader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+        // Keep the PRoot loader in Android's packaged native-library directory;
+        // app-private files/usr is not a valid execution location on W^X devices.
+        val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
 
         fun validArm64Elf(file: File, minimumBytes: Long): Boolean {
             if (!file.isFile || file.length() < minimumBytes) return false
@@ -682,9 +683,9 @@ class MainActivity : FlutterFragmentActivity() {
         val executableReady = install(proot, 64 * 1024L, true) {
             assets.open("proot-aarch64")
         }
-        val loaderReady = install(loader, 8 * 1024L, true) {
-            java.io.FileInputStream(sourceLoader)
-        }
+        // The loader is packaged as an APK native library. Never copy it into
+        // files/usr/libexec, where Android may deny execution.
+        val loaderReady = validArm64Elf(loader, 8 * 1024L) && loader.canRead()
         if (!executableReady || !loaderReady) {
             android.util.Log.w(
                 "ZionProot",
@@ -722,8 +723,8 @@ class MainActivity : FlutterFragmentActivity() {
                     if (!prootReady) return 0
                     val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
                     val proot = File(filesDir, "usr/bin/proot")
-                    val loader = File(filesDir, "usr/libexec/proot")
-                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
+                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 shell?.startsWith("zion-kali@") == true -> {
