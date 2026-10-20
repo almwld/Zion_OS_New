@@ -48,6 +48,7 @@ jobs:
           grep -q 'safeChild(staging, name)' "$installer"
           grep -q 'normalizeBootstrapEntryPath' "$installer"
           grep -q 'zion-manifest.json' "$installer"
+          grep -q 'name == "zion-manifest.json"' "$installer"
           grep -q 'readZipEntryBytes' "$installer"
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"
