@@ -237,8 +237,19 @@ internal object TermuxBootstrapInstaller {
                 Os.symlink(target, link)
             }
             for ((target, link) in symlinks) {
-                if (File(link).exists() || readlinkOrNull(link) != null) {
-                    throw IllegalStateException("Symlink destination already exists: $link")
+                // ZIP cannot represent POSIX symlinks portably. Termux bootstrap
+                // archives may therefore contain a regular placeholder at the
+                // declared link path. Replace only regular-file placeholders;
+                // never delete a directory or an existing symbolic link.
+                val linkFile = File(link)
+                val existingLink = readlinkOrNull(link)
+                if (existingLink != null) {
+                    throw IllegalStateException("Symlink destination is already a symlink: $link")
+                }
+                if (linkFile.exists()) {
+                    if (!linkFile.isFile || !linkFile.delete()) {
+                        throw IllegalStateException("Cannot replace Termux symlink placeholder: $link")
+                    }
                 }
                 Os.symlink(target, link)
             }
