@@ -50,6 +50,7 @@ class TerminalService {
   // The terminal UI and Super Agent share the selected live PTY service.
   // This prevents the agent from silently opening a disconnected shell.
   static TerminalService? _activeInteractiveService;
+  static bool _runtimeDiagnosticsCollected = false;
   static TerminalService? get activeInteractiveService => _activeInteractiveService;
 
   void activateForAgent() {
@@ -821,37 +822,41 @@ class TerminalService {
   }
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
-    // Do not run the full multi-process Bash diagnostic on every PTY start:
-    // it can spend several seconds invoking logcat/readelf and delays the
-    // Android-shell fallback. _findUsableUserlandShell() runs this diagnostic
-    // only when an existing Bash candidate actually fails to launch; missing
-    // files are covered by the bounded usr inventory below.
-    try {
-      await _userlandInstaller.logUsrDiagnostics(
-        onProgress: ZionTerminalLogs.add,
-      );
-    } catch (error) {
-      ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
-    }
-    try {
-      final inventory = await _pty.inspectRuntime();
-      if (inventory != null) {
-        final nativeDir = inventory['nativeLibraryDir'];
-        ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
-        final libraries = inventory['libraries'];
-        if (libraries is Map) {
-          for (final entry in libraries.entries) {
-            final details = entry.value;
-            if (details is Map) {
-              ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
+    if (!_runtimeDiagnosticsCollected) {
+      _runtimeDiagnosticsCollected = true;
+      // Do not run the full multi-process Bash diagnostic on every PTY start:
+      // it can spend several seconds invoking logcat/readelf and delays the
+      // Android-shell fallback. _findUsableUserlandShell() runs this diagnostic
+      // only when an existing Bash candidate actually fails to launch; missing
+      // files are covered by the bounded usr inventory below.
+      try {
+        await _userlandInstaller.logUsrDiagnostics(
+          onProgress: ZionTerminalLogs.add,
+        );
+      } catch (error) {
+        ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
+      }
+      try {
+        final inventory = await _pty.inspectRuntime();
+        if (inventory != null) {
+          final nativeDir = inventory['nativeLibraryDir'];
+          ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
+          final libraries = inventory['libraries'];
+          if (libraries is Map) {
+            for (final entry in libraries.entries) {
+              final details = entry.value;
+              if (details is Map) {
+                ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
+              }
             }
           }
+          ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
+          ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
         }
-        ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
-        ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
+      } catch (error) {
+        ZionTerminalLogs.add('Runtime inventory unavailable: $error');
       }
-    } catch (error) {
-      ZionTerminalLogs.add('Runtime inventory unavailable: $error');
+
     }
 
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
