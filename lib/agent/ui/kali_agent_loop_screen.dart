@@ -1,12 +1,11 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../ai/llama_service.dart';
+import '../../features/terminal/terminal_service.dart';
 
 class KaliAgentLoopScreen extends StatefulWidget {
   final LlamaService ai;
-  const KaliAgentLoopScreen({super.key, required this.ai});
+  final TerminalService terminal;
+  const KaliAgentLoopScreen({super.key, required this.ai, required this.terminal});
   @override State<KaliAgentLoopScreen> createState() => _KaliAgentLoopScreenState();
 }
 
@@ -156,35 +155,35 @@ REASONING: سبب مختصر
   }
 
   Future<_KaliResult> _executeKali(String tool, List<String> args) async {
-    const proot = '/data/data/com.zion.os/files/usr/bin/proot';
-    const rootfs = '/data/data/com.zion.os/files/home/.zion/dists/kali/rootfs';
-    if (!await File(proot).exists() || !await File('$rootfs/bin/sh').exists()) return const _KaliResult(false, 127, 'Kali PRoot/rootfs غير متاح.');
-    String? executable;
-    for (final path in ['/usr/bin/$tool', '/usr/sbin/$tool', '/bin/$tool', '/sbin/$tool']) {
-      if (await File(rootfs + path).exists()) { executable = path; break; }
+    // Do not launch PRoot with Process.start here: that bypasses Zion's
+    // native PTY, packaged PROOT_LOADER, and Android linker path. Reuse the
+    // shared TerminalService so Kali commands get the same runtime setup and
+    // exit-marker capture as the main terminal and Super Agent.
+    final probe = await widget.terminal.executeInInteractive(
+      'command -v $tool',
+      runtime: 'kali',
+      timeout: const Duration(seconds: 20),
+    );
+    if (!probe.succeeded || probe.stdout.trim().isEmpty) {
+      final detail = probe.formatted.isEmpty ? 'لم يتم العثور على الأداة داخل Kali.' : probe.formatted;
+      return _KaliResult(false, probe.exitCode == 0 ? 127 : probe.exitCode, detail);
     }
-    if (executable == null) return _KaliResult(false, 127, 'الأداة ' + tool + ' غير مثبتة داخل Kali.');
-    Process? process;
-    final stdout = StringBuffer(), stderr = StringBuffer();
-    try {
-      process = await Process.start(proot, [
-        '--link2symlink', '-0', '-r', rootfs,
-        '-b', '/dev', '-b', '/proc', '-b', '/sys', '-b', '/storage/emulated/0',
-        '-b', '/data/data/com.zion.os/files/home:/root', '-w', '/root', executable, ...args,
-      ], runInShell: false, environment: const {
-        'HOME': '/root', 'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-        'TERM': 'xterm-256color', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
-        'LD_LIBRARY_PATH': '/data/data/com.zion.os/files/usr/lib:/data/data/com.zion.os/files/usr/lib64',
-      });
-      final so = process.stdout.transform(utf8.decoder).listen((s) { if (stdout.length < _maxOutput * 2) stdout.write(s); });
-      final se = process.stderr.transform(utf8.decoder).listen((s) { if (stderr.length < _maxOutput) stderr.write(s); });
-      var code = -1;
-      try {
-        code = await process.exitCode.timeout(const Duration(seconds: 45), onTimeout: () { process?.kill(ProcessSignal.sigterm); return 124; });
-      } finally { await so.cancel(); await se.cancel(); }
-      final text = [stdout.toString().trim(), stderr.toString().trim()].where((s) => s.isNotEmpty).join('\n');
-      return _KaliResult(code == 0, code, text.isEmpty ? 'لا توجد مخرجات (exit code ' + code.toString() + ').' : text);
-    } catch (e) { return _KaliResult(false, -1, 'تعذر تشغيل أداة Kali: ' + e.toString()); }
+
+    // _parseCommand only permits fixed tool names, validated flags/ports, and
+    // the single validated target, so this token join cannot introduce shell
+    // metacharacters or a second command.
+    final command = <String>[tool, ...args].join(' ');
+    final result = await widget.terminal.executeInInteractive(
+      command,
+      runtime: 'kali',
+      timeout: const Duration(minutes: 5),
+    );
+    final output = result.formatted;
+    return _KaliResult(
+      result.succeeded,
+      result.exitCode,
+      output.isEmpty ? 'لا توجد مخرجات (exit code ${result.exitCode}).' : output,
+    );
   }
 
   @override Widget build(BuildContext context) => Scaffold(

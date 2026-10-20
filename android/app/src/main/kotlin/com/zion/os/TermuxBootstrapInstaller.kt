@@ -354,11 +354,29 @@ internal object TermuxBootstrapInstaller {
             "if [ -f \"\$PREFIX/etc/tls/cert.pem\" ]; then export SSL_CERT_FILE=\"\$PREFIX/etc/tls/cert.pem\"; export CURL_CA_BUNDLE=\"\$PREFIX/etc/tls/cert.pem\"; fi\n" +
             "export BASH_ENV=\"\$PREFIX/etc/zion-bashrc\"\n" +
             "exec /system/bin/linker64 \"${real.absolutePath}\" \"\$@\"\n"
-        FileOutputStream(bash).use { out ->
-            out.write(launcher.toByteArray(Charsets.UTF_8))
-            out.fd.sync()
+        // Reuse Zion's own wrapper across terminal tabs. Without this guard,
+        // every PTY start renamed the prior launcher and accumulated backups.
+        val alreadyZionLauncher = try {
+            bash.isFile && bash.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
+                reader.readLine() == "#!/system/bin/sh" &&
+                    reader.readLine() == "export PREFIX=\"${prefix.absolutePath}\""
+            }
+        } catch (_: Throwable) {
+            false
         }
-        Os.chmod(bash.absolutePath, 493) // 0755
+        if (!alreadyZionLauncher) {
+            if (bash.exists() || readlinkOrNull(bash.absolutePath) != null) {
+                val backup = File(bin, "bash.pre-zion-launcher-${System.currentTimeMillis()}")
+                if (!bash.renameTo(backup)) {
+                    throw IllegalStateException("Cannot preserve existing bin/bash before creating launcher")
+                }
+            }
+            FileOutputStream(bash).use { out ->
+                out.write(launcher.toByteArray(Charsets.UTF_8))
+                out.fd.sync()
+            }
+            Os.chmod(bash.absolutePath, 493) // 0755
+        }
         Os.chmod(real.absolutePath, 493) // 0755
 
         val coreutils = File(bin, "coreutils")
@@ -410,9 +428,13 @@ internal object TermuxBootstrapInstaller {
         rc.appendLine("alias l='ls -CF'")
         rc.appendLine("PS1='\\n\\[\\e[1;38;5;117m\\]╭─\\[\\e[1;38;5;39m\\][ZION]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;45m\\][OS]\\[\\e[1;38;5;117m\\]─\\[\\e[1;38;5;222m\\][\\w]\\[\\e[0m\\]\\n\\[\\e[1;38;5;117m\\]╰─\\[\\e[1;32m\\]\\$\\[\\e[0m\\] '")
         val rcFile = File(etc, "zion-bashrc")
-        FileOutputStream(rcFile).use { out ->
-            out.write(rc.toString().toByteArray(Charsets.UTF_8))
-            out.fd.sync()
+        val rcText = rc.toString()
+        val existingRc = try { if (rcFile.isFile) rcFile.readText(Charsets.UTF_8) else null } catch (_: Throwable) { null }
+        if (existingRc != rcText) {
+            FileOutputStream(rcFile).use { out ->
+                out.write(rcText.toByteArray(Charsets.UTF_8))
+                out.fd.sync()
+            }
         }
         Os.chmod(rcFile.absolutePath, 420) // 0644
     }

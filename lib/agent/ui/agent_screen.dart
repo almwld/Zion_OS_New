@@ -597,7 +597,7 @@ ${sharedNotes.join('\n\n')}
                 ));
               } else if (value == 'loop') {
                 Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai),
+                  builder: (_) => KaliAgentLoopScreen(ai: _runtime.orchestrator.ai, terminal: _agentTerminal),
                 ));
               } else if (value == 'subagents') {
                 Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AgentSubagentsScreen()));

@@ -45,6 +45,10 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --recurse-submodules https://github.com/OpenMinis/OpenMinis.git "$RUNNER_TEMP/openminis"
           cd "$RUNNER_TEMP/openminis"
+          # Keep PRoot's syscall-stop state synchronized on Android kernels
+          # where seccomp can cancel a voided syscall before the ptrace entry stop.
+          # This prevents later chdir/getcwd/fork operations from failing with ENOSYS.
+          python3 "$GITHUB_WORKSPACE/tooling/patches/patch_proot_android_seccomp.py" "$RUNNER_TEMP/openminis/deps/proot"
           chmod +x deps/build_proot.sh
           ./deps/build_proot.sh
           mkdir -p "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a"
