@@ -50,6 +50,7 @@ class TerminalService {
   // The terminal UI and Super Agent share the selected live PTY service.
   // This prevents the agent from silently opening a disconnected shell.
   static TerminalService? _activeInteractiveService;
+  static bool _runtimeDiagnosticsCollected = false;
   static TerminalService? get activeInteractiveService => _activeInteractiveService;
 
   void activateForAgent() {
@@ -81,7 +82,9 @@ class TerminalService {
   static const _historyKey = 'zion_terminal_history_v1';
   static const _maxHistory = 500;
   static const _terminalAction = 'terminal.execute';
-  static const _commandTimeout = Duration(seconds: 30);
+  // Repairs, package installs and diagnostic scripts can legitimately take minutes.
+  // Keep a finite timeout so a stuck child cannot hold the PTY forever.
+  static const _commandTimeout = Duration(minutes: 5);
   static const MethodChannel _platformChannel = MethodChannel('zion.os/platform');
   static const Map<String, String> _androidEnvironment = <String, String>{
     'HOME': '/data/data/com.zion.os/files/home',
@@ -410,44 +413,40 @@ class TerminalService {
 
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
-      // A usable sh/dash may remain after an incomplete backup restore. Check
-      // it before invoking the installer so each app launch does not recopy
-      // the entire Userland tree just because bash is absent.
+      // Probe the existing shell first. A present but non-executable Userland
+      // tree is not a missing installation and must never trigger a full restore.
       final existingUserlandShell = await _findUsableUserlandShell();
       if (existingUserlandShell != null) return existingUserlandShell;
-      if (await _userlandInstaller.isInstalled(
-        onProgress: (message) => _emitOutput('$message\r\n'),
-      )) {
-        final shell = await _findUsableUserlandShell();
-        if (shell != null) return shell;
-      }
-      if (installIfMissing) {
-        _emitOutput('[Terminal] First run: installing Userland from local storage...\r\n');
+
+      final installed = await _userlandInstaller.isInstalled(
+        onProgress: (message) => _emitOutput('$message\\r\\n'),
+      );
+      if (installed) {
+        _emitOutput(
+          '[Terminal] Existing Userland files were preserved, but no bundled shell passed execution checks. Using Android shell; no reinstall will be attempted.\\r\\n',
+        );
+      } else if (installIfMissing) {
+        _emitOutput(
+          '[Terminal] Userland is missing; attempting a one-time local restore...\\r\\n',
+        );
         final result = await _userlandInstaller.installLatest(
-          onProgress: (message) => _emitOutput('$message\r\n'),
+          onProgress: (message) => _emitOutput('$message\\r\\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          // A preserved Bash file may still be blocked by Android's execution
-          // policy/linker. Verify an actual shell launch before selecting it;
-          // installer success must never suppress the Android shell fallback.
           final installedShell = await _findUsableUserlandShell();
           if (installedShell != null) {
-            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\r\n');
+            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\\r\\n');
             return installedShell;
           }
-          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\r\n');
+          _emitOutput(
+            '[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\\r\\n',
+          );
         } else {
-          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
+          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\\r\\n');
         }
-        final recoveredShell = await _findUsableUserlandShell();
-        if (recoveredShell != null) {
-          _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
-          return recoveredShell;
-        }
-        _emitOutput('[Terminal] Falling back to /system/bin/sh.\r\n');
       }
     } catch (e) {
-      _emitOutput('[Terminal] Userland check/install failed: $e\r\n');
+      _emitOutput('[Terminal] Userland check/restore failed: $e\\r\\n');
     }
 
     const shell = '/system/bin/sh';
@@ -823,37 +822,41 @@ class TerminalService {
   }
 
   Future<bool> startInteractive({String? kaliRootfsPath}) async {
-    // Do not run the full multi-process Bash diagnostic on every PTY start:
-    // it can spend several seconds invoking logcat/readelf and delays the
-    // Android-shell fallback. _findUsableUserlandShell() runs this diagnostic
-    // only when an existing Bash candidate actually fails to launch; missing
-    // files are covered by the bounded usr inventory below.
-    try {
-      await _userlandInstaller.logUsrDiagnostics(
-        onProgress: ZionTerminalLogs.add,
-      );
-    } catch (error) {
-      ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
-    }
-    try {
-      final inventory = await _pty.inspectRuntime();
-      if (inventory != null) {
-        final nativeDir = inventory['nativeLibraryDir'];
-        ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
-        final libraries = inventory['libraries'];
-        if (libraries is Map) {
-          for (final entry in libraries.entries) {
-            final details = entry.value;
-            if (details is Map) {
-              ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
+    if (!_runtimeDiagnosticsCollected) {
+      _runtimeDiagnosticsCollected = true;
+      // Do not run the full multi-process Bash diagnostic on every PTY start:
+      // it can spend several seconds invoking logcat/readelf and delays the
+      // Android-shell fallback. _findUsableUserlandShell() runs this diagnostic
+      // only when an existing Bash candidate actually fails to launch; missing
+      // files are covered by the bounded usr inventory below.
+      try {
+        await _userlandInstaller.logUsrDiagnostics(
+          onProgress: ZionTerminalLogs.add,
+        );
+      } catch (error) {
+        ZionTerminalLogs.add('Userland inventory diagnostic failed safely: $error');
+      }
+      try {
+        final inventory = await _pty.inspectRuntime();
+        if (inventory != null) {
+          final nativeDir = inventory['nativeLibraryDir'];
+          ZionTerminalLogs.add('APK nativeLibraryDir: $nativeDir');
+          final libraries = inventory['libraries'];
+          if (libraries is Map) {
+            for (final entry in libraries.entries) {
+              final details = entry.value;
+              if (details is Map) {
+                ZionTerminalLogs.add('${entry.key}: present=${details['present']}, size=${details['sizeBytes']} bytes');
+              }
             }
           }
+          ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
+          ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
         }
-        ZionTerminalLogs.add('Userland Bash: exists=${inventory['bashExists']}, size=${inventory['bashSizeBytes']} bytes');
-        ZionTerminalLogs.add('ZionUniversal: exists=${inventory['localBundleExists']}, entries=${inventory['localBundleEntries']}');
+      } catch (error) {
+        ZionTerminalLogs.add('Runtime inventory unavailable: $error');
       }
-    } catch (error) {
-      ZionTerminalLogs.add('Runtime inventory unavailable: $error');
+
     }
 
     if (isInteractiveRunning && kaliRootfsPath == null && !(_interactiveShell?.startsWith('zion-kali@') ?? false)) return true;
@@ -886,6 +889,9 @@ class TerminalService {
     // is still attempted above because PRoot itself may be supplied by PREFIX.
     await _ensureTerminalEnvironment();
     String? shell;
+    // Keep the session label separate from the native PRoot launch protocol.
+    // zion_pty.c parses: kali:<proot>|<rootfs>|<loader>.
+    String? nativeShellOverride;
     if (kaliRootfsPath != null) {
       final path = kaliRootfsPath.trim();
       if (!path.startsWith('/') ||
@@ -900,20 +906,31 @@ class TerminalService {
       final bash = File('$path/bin/bash');
       final shellFile = File('$path/bin/sh');
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
-      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
-      if (!await rootfs.exists() ||
-          !await bash.exists() ||
-          !await shellFile.exists() ||
-          !await _isValidLocalKaliRootfs(path)) {
-        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\r\n');
+      if (!await rootfs.exists() || !await bash.exists() || !await shellFile.exists()) {
+        _emitOutput('[Kali] Rootfs is missing bin/bash or bin/sh: $path. No files were copied.\\r\\n');
+        return false;
+      }
+      // Repair only essential paths before ELF validation. This handles rootfs
+      // archives with owner-only modes without reinstalling or chmodding every file.
+      try {
+        await const ZionLocalKaliBootstrap().repairRuntimePermissions(path);
+      } catch (error) {
+        _emitOutput('[Kali] Runtime permission repair failed: $error\\r\\n');
+        return false;
+      }
+      if (!await _isValidLocalKaliRootfs(path)) {
+        _emitOutput('[Kali] Invalid Kali ARM64 rootfs or missing glibc loader: $path. No files were copied.\\r\\n');
         return false;
       }
       final prootReady = await _pty.ensureProotRuntime();
-      if (!prootReady || !await proot.exists() || !await loader.exists()) {
-        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\r\n');
+      if (!prootReady || !await proot.exists()) {
+        _emitOutput('[Kali] Zion PRoot runtime could not be materialized from the bundled APK.\r\n');
         return false;
       }
       shell = 'zion-kali@$path';
+      // Let MainActivity resolve libproot-loader.so from nativeLibraryDir.
+      // files/usr/libexec is app data and is not the canonical loader location.
+      nativeShellOverride = 'zion-kali@$path';
       _emitOutput('[Kali] Starting local rootfs without copying it: $path\r\n');
     } else {
       shell = await _findShell(installIfMissing: true);
@@ -946,7 +963,11 @@ class TerminalService {
       }
       await _ptyOutputSub?.cancel();
       _ptyOutputSub = _pty.output.listen(_emitOutput);
-      final startedPty = await _pty.start(rows: 40, cols: 120, shell: shell);
+      final startedPty = await _pty.start(
+        rows: 40,
+        cols: 120,
+        shell: nativeShellOverride ?? shell,
+      );
       if (!startedPty) {
         _emitOutput('ERROR: Unable to start Android shell PTY: $shell\r\n');
         _audit(

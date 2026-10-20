@@ -45,6 +45,11 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --recurse-submodules https://github.com/OpenMinis/OpenMinis.git "$RUNNER_TEMP/openminis"
           cd "$RUNNER_TEMP/openminis"
+          # Port the Android seccomp/ptrace stop-order fix before compiling PRoot.
+          # This prevents a cancelled syscall from desynchronizing the event loop
+          # on affected Android kernels, which can surface as ENOSYS for later
+          # chdir/getcwd and child-process operations.
+          python3 "$GITHUB_WORKSPACE/tooling/patches/patch_proot_android_seccomp.py" "$RUNNER_TEMP/openminis/deps/proot"
           chmod +x deps/build_proot.sh
           ./deps/build_proot.sh
           mkdir -p "$GITHUB_WORKSPACE/android/app/src/main/jniLibs/arm64-v8a"
@@ -108,7 +113,10 @@ jobs:
             echo "ZION_RELEASE_KEY_PASSWORD=$KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Build APK (split per ABI)
+      - name: Build diagnostic APK (API 28, sideload only)
+        # This experiment tests runtime compatibility; it is not a Play Store artifact.
+        env:
+          ORG_GRADLE_PROJECT_zionTargetSdk: "28"
         run: flutter build apk --release --split-per-abi
 
       - name: Build Android App Bundle

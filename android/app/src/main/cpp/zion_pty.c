@@ -322,13 +322,23 @@ static void exec_kali_proot(const char *proot, const char *rootfs) {
           "-b", home_bind,
           "-b", lib_bind,
           "-b", usr_lib_bind,
-          "-w", "/root",
+          /*
+           * Start the guest at "/" first. Some older/custom PRoot builds
+           * attempt the initial chdir("/root") before syscall tracing is fully
+           * active. Perform the first guest chdir from Bash after PRoot has
+           * entered its traced guest process; this is also a diagnostic for
+           * the reported ENOSYS on chdir/getcwd. Do not claim this replaces
+           * a PRoot syscall-emulation fix if the guest chdir still fails.
+           */
+          "-w", "/",
           "/usr/bin/env", "-i",
           "HOME=/root",
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "TERM=xterm-256color", "LANG=C.UTF-8", "LC_ALL=C.UTF-8",
           "SHELL=/bin/bash", "ZION_KALI=1",
-          "/bin/bash", "--login", (char *)NULL);
+          "/bin/bash", "--noprofile", "--norc", "-c",
+          "cd /root || { echo 'ZION_PROOT_CHDIR_ROOT_FAILED'; exit 125; }; exec /bin/bash --login",
+          (char *)NULL);
     __android_log_print(ANDROID_LOG_ERROR, "ZionPTY",
         "Unable to launch PRoot via linker64: errno=%d (%s)", errno, strerror(errno));
     _exit(127);
@@ -356,8 +366,11 @@ static void exec_selected_shell(const char *shell_path) {
         char bashrc[PATH_MAX];
         path_join(bashrc, sizeof(bashrc), "usr/etc/zion-bashrc");
         if (access(bashrc, R_OK) == 0) {
+            // Bypass the binary's compiled Termux system bashrc path. This
+            // app owns its runtime under files/usr; only Zion's generated rc
+            // should be loaded in the interactive PTY.
             execl("/system/bin/linker64", "linker64", selected,
-                  "--init-file", bashrc, "-i", (char *)NULL);
+                  "--noprofile", "--norc", "--init-file", bashrc, "-i", (char *)NULL);
         } else {
             execl("/system/bin/linker64", "linker64", selected, "-i", (char *)NULL);
         }

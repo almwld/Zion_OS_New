@@ -14,6 +14,7 @@ import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
 import 'agent_loop_sheet.dart';
 import 'terminal_palette.dart';
+import 'terminal_theme_loader.dart';
 import 'terminal_service.dart';
 import 'logs_screen.dart';
 import '../../widgets/toast_bar.dart';
@@ -71,12 +72,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    unawaited(_loadPackagedPalette());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
         unawaited(_initializeFirstTab());
       }
     });
+  }
+
+  Future<void> _loadPackagedPalette() async {
+    final loaded = await TerminalThemeLoader.loadFirstPackagedPalette();
+    if (!mounted || loaded == null) return;
+    setState(() => _palette = loaded);
   }
 
   static const int _maxSessions = 8;
@@ -396,7 +404,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
             Slider(value: _fontSize.clamp(8, 24).toDouble(), min: 8, max: 24, divisions: 16, activeColor: _palette.accent,
               onChanged: (value) { setSheetState(() => _fontSize = value); setState(() {}); }),
             Text('نوع الخط', style: TextStyle(color: _palette.foreground)),
-            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono'].map((font) => ChoiceChip(
+            Wrap(spacing: 8, children: ['monospace', 'Courier New', 'Roboto Mono', 'Musnad'].map((font) => ChoiceChip(
               label: Text(font, style: TextStyle(color: _palette.foreground)), selected: _fontFamily == font,
               selectedColor: _palette.accent.withOpacity(0.25),
               onSelected: (_) { setSheetState(() => _fontFamily = font); setState(() {}); },
@@ -631,9 +639,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   Future<bool> _ensureAiLoaded() async {
-    // Never load a large native GGUF model as a side effect of opening a
-    // terminal helper. The dedicated Offline AI screen owns explicit loading.
-    final ready = _ai.isLoaded;
+    // Reuse the native singleton first (the model may have been loaded from
+    // Offline AI), then discover and load a readable local GGUF automatically.
+    var ready = await _ai.refreshLoadedState();
+    if (!ready) {
+      if (mounted) setState(() => _aiLoading = true);
+      try {
+        final discoveredModel = await _ai.autoLoadBestModel(threads: 2);
+        ready = discoveredModel != null;
+        if (!ready) {
+          final imported = await _ai.pickAndImportModel();
+          if (imported != null) {
+            ready = await _ai.loadModel(imported.path, threads: 2);
+          }
+        }
+      } catch (error, stackTrace) {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'Zion local AI',
+          context: ErrorDescription('while discovering/loading a local GGUF model'),
+        ));
+      } finally {
+        if (mounted) setState(() => _aiLoading = false);
+      }
+    }
     if (mounted) setState(() => _aiReady = ready);
     return ready;
   }
@@ -677,7 +707,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         if (mounted) {
           ToastBar.show(context, 
             const SnackBar(
-              content: Text('النموذج المحلي غير محمّل. افتح Offline AI وحمّل نموذجاً صغيراً أولاً.'),
+              content: Text('لم أتمكن من تحميل نموذج GGUF. اختر ملفاً صالحاً عند ظهور نافذة الاستيراد، ثم أعد المحاولة.'),
             ),
           );
         }

@@ -5,6 +5,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/arsenal/zion_wifi_real.dart';
+import '../../../features/wifi/usb_wifi_tools_screen.dart';
 
 class ZionWiFiRealPanel extends StatefulWidget {
   const ZionWiFiRealPanel({super.key});
@@ -190,6 +191,17 @@ class _ZionWiFiRealPanelState extends State<ZionWiFiRealPanel> {
                   trailing: const Icon(Icons.check_circle),
                 ),
               ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UsbWifiToolsScreen()),
+                ),
+                icon: const Icon(Icons.usb),
+                label: const Text('USB WiFi Monitor / PCAP إلى Kali'),
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
