@@ -13,7 +13,7 @@ void main() {
     expect(terminal, contains("shell = 'zion-kali@\$path';"));
     expect(terminal, isNot(contains("usr/libexec/proot")));
     expect(activity, contains('File(applicationInfo.nativeLibraryDir, "libproot-loader.so")'));
-    expect(activity, contains('val prootReady = install(proot, 64 * 1024L, false)'));
+    expect(activity, contains('val prootReady = install(proot, 64 * 1024L, false, forceReplace = refreshProot)'));
     expect(activity, contains('forceReplace = refreshProot'));
     expect(activity, contains('.zion-proot-runtime-version'));
     expect(activity, contains('shell?.startsWith("zion-kali@") == true'));
