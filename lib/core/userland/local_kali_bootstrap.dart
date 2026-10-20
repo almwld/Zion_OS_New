@@ -362,6 +362,9 @@ class ZionLocalKaliBootstrap {
     final base = root.absolute.path;
     final directories = <String>[
       base,
+      '$base/bin',
+      '$base/lib',
+      '$base/lib/aarch64-linux-gnu',
       '$base/usr',
       '$base/usr/bin',
       '$base/usr/lib',
