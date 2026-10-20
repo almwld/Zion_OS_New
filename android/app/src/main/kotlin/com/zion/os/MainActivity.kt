@@ -680,16 +680,16 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        val executableReady = install(proot, 64 * 1024L, true) {
+        // PRoot is launched through /system/bin/linker64; app-private ELF\n        // execution bits are not the contract. Readability + valid ARM64 ELF are.\n        val prootReady = install(proot, 64 * 1024L, false) {
             assets.open("proot-aarch64")
         }
         // The loader is packaged as an APK native library. Never copy it into
         // files/usr/libexec, where Android may deny execution.
         val loaderReady = validArm64Elf(loader, 8 * 1024L) && loader.canRead()
-        if (!executableReady || !loaderReady) {
+        if (!prootReady || !loaderReady) {
             android.util.Log.w(
                 "ZionProot",
-                "PRoot unavailable: executableReady=$executableReady loaderReady=$loaderReady asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
+                "PRoot unavailable: prootReady=$prootReady loaderReady=$loaderReady asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
             )
             return false
         }
@@ -724,7 +724,7 @@ class MainActivity : FlutterFragmentActivity() {
                     val rootfs = File(filesDir, "home/.zion/dists/kali/rootfs")
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
-                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.isFile || !loader.canRead()) return 0
+                    if (!validRootfs(rootfs) || !proot.isFile || !proot.canRead() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 shell?.startsWith("zion-kali@") == true -> {
@@ -736,7 +736,7 @@ class MainActivity : FlutterFragmentActivity() {
                     val rootfs = File(rootfsPath)
                     val proot = File(filesDir, "usr/bin/proot")
                     val loader = File(filesDir, "usr/libexec/proot")
-                    if (!validRootfs(rootfs) || !proot.canExecute() || !loader.exists()) return 0
+                    if (!validRootfs(rootfs) || !proot.isFile || !proot.canRead() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
                 else -> shell
