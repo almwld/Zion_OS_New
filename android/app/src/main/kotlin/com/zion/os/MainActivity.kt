@@ -632,8 +632,8 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        fun install(target: File, minimumBytes: Long, executable: Boolean, source: () -> java.io.InputStream): Boolean {
-            if (validArm64Elf(target, minimumBytes) && (!executable || target.canExecute())) return true
+        fun install(target: File, minimumBytes: Long, executable: Boolean, forceReplace: Boolean = false, source: () -> java.io.InputStream): Boolean {
+            if (!forceReplace && validArm64Elf(target, minimumBytes) && (!executable || target.canExecute())) return true
             if (!target.parentFile!!.exists() && !target.parentFile!!.mkdirs() && !target.parentFile!!.isDirectory) {
                 return false
             }
@@ -680,7 +680,18 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
-        // PRoot is launched through /system/bin/linker64; app-private ELF\n        // execution bits are not the contract. Readability + valid ARM64 ELF are.\n        val prootReady = install(proot, 64 * 1024L, false) {
+        // PRoot is launched through /system/bin/linker64; app-private ELF\n        // execution bits are not the contract. Readability + valid ARM64 ELF are.\n        // PRoot is launched through /system/bin/linker64; app-private ELF
+        // execution bits are not the contract. Readability + valid ARM64 ELF are.
+        // A valid older ELF is not enough: refresh once when the bundled runtime
+        // version changes so an already-installed, unpatched PRoot is replaced.
+        val bundledProotVersion = "zion-proot-android-seccomp-v2"
+        val prootVersionMarker = File(filesDir, ".zion-proot-runtime-version")
+        val refreshProot = try {
+            !prootVersionMarker.isFile || prootVersionMarker.readText() != bundledProotVersion
+        } catch (_: Throwable) {
+            true
+        }
+        val prootReady = install(proot, 64 * 1024L, false, forceReplace = refreshProot) {
             assets.open("proot-aarch64")
         }
         // The loader is packaged as an APK native library. Never copy it into
@@ -692,6 +703,13 @@ class MainActivity : FlutterFragmentActivity() {
                 "PRoot unavailable: prootReady=$prootReady loaderReady=$loaderReady asset=proot-aarch64 nativeDir=${applicationInfo.nativeLibraryDir}"
             )
             return false
+        }
+        if (refreshProot) {
+            try {
+                prootVersionMarker.writeText(bundledProotVersion)
+            } catch (t: Throwable) {
+                android.util.Log.w("ZionProot", "Could not persist PRoot runtime version marker", t)
+            }
         }
         return true
     }
