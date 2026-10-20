@@ -146,7 +146,7 @@ internal object TermuxBootstrapInstaller {
                             if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
                                 throw IllegalStateException("Bootstrap expanded beyond safety limit")
                             }
-                            bytes.toString(Charsets.UTF_8).lineSequence().forEach { line ->
+                            String(bytes, Charsets.UTF_8).lineSequence().forEach { line ->
                                 if (line.isBlank()) return@forEach
                                 val split = line.split('←')
                                 if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
@@ -165,7 +165,7 @@ internal object TermuxBootstrapInstaller {
                             if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
                                 throw IllegalStateException("Bootstrap expanded beyond safety limit")
                             }
-                            val manifest = JSONObject(bytes.toString(Charsets.UTF_8))
+                            val manifest = JSONObject(String(bytes, Charsets.UTF_8))
                             if (manifest.optString("format") != "zion-userland-v1") {
                                 throw IllegalStateException("Unsupported Zion Userland manifest format")
                             }
@@ -694,14 +694,15 @@ internal object TermuxBootstrapInstaller {
     private fun normalizeBootstrapEntryPath(value: String): String {
         var path = value.replace('\\', '/')
         while (path.startsWith("./")) path = path.substring(2)
-        if (path.isBlank() || path.startsWith("/") || path.contains('\u0000')) {
-            throw IllegalStateException("Unsafe absolute/empty bootstrap path: $value")
+        if (path.isEmpty() || path == "usr" || path == "usr/") return "."
+        if (path.startsWith("/") || path.contains('\u0000')) {
+            throw IllegalStateException("Unsafe absolute bootstrap path: $value")
         }
         if (path.split('/').any { it == ".." }) {
             throw IllegalStateException("Bootstrap path traversal rejected: $value")
         }
         if (path.startsWith("usr/")) path = path.removePrefix("usr/")
-        if (path.isBlank()) throw IllegalStateException("Empty normalized bootstrap path: $value")
+        if (path.isEmpty()) return "."
         return path
     }
 
