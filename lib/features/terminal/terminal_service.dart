@@ -412,44 +412,40 @@ class TerminalService {
 
   Future<String?> _findShell({bool installIfMissing = false}) async {
     try {
-      // A usable sh/dash may remain after an incomplete backup restore. Check
-      // it before invoking the installer so each app launch does not recopy
-      // the entire Userland tree just because bash is absent.
+      // Probe the existing shell first. A present but non-executable Userland
+      // tree is not a missing installation and must never trigger a full restore.
       final existingUserlandShell = await _findUsableUserlandShell();
       if (existingUserlandShell != null) return existingUserlandShell;
-      if (await _userlandInstaller.isInstalled(
-        onProgress: (message) => _emitOutput('$message\r\n'),
-      )) {
-        final shell = await _findUsableUserlandShell();
-        if (shell != null) return shell;
-      }
-      if (installIfMissing) {
-        _emitOutput('[Terminal] First run: installing Userland from local storage...\r\n');
+
+      final installed = await _userlandInstaller.isInstalled(
+        onProgress: (message) => _emitOutput('$message\\r\\n'),
+      );
+      if (installed) {
+        _emitOutput(
+          '[Terminal] Existing Userland files were preserved, but no bundled shell passed execution checks. Using Android shell; no reinstall will be attempted.\\r\\n',
+        );
+      } else if (installIfMissing) {
+        _emitOutput(
+          '[Terminal] Userland is missing; attempting a one-time local restore...\\r\\n',
+        );
         final result = await _userlandInstaller.installLatest(
-          onProgress: (message) => _emitOutput('$message\r\n'),
+          onProgress: (message) => _emitOutput('$message\\r\\n'),
         );
         if (result.success && await _userlandInstaller.isInstalled()) {
-          // A preserved Bash file may still be blocked by Android's execution
-          // policy/linker. Verify an actual shell launch before selecting it;
-          // installer success must never suppress the Android shell fallback.
           final installedShell = await _findUsableUserlandShell();
           if (installedShell != null) {
-            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\r\n');
+            _emitOutput('[Terminal] ✓ Userland shell ready: $installedShell\\r\\n');
             return installedShell;
           }
-          _emitOutput('[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\r\n');
+          _emitOutput(
+            '[Terminal] Userland files were preserved, but no bundled shell could execute; falling back to /system/bin/sh.\\r\\n',
+          );
         } else {
-          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\r\n');
+          _emitOutput('[Terminal] Userland unavailable: ${result.message}.\\r\\n');
         }
-        final recoveredShell = await _findUsableUserlandShell();
-        if (recoveredShell != null) {
-          _emitOutput('[Terminal] Using recovered Userland shell: $recoveredShell\r\n');
-          return recoveredShell;
-        }
-        _emitOutput('[Terminal] Falling back to /system/bin/sh.\r\n');
       }
     } catch (e) {
-      _emitOutput('[Terminal] Userland check/install failed: $e\r\n');
+      _emitOutput('[Terminal] Userland check/restore failed: $e\\r\\n');
     }
 
     const shell = '/system/bin/sh';
