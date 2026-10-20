@@ -905,11 +905,20 @@ class TerminalService {
       final bash = File('$path/bin/bash');
       final shellFile = File('$path/bin/sh');
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
-      if (!await rootfs.exists() ||
-          !await bash.exists() ||
-          !await shellFile.exists() ||
-          !await _isValidLocalKaliRootfs(path)) {
-        _emitOutput('[Kali] Invalid rootfs: expected a verified Kali ARM64 rootfs with bin/bash, bin/sh, usr/bin/env, and the glibc loader at $path. No files were copied.\r\n');
+      if (!await rootfs.exists() || !await bash.exists() || !await shellFile.exists()) {
+        _emitOutput('[Kali] Rootfs is missing bin/bash or bin/sh: $path. No files were copied.\\r\\n');
+        return false;
+      }
+      // Repair only essential paths before ELF validation. This handles rootfs
+      // archives with owner-only modes without reinstalling or chmodding every file.
+      try {
+        await const ZionLocalKaliBootstrap().repairRuntimePermissions(path);
+      } catch (error) {
+        _emitOutput('[Kali] Runtime permission repair failed: $error\\r\\n');
+        return false;
+      }
+      if (!await _isValidLocalKaliRootfs(path)) {
+        _emitOutput('[Kali] Invalid Kali ARM64 rootfs or missing glibc loader: $path. No files were copied.\\r\\n');
         return false;
       }
       final prootReady = await _pty.ensureProotRuntime();
