@@ -669,7 +669,13 @@ internal object TermuxBootstrapInstaller {
                     val name = try { normalizeBootstrapEntryPath(entry.name) } catch (_: Throwable) { return false }
                     if (name == "bin/bash" || name == "usr/bin/bash") hasBash = true
                     if (name == "bin/apt" || name == "usr/bin/apt") hasApt = true
-                    if (name == "SYMLINKS.txt" || name == "usr/SYMLINKS.txt") hasSymlinks = true
+                    // Zion-converted bootstrap archives may carry symlink metadata
+                    // in zion-manifest.json instead of Termux's SYMLINKS.txt.
+                    // The entry name has already been normalized, so both usr/
+                    // prefixed and upstream layouts are handled consistently.
+                    if (name == "SYMLINKS.txt" || name == "zion-manifest.json") {
+                        hasSymlinks = true
+                    }
                     while (true) {
                         val count = zip.read(buffer)
                         if (count < 0) break
