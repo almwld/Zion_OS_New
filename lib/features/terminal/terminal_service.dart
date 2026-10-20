@@ -905,7 +905,6 @@ class TerminalService {
       final bash = File('$path/bin/bash');
       final shellFile = File('$path/bin/sh');
       final proot = File('/data/data/com.zion.os/files/usr/bin/proot');
-      final loader = File('/data/data/com.zion.os/files/usr/libexec/proot');
       if (!await rootfs.exists() ||
           !await bash.exists() ||
           !await shellFile.exists() ||
@@ -914,12 +913,14 @@ class TerminalService {
         return false;
       }
       final prootReady = await _pty.ensureProotRuntime();
-      if (!prootReady || !await proot.exists() || !await loader.exists()) {
-        _emitOutput('[Kali] Zion PRoot/loader could not be materialized from the bundled APK runtime.\r\n');
+      if (!prootReady || !await proot.exists()) {
+        _emitOutput('[Kali] Zion PRoot runtime could not be materialized from the bundled APK.\r\n');
         return false;
       }
       shell = 'zion-kali@$path';
-      nativeShellOverride = 'kali:${proot.path}|$path|${loader.path}';
+      // Let MainActivity resolve libproot-loader.so from nativeLibraryDir.
+      // files/usr/libexec is app data and is not the canonical loader location.
+      nativeShellOverride = 'zion-kali@$path';
       _emitOutput('[Kali] Starting local rootfs without copying it: $path\r\n');
     } else {
       shell = await _findShell(installIfMissing: true);
