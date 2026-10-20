@@ -50,6 +50,7 @@ jobs:
           grep -q 'zion-manifest.json' "$installer"
           grep -q 'name == "zion-manifest.json"' "$installer"
           grep -q 'readZipEntryBytes' "$installer"
+          grep -q 'Cannot replace Termux symlink placeholder' "$installer"
           grep -q 'SYMLINKS.txt' "$installer"
           grep -q 'TermuxBootstrapInstaller.ensureInstalled(this)' "$activity"
           grep -q 'PTY startup failed' "$activity"
