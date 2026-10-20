@@ -348,6 +348,62 @@ class ZionLocalKaliBootstrap {
     await resolv.parent.create(recursive: true);
     await resolv.writeAsString('nameserver 8.8.8.8\nnameserver 1.1.1.1\n');
     await File('${rootfs.path}/root/.hushlogin').create(recursive: true);
+    await repairRuntimePermissions(rootfs.path);
+  }
+
+  /// Repairs only the paths required to enter the existing Kali userspace.
+  /// This is idempotent and deliberately avoids recursively chmodding the
+  /// rootfs, which could damage package-specific file permissions.
+  Future<void> repairRuntimePermissions(String rootfsPath) async {
+    final root = Directory(rootfsPath);
+    if (!await root.exists()) {
+      throw StateError('Kali rootfs does not exist: $rootfsPath');
+    }
+    final base = root.absolute.path;
+    final directories = <String>[
+      base,
+      '$base/usr',
+      '$base/usr/bin',
+      '$base/usr/lib',
+      '$base/usr/lib/aarch64-linux-gnu',
+      '$base/etc',
+      '$base/root',
+      '$base/tmp',
+      '$base/var',
+    ];
+    final executables = <String>[
+      '$base/bin/bash',
+      '$base/bin/sh',
+      '$base/usr/bin/env',
+      '$base/usr/bin/dash',
+      '$base/usr/bin/ls',
+      '$base/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+    ];
+    final libraries = <String>[
+      '$base/usr/lib/aarch64-linux-gnu/libc.so.6',
+      '$base/usr/lib/aarch64-linux-gnu/libtinfo.so.6.6',
+    ];
+
+    Future<void> applyMode(String mode, List<String> paths, {required bool dirs}) async {
+      final existing = <String>[];
+      for (final path in paths) {
+        final present = dirs ? await Directory(path).exists() : await File(path).exists();
+        if (present) existing.add(path);
+      }
+      if (existing.isEmpty) return;
+      final chmod = Platform.isAndroid ? '/system/bin/chmod' : 'chmod';
+      final result = await Process.run(chmod, <String>[mode, ...existing], runInShell: false);
+      if (result.exitCode != 0) {
+        throw StateError('chmod $mode failed for Kali runtime paths: ${result.stderr}');
+      }
+    }
+
+    // Searchable directories and executable ELF entry points are essential
+    // for the glibc interpreter; shared objects need read permission, not
+    // blanket executable permission.
+    await applyMode('755', directories, dirs: true);
+    await applyMode('755', executables, dirs: false);
+    await applyMode('644', libraries, dirs: false);
   }
 
   Future<void> _copyFileWithProgress(File source, File destination, void Function(int) onProgress) async {
