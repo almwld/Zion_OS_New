@@ -19,6 +19,17 @@ void main() {
     expect(native, contains('"--link2symlink", "-0", "-r", rootfs'));
   });
 
+  test('Kali Agent Loop uses the shared native PTY with a long command timeout', () async {
+    final loop = await File('lib/agent/ui/kali_agent_loop_screen.dart').readAsString();
+    final agent = await File('lib/agent/ui/agent_screen.dart').readAsString();
+
+    expect(loop, contains('executeInInteractive'));
+    expect(loop, contains("runtime: 'kali'"));
+    expect(loop, contains('Duration(minutes: 5)'));
+    expect(loop, isNot(contains('await Process.start(')));
+    expect(agent, contains('KaliAgentLoopScreen(ai: _runtime.orchestrator.ai, terminal: _agentTerminal)'));
+  });
+
   test('Kali runtime permissions are repaired narrowly before validation', () async {
     final terminal = await File('lib/features/terminal/terminal_service.dart').readAsString();
     final bootstrap = await File('lib/core/userland/local_kali_bootstrap.dart').readAsString();
