@@ -735,7 +735,7 @@ class MainActivity : FlutterFragmentActivity() {
                         rootfsPath.contains("\\r") || rootfsPath.contains("\\u0000")) return 0
                     val rootfs = File(rootfsPath)
                     val proot = File(filesDir, "usr/bin/proot")
-                    val loader = File(filesDir, "usr/libexec/proot")
+                    val loader = File(applicationInfo.nativeLibraryDir, "libproot-loader.so")
                     if (!validRootfs(rootfs) || !proot.isFile || !proot.canRead() || !loader.isFile || !loader.canRead()) return 0
                     "kali:${proot.absolutePath}|${rootfs.absolutePath}|${loader.absolutePath}"
                 }
