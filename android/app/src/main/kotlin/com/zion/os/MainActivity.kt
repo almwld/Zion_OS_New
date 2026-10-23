@@ -157,10 +157,10 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ROOT_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "detect" -> result.success(RootAccessManager.detect())
+                    "detect" -> result.success(RootAccessManager.detect(this))
                     "request" -> {
                         terminalExecutor.execute {
-                            val status = RootAccessManager.request()
+                            val status = RootAccessManager.request(this)
                             runOnUiThread { result.success(status) }
                         }
                     }
