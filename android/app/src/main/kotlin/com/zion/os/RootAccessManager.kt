@@ -1,5 +1,6 @@
 package com.zion.os
 
+import android.content.Context
 import android.util.Log
 import java.io.File
 import java.io.FileInputStream
@@ -51,12 +52,14 @@ internal object RootAccessManager {
      * This is strictly a read-only inventory: no System.load/loadLibrary,
      * JNI entry point, subprocess, or payload execution is attempted.
      */
-    private fun inspectOptionalNativePayloads(): Map<String, Any?> {
-        val libraryDirs = System.getProperty("java.library.path")
+    private fun inspectOptionalNativePayloads(context: Context): Map<String, Any?> {
+        // Include Android's authoritative APK native-library directory first.
+        val nativeDir = File(context.applicationInfo.nativeLibraryDir)
+        val libraryDirs = (listOf(nativeDir) + System.getProperty("java.library.path")
             .orEmpty()
             .split(File.pathSeparator)
             .filter { it.isNotBlank() }
-            .map { File(it) }
+            .map { File(it) })
             .distinctBy { it.absolutePath }
 
         val payloads = optionalNativePayloads.associateWith { name ->
@@ -121,14 +124,14 @@ internal object RootAccessManager {
         )
     }
 
-    fun detect(): Map<String, Any?> {
+    fun detect(context: Context): Map<String, Any?> {
         val path = findSuPath()
         return mapOf(
             "available" to (path != null),
             "suPath" to path,
             "granted" to false,
             "requested" to false,
-            "nativePayloads" to inspectOptionalNativePayloads(),
+            "nativePayloads" to inspectOptionalNativePayloads(context),
             "message" to if (path == null) {
                 "No executable su binary was found in known locations or PATH. This does not prove the bootloader state."
             } else {
@@ -137,7 +140,7 @@ internal object RootAccessManager {
         )
     }
 
-    fun request(): Map<String, Any?> {
+    fun request(context: Context): Map<String, Any?> {
         var process: Process? = null
         val suPath = findSuPath() ?: "su"
         return try {
@@ -152,7 +155,7 @@ internal object RootAccessManager {
                     "suPath" to suPath,
                     "granted" to false,
                     "requested" to true,
-                    "nativePayloads" to inspectOptionalNativePayloads(),
+                    "nativePayloads" to inspectOptionalNativePayloads(context),
                     "message" to "The su authorization request timed out."
                 )
             } else {
@@ -165,7 +168,7 @@ internal object RootAccessManager {
                     "granted" to granted,
                     "requested" to true,
                     "output" to output.take(512),
-                    "nativePayloads" to inspectOptionalNativePayloads(),
+                    "nativePayloads" to inspectOptionalNativePayloads(context),
                     "message" to if (granted) {
                         "Root access was granted by the installed su manager."
                     } else {
@@ -180,7 +183,7 @@ internal object RootAccessManager {
                 "suPath" to findSuPath(),
                 "granted" to false,
                 "requested" to true,
-                "nativePayloads" to inspectOptionalNativePayloads(),
+                "nativePayloads" to inspectOptionalNativePayloads(context),
                 "message" to "Unable to request root access: ${t.message ?: t.javaClass.simpleName}"
             )
         } finally {
