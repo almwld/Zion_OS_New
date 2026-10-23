@@ -47,6 +47,7 @@ import 'screens/apps/backup_manager.dart';
 import 'screens/apps/qr_scanner_simple.dart';
 import 'screens/apps/cleaner.dart';
 import 'screens/apps/app_lock.dart';
+import 'screens/virtual_apps/virtual_apps_screen.dart';
 import 'screens/apps/notification_manager.dart';
 import 'widgets/cmatrix_arabic_background.dart';
 import 'widgets/floating_window_manager.dart';
@@ -157,6 +158,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
     {"name":"BACKUP","nameAr":"نسخ","icon":Icons.backup,"category":"TOOLS","color":_neonIndigo},
     {"name":"CLEANER","nameAr":"تنظيف","icon":Icons.cleaning_services,"category":"TOOLS","color":_neonIndigo},
     {"name":"APP LOCK","nameAr":"قفل","icon":Icons.lock_outline,"category":"TOOLS","color":_neonIndigo},
+    {"name":"VIRTUAL_APPS","nameAr":"مساحة التطبيقات الافتراضية","icon":Icons.layers_rounded,"category":"TOOLS","color":_neonIndigo},
     {"name":"NOTIFY","nameAr":"إشعارات","icon":Icons.notifications,"category":"TOOLS","color":_neonIndigo},
   ];
 
@@ -237,6 +239,7 @@ class _DesktopHomeState extends State<DesktopHome> with TickerProviderStateMixin
       'QR' => const QRScannerApp(),
       'CLEANER' => const CleanerApp(),
       'APP LOCK' => const AppLockApp(),
+      'VIRTUAL_APPS' => const VirtualAppsScreen(),
       'NOTIFY' => const NotificationManagerApp(),
       'NETWORK' => const NetworkToolsApp(),
       'NETWORK SCANNER' => const NetworkScannerApp(),
