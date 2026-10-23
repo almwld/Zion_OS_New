@@ -1,0 +1,151 @@
+name: Zion NDK Native Test Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zion-ndk-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.38.10'
+  JAVA_VERSION: '17'
+  ANDROID_NDK_VERSION: '27.0.12077973'
+  CMAKE_VERSION: '3.22.1'
+
+jobs:
+  native-test-build:
+    name: ARM64 NDK test build and artifact extraction
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Prepare artifact staging
+        shell: bash
+        run: mkdir -p artifacts/native-test/logs artifacts/native-test/libs/arm64-v8a artifacts/native-test/generated
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          test -d "$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "Installed NDK: ${ANDROID_NDK_VERSION}"
+          echo "Installed CMake: ${CMAKE_VERSION}"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve Flutter dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get 2>&1 | tee artifacts/native-test/logs/flutter-pub-get.log
+
+      - name: Run Dart tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test --reporter expanded 2>&1 | tee artifacts/native-test/logs/flutter-test.log
+
+      - name: Build ARM64 debug APK with native code
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --target-platform android-arm64 -v 2>&1 | tee artifacts/native-test/logs/flutter-native-build.log
+          APK="build/app/outputs/flutter-apk/app-debug.apk"
+          test -s "$APK"
+          cp "$APK" artifacts/native-test/zion-os-arm64-debug.apk
+          echo "Built APK: $APK ($(stat -c%s "$APK") bytes)"
+
+      - name: Extract packaged ARM64 shared libraries
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="artifacts/native-test/zion-os-arm64-debug.apk"
+          unzip -Z1 "$APK" | grep -E '^lib/arm64-v8a/[^/]+\.so$' > "$RUNNER_TEMP/arm64-libs.txt" || true
+          while IFS= read -r entry; do
+            [ -n "$entry" ] || continue
+            name="${entry##*/}"
+            unzip -p "$APK" "$entry" > "artifacts/native-test/libs/arm64-v8a/$name"
+            test -s "artifacts/native-test/libs/arm64-v8a/$name"
+          done < "$RUNNER_TEMP/arm64-libs.txt"
+          if [ -s "$RUNNER_TEMP/arm64-libs.txt" ]; then
+            echo "Extracted packaged ARM64 libraries:"
+            cat "$RUNNER_TEMP/arm64-libs.txt"
+          else
+            echo "No ARM64 .so entries were packaged in the debug APK." | tee artifacts/native-test/logs/library-extraction.txt
+          fi
+
+      - name: Collect generated native libraries and image files
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/native-test/generated
+          for root in android/app/build build; do
+            [ -d "$root" ] || continue
+            find "$root" -type f \( -name '*.so' -o -name '*.img' \) -print0
+          done | while IFS= read -r -d '' file; do
+            case "$file" in
+              artifacts/native-test/*) continue ;;
+            esac
+            cp --parents "$file" artifacts/native-test/generated/
+          done
+
+      - name: Write build and artifact manifest
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "Zion OS NDK test build"
+            echo "Commit: $GITHUB_SHA"
+            echo "Runner: $RUNNER_OS"
+            echo "Flutter: $FLUTTER_VERSION"
+            echo "Requested NDK: $ANDROID_NDK_VERSION"
+            echo "CMake: $CMAKE_VERSION"
+            echo "Android ABI: arm64-v8a"
+            echo "Build status: see workflow job result and logs/"
+            echo
+            echo "Files collected:"
+            find artifacts/native-test -type f -printf '%p (%s bytes)\n' | sort
+            echo
+            echo "SHA-256:"
+            find artifacts/native-test -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 -r sha256sum
+          } > artifacts/native-test/MANIFEST.txt
+
+      - name: Upload NDK test build, extracted libraries, and diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zion-ndk-arm64-test-${{ github.run_number }}
+          path: artifacts/native-test/
+          if-no-files-found: warn
+          retention-days: 14
