@@ -92,6 +92,7 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingAllFilesAccessResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
+    private var pendingVirtualApkResult: MethodChannel.Result? = null
     private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
     private val aiDiscoveryExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai-discovery").apply { isDaemon = true } }
     private val terminalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-start").apply { isDaemon = true } }
@@ -114,6 +115,7 @@ class MainActivity : FlutterFragmentActivity() {
         private const val AI_CHANNEL = "zion.os/ai"
         private const val REQUEST_OPEN_MODEL = 4102
         private const val REQUEST_OPEN_KALI = 4103
+        private const val REQUEST_OPEN_VIRTUAL_APK = 4104
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -170,6 +172,32 @@ class MainActivity : FlutterFragmentActivity() {
         ZionToken.ensure(this)
         zionApiChannel = ZionApiChannel(this, flutterEngine.dartExecutor.binaryMessenger).also { it.register() }
         zionPkgChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ZION_PKG_CHANNEL)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zion.os/virtual_apps")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "list" -> result.success(listImportedVirtualApks())
+                    "pickApk" -> {
+                        if (pendingVirtualApkResult != null) {
+                            result.error("BUSY", "An APK picker is already open.", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingVirtualApkResult = result
+                        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            type = "application/vnd.android.package-archive"
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                        }
+                        try {
+                            startActivityForResult(picker, REQUEST_OPEN_VIRTUAL_APK)
+                        } catch (t: Throwable) {
+                            pendingVirtualApkResult = null
+                            result.error("APK_PICKER_FAILED", t.message ?: "Unable to open APK picker.", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         handleZionApiIntent(intent)
         Handler(Looper.getMainLooper()).postDelayed({ handleZionPkgIntent(intent) }, 500L)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIFI_CHANNEL)
@@ -1200,6 +1228,48 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_OPEN_VIRTUAL_APK) {
+            val pending = pendingVirtualApkResult
+            pendingVirtualApkResult = null
+            if (resultCode != RESULT_OK || data?.data == null) {
+                pending?.success(mapOf("status" to "CANCELLED"))
+            } else {
+                val uri = data.data!!
+                aiExecutor.execute {
+                    val response = try {
+                        val dir = File(filesDir, "virtual-apps").apply { mkdirs() }
+                        val displayName = (queryDisplayName(uri) ?: "imported.apk")
+                            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                        val target = File(dir, "${System.currentTimeMillis()}_${displayName}")
+                        if (!copyDocumentToPrivate(uri.toString(), target.absolutePath)) {
+                            mapOf("status" to "ERROR", "message" to "Unable to copy APK into private storage.")
+                        } else {
+                            val info = packageManager.getPackageArchiveInfo(target.absolutePath, 0)
+                            if (info == null) {
+                                target.delete()
+                                mapOf("status" to "UNSUPPORTED", "message" to "Selected file is not a valid APK.")
+                            } else {
+                                info.applicationInfo?.sourceDir = target.absolutePath
+                                info.applicationInfo?.publicSourceDir = target.absolutePath
+                                mapOf(
+                                    "status" to "IMPORTED",
+                                    "fileName" to target.name,
+                                    "packageName" to info.packageName,
+                                    "label" to (info.applicationInfo?.loadLabel(packageManager)?.toString() ?: info.packageName),
+                                    "versionName" to (info.versionName ?: "unknown"),
+                                )
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        mapOf("status" to "ERROR", "message" to (t.message ?: "APK import failed."))
+                    }
+                    runOnUiThread { pending?.success(response) }
+                }
+            }
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+
         if (requestCode == REQUEST_OPEN_MODEL) {
             val pending = pendingModelResult
             pendingModelResult = null
@@ -1248,6 +1318,25 @@ class MainActivity : FlutterFragmentActivity() {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun listImportedVirtualApks(): List<Map<String, Any?>> {
+        val dir = File(filesDir, "virtual-apps")
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()?.filter { it.isFile && it.extension.equals("apk", ignoreCase = true) }
+            ?.mapNotNull { file ->
+                try {
+                    val info = packageManager.getPackageArchiveInfo(file.absolutePath, 0) ?: return@mapNotNull null
+                    info.applicationInfo?.sourceDir = file.absolutePath
+                    info.applicationInfo?.publicSourceDir = file.absolutePath
+                    mapOf(
+                        "fileName" to file.name,
+                        "packageName" to info.packageName,
+                        "label" to (info.applicationInfo?.loadLabel(packageManager)?.toString() ?: info.packageName),
+                        "versionName" to (info.versionName ?: "unknown"),
+                    )
+                } catch (_: Throwable) { null }
+            } ?: emptyList()
     }
 
     private fun copyDocumentToPrivate(uriString: String, destination: String): Boolean {
