@@ -602,10 +602,52 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   Future<void> _paste() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text;
-    if (text != null && text.isNotEmpty) {
-      _sendRaw(text);
+    final clipboardText = data?.text;
+    if (clipboardText == null || clipboardText.isEmpty) return;
+
+    final tab = _selectedTab;
+    if (tab == null || !tab.service.isInteractiveRunning) {
+      _showTerminalNotice('شغّل جلسة PTY أولاً.');
+      return;
     }
+
+    // Let xterm2 encode paste according to DECSET 2004. When the shell has
+    // not enabled bracketed paste, multi-line input could execute commands
+    // immediately; require an explicit confirmation in that case.
+    final text = clipboardText
+        .replaceAll('\x1b[200~', '')
+        .replaceAll('\x1b[201~', '')
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n');
+    final isMultiLine = text.contains('\n');
+    if (isMultiLine && !tab.terminal.bracketedPasteMode) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: _palette.surface,
+          title: Text('لصق متعدد الأسطر', style: TextStyle(color: _palette.foreground)),
+          content: Text(
+            'هذه الجلسة لا تعلن دعم اللصق المحمي. قد تُنفّذ الأسطر كأوامر فور لصقها. هل تريد المتابعة؟',
+            style: TextStyle(color: _palette.foreground),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('لصق على مسؤوليتي'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    // Terminal.paste preserves newlines and wraps the payload in bracketed
+    // paste markers when the foreground program has enabled that mode.
+    tab.terminal.paste(text);
   }
 
   void _sendControl(String key) {
@@ -1389,6 +1431,9 @@ class _ExtraKeys extends StatelessWidget {
       MapEntry('→', '\x1b[C'),
       MapEntry('HOME', '\x1b[H'),
       MapEntry('END', '\x1b[F'),
+      MapEntry('PGUP', '\x1b[5~'),
+      MapEntry('PGDN', '\x1b[6~'),
+      MapEntry('CTRL-Z', '\x1a'),
     ];
 
     return SafeArea(
