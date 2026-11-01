@@ -1151,10 +1151,10 @@ class MainActivity : FlutterFragmentActivity() {
 
 
     private fun discoverGgufModels(): List<Map<String, Any?>> {
+        // Import the named offline model from the user's canonical backup folder
+        // once, without deleting or modifying the original shared-storage file.
+        importDefaultBackupModel()
         val roots = linkedSetOf<File>()
-        // Keep launch-time discovery inside app-owned directories. Walking the
-        // shared Downloads tree can traverse thousands of unrelated files on
-        // older phones and makes both Offline AI and Agent appear frozen.
         roots.add(File(filesDir, "models"))
         getExternalFilesDir(null)?.let { roots.add(File(it, "models")) }
         val out = mutableListOf<Map<String, Any?>>()
@@ -1172,6 +1172,64 @@ class MainActivity : FlutterFragmentActivity() {
         }
         roots.forEach { visit(it, 0) }
         return out.sortedBy { it["name"].toString().lowercase() }
+    }
+
+    private fun importDefaultBackupModel() {
+        val backupRoot = File("/storage/emulated/0/zion-backup")
+        val modelPrefix = "qwen2.5-coder-0.5b-deepheretic"
+        val destinationDir = File(filesDir, "models")
+        try {
+            if (!backupRoot.isDirectory || !backupRoot.canRead()) return
+            val existing = destinationDir.listFiles()?.firstOrNull {
+                it.isFile && it.name.lowercase(Locale.ROOT).startsWith(modelPrefix) &&
+                    it.name.lowercase(Locale.ROOT).endsWith(".gguf") && it.length() > 0L
+            }
+            if (existing != null) return
+
+            val candidates = ArrayDeque<Pair<File, Int>>()
+            candidates.add(backupRoot to 0)
+            var source: File? = null
+            while (candidates.isNotEmpty() && source == null) {
+                val (directory, depth) = candidates.removeFirst()
+                val children = try { directory.listFiles() ?: continue } catch (_: Throwable) { continue }
+                for (child in children) {
+                    if (child.isFile && child.name.lowercase(Locale.ROOT).startsWith(modelPrefix) &&
+                        child.name.lowercase(Locale.ROOT).endsWith(".gguf") && child.canRead() && child.length() >= 4L) {
+                        source = child
+                        break
+                    }
+                    if (depth < 4 && child.isDirectory && !child.name.startsWith(".")) {
+                        candidates.add(child to depth + 1)
+                    }
+                }
+            }
+            val selected = source ?: return
+            destinationDir.mkdirs()
+            val target = File(destinationDir, selected.name.replace(Regex("[^A-Za-z0-9._-]+"), "_"))
+            if (target.isFile && target.length() == selected.length()) return
+            val temporary = File(destinationDir, target.name + ".importing")
+            try {
+                selected.inputStream().buffered().use { input ->
+                    temporary.outputStream().buffered().use { output -> input.copyTo(output, 1024 * 1024) }
+                }
+                val magic = ByteArray(4)
+                temporary.inputStream().use { input ->
+                    if (input.read(magic) != 4 || String(magic, Charsets.US_ASCII) != "GGUF") {
+                        throw IllegalArgumentException("Selected model does not have GGUF file signature.")
+                    }
+                }
+                if (temporary.length() != selected.length()) {
+                    throw IllegalStateException("Imported model size does not match the source.")
+                }
+                if (target.exists() && !target.delete()) throw IllegalStateException("Cannot replace incomplete model.")
+                if (!temporary.renameTo(target)) throw IllegalStateException("Cannot finalize imported GGUF model.")
+                android.util.Log.i("ZionLLM", "Imported default offline model: ${target.absolutePath} (${target.length()} bytes)")
+            } finally {
+                if (temporary.exists()) temporary.delete()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("ZionLLM", "Default backup model auto-import unavailable; manual picker remains available.", t)
+        }
     }
 
     private fun importSelectedModel(uri: Uri): Map<String, Any?> {
