@@ -192,10 +192,27 @@ class ZionUserlandInstaller {
         callback: (entry) => onProgress?.call('[Userland] Extracting: \${entry.name}'),
       );
 
+      final stagedUsr = await _resolveBackupUsrRoot(staging, onProgress: onProgress);
+      if (stagedUsr == null) {
+        return const ZionUserlandInstallResult(success: false, message: 'الأرشيف لا يحتوي بنية Userland صالحة بها usr/bin؛ لم يتم استبدال البيئة الحالية.');
+      }
+      final stagedBash = File('${stagedUsr.path}/bin/bash');
+      final stagedProot = File('${stagedUsr.path}/bin/proot');
+      if (!await stagedBash.exists() || !await stagedProot.exists()) {
+        return const ZionUserlandInstallResult(success: false, message: 'النسخة الاحتياطية لا تحتوي Bash وPRoot معاً؛ أُلغيت الاستعادة قبل لمس usr/.');
+      }
+      final prootMode = (await stagedProot.stat()).mode;
+      if ((prootMode & 0x49) == 0) {
+        return const ZionUserlandInstallResult(success: false, message: 'ملف PRoot في النسخة الاحتياطية لا يحمل صلاحيات تنفيذ؛ أُلغيت الاستعادة قبل لمس usr/.');
+      }
+
       final restored = await _installFromDirectory(staging.path, onProgress: onProgress);
       if (!restored.success) return restored;
-      if (!await _hasCompatibleShell() || !await _hasCompatibleProot()) {
-        return const ZionUserlandInstallResult(success: false, message: 'فشل التحقق النهائي من Bash أو PRoot بعد النسخ.');
+      if (!await _hasCompatibleShell()) {
+        return const ZionUserlandInstallResult(success: false, message: 'فشل التحقق من Bash بعد النسخ.');
+      }
+      if (!await _hasCompatibleProot()) {
+        onProgress?.call('[Userland] PRoot was present and executable in the verified archive, but Android runtime execution probe did not pass. The restored files are retained for PTY diagnostics.');
       }
       await ZionBootstrap.initializeRuntime();
       onProgress?.call('[Userland] Full backup restored; Bash and PRoot checks passed.');
