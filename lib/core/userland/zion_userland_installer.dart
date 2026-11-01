@@ -149,6 +149,73 @@ class ZionUserlandInstaller {
     });
   }
 
+  /// Restores the canonical full backup with bounded-memory extraction.
+  Future<ZionUserlandInstallResult?> _restoreDefaultFullBackup({
+    void Function(String message)? onProgress,
+  }) async {
+    const archivePath = '/storage/emulated/0/zion-backup/zion-full-backup.tar.gz';
+    const checksumPath = '$archivePath.sha256';
+    final archiveFile = File(archivePath);
+    final checksumFile = File(checksumPath);
+    if (!await archiveFile.exists()) {
+      onProgress?.call('[Userland] Default full backup not found: $archivePath');
+      return null;
+    }
+    if (!await checksumFile.exists()) {
+      return const ZionUserlandInstallResult(success: false, message: 'ملف SHA-256 المرافق للنسخة الاحتياطية غير موجود؛ أُوقفت الاستعادة دون تعديل usr/.');
+    }
+
+    final staging = Directory(
+      '\${ZionBootstrap.base}/.zion-full-restore-\${DateTime.now().microsecondsSinceEpoch}',
+    );
+    try {
+      onProgress?.call('[Userland] Verifying default full backup SHA-256...');
+      final checksumText = await checksumFile.readAsString();
+      final match = RegExp(r'([a-fA-F0-9]{64})').firstMatch(checksumText);
+      if (match == null) {
+        return const ZionUserlandInstallResult(success: false, message: 'صيغة ملف SHA-256 غير صالحة؛ لم يتم فك الأرشيف.');
+      }
+      final actual = (await sha256.bind(archiveFile.openRead()).first).toString();
+      if (actual.toLowerCase() != match.group(1)!.toLowerCase()) {
+        return const ZionUserlandInstallResult(success: false, message: 'فشل تطابق SHA-256؛ لم يتم فك الأرشيف أو تغيير البيئة الحالية.');
+      }
+      if (await archiveFile.length() <= 0) {
+        return const ZionUserlandInstallResult(success: false, message: 'ملف النسخة الاحتياطية فارغ.');
+      }
+
+      onProgress?.call('[Userland] SHA-256 verified; extracting TAR.GZ to private staging...');
+      await staging.create(recursive: true);
+      await extractFileToDisk(
+        archivePath,
+        staging.path,
+        maxSize: 16 * 1024 * 1024 * 1024,
+        callback: (entry) => onProgress?.call('[Userland] Extracting: \${entry.name}'),
+      );
+
+      final restored = await _installFromDirectory(staging.path, onProgress: onProgress);
+      if (!restored.success) return restored;
+      if (!await _hasCompatibleShell() || !await _hasCompatibleProot()) {
+        return const ZionUserlandInstallResult(success: false, message: 'فشل التحقق النهائي من Bash أو PRoot بعد النسخ.');
+      }
+      await ZionBootstrap.initializeRuntime();
+      onProgress?.call('[Userland] Full backup restored; Bash and PRoot checks passed.');
+      return ZionUserlandInstallResult(
+        success: true,
+        message: 'تمت استعادة النسخة الكاملة والتحقق من Bash وPRoot.',
+        releaseTag: await ZionBootstrap.currentRelease(),
+      );
+    } catch (error) {
+      onProgress?.call('[Userland] Full TAR.GZ restore failed safely: $error');
+      return ZionUserlandInstallResult(success: false, message: 'فشلت استعادة النسخة دون حذف الأرشيف الأصلي: $error');
+    } finally {
+      try {
+        if (await staging.exists()) await staging.delete(recursive: true);
+      } catch (error) {
+        onProgress?.call('[Userland] Temporary staging cleanup warning: $error');
+      }
+    }
+  }
+
   Future<ZionUserlandInstallResult> _installLatestInternal({
     void Function(String message)? onProgress,
   }) async {
@@ -195,6 +262,16 @@ class ZionUserlandInstaller {
         success: false,
         message: 'معمارية Android غير مدعومة حاليًا: $abi',
       );
+    }
+
+    // Restore the canonical full TAR.GZ backup before legacy layouts.
+    final fullBackupRestore = await _restoreDefaultFullBackup(onProgress: onProgress);
+    if (fullBackupRestore != null) {
+      if (fullBackupRestore.success) return fullBackupRestore;
+      onProgress?.call('[Userland] Default full backup restore failed: \${fullBackupRestore.message}');
+      if (await File('/storage/emulated/0/zion-backup/zion-full-backup.tar.gz').exists()) {
+        return fullBackupRestore;
+      }
     }
 
     // Restore the uncompressed Termux usr backup directly first. Do not
