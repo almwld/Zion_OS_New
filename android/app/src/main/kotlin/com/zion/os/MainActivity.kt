@@ -253,11 +253,14 @@ class MainActivity : FlutterFragmentActivity() {
                             return@setMethodCallHandler
                         }
                         aiExecutor.execute {
+                            ZionAgentForegroundService.acquireInferenceWakeLock(this)
                             val ok = try {
                                 llamaBridge.nativeLoadModel(path, threads, loraPath, loraScale)
                             } catch (t: Throwable) {
                                 android.util.Log.e("ZionLLM", "Native model loading failed", t)
                                 false
+                            } finally {
+                                ZionAgentForegroundService.releaseInferenceWakeLock()
                             }
                             sessionPrefs.edit().putString("model_status", if (ok) "LOADED" else "LOAD_FAILED").apply()
                             if (!isFinishing && !isDestroyed) runOnUiThread { result.success(ok) }
@@ -290,7 +293,10 @@ class MainActivity : FlutterFragmentActivity() {
                             .remove(ZionAgentForegroundService.KEY_GENERATION_RESULT)
                             .apply()
                         aiExecutor.execute {
-                            val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" }
+                            ZionAgentForegroundService.acquireInferenceWakeLock(this)
+                            val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
+                                ZionAgentForegroundService.releaseInferenceWakeLock()
+                            }
                             sessionPrefs.edit()
                                 .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, if (response.startsWith("ERROR:")) "FAILED" else "COMPLETED")
                                 .putString(ZionAgentForegroundService.KEY_GENERATION_RESULT, response)
@@ -547,8 +553,7 @@ class MainActivity : FlutterFragmentActivity() {
         try { logcatProcess?.destroy() } catch (_: Throwable) {}
         try { logcatProcess?.destroyForcibly() } catch (_: Throwable) {}
         logcatProcess = null
-        logcatThread?.interrupt()
-        logcatThread = null
+        logcatThread?.interrupt()        logcatThread = null
     }
     private fun handleZionApiIntent(intent: Intent) {
         if (intent.action == "com.zion.os.ZION_API" && ::zionApiChannel.isInitialized) {
@@ -1097,8 +1102,7 @@ class MainActivity : FlutterFragmentActivity() {
             override fun onAuthenticationFailed() {}
         })
         prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Zion OS")
+            BiometricPrompt.PromptInfo.Builder()                .setTitle("Zion OS")
                 .setSubtitle("Authenticate to continue")
                 .setNegativeButtonText("Cancel")
                 .build()
