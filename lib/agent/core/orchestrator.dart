@@ -507,12 +507,12 @@ ${jsonEncode(relevantMemory)}
   }
 
   Future<bool> _nativeAiAvailable() async {
-    // The Super Agent and its AI tool share this exact service instance.
-    // Avoid probing a native MethodChannel when this session has not loaded a
-    // model; in headless/test environments that channel may have no handler.
-    if (!ai.isLoaded) return false;
+    // LlamaService instances are lightweight facades over one process-wide
+    // native GGUF session. Offline AI may load the model through a different
+    // Dart instance, so the local cached isLoaded flag is not authoritative.
+    // Synchronize with the foreground service/native runtime before planning.
     try {
-      return await ai.nativeLoaded;
+      return await ai.refreshLoadedState();
     } catch (_) {
       return false;
     }
