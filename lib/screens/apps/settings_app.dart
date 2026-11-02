@@ -439,11 +439,11 @@ class _SettingsAppState extends State<SettingsApp> {
                     : () async {
                         final oldPin = oldCtrl.text.trim();
                         final newPin = newCtrl.text.trim();
-                        if (!RegExp(r'^\\d{4}$').hasMatch(oldPin)) {
+                        if (!RegExp(r'^\d{4}$').hasMatch(oldPin)) {
                           setDialogState(() => validationError = 'أدخل رمز PIN الحالي المكوّن من 4 أرقام.');
                           return;
                         }
-                        if (!RegExp(r'^\\d{4}$').hasMatch(newPin)) {
+                        if (!RegExp(r'^\d{4}$').hasMatch(newPin)) {
                           setDialogState(() => validationError = 'يجب أن يتكون رمز PIN الجديد من 4 أرقام.');
                           return;
                         }
