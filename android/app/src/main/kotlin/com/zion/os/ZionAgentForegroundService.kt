@@ -30,6 +30,7 @@ class ZionAgentForegroundService : Service() {
         const val KEY_THREADS = "model_threads"
         const val KEY_LORA_PATH = "lora_path"
         const val KEY_LORA_SCALE = "lora_scale"
+        const val KEY_MODEL_RESTORE_ATTEMPTS = "model_restore_attempts"
         const val KEY_GENERATION_STATUS = "generation_status"
         const val KEY_GENERATION_PROMPT = "generation_prompt"
         const val KEY_GENERATION_TOKENS = "generation_tokens"
@@ -135,23 +136,47 @@ class ZionAgentForegroundService : Service() {
                     .apply()
                 return
             }
-            val loaded = try {
-                llamaBridge.nativeIsLoaded() || llamaBridge.nativeLoadModel(
-                    modelPath,
-                    prefs.getInt(KEY_THREADS, 2),
-                    prefs.getString(KEY_LORA_PATH, null),
-                    prefs.getFloat(KEY_LORA_SCALE, 1.0f)
-                )
-            } catch (t: Throwable) {
-                android.util.Log.e("ZionAgent", "Model restoration failed", t)
-                false
-            }
+            var loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
             if (!loaded) {
+                val attempts = prefs.getInt(KEY_MODEL_RESTORE_ATTEMPTS, 0)
+                if (attempts >= 1 && prefs.getString("model_status", "") == "RESTORING") {
+                    prefs.edit()
+                        .putString("model_status", "RESTORE_FAILED")
+                        .putString(KEY_GENERATION_STATUS, "RESTORE_FAILED")
+                        .putString(KEY_GENERATION_RESULT, "ERROR: تعذرت استعادة النموذج بعد محاولة الاسترداد؛ أعد تحميله يدوياً.")
+                        .commit()
+                    return
+                }
                 prefs.edit()
-                    .putString(KEY_GENERATION_STATUS, "RESTORE_FAILED")
-                    .putString(KEY_GENERATION_RESULT, "ERROR: تعذرت استعادة النموذج المحلي بعد إعادة تشغيل الجلسة.")
-                    .apply()
-                return
+                    .putInt(KEY_MODEL_RESTORE_ATTEMPTS, attempts + 1)
+                    .putString("model_status", "RESTORING")
+                    .commit()
+                acquireInferenceWakeLock(this)
+                loaded = try {
+                    llamaBridge.nativeLoadModel(
+                        modelPath,
+                        prefs.getInt(KEY_THREADS, 2),
+                        prefs.getString(KEY_LORA_PATH, null),
+                        prefs.getFloat(KEY_LORA_SCALE, 1.0f)
+                    )
+                } catch (t: Throwable) {
+                    android.util.Log.e("ZionAgent", "Model restoration failed", t)
+                    false
+                } finally {
+                    releaseInferenceWakeLock()
+                }
+                if (!loaded) {
+                    prefs.edit()
+                        .putString("model_status", "RESTORE_FAILED")
+                        .putString(KEY_GENERATION_STATUS, "RESTORE_FAILED")
+                        .putString(KEY_GENERATION_RESULT, "ERROR: تعذرت استعادة النموذج المحلي بعد إعادة تشغيل الجلسة.")
+                        .commit()
+                    return
+                }
+                prefs.edit()
+                    .putString("model_status", "LOADED")
+                    .putInt(KEY_MODEL_RESTORE_ATTEMPTS, 0)
+                    .commit()
             }
         }
 
@@ -173,7 +198,7 @@ class ZionAgentForegroundService : Service() {
             return
         }
 
-        prefs.edit().putInt(KEY_GENERATION_RETRIES, 1).apply()
+        prefs.edit().putInt(KEY_GENERATION_RETRIES, 1).commit()
         val response = try {
             llamaBridge.nativeGenerate(
                 prompt,
@@ -187,7 +212,7 @@ class ZionAgentForegroundService : Service() {
             .putString(KEY_GENERATION_STATUS, if (response.startsWith("ERROR:")) "FAILED" else "COMPLETED")
             .putString(KEY_GENERATION_RESULT, response)
             .putLong("generation_completed_at", System.currentTimeMillis())
-            .apply()
+            .commit()
         releaseInferenceWakeLock()
     }
 
