@@ -73,10 +73,8 @@ class MainActivity : FlutterFragmentActivity() {
     private external fun nativeResizePty(handle: Int, rows: Int, cols: Int): Boolean
     private external fun nativeStopPty(handle: Int)
 
-    private val terminalReaders = ConcurrentHashMap<Int, Thread>()
-    // Serialize native PTY lifecycle calls so handles cannot be reused while an old reader is alive.
-    private val terminalLifecycleLock = Any()
-    private var terminalSink: EventChannel.EventSink? = null
+    // PTY sessions belong to the Android process, not to a Flutter Activity.
+    // Keep readers and their event sink bridge across Activity/engine recreation.
     private var radarSink: EventChannel.EventSink? = null
     private var terminalLogSink: EventChannel.EventSink? = null
     @Volatile private var logcatRunning = false
@@ -100,6 +98,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     companion object {
         init { System.loadLibrary("zion_pty") }
+        private val terminalReaders = ConcurrentHashMap<Int, Thread>()
+        private val terminalLifecycleLock = Any()
+        @Volatile private var terminalSink: EventChannel.EventSink? = null
         private const val PLATFORM_CHANNEL = "zion.os/platform"
         private const val WIFI_CHANNEL = "zion.os/wifi"
         private const val SECURITY_CHANNEL = "zion.os/security"
@@ -1498,7 +1499,9 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onDestroy() {
         stopTerminalLogStream()
         stopNetworkRadar()
-        stopAllTerminals()
+        // Do not kill process-owned PTYs when Flutter recreates/destroys the
+        // Activity. Their native child processes and reader threads stay alive;
+        // a newly attached EventChannel sink receives subsequent output.
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         ttsEngine?.stop()
