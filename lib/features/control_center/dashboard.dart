@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'system_metrics.dart';
 
 class Dashboard extends StatefulWidget {
-  const Dashboard({super.key, SystemMetrics? metrics})
-      : metrics = metrics ?? const _DefaultMetrics();
+  Dashboard({super.key, SystemMetrics? metrics})
+      : metrics = metrics ?? SystemMetrics();
 
   final SystemMetrics metrics;
 
@@ -96,8 +96,4 @@ class _DashboardState extends State<Dashboard> {
       ),
     );
   }
-}
-
-class _DefaultMetrics extends SystemMetrics {
-  const _DefaultMetrics();
 }
