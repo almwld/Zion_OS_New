@@ -18,6 +18,8 @@ class AgentBackgroundService {
       return false;
     } on PlatformException {
       return false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -28,6 +30,8 @@ class AgentBackgroundService {
       // Non-Android hosts and widget tests have no native service.
     } on PlatformException {
       // The agent result remains authoritative even if notification cleanup fails.
+    } catch (_) {
+      // Background cleanup must never replace a completed/failed task result.
     }
   }
 }
