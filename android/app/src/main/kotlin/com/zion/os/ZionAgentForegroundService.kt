@@ -22,6 +22,7 @@ class ZionAgentForegroundService : Service() {
     companion object {
         const val ACTION_START = "com.zion.os.AGENT_START"
         const val ACTION_STOP = "com.zion.os.AGENT_STOP"
+        const val ACTION_FINISH_TASK = "com.zion.os.AGENT_FINISH_TASK"
         const val EXTRA_TASK = "task"
         private const val CHANNEL_ID = "zion_agent_work"
         private const val NOTIFICATION_ID = 4107
@@ -93,8 +94,16 @@ class ZionAgentForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_FINISH_TASK) {
+            // Finish the current UI task without unloading the native model or
+            // clearing its recovery metadata. Keep the foreground host alive.
+            val notification = buildNotification("جلسة النموذج المحلي جاهزة — في انتظار المهمة التالية")
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
+            return START_STICKY
+        }
+
         if (intent?.action == ACTION_STOP) {
-            // Cancellation is atomic and must happen outside the inference queue.
+            // Explicit model unload only. Task completion must use ACTION_FINISH_TASK.
             try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { }
             inferenceExecutor.execute {
                 try {
