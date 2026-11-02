@@ -133,7 +133,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     env->ReleaseStringUTFChars(prompt, text);
 
     if (const char * chatTemplate = llama_model_chat_template(g_model, nullptr)) {
-        if (chatTemplate[0] != '\\0') {
+        if (chatTemplate[0] != '\0') {
             llama_chat_message message = { "user", formattedPrompt.c_str() };
             size_t formattedCapacity = std::max<size_t>(512, formattedPrompt.size() * 2 + 256);
             std::vector<char> formatted(formattedCapacity);
