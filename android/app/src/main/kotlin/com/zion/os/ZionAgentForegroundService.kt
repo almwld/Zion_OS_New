@@ -93,9 +93,10 @@ class ZionAgentForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Cancellation is atomic and must happen outside the inference queue.
+            try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { }
             inferenceExecutor.execute {
                 try {
-                    llamaBridge.nativeCancelGeneration()
                     llamaBridge.nativeFreeModel()
                 } catch (t: Throwable) {
                     android.util.Log.w("ZionAgent", "Native cleanup after explicit stop failed", t)
