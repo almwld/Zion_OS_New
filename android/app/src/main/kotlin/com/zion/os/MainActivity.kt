@@ -92,10 +92,11 @@ class MainActivity : FlutterFragmentActivity() {
     private var pendingAllFilesAccessResult: MethodChannel.Result? = null
     private var pendingModelResult: MethodChannel.Result? = null
     private var pendingKaliResult: MethodChannel.Result? = null
-    private val aiExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai").apply { isDaemon = true } }
+    // Inference and the native model outlive Activity/Flutter engine recreation.
+    private val aiExecutor get() = ZionAgentForegroundService.inferenceExecutor
     private val aiDiscoveryExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-ai-discovery").apply { isDaemon = true } }
     private val terminalExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "zion-pty-start").apply { isDaemon = true } }
-    private val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
+    private val llamaBridge get() = ZionAgentForegroundService.llamaBridge
 
     companion object {
         init { System.loadLibrary("zion_pty") }
@@ -237,6 +238,20 @@ class MainActivity : FlutterFragmentActivity() {
                         if (activityManager != null && memoryInfo.availMem < requiredBytes) {
                             android.util.Log.w("ZionLLM", "Large model load requested despite estimate: available=${memoryInfo.availMem / (1024 * 1024)}MiB, estimatedRequired=${requiredBytes / (1024 * 1024)}MiB, modelBytes=$modelBytes")
                         }
+                        val sessionPrefs = ZionAgentForegroundService.sessionPreferences(this)
+                        sessionPrefs.edit()
+                            .putString(ZionAgentForegroundService.KEY_MODEL_PATH, path)
+                            .putInt(ZionAgentForegroundService.KEY_THREADS, threads.coerceIn(1, 8))
+                            .putString(ZionAgentForegroundService.KEY_LORA_PATH, loraPath)
+                            .putFloat(ZionAgentForegroundService.KEY_LORA_SCALE, loraScale)
+                            .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "IDLE")
+                            .apply()
+                        try {
+                            ZionAgentForegroundService.startSession(this, "تحميل النموذج المحلي")
+                        } catch (t: Throwable) {
+                            result.error("AI_BACKGROUND_START_FAILED", t.message ?: "تعذر تشغيل خدمة النموذج بالخلفية", null)
+                            return@setMethodCallHandler
+                        }
                         aiExecutor.execute {
                             val ok = try {
                                 llamaBridge.nativeLoadModel(path, threads, loraPath, loraScale)
@@ -244,7 +259,8 @@ class MainActivity : FlutterFragmentActivity() {
                                 android.util.Log.e("ZionLLM", "Native model loading failed", t)
                                 false
                             }
-                            runOnUiThread { result.success(ok) }
+                            sessionPrefs.edit().putString("model_status", if (ok) "LOADED" else "LOAD_FAILED").apply()
+                            if (!isFinishing && !isDestroyed) runOnUiThread { result.success(ok) }
                         }
                     }
                     "cancelGeneration" -> {
@@ -255,11 +271,47 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "generate" -> {
                         val prompt = call.argument<String>("prompt") ?: ""
-                        val maxTokens = call.argument<Int>("maxTokens") ?: 512
-                        val temperature = (call.argument<Double>("temperature") ?: 0.7).toFloat()
+                        val maxTokens = (call.argument<Int>("maxTokens") ?: 512).coerceIn(1, 2048)
+                        val temperature = (call.argument<Double>("temperature") ?: 0.7).toFloat().coerceIn(0.0f, 1.5f)
+                        if (prompt.isBlank()) { result.success(""); return@setMethodCallHandler }
+                        try {
+                            ZionAgentForegroundService.startSession(this, "تنفيذ استدلال محلي في الخلفية")
+                        } catch (t: Throwable) {
+                            result.error("AI_BACKGROUND_START_FAILED", t.message ?: "تعذر إبقاء جلسة النموذج نشطة", null)
+                            return@setMethodCallHandler
+                        }
+                        val sessionPrefs = ZionAgentForegroundService.sessionPreferences(this)
+                        sessionPrefs.edit()
+                            .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "RUNNING")
+                            .putString(ZionAgentForegroundService.KEY_GENERATION_PROMPT, prompt.take(32768))
+                            .putInt(ZionAgentForegroundService.KEY_GENERATION_TOKENS, maxTokens)
+                            .putFloat(ZionAgentForegroundService.KEY_GENERATION_TEMPERATURE, temperature)
+                            .putInt(ZionAgentForegroundService.KEY_GENERATION_RETRIES, 0)
+                            .remove(ZionAgentForegroundService.KEY_GENERATION_RESULT)
+                            .apply()
                         aiExecutor.execute {
                             val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" }
-                            runOnUiThread { result.success(response) }
+                            sessionPrefs.edit()
+                                .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, if (response.startsWith("ERROR:")) "FAILED" else "COMPLETED")
+                                .putString(ZionAgentForegroundService.KEY_GENERATION_RESULT, response)
+                                .putLong("generation_completed_at", System.currentTimeMillis())
+                                .apply()
+                            if (!isFinishing && !isDestroyed) runOnUiThread { result.success(response) }
+                        }
+                    }
+                    "sessionState" -> {
+                        val prefs = ZionAgentForegroundService.sessionPreferences(this)
+                        aiExecutor.execute {
+                            val loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                            val snapshot = mapOf(
+                                "loaded" to loaded,
+                                "modelPath" to prefs.getString(ZionAgentForegroundService.KEY_MODEL_PATH, null),
+                                "modelStatus" to prefs.getString("model_status", "UNKNOWN"),
+                                "generationStatus" to prefs.getString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "IDLE"),
+                                "generationResult" to prefs.getString(ZionAgentForegroundService.KEY_GENERATION_RESULT, null),
+                                "completedAt" to prefs.getLong("generation_completed_at", 0L)
+                            )
+                            if (!isFinishing && !isDestroyed) runOnUiThread { result.success(snapshot) }
                         }
                     }
                     "freeModel" -> {
@@ -498,7 +550,6 @@ class MainActivity : FlutterFragmentActivity() {
         logcatThread?.interrupt()
         logcatThread = null
     }
-
     private fun handleZionApiIntent(intent: Intent) {
         if (intent.action == "com.zion.os.ZION_API" && ::zionApiChannel.isInitialized) {
             zionApiChannel.handleExternalIntent(intent)
@@ -997,8 +1048,7 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun openCameraApi(): Map<String, Any?> {
         return try {
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
-            if (intent.resolveActivity(packageManager) == null) return mapOf(
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)            if (intent.resolveActivity(packageManager) == null) return mapOf(
                 "available" to false, "status" to "UNAVAILABLE",
                 "reason" to "No camera application is available."
             )
@@ -1386,10 +1436,10 @@ class MainActivity : FlutterFragmentActivity() {
         ttsEngine?.shutdown()
         ttsEngine = null
         if (::zionApiChannel.isInitialized) zionApiChannel.dispose()
-        aiExecutor.shutdownNow()
+        // The foreground service owns the process-wide model session. Activity
+        // teardown must not cancel inference, destroy its executor, or free GGUF.
         aiDiscoveryExecutor.shutdownNow()
         terminalExecutor.shutdownNow()
-        try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
         super.onDestroy()
     }
 
@@ -1597,79 +1647,3 @@ class MainActivity : FlutterFragmentActivity() {
             "networks" to networks
         ))
     }
-
-    private fun wifiBand(frequency: Int): String = when {
-        frequency in 2400..2500 -> "2.4 GHz"
-        frequency in 4900..5895 -> "5 GHz"
-        frequency in 5925..7125 -> "6 GHz"
-        frequency in 57000..71000 -> "60 GHz"
-        else -> "Unknown"
-    }
-
-    @Suppress("DEPRECATION")
-    private fun wifiStandard(scan: android.net.wifi.ScanResult): String = when {
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AX -> "Wi-Fi 6"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11AC -> "Wi-Fi 5"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_11N -> "Wi-Fi 4"
-        android.os.Build.VERSION.SDK_INT >= 30 && scan.wifiStandard == android.net.wifi.ScanResult.WIFI_STANDARD_LEGACY -> "802.11 legacy"
-        else -> "Unknown"
-    }
-
-    private fun readApkPermissions(path: String): Map<String, Any?> {
-        if (path.isBlank()) {
-            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "APK path is empty.")
-        }
-        val file = File(path)
-        if (!file.isFile) {
-            return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "APK file does not exist.")
-        }
-        return try {
-            @Suppress("DEPRECATION")
-            val info = packageManager.getPackageArchiveInfo(path, android.content.pm.PackageManager.GET_PERMISSIONS)
-                ?: return mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to "Android could not parse the APK manifest.")
-            mapOf(
-                "available" to true,
-                "status" to "AVAILABLE",
-                "packageName" to info.packageName,
-                "versionName" to info.versionName,
-                "permissions" to (info.requestedPermissions?.toList() ?: emptyList<String>())
-            )
-        } catch (t: Throwable) {
-            mapOf("available" to false, "status" to "UNAVAILABLE", "reason" to (t.message ?: "APK manifest analysis failed."))
-        }
-    }
-
-    private fun readCurrentWifiConnection(): Map<String, Any?> {
-        val manager = getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return emptyMap()
-        return try {
-            val info = manager.connectionInfo
-            mapOf(
-                "ssid" to (info.ssid ?: "").removeSurrounding("\""),
-                "bssid" to info.bssid,
-                "rssi" to info.rssi,
-                "linkSpeed" to info.linkSpeed,
-                "frequency" to info.frequency
-            )
-        } catch (_: SecurityException) {
-            emptyMap()
-        }
-    }
-
-    private fun scanWifiTelemetryAsync(result: MethodChannel.Result) {
-        scanWifiAsync(object : MethodChannel.Result {
-            override fun success(value: Any?) {
-                val payload = value as? Map<*, *> ?: return result.success(emptyList<Map<String, Any?>>())
-                result.success(payload["networks"] ?: emptyList<Map<String, Any?>>())
-            }
-            override fun error(code: String, message: String?, details: Any?) = result.error(code, message, details)
-            override fun notImplemented() = result.notImplemented()
-        })
-    }
-
-    private fun frequencyToChannel(frequency: Int): Int? = when {
-        frequency in 2412..2484 -> if (frequency == 2484) 14 else (frequency - 2407) / 5
-        frequency in 5000..5900 -> (frequency - 5000) / 5
-        frequency in 5925..7125 -> (frequency - 5950) / 5 + 1
-        else -> null
-    }
-}
