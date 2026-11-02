@@ -141,15 +141,15 @@ class MainActivity : FlutterFragmentActivity() {
                             result.error("AGENT_BACKGROUND_START_FAILED", t.message ?: "Unable to start foreground service", null)
                         }
                     }
-                    "stop" -> {
+                    "finish" -> {
                         try {
-                            val stopIntent = Intent(this, ZionAgentForegroundService::class.java).apply {
-                                action = ZionAgentForegroundService.ACTION_STOP
+                            val finishIntent = Intent(this, ZionAgentForegroundService::class.java).apply {
+                                action = ZionAgentForegroundService.ACTION_FINISH_TASK
                             }
-                            try { startService(stopIntent); result.success(true) }
-                            catch (t: Throwable) { result.error("AGENT_BACKGROUND_STOP_FAILED", t.message, null) }
+                            startService(finishIntent)
+                            result.success(true)
                         } catch (t: Throwable) {
-                            result.error("AGENT_BACKGROUND_STOP_FAILED", t.message, null)
+                            result.error("AGENT_BACKGROUND_FINISH_FAILED", t.message, null)
                         }
                     }
                     else -> result.notImplemented()
