@@ -328,9 +328,9 @@ class AgentOrchestrator {
     // and recovery remain reliable on-device. The local model still authors
     // every plan; no guessed or heuristic plan is substituted.
     final boundedTask = task.length > 1500 ? task.substring(0, 1500) : task;
-    final relevantMemory = memory.search(task, limit: 6).map((entry) => <String, dynamic>{
+    final relevantMemory = memory.search(task, limit: 3).map((entry) => <String, dynamic>{
       'kind': entry.kind,
-      'text': entry.text.length > 180 ? entry.text.substring(0, 180) : entry.text,
+      'text': entry.text.length > 100 ? entry.text.substring(0, 100) : entry.text,
       'metadata': {
         if (entry.metadata['tool'] != null) 'tool': entry.metadata['tool'],
         if (entry.metadata['success'] != null) 'success': entry.metadata['success'],
@@ -347,21 +347,21 @@ class AgentOrchestrator {
     final skillContext = await _skillLibrary.contextFor(
       task,
       hints: knowledgeHints,
-      maxSkills: 3,
-      maxCharsPerSkill: 420,
-      maxTotalChars: 1150,
+      maxSkills: 1,
+      maxCharsPerSkill: 180,
+      maxTotalChars: 220,
     );
     final knowledgeContext = await _knowledgeIndex.contextFor(
       task,
-      maxEntries: 3,
-      maxTotalChars: 700,
+      maxEntries: 1,
+      maxTotalChars: 180,
     );
     if(await _nativeAiAvailable()){
       final toolCatalog = tools.availableTools.map((name) {
         final tool = tools.getTool(name)!;
         return <String, dynamic>{
           'name': tool.name,
-          'description': tool.description.length > 80 ? tool.description.substring(0, 80) : tool.description,
+          'description': tool.description.length > 55 ? tool.description.substring(0, 55) : tool.description,
           'parameters': tool.parameters.keys.toList(growable: false),
           'permissions': tool.permissions.map((permission) => permission.name).toList(),
         };
@@ -378,19 +378,49 @@ ${jsonEncode(relevantMemory)}
 أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
-      late final String response;
-      response = await _generateModel(prompt, maxTokens: 768, temperature: 0.15, cancellationToken: cancellationToken);
+      var response = await _generateModel(
+        prompt,
+        maxTokens: 768,
+        temperature: 0.1,
+        cancellationToken: cancellationToken,
+      );
       if (response.trim().isEmpty || response.startsWith('ERROR:')) {
         throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
       }
-      final parsed = _parsePlan(response, task: task);
+
+      var parsed = _parsePlan(response, task: task);
+      if (parsed == null || parsed.steps.isEmpty) {
+        final firstExcerpt = response.length > 700
+            ? response.substring(0, 700)
+            : response;
+        _log('رفض مخطط النموذج؛ ستتم محاولة تصحيح واحدة. الرد الخام: $firstExcerpt');
+        final repairPrompt = '''صحح JSON التخطيط التالي فقط. لا تنفذ المهمة ولا تكتب إجابة حرة.
+يجب أن يكون الجذر كائناً يحتوي steps كمصفوفة من 1 إلى 8 عناصر.
+كل عنصر يجب أن يحتوي id وdescription وtool وparams وrequiresEvaluation وrequiresApproval وpermission وrisk.
+استخدم أسماء الأدوات المسجلة ومفاتيح معاملاتها فقط. إذا تعذر التخطيط الآمن، أعد {"steps":[]}.
+المهمة: $boundedTask
+الأدوات المسموحة: ${jsonEncode(toolCatalog)}
+الرد السابق الذي يحتاج تصحيحاً:
+$firstExcerpt
+أعد JSON صالحاً فقط.''';
+        response = await _generateModel(
+          repairPrompt,
+          maxTokens: 512,
+          temperature: 0.05,
+          cancellationToken: cancellationToken,
+        );
+        if (response.trim().isEmpty || response.startsWith('ERROR:')) {
+          throw StateError('فشلت محاولة تصحيح خطة النموذج: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
+        }
+        parsed = _parsePlan(response, task: task);
+      }
       if (parsed != null && parsed.steps.isNotEmpty) {
         _log('تم اعتماد خطة النموذج المحلي: ${parsed.steps.length} خطوة.');
         return parsed;
       }
-      final excerpt = response.length > 240 ? response.substring(0, 240) : response;
-      _log('رفض خطة النموذج لأنها غير صالحة: $excerpt');
-      throw StateError('تعذر اعتماد خطة صالحة من النموذج المحلي. لم تُنفذ أي خطوة؛ صحح حالة النموذج أو أعد المحاولة.');
+      final excerpt = response.length > 700 ? response.substring(0, 700) : response;
+      _log('فشل اعتماد الخطة بعد محاولة تصحيح واحدة. الرد النهائي: $excerpt');
+      throw StateError('تعذر اعتماد خطة صالحة بعد محاولة تصحيح واحدة. لم تُنفذ أي خطوة. راجع سجل Zion Agent لمعرفة الرد الخام.');
     }
     throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
   }
