@@ -143,8 +143,11 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "stop" -> {
                         try {
-                            stopService(Intent(this, ZionAgentForegroundService::class.java))
-                            result.success(true)
+                            val stopIntent = Intent(this, ZionAgentForegroundService::class.java).apply {
+                                action = ZionAgentForegroundService.ACTION_STOP
+                            }
+                            try { startService(stopIntent); result.success(true) }
+                            catch (t: Throwable) { result.error("AGENT_BACKGROUND_STOP_FAILED", t.message, null) }
                         } catch (t: Throwable) {
                             result.error("AGENT_BACKGROUND_STOP_FAILED", t.message, null)
                         }
@@ -270,6 +273,8 @@ class MainActivity : FlutterFragmentActivity() {
                         // This JNI method only sets an atomic flag; do not queue it
                         // behind inference on aiExecutor or cancellation would be ineffective.
                         val cancelled = try { llamaBridge.nativeCancelGeneration() } catch (_: Throwable) { false }
+                        if (cancelled) ZionAgentForegroundService.sessionPreferences(this).edit()
+                            .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "CANCEL_REQUESTED").apply()
                         result.success(cancelled)
                     }
                     "generate" -> {
@@ -297,8 +302,13 @@ class MainActivity : FlutterFragmentActivity() {
                             val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
                                 ZionAgentForegroundService.releaseInferenceWakeLock()
                             }
+                            val finalStatus = when {
+                                sessionPrefs.getString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "") == "CANCEL_REQUESTED" -> "CANCELLED"
+                                response.startsWith("ERROR:") -> "FAILED"
+                                else -> "COMPLETED"
+                            }
                             sessionPrefs.edit()
-                                .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, if (response.startsWith("ERROR:")) "FAILED" else "COMPLETED")
+                                .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, finalStatus)
                                 .putString(ZionAgentForegroundService.KEY_GENERATION_RESULT, response)
                                 .putLong("generation_completed_at", System.currentTimeMillis())
                                 .apply()
@@ -321,10 +331,18 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                     }
                     "freeModel" -> {
-                        aiExecutor.execute {
-                            try { llamaBridge.nativeFreeModel() } catch (_: Throwable) {}
-                            runOnUiThread { result.success(null) }
+                        val prefs = ZionAgentForegroundService.sessionPreferences(this)
+                        prefs.edit().remove(ZionAgentForegroundService.KEY_MODEL_PATH)
+                            .putString("model_status", "UNLOADED")
+                            .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "IDLE")
+                            .remove(ZionAgentForegroundService.KEY_GENERATION_PROMPT)
+                            .remove(ZionAgentForegroundService.KEY_GENERATION_RESULT)
+                            .apply()
+                        val stopIntent = Intent(this, ZionAgentForegroundService::class.java).apply {
+                            action = ZionAgentForegroundService.ACTION_STOP
                         }
+                        try { startService(stopIntent); result.success(null) }
+                        catch (t: Throwable) { result.error("AI_STOP_FAILED", t.message, null) }
                     }
                     "isLoaded" -> aiExecutor.execute {
                         // Native readiness takes g_mutex; never block the Android UI
@@ -547,7 +565,6 @@ class MainActivity : FlutterFragmentActivity() {
             }, "zion-terminal-logcat").apply { isDaemon = true; start() }
         }
     }
-
     private fun stopTerminalLogStream() {
         logcatRunning = false
         try { logcatProcess?.destroy() } catch (_: Throwable) {}
@@ -1097,8 +1114,7 @@ class MainActivity : FlutterFragmentActivity() {
         val prompt = BiometricPrompt(this as androidx.fragment.app.FragmentActivity, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(res: BiometricPrompt.AuthenticationResult) =
                 result.success(mapOf("available" to true, "status" to "AVAILABLE", "authenticated" to true))
-            override fun onAuthenticationError(code: Int, err: CharSequence) =
-                result.success(mapOf("available" to true, "status" to "UNAVAILABLE", "authenticated" to false, "reason" to err.toString()))
+            override fun onAuthenticationError(code: Int, err: CharSequence) =                result.success(mapOf("available" to true, "status" to "UNAVAILABLE", "authenticated" to false, "reason" to err.toString()))
             override fun onAuthenticationFailed() {}
         })
         prompt.authenticate(
