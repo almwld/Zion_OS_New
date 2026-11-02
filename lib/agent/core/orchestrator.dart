@@ -1,19 +1,4 @@
 import 'dart:async';
-/// GBNF limits local plan output to syntactically valid JSON. The Dart parser
-/// still enforces registered tools, parameter schemas, permissions and policy.
-const String _agentJsonGrammar = r'''
-root ::= object
-object ::= "{" ws (string ws ":" ws value (ws "," ws string ws ":" ws value)*)? ws "}"
-array ::= "[" ws (value (ws "," ws value)*)? ws "]"
-value ::= object | array | string | number | "true" | "false" | "null"
-string ::= "\"" ([^"\\] | "\\" ( ["\\/bfnrt] | "u" hex hex hex hex ))* "\""
-number ::= "-"? int frac? exp?
-int ::= "0" | [1-9] [0-9]*
-frac ::= "." [0-9]+
-exp ::= [eE] [+-]? [0-9]+
-hex ::= [0-9a-fA-F]
-ws ::= [ \t\n\r]*
-''' ;
 import 'dart:convert';
 import '../../ai/llama_service.dart';
 import '../../core/ai/long_term_memory.dart';
@@ -23,6 +8,21 @@ import 'agent_policy.dart';
 import 'cancellation_token.dart';
 import '../skills/agent_skill_library.dart';
 import '../skills/agent_knowledge_index.dart';
+/// GBNF constrains local plan output to syntactically valid JSON.
+/// Dart validation still checks tool names, parameter schemas and permissions.
+const String _agentJsonGrammar = r'''
+root ::= object
+object ::= "{" ws (string ws ":" ws value (ws "," ws string ws ":" ws value)*)? ws "}"
+array ::= "[" ws (value (ws "," ws value)*)? ws "]"
+value ::= object | array | string | number | "true" | "false" | "null"
+string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" hex hex hex hex))* "\""
+number ::= "-"? int frac? exp?
+int ::= "0" | [1-9] [0-9]*
+frac ::= "." [0-9]+
+exp ::= [eE] [+-]? [0-9]+
+hex ::= [0-9a-fA-F]
+ws ::= [ \t\n\r]*
+''' ;
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
