@@ -135,8 +135,42 @@ class LlamaService {
 
   /// Synchronize this service instance with the native singleton. The model may
   /// have been loaded from the Offline AI screen using another Dart service instance.
+  /// Read the durable native session snapshot after a Flutter engine or
+  /// Activity reconnect. Generation results are persisted by the Android
+  /// foreground service so a lost MethodChannel reply is recoverable.
+  Future<Map<String, dynamic>> getSessionState() async {
+    try {
+      final value = await _channel.invokeMethod<Map<dynamic, dynamic>>('sessionState');
+      return value == null
+          ? const <String, dynamic>{}
+          : Map<String, dynamic>.from(value);
+    } on PlatformException {
+      return const <String, dynamic>{};
+    } on MissingPluginException {
+      return const <String, dynamic>{};
+    }
+  }
+
+  Future<String?> recoverLastGeneration() async {
+    final snapshot = await getSessionState();
+    final status = snapshot['generationStatus']?.toString();
+    final response = snapshot['generationResult']?.toString();
+    if (status == 'COMPLETED' || status == 'FAILED' ||
+        status == 'INTERRUPTED' || status == 'RESTORE_FAILED' ||
+        status == 'MODEL_MISSING') {
+      return response;
+    }
+    return null;
+  }
+
   Future<bool> refreshLoadedState() async {
     try {
+      final snapshot = await getSessionState();
+      if (snapshot.isNotEmpty) {
+        _loaded = snapshot['loaded'] == true;
+        _modelPath = snapshot['modelPath']?.toString();
+        return _loaded;
+      }
       final loaded = await nativeLoaded;
       _loaded = loaded;
       if (!loaded) _modelPath = null;
