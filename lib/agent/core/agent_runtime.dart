@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'agent_models.dart';
 import 'orchestrator.dart';
 import 'cancellation_token.dart';
@@ -145,7 +146,7 @@ class AgentRuntime {
             : 'انتهت الجلسة بسبب خطأ قابل للتشخيص: $detail',
         state: session.state,
       ));
-      print('Zion Agent session ${session.id} failed: $error | $stackTrace');
+      developer.log('Agent session ${session.id} failed', name: 'ZionAgent', error: error, stackTrace: stackTrace);
       return failed;
     } finally {
       _starting = false;
