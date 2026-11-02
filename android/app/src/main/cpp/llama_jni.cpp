@@ -80,7 +80,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 
     if (loraPath) {
         const char * adapterPath = env->GetStringUTFChars(loraPath, nullptr);
-        if (adapterPath && adapterPath[0] != '\\0') {
+        if (adapterPath && adapterPath[0] != '\0') {
             g_lora = llama_adapter_lora_init(g_model, adapterPath);
             env->ReleaseStringUTFChars(loraPath, adapterPath);
             if (!g_lora) { freeLocked(); return JNI_FALSE; }
@@ -126,16 +126,52 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     llama_sampler_reset(g_sampler);
 
     const auto * vocab = llama_model_get_vocab(g_model);
-    const int32_t textLen = static_cast<int32_t>(strlen(text));
+    // Format prompts with the GGUF's own tokenizer.chat_template metadata.
+    // Feeding raw instructions to an instruct model bypasses its role markers
+    // and is a major source of unstable, off-task generations.
+    std::string formattedPrompt(text);
+    env->ReleaseStringUTFChars(prompt, text);
+
+    if (const char * chatTemplate = llama_model_chat_template(g_model, nullptr)) {
+        if (chatTemplate[0] != '\0') {
+            llama_chat_message message = { "user", formattedPrompt.c_str() };
+            size_t formattedCapacity = std::max<size_t>(512, formattedPrompt.size() * 2 + 256);
+            std::vector<char> formatted(formattedCapacity);
+            int32_t formattedLength = llama_chat_apply_template(
+                chatTemplate, &message, 1, true, formatted.data(),
+                static_cast<int32_t>(formatted.size()));
+            if (formattedLength < 0) {
+                LOGE("Model chat template could not format the user prompt");
+                return env->NewStringUTF("ERROR: The model chat template is unsupported by this llama.cpp build.");
+            }
+            if (static_cast<size_t>(formattedLength) > formatted.size()) {
+                formatted.resize(static_cast<size_t>(formattedLength) + 1);
+                formattedLength = llama_chat_apply_template(
+                    chatTemplate, &message, 1, true, formatted.data(),
+                    static_cast<int32_t>(formatted.size()));
+            }
+            if (formattedLength < 0 || static_cast<size_t>(formattedLength) > formatted.size()) {
+                LOGE("Model chat template formatting failed after buffer expansion");
+                return env->NewStringUTF("ERROR: Unable to format the model chat prompt.");
+            }
+            formattedPrompt.assign(formatted.data(), static_cast<size_t>(formattedLength));
+            LOGE("Applied GGUF chat template to local prompt");
+        } else {
+            LOGE("GGUF chat template metadata is empty; using raw completion prompt");
+        }
+    } else {
+        LOGE("GGUF has no chat template metadata; using raw completion prompt");
+    }
+
+    const int32_t textLen = static_cast<int32_t>(formattedPrompt.size());
     int32_t capacity = std::max(256, textLen + 128);
     std::vector<llama_token> tokens(capacity);
-    int32_t nTokens = llama_tokenize(vocab, text, textLen, tokens.data(), capacity, true, false);
+    int32_t nTokens = llama_tokenize(vocab, formattedPrompt.c_str(), textLen, tokens.data(), capacity, true, false);
     if (nTokens < 0) {
         capacity = -nTokens;
         tokens.resize(capacity);
-        nTokens = llama_tokenize(vocab, text, textLen, tokens.data(), capacity, true, false);
+        nTokens = llama_tokenize(vocab, formattedPrompt.c_str(), textLen, tokens.data(), capacity, true, false);
     }
-    env->ReleaseStringUTFChars(prompt, text);
     if (nTokens <= 0) return env->NewStringUTF("ERROR: Tokenization failed");
     tokens.resize(nTokens);
 
