@@ -191,7 +191,7 @@ class LlamaService {
     }
   }
 
-  Future<String> generate(String prompt, {int maxTokens = 128, double temperature = 0.25}) async {
+  Future<String> generate(String prompt, {int maxTokens = 128, double temperature = 0.25, String? grammar}) async {
     if (prompt.trim().isEmpty) return '';
     if (!await refreshLoadedState()) return 'ERROR: النموذج المحلي غير محمل.';
     try {
@@ -199,6 +199,7 @@ class LlamaService {
         'prompt': prompt,
         'maxTokens': maxTokens.clamp(1, 2048).toInt(),
         'temperature': temperature.clamp(0.0, 1.5).toDouble(),
+        if (grammar != null && grammar.isNotEmpty) 'grammar': grammar,
       })) ?? 'ERROR: لم يصل رد من المحرك المحلي.';
     } on PlatformException catch (e) {
       return 'ERROR: تعذر تشغيل النموذج المحلي: ${e.message ?? e.code}';

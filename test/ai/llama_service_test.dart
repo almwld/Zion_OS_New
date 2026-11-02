@@ -48,6 +48,30 @@ void main() {
     expect(service.currentModel, isNull);
   });
 
+  test('a new service instance reconnects to the process-wide loaded model', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      if (call.method == 'sessionState') {
+        return <String, Object?>{
+          'loaded': true,
+          'modelPath': '/models/qwen.gguf',
+          'modelStatus': 'LOADED',
+          'generationStatus': 'IDLE',
+        };
+      }
+      return null;
+    });
+
+    // Simulates a feature opening after Offline AI loaded the native singleton
+    // through a different LlamaService instance.
+    final service = LlamaService();
+
+    expect(service.isLoaded, isFalse);
+    expect(await service.refreshLoadedState(), isTrue);
+    expect(service.isLoaded, isTrue);
+    expect(service.currentModel, '/models/qwen.gguf');
+  });
+
   test('generation cancellation is exposed without native model loading', () async {
     final service = LlamaService();
 

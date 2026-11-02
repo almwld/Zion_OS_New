@@ -8,6 +8,17 @@ import 'agent_policy.dart';
 import 'cancellation_token.dart';
 import '../skills/agent_skill_library.dart';
 import '../skills/agent_knowledge_index.dart';
+/// GBNF constrains local plan output to syntactically valid JSON.
+/// Dart validation still checks tool names, parameter schemas and permissions.
+const String _agentJsonGrammar = r'''
+root ::= object ws
+value ::= object | array | string | number | ("true" | "false" | "null") ws
+object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? "}" ws
+array ::= "[" ws (value ("," ws value)*)? "]" ws
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\bfnrt] | "u" [0-9a-fA-F]{4}))* "\"" ws
+number ::= ("-"? ([0-9] | [1-9] [0-9]{0,15})) ("." [0-9]+)? ([eE] [-+]? [0-9] [1-9]{0,15})? ws
+ws ::= | " " | "\n" [ \t]{0,20}
+''';
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
@@ -328,9 +339,9 @@ class AgentOrchestrator {
     // and recovery remain reliable on-device. The local model still authors
     // every plan; no guessed or heuristic plan is substituted.
     final boundedTask = task.length > 1500 ? task.substring(0, 1500) : task;
-    final relevantMemory = memory.search(task, limit: 6).map((entry) => <String, dynamic>{
+    final relevantMemory = memory.search(task, limit: 3).map((entry) => <String, dynamic>{
       'kind': entry.kind,
-      'text': entry.text.length > 180 ? entry.text.substring(0, 180) : entry.text,
+      'text': entry.text.length > 100 ? entry.text.substring(0, 100) : entry.text,
       'metadata': {
         if (entry.metadata['tool'] != null) 'tool': entry.metadata['tool'],
         if (entry.metadata['success'] != null) 'success': entry.metadata['success'],
@@ -347,21 +358,21 @@ class AgentOrchestrator {
     final skillContext = await _skillLibrary.contextFor(
       task,
       hints: knowledgeHints,
-      maxSkills: 3,
-      maxCharsPerSkill: 420,
-      maxTotalChars: 1150,
+      maxSkills: 1,
+      maxCharsPerSkill: 180,
+      maxTotalChars: 220,
     );
     final knowledgeContext = await _knowledgeIndex.contextFor(
       task,
-      maxEntries: 3,
-      maxTotalChars: 700,
+      maxEntries: 1,
+      maxTotalChars: 180,
     );
     if(await _nativeAiAvailable()){
       final toolCatalog = tools.availableTools.map((name) {
         final tool = tools.getTool(name)!;
         return <String, dynamic>{
           'name': tool.name,
-          'description': tool.description.length > 80 ? tool.description.substring(0, 80) : tool.description,
+          'description': tool.description.length > 55 ? tool.description.substring(0, 55) : tool.description,
           'parameters': tool.parameters.keys.toList(growable: false),
           'permissions': tool.permissions.map((permission) => permission.name).toList(),
         };
@@ -378,19 +389,24 @@ ${jsonEncode(relevantMemory)}
 أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
-      late final String response;
-      response = await _generateModel(prompt, maxTokens: 768, temperature: 0.15, cancellationToken: cancellationToken);
+      final response = await _generateModel(
+        prompt,
+        maxTokens: 768,
+        temperature: 0.1,
+        grammar: _agentJsonGrammar,
+        cancellationToken: cancellationToken,
+      );
       if (response.trim().isEmpty || response.startsWith('ERROR:')) {
-        throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
+        throw StateError('فشل النموذج المحلي في إنشاء خطة JSON مقيدة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
       }
       final parsed = _parsePlan(response, task: task);
       if (parsed != null && parsed.steps.isNotEmpty) {
-        _log('تم اعتماد خطة النموذج المحلي: ${parsed.steps.length} خطوة.');
+        _log('اعتمد GBNF JSON صالحاً نحوياً وخطة اجتازت تحقق الأدوات والصلاحيات: ${parsed.steps.length} خطوة.');
         return parsed;
       }
-      final excerpt = response.length > 240 ? response.substring(0, 240) : response;
-      _log('رفض خطة النموذج لأنها غير صالحة: $excerpt');
-      throw StateError('تعذر اعتماد خطة صالحة من النموذج المحلي. لم تُنفذ أي خطوة؛ صحح حالة النموذج أو أعد المحاولة.');
+      final excerpt = response.length > 700 ? response.substring(0, 700) : response;
+      _log('رفض مخطط JSON رغم سلامة البنية النحوية؛ فشل تحقق الأدوات أو المخطط: $excerpt');
+      throw StateError('أنتج النموذج JSON صالحاً نحوياً، لكنه لم يجتز تحقق مخطط الأدوات والصلاحيات. لم تُنفذ أي خطوة.');
     }
     throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
   }
@@ -475,6 +491,7 @@ ${jsonEncode(relevantMemory)}
     String prompt, {
     required int maxTokens,
     required double temperature,
+    String? grammar,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -482,6 +499,7 @@ ${jsonEncode(relevantMemory)}
       prompt,
       maxTokens: maxTokens,
       temperature: temperature,
+      grammar: grammar,
     );
     if (cancellationToken == null) return generation;
 
@@ -507,12 +525,12 @@ ${jsonEncode(relevantMemory)}
   }
 
   Future<bool> _nativeAiAvailable() async {
-    // The Super Agent and its AI tool share this exact service instance.
-    // Avoid probing a native MethodChannel when this session has not loaded a
-    // model; in headless/test environments that channel may have no handler.
-    if (!ai.isLoaded) return false;
+    // LlamaService instances are lightweight facades over one process-wide
+    // native GGUF session. Offline AI may load the model through a different
+    // Dart instance, so the local cached isLoaded flag is not authoritative.
+    // Synchronize with the foreground service/native runtime before planning.
     try {
-      return await ai.nativeLoaded;
+      return await ai.refreshLoadedState();
     } catch (_) {
       return false;
     }

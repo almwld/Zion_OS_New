@@ -287,7 +287,12 @@ class MainActivity : FlutterFragmentActivity() {
                         val prompt = call.argument<String>("prompt") ?: ""
                         val maxTokens = (call.argument<Int>("maxTokens") ?: 512).coerceIn(1, 2048)
                         val temperature = (call.argument<Double>("temperature") ?: 0.7).toFloat().coerceIn(0.0f, 1.5f)
+                        val grammar = call.argument<String>("grammar")
                         if (prompt.isBlank()) { result.success(""); return@setMethodCallHandler }
+                        if (grammar != null && grammar.length > 32768) {
+                            result.error("AI_GRAMMAR_TOO_LARGE", "GBNF grammar exceeds the 32 KB safety limit", null)
+                            return@setMethodCallHandler
+                        }
                         try {
                             ZionAgentForegroundService.startSession(this, "تنفيذ استدلال محلي في الخلفية")
                         } catch (t: Throwable) {
@@ -305,7 +310,7 @@ class MainActivity : FlutterFragmentActivity() {
                             .commit()
                         aiExecutor.execute {
                             ZionAgentForegroundService.acquireInferenceWakeLock(this)
-                            val response = try { llamaBridge.nativeGenerate(prompt.take(32768), maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
+                            val response = try { llamaBridge.nativeGenerate(prompt.take(32768), maxTokens, temperature, grammar) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
                                 ZionAgentForegroundService.releaseInferenceWakeLock()
                             }
                             val finalStatus = when {

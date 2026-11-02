@@ -633,7 +633,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Future<bool> _ensureAiLoaded() async {
     // Never load a large native GGUF model as a side effect of opening a
     // terminal helper. The dedicated Offline AI screen owns explicit loading.
-    final ready = _ai.isLoaded;
+    // Each screen has its own Dart LlamaService instance, while GGUF is a
+    // process-wide native singleton. Refresh from the native session instead
+    // of trusting this instance's initially-false cached flag.
+    final ready = await _ai.refreshLoadedState();
     if (mounted) setState(() => _aiReady = ready);
     return ready;
   }
@@ -891,7 +894,9 @@ $request''',
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _arabicOverlayRefreshTimer?.cancel();
     if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
-    unawaited(_ai.unloadModel());
+    // This screen does not own the process-wide GGUF session. Navigating away
+    // or dismissing a terminal route must never unload a model loaded by
+    // Offline AI, Super Agent, or another feature.
     for (final tab in _tabs) {
       unawaited(tab.outputSubscription?.cancel());
       unawaited(tab.service.dispose());
