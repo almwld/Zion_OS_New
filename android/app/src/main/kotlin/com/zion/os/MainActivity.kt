@@ -600,7 +600,8 @@ class MainActivity : FlutterFragmentActivity() {
                         "logcat", "-v", "time", "-s",
                         "ZionBootstrap:V", "ZionPTY:V", "ZionTerminal:V"
                     ).redirectErrorStream(true).start()
-                    logcatProcess = process                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
+                    logcatProcess = process
+                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
                         while (logcatRunning) {
                             val line = reader.readLine() ?: break
                             val sink = terminalLogSink ?: continue
@@ -622,7 +623,8 @@ class MainActivity : FlutterFragmentActivity() {
         try { logcatProcess?.destroy() } catch (_: Throwable) {}
         try { logcatProcess?.destroyForcibly() } catch (_: Throwable) {}
         logcatProcess = null
-        logcatThread?.interrupt()        logcatThread = null
+        logcatThread?.interrupt()
+        logcatThread = null
     }
     private fun handleZionApiIntent(intent: Intent) {
         if (intent.action == "com.zion.os.ZION_API" && ::zionApiChannel.isInitialized) {
@@ -1122,7 +1124,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     private fun openCameraApi(): Map<String, Any?> {
         return try {
-            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)            if (intent.resolveActivity(packageManager) == null) return mapOf(
+            val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            if (intent.resolveActivity(packageManager) == null) return mapOf(
                 "available" to false, "status" to "UNAVAILABLE",
                 "reason" to "No camera application is available."
             )
@@ -1719,3 +1722,77 @@ class MainActivity : FlutterFragmentActivity() {
             "networks" to networks
         ))
     }
+
+    // Keep the method-channel API names stable while sharing the existing scan implementation.
+    private fun scanWifiTelemetryAsync(result: MethodChannel.Result) = scanWifiAsync(result)
+
+    @Suppress("DEPRECATION")
+    private fun readCurrentWifiConnection(): Map<String, Any?> {
+        val manager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            ?: return mapOf("available" to false, "status" to "UNAVAILABLE")
+        return try {
+            val info = manager.connectionInfo
+            val connected = info != null && info.networkId != -1 && info.ssid != WifiManager.UNKNOWN_SSID
+            mapOf(
+                "available" to true,
+                "connected" to connected,
+                "ssid" to if (connected) info?.ssid?.trim('"') else null,
+                "bssid" to if (connected) info?.bssid else null,
+                "rssi" to if (connected) info?.rssi else null,
+                "frequencyMHz" to if (connected && android.os.Build.VERSION.SDK_INT >= 21) info?.frequency else null,
+                "linkSpeedMbps" to if (connected) info?.linkSpeed else null
+            )
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Unable to read Wi-Fi connection."))
+        }
+    }
+
+    private fun readApkPermissions(path: String): Map<String, Any?> {
+        if (path.isBlank()) return mapOf("available" to false, "status" to "INVALID_PATH")
+        val apk = File(path)
+        if (!apk.isFile || !apk.canRead()) return mapOf("available" to false, "status" to "FILE_UNAVAILABLE")
+        return try {
+            val packageInfo = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                packageManager.getPackageArchiveInfo(apk.absolutePath, PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageArchiveInfo(apk.absolutePath, PackageManager.GET_PERMISSIONS)
+            } ?: return mapOf("available" to false, "status" to "INVALID_APK")
+            mapOf(
+                "available" to true,
+                "status" to "AVAILABLE",
+                "packageName" to packageInfo.packageName,
+                "permissions" to (packageInfo.requestedPermissions?.toList() ?: emptyList<String>())
+            )
+        } catch (t: Throwable) {
+            mapOf("available" to false, "status" to "ERROR", "reason" to (t.message ?: "Unable to inspect APK permissions."))
+        }
+    }
+
+    private fun frequencyToChannel(frequencyMHz: Int): Int? = when {
+        frequencyMHz in 2412..2472 -> (frequencyMHz - 2407) / 5
+        frequencyMHz == 2484 -> 14
+        frequencyMHz in 5000..5895 -> (frequencyMHz - 5000) / 5
+        frequencyMHz in 5955..7115 -> (frequencyMHz - 5950) / 5
+        else -> null
+    }
+
+    private fun wifiStandard(scan: android.net.wifi.ScanResult): String {
+        val caps = scan.capabilities.orEmpty()
+        return when {
+            caps.contains("EHT", ignoreCase = true) -> "802.11be"
+            caps.contains("HE", ignoreCase = true) -> "802.11ax"
+            caps.contains("VHT", ignoreCase = true) -> "802.11ac"
+            caps.contains("HT", ignoreCase = true) -> "802.11n"
+            scan.frequency in 2412..2484 || scan.frequency in 5000..5895 -> "802.11a/b/g"
+            else -> "Unknown"
+        }
+    }
+
+    private fun wifiBand(frequencyMHz: Int): String = when (frequencyMHz) {
+        in 2400..2500 -> "2.4 GHz"
+        in 4900..5900 -> "5 GHz"
+        in 5925..7125 -> "6 GHz"
+        else -> "Unknown"
+    }
+}
