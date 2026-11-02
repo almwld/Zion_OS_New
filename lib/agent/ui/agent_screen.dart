@@ -477,6 +477,7 @@ ${sharedNotes.join('\n\n')}
     } catch (error) {
       if (!mounted) return;
       setState(() {
+        _result = AgentResult.error(rawTask, error.toString());
         _appendMessage({
           'role': 'assistant',
           'text': _preflightCancelRequested
