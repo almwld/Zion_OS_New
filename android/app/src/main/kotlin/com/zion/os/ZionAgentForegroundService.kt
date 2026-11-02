@@ -42,6 +42,25 @@ class ZionAgentForegroundService : Service() {
             Thread(r, "zion-local-inference").apply { isDaemon = false }
         }
         val llamaBridge by lazy { com.zion.os.ai.LlamaBridge() }
+        @Volatile private var processWakeLock: PowerManager.WakeLock? = null
+
+        fun acquireInferenceWakeLock(context: Context): Boolean = try {
+            val manager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val lock = processWakeLock ?: synchronized(this) {
+                processWakeLock ?: manager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK, "ZionOS:LocalAIInference"
+                ).also { processWakeLock = it }
+            }
+            if (!lock.isHeld) lock.acquire(2 * 60 * 60 * 1000L)
+            true
+        } catch (t: Throwable) {
+            android.util.Log.e("ZionAgent", "Could not acquire inference wake lock", t)
+            false
+        }
+
+        fun releaseInferenceWakeLock() {
+            try { processWakeLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) { }
+        }
 
         fun startSession(context: Context, task: String) {
             val intent = Intent(context, ZionAgentForegroundService::class.java).apply {
@@ -58,8 +77,6 @@ class ZionAgentForegroundService : Service() {
         fun sessionPreferences(context: Context) =
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     }
-
-    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -147,7 +164,7 @@ class ZionAgentForegroundService : Service() {
         }
 
         val prompt = prefs.getString(KEY_GENERATION_PROMPT, null).orEmpty()
-        if (prompt.isBlank() || !tryAcquireInferenceWakeLock()) {
+        if (prompt.isBlank() || !acquireInferenceWakeLock(this)) {
             prefs.edit()
                 .putString(KEY_GENERATION_STATUS, "INTERRUPTED")
                 .putString(KEY_GENERATION_RESULT, "ERROR: تعذر استئناف الطلب المحفوظ.")
@@ -171,22 +188,6 @@ class ZionAgentForegroundService : Service() {
             .putLong("generation_completed_at", System.currentTimeMillis())
             .apply()
         releaseInferenceWakeLock()
-    }
-
-    fun tryAcquireInferenceWakeLock(): Boolean = try {
-        val manager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val lock = wakeLock ?: manager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK, "ZionOS:LocalAIInference"
-        ).also { wakeLock = it }
-        if (!lock.isHeld) lock.acquire(2 * 60 * 60 * 1000L)
-        true
-    } catch (t: Throwable) {
-        android.util.Log.e("ZionAgent", "Could not acquire inference wake lock", t)
-        false
-    }
-
-    fun releaseInferenceWakeLock() {
-        try { wakeLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) { }
     }
 
     private fun buildNotification(message: String): Notification =
