@@ -1,4 +1,19 @@
 import 'dart:async';
+/// GBNF limits local plan output to syntactically valid JSON. The Dart parser
+/// still enforces registered tools, parameter schemas, permissions and policy.
+const String _agentJsonGrammar = r'''
+root ::= object
+object ::= "{" ws (string ws ":" ws value (ws "," ws string ws ":" ws value)*)? ws "}"
+array ::= "[" ws (value (ws "," ws value)*)? ws "]"
+value ::= object | array | string | number | "true" | "false" | "null"
+string ::= "\"" ([^"\\] | "\\" ( ["\\/bfnrt] | "u" hex hex hex hex ))* "\""
+number ::= "-"? int frac? exp?
+int ::= "0" | [1-9] [0-9]*
+frac ::= "." [0-9]+
+exp ::= [eE] [+-]? [0-9]+
+hex ::= [0-9a-fA-F]
+ws ::= [ \t\n\r]*
+''' ;
 import 'dart:convert';
 import '../../ai/llama_service.dart';
 import '../../core/ai/long_term_memory.dart';
@@ -378,49 +393,24 @@ ${jsonEncode(relevantMemory)}
 أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
-      var response = await _generateModel(
+      final response = await _generateModel(
         prompt,
         maxTokens: 768,
         temperature: 0.1,
+        grammar: _agentJsonGrammar,
         cancellationToken: cancellationToken,
       );
       if (response.trim().isEmpty || response.startsWith('ERROR:')) {
-        throw StateError('فشل النموذج المحلي في إنشاء الخطة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
+        throw StateError('فشل النموذج المحلي في إنشاء خطة JSON مقيدة: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
       }
-
-      var parsed = _parsePlan(response, task: task);
-      if (parsed == null || parsed.steps.isEmpty) {
-        final firstExcerpt = response.length > 700
-            ? response.substring(0, 700)
-            : response;
-        _log('رفض مخطط النموذج؛ ستتم محاولة تصحيح واحدة. الرد الخام: $firstExcerpt');
-        final repairPrompt = '''صحح JSON التخطيط التالي فقط. لا تنفذ المهمة ولا تكتب إجابة حرة.
-يجب أن يكون الجذر كائناً يحتوي steps كمصفوفة من 1 إلى 8 عناصر.
-كل عنصر يجب أن يحتوي id وdescription وtool وparams وrequiresEvaluation وrequiresApproval وpermission وrisk.
-استخدم أسماء الأدوات المسجلة ومفاتيح معاملاتها فقط. إذا تعذر التخطيط الآمن، أعد {"steps":[]}.
-المهمة: $boundedTask
-الأدوات المسموحة: ${jsonEncode(toolCatalog)}
-الرد السابق الذي يحتاج تصحيحاً:
-$firstExcerpt
-أعد JSON صالحاً فقط.''';
-        response = await _generateModel(
-          repairPrompt,
-          maxTokens: 512,
-          temperature: 0.05,
-          cancellationToken: cancellationToken,
-        );
-        if (response.trim().isEmpty || response.startsWith('ERROR:')) {
-          throw StateError('فشلت محاولة تصحيح خطة النموذج: ${response.trim().isEmpty ? 'استجابة فارغة' : response}');
-        }
-        parsed = _parsePlan(response, task: task);
-      }
+      final parsed = _parsePlan(response, task: task);
       if (parsed != null && parsed.steps.isNotEmpty) {
-        _log('تم اعتماد خطة النموذج المحلي: ${parsed.steps.length} خطوة.');
+        _log('اعتمد GBNF JSON صالحاً نحوياً وخطة اجتازت تحقق الأدوات والصلاحيات: ${parsed.steps.length} خطوة.');
         return parsed;
       }
       final excerpt = response.length > 700 ? response.substring(0, 700) : response;
-      _log('فشل اعتماد الخطة بعد محاولة تصحيح واحدة. الرد النهائي: $excerpt');
-      throw StateError('تعذر اعتماد خطة صالحة بعد محاولة تصحيح واحدة. لم تُنفذ أي خطوة. راجع سجل Zion Agent لمعرفة الرد الخام.');
+      _log('رفض مخطط JSON رغم سلامة البنية النحوية؛ فشل تحقق الأدوات أو المخطط: $excerpt');
+      throw StateError('أنتج النموذج JSON صالحاً نحوياً، لكنه لم يجتز تحقق مخطط الأدوات والصلاحيات. لم تُنفذ أي خطوة.');
     }
     throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
   }
@@ -505,6 +495,7 @@ $firstExcerpt
     String prompt, {
     required int maxTokens,
     required double temperature,
+    String? grammar,
     CancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -512,6 +503,7 @@ $firstExcerpt
       prompt,
       maxTokens: maxTokens,
       temperature: temperature,
+      grammar: grammar,
     );
     if (cancellationToken == null) return generation;
 
