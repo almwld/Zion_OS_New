@@ -21,6 +21,8 @@ class _SettingsAppState extends State<SettingsApp> {
   static const _biometricKey = 'zion_biometric_unlock_enabled';
   bool _biometricEnabled = false;
   bool _biometricBusy = false;
+  bool _biometricLoading = true;
+  String? _biometricLoadError;
 
   @override
   void initState() {
@@ -29,8 +31,22 @@ class _SettingsAppState extends State<SettingsApp> {
   }
 
   Future<void> _loadBiometricPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _biometricEnabled = prefs.getBool(_biometricKey) ?? false);
+    if (mounted) {
+      setState(() {
+        _biometricLoading = true;
+        _biometricLoadError = null;
+      });
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() => _biometricEnabled = prefs.getBool(_biometricKey) ?? false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _biometricLoadError = error.toString());
+    } finally {
+      if (mounted) setState(() => _biometricLoading = false);
+    }
   }
 
   Future<void> _setBiometricEnabled(bool enabled) async {
@@ -204,11 +220,19 @@ class _SettingsAppState extends State<SettingsApp> {
                   SwitchListTile(
                     secondary: const Icon(Icons.fingerprint, color: ZionColors.cyan),
                     title: const Text('الدخول بالبصمة'),
-                    subtitle: Text(_biometricBusy
-                        ? 'جارٍ التحقق من المصادقة…'
-                        : 'استخدم مصادقة Android البيومترية عند شاشة القفل'),
+                    subtitle: Text(
+                      _biometricLoading
+                          ? 'جارٍ تحميل تفضيل المصادقة…'
+                          : _biometricLoadError != null
+                              ? 'تعذر تحميل الإعداد: $_biometricLoadError'
+                              : _biometricBusy
+                                  ? 'جارٍ التحقق من المصادقة…'
+                                  : 'يتحقق من بصمة الجهاز قبل حفظ التفضيل؛ لا يفعّل قفل التطبيق وحده.',
+                    ),
                     value: _biometricEnabled,
-                    onChanged: _biometricBusy ? null : _setBiometricEnabled,
+                    onChanged: (_biometricBusy || _biometricLoading)
+                        ? null
+                        : _setBiometricEnabled,
                     activeColor: ZionColors.cyan,
                   ),
                   _divider(),
@@ -365,54 +389,101 @@ class _SettingsAppState extends State<SettingsApp> {
         ),
       );
 
-  void _showChangePinDialog(ThemeProvider tp) {
+  Future<void> _showChangePinDialog(ThemeProvider tp) async {
     final oldCtrl = TextEditingController();
     final newCtrl = TextEditingController();
+    var saving = false;
+    String? validationError;
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('change_pin'.tr()),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: oldCtrl,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Old PIN'),
-            ),
-            TextField(
-              controller: newCtrl,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'New PIN (4 digits)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text('cancel'.tr()),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final ok = await tp.changePin(oldCtrl.text, newCtrl.text);
-              if (!mounted) return;
-              ToastBar.show(context, 
-                SnackBar(
-                  content: Text(
-                    ok ? 'PIN changed successfully' : 'Invalid PIN',
-                  ),
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text('change_pin'.tr()),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: oldCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(labelText: 'Old PIN'),
                 ),
-              );
-              if (ok) Navigator.pop(dialogContext);
-            },
-            child: Text('save'.tr()),
+                TextField(
+                  controller: newCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(labelText: 'New PIN (4 digits)'),
+                ),
+                if (validationError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      validationError!,
+                      style: TextStyle(color: Theme.of(dialogContext).colorScheme.error),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: Text('cancel'.tr()),
+              ),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final oldPin = oldCtrl.text.trim();
+                        final newPin = newCtrl.text.trim();
+                        if (!RegExp(r'^\\d{4}$').hasMatch(oldPin)) {
+                          setDialogState(() => validationError = 'أدخل رمز PIN الحالي المكوّن من 4 أرقام.');
+                          return;
+                        }
+                        if (!RegExp(r'^\\d{4}$').hasMatch(newPin)) {
+                          setDialogState(() => validationError = 'يجب أن يتكون رمز PIN الجديد من 4 أرقام.');
+                          return;
+                        }
+                        if (oldPin == newPin) {
+                          setDialogState(() => validationError = 'اختر رمزاً جديداً مختلفاً عن الرمز الحالي.');
+                          return;
+                        }
+                        setDialogState(() {
+                          saving = true;
+                          validationError = null;
+                        });
+                        final ok = await tp.changePin(oldPin, newPin);
+                        if (!dialogContext.mounted || !mounted) return;
+                        setDialogState(() => saving = false);
+                        ToastBar.show(
+                          context,
+                          SnackBar(
+                            content: Text(
+                              ok ? 'PIN changed successfully' : 'الرمز الحالي غير صحيح أو تعذر حفظ الرمز الجديد.',
+                            ),
+                          ),
+                        );
+                        if (ok) Navigator.pop(dialogContext);
+                      },
+                child: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('save'.tr()),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    } finally {
+      oldCtrl.dispose();
+      newCtrl.dispose();
+    }
   }
 }
 
