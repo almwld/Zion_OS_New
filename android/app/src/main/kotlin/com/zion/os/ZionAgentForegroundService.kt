@@ -97,7 +97,7 @@ class ZionAgentForegroundService : Service() {
         if (intent?.action == ACTION_FINISH_TASK) {
             // Finish the current UI task without unloading the native model or
             // clearing its recovery metadata. Keep the foreground host alive.
-            val notification = buildNotification("جلسة النموذج المحلي جاهزة — في انتظار المهمة التالية")
+            val notification = buildNotification("جلسة النموذج المحلي جاهزة — في انتظار المهمة التالية", showProgress = false)
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
             return START_STICKY
         }
@@ -225,7 +225,7 @@ class ZionAgentForegroundService : Service() {
         releaseInferenceWakeLock()
     }
 
-    private fun buildNotification(message: String): Notification =
+    private fun buildNotification(message: String, showProgress: Boolean = true): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle("Zion Super Agent")
@@ -234,7 +234,7 @@ class ZionAgentForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(0, 0, true)
+            .setProgress(0, 0, showProgress)
             .build()
 
     private fun stopForegroundCompat() {
