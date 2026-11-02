@@ -11,18 +11,14 @@ import '../skills/agent_knowledge_index.dart';
 /// GBNF constrains local plan output to syntactically valid JSON.
 /// Dart validation still checks tool names, parameter schemas and permissions.
 const String _agentJsonGrammar = r'''
-root ::= object
-object ::= "{" ws (string ws ":" ws value (ws "," ws string ws ":" ws value)*)? ws "}"
-array ::= "[" ws (value (ws "," ws value)*)? ws "]"
-value ::= object | array | string | number | "true" | "false" | "null"
-string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" hex hex hex hex))* "\""
-number ::= "-"? int frac? exp?
-int ::= "0" | [1-9] [0-9]*
-frac ::= "." [0-9]+
-exp ::= [eE] [+-]? [0-9]+
-hex ::= [0-9a-fA-F]
-ws ::= [ \t\n\r]*
-''' ;
+root ::= object ws
+value ::= object | array | string | number | ("true" | "false" | "null") ws
+object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? "}" ws
+array ::= "[" ws (value ("," ws value)*)? "]" ws
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\bfnrt] | "u" [0-9a-fA-F]{4}))* "\"" ws
+number ::= ("-"? ([0-9] | [1-9] [0-9]{0,15})) ("." [0-9]+)? ([eE] [-+]? [0-9] [1-9]{0,15})? ws
+ws ::= | " " | "\n" [ \t]{0,20}
+''';
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
