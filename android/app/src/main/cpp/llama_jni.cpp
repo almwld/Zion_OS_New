@@ -110,7 +110,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring prompt, jint maxTokens, jfloat temperature) {
+Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring prompt, jint maxTokens, jfloat temperature, jstring grammar) {
     if (!prompt) return env->NewStringUTF("ERROR: Empty prompt");
     const char * text = env->GetStringUTFChars(prompt, nullptr);
     if (!text) return env->NewStringUTF("ERROR: Unable to read prompt");
@@ -197,6 +197,21 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(0.95f, 1));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(safeTemperature));
+    if (grammar) {
+        const char * grammarText = env->GetStringUTFChars(grammar, nullptr);
+        if (!grammarText) return env->NewStringUTF("ERROR: Unable to read constrained-output grammar.");
+        if (grammarText[0] != '\\0') {
+            llama_sampler * grammarSampler = llama_sampler_init_grammar(vocab, grammarText, "root");
+            env->ReleaseStringUTFChars(grammar, grammarText);
+            if (!grammarSampler) {
+                LOGE("Invalid GBNF grammar; refusing unconstrained generation");
+                return env->NewStringUTF("ERROR: Invalid GBNF grammar; constrained generation was not started.");
+            }
+            llama_sampler_chain_add(g_sampler, grammarSampler);
+        } else {
+            env->ReleaseStringUTFChars(grammar, grammarText);
+        }
+    }
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     // n_batch is deliberately small on phones. Never submit the whole prompt
