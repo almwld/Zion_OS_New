@@ -23,7 +23,7 @@ class AgentBackgroundService {
 
   static Future<void> stop() async {
     try {
-      await _channel.invokeMethod<bool>('stop');
+      await _channel.invokeMethod<bool>('finish');
     } on MissingPluginException {
       // Non-Android hosts and widget tests have no native service.
     } on PlatformException {
