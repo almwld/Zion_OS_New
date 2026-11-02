@@ -2,6 +2,7 @@ import 'dart:async';
 import 'agent_models.dart';
 import 'orchestrator.dart';
 import 'cancellation_token.dart';
+import 'agent_background_service.dart';
 
 class AgentSessionSnapshot {
   final String id;
@@ -101,6 +102,10 @@ class AgentRuntime {
     });
 
     try {
+      // Keep Android process importance elevated while orchestration is active.
+      // Native load/generate calls also start this service for every AI surface.
+      await AgentBackgroundService.start(clean);
+
       // Publish a cancellable busy state before the first asynchronous gap.
       _publish(AgentEvent(
         timestamp: DateTime.now(),
@@ -125,12 +130,30 @@ class AgentRuntime {
       session.touch();
       _lastResult = result;
       return result;
+    } catch (error, stackTrace) {
+      // Convert unexpected tool/plugin/native exceptions into a durable result.
+      final detail = error.toString();
+      session.state = token.isCancelled ? AgentState.cancelled : AgentState.failed;
+      session.error = detail;
+      session.touch();
+      final failed = AgentResult.error(clean, detail);
+      _lastResult = failed;
+      _publish(AgentEvent(
+        timestamp: DateTime.now(),
+        message: token.isCancelled
+            ? 'أُوقفت الجلسة أثناء التنفيذ.'
+            : 'انتهت الجلسة بسبب خطأ قابل للتشخيص: $detail',
+        state: session.state,
+      ));
+      print('Zion Agent session ${session.id} failed: $error | $stackTrace');
+      return failed;
     } finally {
       _starting = false;
       await _subscription?.cancel();
       _subscription = null;
       await token.dispose();
       if (identical(_token, token)) _token = null;
+      await AgentBackgroundService.stop();
     }
   }
 
