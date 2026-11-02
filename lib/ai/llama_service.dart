@@ -156,7 +156,7 @@ class LlamaService {
     final status = snapshot['generationStatus']?.toString();
     final response = snapshot['generationResult']?.toString();
     if (status == 'COMPLETED' || status == 'FAILED' ||
-        status == 'INTERRUPTED' || status == 'RESTORE_FAILED' ||
+        status == 'INTERRUPTED' || status == 'CANCELLED' || status == 'RESTORE_FAILED' ||
         status == 'MODEL_MISSING') {
       return response;
     }
