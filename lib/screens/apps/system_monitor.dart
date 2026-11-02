@@ -1,8 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
 
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+
+/// Reads metrics from Linux/Android procfs and sysfs. Unsupported metrics stay
+/// unavailable instead of being replaced with fabricated values.
 class SystemMonitorApp extends StatefulWidget {
   const SystemMonitorApp({super.key});
 
@@ -11,29 +14,34 @@ class SystemMonitorApp extends StatefulWidget {
 }
 
 class _SystemMonitorAppState extends State<SystemMonitorApp> {
-  double _cpuUsage = 0;
-  double _ramUsage = 0;
-  double _diskUsage = 0;
-  double _temperature = 0;
-  int _totalRam = 0;
-  int _usedRam = 0;
-  int _freeRam = 0;
-  int _totalDisk = 0;
-  int _usedDisk = 0;
-  int _freeDisk = 0;
-  int _processCount = 0;
-  int _uptime = 0;
-  
-  List<FlSpot> _cpuHistory = [];
-  List<FlSpot> _ramHistory = [];
+  static const Color _accent = Color(0xFF38BDF8);
+  static const Color _surface = Color(0xFF111C2B);
+
   Timer? _timer;
-  int _dataPoint = 0;
+  bool _loading = true;
+  String? _error;
+  DateTime? _lastUpdated;
+  double? _cpuUsage;
+  double? _ramUsage;
+  double? _diskUsage;
+  double? _temperature;
+  int? _totalRamMb;
+  int? _usedRamMb;
+  int? _freeRamMb;
+  int? _totalDiskMb;
+  int? _usedDiskMb;
+  int? _freeDiskMb;
+  int? _processCount;
+  int? _uptimeSeconds;
+  final List<FlSpot> _cpuHistory = <FlSpot>[];
+  final List<FlSpot> _ramHistory = <FlSpot>[];
+  int _sample = 0;
 
   @override
   void initState() {
     super.initState();
-    _initData();
-    _startMonitoring();
+    _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _refresh());
   }
 
   @override
@@ -42,356 +50,259 @@ class _SystemMonitorAppState extends State<SystemMonitorApp> {
     super.dispose();
   }
 
-  void _initData() {
-    for (int i = 0; i < 20; i++) {
-      _cpuHistory.add(FlSpot(i.toDouble(), 0));
-      _ramHistory.add(FlSpot(i.toDouble(), 0));
+  Future<double?> _readCpuUsage() async {
+    Future<List<int>?> readCounters() async {
+      try {
+        final line = (await File('/proc/stat').readAsLines())
+            .firstWhere((value) => value.startsWith('cpu '));
+        final values = line.trim().split(RegExp(r'\s+')).skip(1)
+            .map(int.tryParse).whereType<int>().toList();
+        if (values.length < 4) return null;
+        final idle = values[3] + (values.length > 4 ? values[4] : 0);
+        return <int>[values.fold<int>(0, (sum, value) => sum + value), idle];
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final first = await readCounters();
+    if (first == null) return null;
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final second = await readCounters();
+    if (second == null) return null;
+    final total = second[0] - first[0];
+    final idle = second[1] - first[1];
+    if (total <= 0) return null;
+    return ((total - idle) * 100 / total).clamp(0, 100).toDouble();
+  }
+
+  Future<Map<String, int>?> _readMemory() async {
+    try {
+      final lines = await File('/proc/meminfo').readAsLines();
+      final values = <String, int>{};
+      for (final line in lines) {
+        final match = RegExp(r'^(MemTotal|MemAvailable):\s+(\d+)\s+kB')
+            .firstMatch(line);
+        if (match != null) values[match.group(1)!] = int.parse(match.group(2)!);
+      }
+      final total = values['MemTotal'];
+      final available = values['MemAvailable'];
+      if (total == null || available == null || total <= 0) return null;
+      final used = (total - available).clamp(0, total);
+      return <String, int>{
+        'total': total ~/ 1024,
+        'used': used ~/ 1024,
+        'free': available ~/ 1024,
+        'percent': (used * 100 ~/ total),
+      };
+    } catch (_) {
+      return null;
     }
   }
 
-  void _startMonitoring() {
-    _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _updateStats();
-      _updateHistory();
-      setState(() {});
-    });
-  }
-
-  void _updateStats() {
-    _cpuUsage = _getCPUUsage();
-    _ramUsage = _getRAMUsage();
-    _diskUsage = _getDiskUsage();
-    _temperature = _getTemperature();
-    _processCount = _getProcessCount();
-    _uptime = _getUptime();
-  }
-
-  void _updateHistory() {
-    _dataPoint++;
-    _cpuHistory.add(FlSpot(_dataPoint.toDouble(), _cpuUsage));
-    _ramHistory.add(FlSpot(_dataPoint.toDouble(), _ramUsage));
-    
-    if (_cpuHistory.length > 20) _cpuHistory.removeAt(0);
-    if (_ramHistory.length > 20) _ramHistory.removeAt(0);
-  }
-
-  double _getCPUUsage() {
+  Future<Map<String, int>?> _readDisk() async {
     try {
-      final result = Process.runSync('top', ['-bn1'], runInShell: true);
-      final output = result.stdout.toString();
-      final match = RegExp(r'CPU:\s*(\d+)%').firstMatch(output);
-      if (match != null) return double.parse(match.group(1)!);
-    } catch (_) {}
-    return 0;
+      final result = await Process.run('df', <String>['-k', '/data']);
+      if (result.exitCode != 0) return null;
+      final lines = result.stdout.toString().trim().split('\n');
+      if (lines.length < 2) return null;
+      final parts = lines.last.trim().split(RegExp(r'\s+'));
+      if (parts.length < 6) return null;
+      final total = int.tryParse(parts[1]);
+      final used = int.tryParse(parts[2]);
+      final free = int.tryParse(parts[3]);
+      if (total == null || used == null || free == null || total <= 0) {
+        return null;
+      }
+      return <String, int>{
+        'total': total ~/ 1024,
+        'used': used ~/ 1024,
+        'free': free ~/ 1024,
+        'percent': (used * 100 ~/ total).clamp(0, 100),
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
-  double _getRAMUsage() {
+  Future<double?> _readTemperature() async {
     try {
-      final result = Process.runSync('free', [], runInShell: true);
-      final output = result.stdout.toString();
-      final lines = output.split('\n');
-      if (lines.length > 1) {
-        final parts = lines[1].split(RegExp(r'\s+'));
-        if (parts.length >= 3) {
-          _totalRam = int.parse(parts[1]) ~/ 1024;
-          _usedRam = int.parse(parts[2]) ~/ 1024;
-          _freeRam = int.parse(parts[3]) ~/ 1024;
-          return (int.parse(parts[2]) / int.parse(parts[1])) * 100;
+      final zones = Directory('/sys/class/thermal');
+      await for (final entity in zones.list(followLinks: false)) {
+        if (entity is! Directory ||
+            !RegExp(r'thermal_zone\d+').hasMatch(entity.path.split('/').last)) {
+          continue;
+        }
+        try {
+          final raw = (await File('${entity.path}/temp').readAsString()).trim();
+          final value = double.tryParse(raw);
+          if (value == null || value <= 0) continue;
+          return value > 1000 ? value / 1000 : value;
+        } catch (_) {
+          continue;
         }
       }
-    } catch (_) {}
-    return 0;
+    } catch (_) {
+      // Thermal sysfs is restricted on some Android devices.
+    }
+    return null;
   }
 
-  double _getDiskUsage() {
+  Future<int?> _readProcessCount() async {
     try {
-      final result = Process.runSync('df', ['/data'], runInShell: true);
-      final output = result.stdout.toString();
-      final lines = output.split('\n');
-      if (lines.length > 1) {
-        final parts = lines[1].split(RegExp(r'\s+'));
-        if (parts.length >= 6) {
-          _totalDisk = int.parse(parts[1]) ~/ (1024 * 1024);
-          _usedDisk = int.parse(parts[2]) ~/ (1024 * 1024);
-          _freeDisk = int.parse(parts[3]) ~/ (1024 * 1024);
-          return (int.parse(parts[2]) / int.parse(parts[1])) * 100;
-        }
+      var count = 0;
+      await for (final entity in Directory('/proc').list(followLinks: false)) {
+        if (RegExp(r'^\d+$').hasMatch(entity.path.split('/').last)) count++;
       }
-    } catch (_) {}
-    return 0;
+      return count;
+    } catch (_) {
+      return null;
+    }
   }
 
-  double _getTemperature() {
+  Future<int?> _readUptime() async {
     try {
-      final result = Process.runSync('cat', ['/sys/class/thermal/thermal_zone0/temp'], runInShell: true);
-      final temp = double.parse(result.stdout.toString().trim()) / 1000;
-      return temp;
-    } catch (_) {}
-    return 35;
+      final raw = (await File('/proc/uptime').readAsString()).trim();
+      return double.parse(raw.split(RegExp(r'\s+')).first).floor();
+    } catch (_) {
+      return null;
+    }
   }
 
-  int _getProcessCount() {
+  Future<void> _refresh() async {
+    if (!mounted) return;
+    if (_loading == false) {
+      setState(() => _error = null);
+    }
     try {
-      final result = Process.runSync('ps', ['-e'], runInShell: true);
-      final lines = result.stdout.toString().split('\n');
-      return lines.length - 1;
-    } catch (_) {}
-    return 0;
+      final results = await Future.wait<Object?>(<Future<Object?>>[
+        _readCpuUsage(),
+        _readMemory(),
+        _readDisk(),
+        _readTemperature(),
+        _readProcessCount(),
+        _readUptime(),
+      ]);
+      if (!mounted) return;
+      final memory = results[1] as Map<String, int>?;
+      final disk = results[2] as Map<String, int>?;
+      setState(() {
+        _cpuUsage = results[0] as double?;
+        _ramUsage = memory?['percent']?.toDouble();
+        _totalRamMb = memory?['total'];
+        _usedRamMb = memory?['used'];
+        _freeRamMb = memory?['free'];
+        _diskUsage = disk?['percent']?.toDouble();
+        _totalDiskMb = disk?['total'];
+        _usedDiskMb = disk?['used'];
+        _freeDiskMb = disk?['free'];
+        _temperature = results[3] as double?;
+        _processCount = results[4] as int?;
+        _uptimeSeconds = results[5] as int?;
+        _lastUpdated = DateTime.now();
+        _loading = false;
+        _error = null;
+        _sample++;
+        _appendPoint(_cpuHistory, _cpuUsage);
+        _appendPoint(_ramHistory, _ramUsage);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'تعذّر تحديث بيانات النظام: $error';
+      });
+    }
   }
 
-  int _getUptime() {
-    try {
-      final result = Process.runSync('cat', ['/proc/uptime'], runInShell: true);
-      final uptimeSeconds = double.parse(result.stdout.toString().split(' ')[0]);
-      return uptimeSeconds.toInt();
-    } catch (_) {}
-    return 0;
+  void _appendPoint(List<FlSpot> points, double? value) {
+    if (value == null) return;
+    points.add(FlSpot(_sample.toDouble(), value));
+    if (points.length > 24) points.removeAt(0);
   }
 
-  String _formatUptime(int seconds) {
+  String _formatBytes(int? mb) {
+    if (mb == null) return 'غير متاح';
+    if (mb >= 1024) return '${(mb / 1024).toStringAsFixed(1)} GB';
+    return '$mb MB';
+  }
+
+  String _formatUptime(int? seconds) {
+    if (seconds == null) return 'غير متاح';
     final days = seconds ~/ 86400;
     final hours = (seconds % 86400) ~/ 3600;
     final minutes = (seconds % 3600) ~/ 60;
-    
-    if (days > 0) return '$days d $hours h';
-    if (hours > 0) return '${hours}h ${minutes}m';
-    return '${minutes}m';
+    if (days > 0) return '$days يوم، $hours ساعة';
+    if (hours > 0) return '$hours ساعة، $minutes دقيقة';
+    return '$minutes دقيقة';
   }
 
-  Color _getStatusColor(double value) {
-    if (value < 30) return Colors.green;
-    if (value < 70) return Colors.orange;
-    return Colors.red;
+  Color _statusColor(double? value) {
+    if (value == null) return Colors.white38;
+    if (value < 60) return const Color(0xFF34D399);
+    if (value < 85) return const Color(0xFFFBBF24);
+    return const Color(0xFFF87171);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF0B1220),
       appBar: AppBar(
-        title: const Text('System Monitor', style: TextStyle(color: Color(0xFF00BCD4))),
-        backgroundColor: Colors.black,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF00BCD4)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
+        title: const Text('مراقبة النظام'),
+        backgroundColor: const Color(0xFF0B1220),
+        actions: <Widget>[
           IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF00BCD4)),
-            onPressed: () => _updateStats(),
+            tooltip: 'تحديث الآن',
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded, color: _accent),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // CPU Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
-              ),
-              child: Column(
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.memory, color: Color(0xFF00BCD4)),
-                      SizedBox(width: 8),
-                      Text('CPU Usage', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: LinearProgressIndicator(
-                          value: _cpuUsage / 100,
-                          backgroundColor: Colors.white24,
-                          color: _getStatusColor(_cpuUsage),
-                          
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '${_cpuUsage.toStringAsFixed(1)}%',
-                        style: TextStyle(color: _getStatusColor(_cpuUsage), fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 100,
-                    child: LineChart(
-                      LineChartData(
-                        gridData: const FlGridData(show: false),
-                        titlesData: const FlTitlesData(show: false),
-                        borderData: FlBorderData(show: false),
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: _cpuHistory,
-                            isCurved: true,
-                            color: const Color(0xFF00BCD4),
-                            barWidth: 2,
-                            dotData: const FlDotData(show: false),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
+      body: RefreshIndicator(
+        color: _accent,
+        onRefresh: _refresh,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          children: <Widget>[
+            _buildHeader(),
             const SizedBox(height: 16),
-            
-            // RAM Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+            if (_error != null) _buildError(),
+            if (_loading && _lastUpdated == null)
+              const Padding(
+                padding: EdgeInsets.all(36),
+                child: Center(child: CircularProgressIndicator(color: _accent)),
+              )
+            else ...<Widget>[
+              _buildMetricCard(
+                title: 'المعالج CPU',
+                value: _cpuUsage,
+                icon: Icons.memory_rounded,
+                history: _cpuHistory,
               ),
-              child: Column(
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.memory, color: Color(0xFF00BCD4)),
-                      SizedBox(width: 8),
-                      Text('RAM Usage', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: LinearProgressIndicator(
-                          value: _ramUsage / 100,
-                          backgroundColor: Colors.white24,
-                          color: _getStatusColor(_ramUsage),
-                          
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '${_ramUsage.toStringAsFixed(1)}%',
-                        style: TextStyle(color: _getStatusColor(_ramUsage), fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total: ${_totalRam} MB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text('Used: ${_usedRam} MB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text('Free: ${_freeRam} MB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 100,
-                    child: LineChart(
-                      LineChartData(
-                        gridData: const FlGridData(show: false),
-                        titlesData: const FlTitlesData(show: false),
-                        borderData: FlBorderData(show: false),
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: _ramHistory,
-                            isCurved: true,
-                            color: Colors.green,
-                            barWidth: 2,
-                            dotData: const FlDotData(show: false),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              _buildMetricCard(
+                title: 'الذاكرة RAM',
+                value: _ramUsage,
+                icon: Icons.storage_rounded,
+                history: _ramHistory,
+                details: 'المستخدم ${_formatBytes(_usedRamMb)}  •  المتاح ${_formatBytes(_freeRamMb)}  •  الإجمالي ${_formatBytes(_totalRamMb)}',
               ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Storage Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+              const SizedBox(height: 12),
+              _buildMetricCard(
+                title: 'التخزين الداخلي',
+                value: _diskUsage,
+                icon: Icons.sd_storage_rounded,
+                details: 'المستخدم ${_formatBytes(_usedDiskMb)}  •  المتاح ${_formatBytes(_freeDiskMb)}  •  الإجمالي ${_formatBytes(_totalDiskMb)}',
               ),
-              child: Column(
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.storage, color: Color(0xFF00BCD4)),
-                      SizedBox(width: 8),
-                      Text('Storage', style: TextStyle(color: Color(0xFF00BCD4), fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: LinearProgressIndicator(
-                          value: _diskUsage / 100,
-                          backgroundColor: Colors.white24,
-                          color: _getStatusColor(_diskUsage),
-                          
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        '${_diskUsage.toStringAsFixed(1)}%',
-                        style: TextStyle(color: _getStatusColor(_diskUsage), fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Total: ${_totalDisk} GB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text('Used: ${_usedDisk} GB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text('Free: ${_freeDisk} GB', style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // System Info Grid
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInfoCard('Temperature', '${_temperature.toStringAsFixed(1)}°C', Icons.thermostat, Colors.red),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildInfoCard('Processes', '$_processCount', Icons.code, const Color(0xFF00BCD4)),
-                ),
-              ],
-            ),
-            
+              const SizedBox(height: 12),
+              _buildSystemDetails(),
+            ],
             const SizedBox(height: 12),
-            
-            Row(
-              children: [
-                Expanded(
-                  child: _buildInfoCard('Uptime', _formatUptime(_uptime), Icons.timer, Colors.orange),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildInfoCard('Platform', 'Android', Icons.android, Colors.green),
-                ),
-              ],
+            Text(
+              'تُعرض فقط القياسات التي أمكن قراءتها من النظام. قد لا تسمح بعض إصدارات Android بقراءة حرارة الجهاز أو بعض إحصاءات الموارد.',
+              style: TextStyle(color: Colors.white.withOpacity(0.48), fontSize: 11, height: 1.5),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -399,28 +310,149 @@ class _SystemMonitorAppState extends State<SystemMonitorApp> {
     );
   }
 
-  Widget _buildInfoCard(String title, String value, IconData icon, Color color) {
+  Widget _buildHeader() {
+    final time = _lastUpdated;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: _surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _accent.withOpacity(0.22)),
       ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.bold),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _accent.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(Icons.monitor_heart_rounded, color: _accent, size: 26),
           ),
-          Text(
-            title,
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text('حالة الجهاز', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  time == null ? 'جارٍ جمع القياسات...' : 'آخر تحديث ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
           ),
+          if (_loading) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _accent)),
         ],
       ),
     );
   }
+
+  Widget _buildError() => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: const Color(0xFF3B1D28), borderRadius: BorderRadius.circular(14)),
+    child: Row(children: <Widget>[
+      const Icon(Icons.error_outline, color: Color(0xFFFCA5A5)),
+      const SizedBox(width: 10),
+      Expanded(child: Text(_error!, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+      TextButton(onPressed: _refresh, child: const Text('إعادة المحاولة')),
+    ]),
+  );
+
+  Widget _buildMetricCard({
+    required String title,
+    required double? value,
+    required IconData icon,
+    List<FlSpot>? history,
+    String? details,
+  }) {
+    final color = _statusColor(value);
+    final shown = value == null ? '—' : '${value.toStringAsFixed(1)}%';
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(children: <Widget>[
+            Icon(icon, color: _accent, size: 20),
+            const SizedBox(width: 9),
+            Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+            Text(shown, style: TextStyle(color: color, fontSize: 19, fontWeight: FontWeight.bold)),
+          ]),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              minHeight: 8,
+              value: value == null ? 0 : value.clamp(0, 100) / 100,
+              backgroundColor: Colors.white.withOpacity(0.08),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          if (history != null && history.length > 1) ...<Widget>[
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 62,
+              child: LineChart(LineChartData(
+                minY: 0,
+                maxY: 100,
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                lineTouchData: const LineTouchData(enabled: false),
+                lineBarsData: <LineChartBarData>[
+                  LineChartBarData(
+                    spots: history,
+                    isCurved: true,
+                    color: _accent,
+                    barWidth: 2,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(show: true, color: _accent.withOpacity(0.08)),
+                  ),
+                ],
+              )),
+            ),
+          ],
+          if (details != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(details, style: const TextStyle(color: Colors.white54, fontSize: 11), textAlign: TextAlign.start),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemDetails() => Container(
+    padding: const EdgeInsets.all(17),
+    decoration: BoxDecoration(
+      color: _surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white.withOpacity(0.07)),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+      const Text('معلومات النظام', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 14),
+      _detailRow(Icons.device_thermostat_rounded, 'درجة الحرارة', _temperature == null ? 'غير متاحة' : '${_temperature!.toStringAsFixed(1)} °C'),
+      _detailRow(Icons.memory_rounded, 'العمليات المرئية', _processCount?.toString() ?? 'غير متاح'),
+      _detailRow(Icons.timer_outlined, 'مدة تشغيل الجهاز', _formatUptime(_uptimeSeconds)),
+    ]),
+  );
+
+  Widget _detailRow(IconData icon, String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(children: <Widget>[
+      Icon(icon, color: _accent, size: 18),
+      const SizedBox(width: 10),
+      Expanded(child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+      Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+    ]),
+  );
 }
