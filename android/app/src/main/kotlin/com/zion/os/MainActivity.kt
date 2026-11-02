@@ -320,6 +320,54 @@ class MainActivity : FlutterFragmentActivity() {
                             if (!isFinishing && !isDestroyed) runOnUiThread { result.success(response) }
                         }
                     }
+                    "ensureSession" -> {
+                        val prefs = ZionAgentForegroundService.sessionPreferences(this)
+                        val modelPath = prefs.getString(ZionAgentForegroundService.KEY_MODEL_PATH, null)
+                        if (modelPath.isNullOrBlank() || !File(modelPath).isFile || !File(modelPath).canRead()) {
+                            prefs.edit().putString("model_status", "MODEL_MISSING").commit()
+                            result.success(false)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            ZionAgentForegroundService.startSession(this, "استعادة جلسة النموذج المحلي")
+                        } catch (t: Throwable) {
+                            result.error("AI_BACKGROUND_START_FAILED", t.message ?: "تعذر استعادة جلسة النموذج", null)
+                            return@setMethodCallHandler
+                        }
+                        aiExecutor.execute {
+                            var loaded = try { llamaBridge.nativeIsLoaded() } catch (_: Throwable) { false }
+                            if (!loaded) {
+                                val attempts = prefs.getInt(ZionAgentForegroundService.KEY_MODEL_RESTORE_ATTEMPTS, 0)
+                                if (attempts >= 1 && prefs.getString("model_status", "") == "RESTORING") {
+                                    prefs.edit().putString("model_status", "RESTORE_FAILED").commit()
+                                } else {
+                                    prefs.edit()
+                                        .putInt(ZionAgentForegroundService.KEY_MODEL_RESTORE_ATTEMPTS, attempts + 1)
+                                        .putString("model_status", "RESTORING")
+                                        .commit()
+                                    ZionAgentForegroundService.acquireInferenceWakeLock(this)
+                                    loaded = try {
+                                        llamaBridge.nativeLoadModel(
+                                            modelPath,
+                                            prefs.getInt(ZionAgentForegroundService.KEY_THREADS, 2),
+                                            prefs.getString(ZionAgentForegroundService.KEY_LORA_PATH, null),
+                                            prefs.getFloat(ZionAgentForegroundService.KEY_LORA_SCALE, 1.0f)
+                                        )
+                                    } catch (t: Throwable) {
+                                        android.util.Log.e("ZionLLM", "Session reconnect model load failed", t)
+                                        false
+                                    } finally {
+                                        ZionAgentForegroundService.releaseInferenceWakeLock()
+                                    }
+                                    prefs.edit()
+                                        .putString("model_status", if (loaded) "LOADED" else "RESTORE_FAILED")
+                                        .putInt(ZionAgentForegroundService.KEY_MODEL_RESTORE_ATTEMPTS, if (loaded) 0 else attempts + 1)
+                                        .commit()
+                                }
+                            }
+                            if (!isFinishing && !isDestroyed) runOnUiThread { result.success(loaded) }
+                        }
+                    }
                     "sessionState" -> {
                         val prefs = ZionAgentForegroundService.sessionPreferences(this)
                         aiExecutor.execute {
@@ -547,8 +595,7 @@ class MainActivity : FlutterFragmentActivity() {
             logcatRunning = true
             logcatThread = Thread({
                 var process: Process? = null
-                try {
-                    process = ProcessBuilder(
+                try {                    process = ProcessBuilder(
                         "logcat", "-v", "time", "-s",
                         "ZionBootstrap:V", "ZionPTY:V", "ZionTerminal:V"
                     ).redirectErrorStream(true).start()
@@ -1097,8 +1144,7 @@ class MainActivity : FlutterFragmentActivity() {
         return mapOf("available" to true, "status" to "AVAILABLE")
     }
 
-    private fun showDialogApi(title: String, message: String, positive: String, negative: String, result: MethodChannel.Result) {
-        runOnUiThread {
+    private fun showDialogApi(title: String, message: String, positive: String, negative: String, result: MethodChannel.Result) {        runOnUiThread {
             AlertDialog.Builder(this)
                 .setTitle(title).setMessage(message)
                 .setPositiveButton(positive) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "positive")) }                .setNegativeButton(negative) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "negative")) }
