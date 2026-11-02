@@ -200,7 +200,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeGenerate(JNIEnv * env, jobject, jstring pr
     if (grammar) {
         const char * grammarText = env->GetStringUTFChars(grammar, nullptr);
         if (!grammarText) return env->NewStringUTF("ERROR: Unable to read constrained-output grammar.");
-        if (grammarText[0] != '\\0') {
+        if (grammarText[0] != '\0') {
             llama_sampler * grammarSampler = llama_sampler_init_grammar(vocab, grammarText, "root");
             env->ReleaseStringUTFChars(grammar, grammarText);
             if (!grammarSampler) {
