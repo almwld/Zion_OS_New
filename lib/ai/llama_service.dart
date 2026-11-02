@@ -70,17 +70,25 @@ class LlamaService {
     int score(LlamaModel m) {
       final n = m.name.toLowerCase();
       var s = 0;
+      // Prefer instruction-tuned Qwen3 artifacts: recent small-model
+      // tool-selection evaluations show materially stronger action judgment
+      // than the older 0.5B Qwen2.5 class. This is a preference, not a claim
+      // that every GGUF quantization or device will perform identically.
+      if (n.contains('qwen3')) s += 120;
+      if (n.contains('qwen2.5')) s += 55;
       if (n.contains('instruct')) s += 100;
       if (n.contains('chat')) s += 90;
       if (n.contains('assistant')) s += 70;
-      if (n.contains('qwen')) s += 55;
-      if (n.contains('llama')) s += 45;
-      if (n.contains('tinyllama')) s += 35;
+      if (n.contains('qwen') && !n.contains('qwen3') && !n.contains('qwen2.5')) s += 45;
+      if (n.contains('llama')) s += 40;
+      if (n.contains('tinyllama')) s += 20;
       if (n.contains('base')) s -= 25;
-      // Oversized models are filtered before scoring to reduce avoidable
-      // low-memory process deaths on Android devices.
+      // A roughly 1–2B quantized model is the practical starting point for
+      // agent planning on phones; retain the existing hard memory ceiling.
       final gb = m.sizeBytes / (1024 * 1024 * 1024);
-      if (gb >= 0.5 && gb <= 3.5) s += 25;
+      if (gb >= 0.8 && gb <= 2.0) s += 40;
+      if (gb >= 0.45 && gb < 0.8) s += 10;
+      if (gb > 2.0 && gb <= 3.5) s += 15;
       if (gb > 3.5) s -= 10;
       return s;
     }
