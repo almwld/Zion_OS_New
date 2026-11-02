@@ -11,10 +11,20 @@ class CommandAnalysis {
 class AIAgent {
   final LlamaService llama;
   final List<AgentMessage> _history = [];
-  late AgentRole _role;
+  AgentRole _role = AgentRole.terminalAssistant;
   bool _initialized = false;
   AIAgent({LlamaService? llama}) : llama = llama ?? LlamaService();
   bool get isInitialized => _initialized;
+
+  /// Reattach to a model session kept alive by the Android foreground service.
+  /// This avoids reloading a large GGUF when the chat screen or Flutter engine
+  /// is recreated while a local task is running.
+  Future<bool> restoreSession({AgentRole role = AgentRole.terminalAssistant}) async {
+    final loaded = await llama.refreshLoadedState();
+    _initialized = loaded;
+    if (loaded) _role = role;
+    return loaded;
+  }
 
   Future<bool> initialize({required String modelPath, required AgentRole role, int nThreads = 2}) async {
     // A native model replacement first releases the previous model. Clear the
@@ -37,7 +47,7 @@ class AIAgent {
     int maxTokens = 128,
     double temperature = 0.25,
   }) async {
-    if (!_initialized) return 'ERROR: الوكيل المحلي غير مهيأ.';
+    if (!_initialized && !await restoreSession()) return 'ERROR: الوكيل المحلي غير مهيأ.';
     final cleanMessage = message.trim();
     if (cleanMessage.isEmpty) return '';
     final rawResponse = await llama.generate(
@@ -152,5 +162,7 @@ class AIAgent {
     await llama.unloadModel();
   }
 
-  Future<void> dispose() => unload();
+  /// Widget disposal only detaches this Dart agent. Native GGUF lifetime is
+  /// owned by the foreground service and must survive route/Activity teardown.
+  Future<void> dispose() async { _initialized = false; }
 }
