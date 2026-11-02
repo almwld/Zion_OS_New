@@ -247,8 +247,10 @@ class MainActivity : FlutterFragmentActivity() {
                             .putInt(ZionAgentForegroundService.KEY_THREADS, threads.coerceIn(1, 8))
                             .putString(ZionAgentForegroundService.KEY_LORA_PATH, loraPath)
                             .putFloat(ZionAgentForegroundService.KEY_LORA_SCALE, loraScale)
+                            .putInt(ZionAgentForegroundService.KEY_MODEL_RESTORE_ATTEMPTS, 0)
+                            .putString("model_status", "LOADING")
                             .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, "IDLE")
-                            .apply()
+                            .commit()
                         try {
                             ZionAgentForegroundService.startSession(this, "تحميل النموذج المحلي")
                         } catch (t: Throwable) {
@@ -265,7 +267,10 @@ class MainActivity : FlutterFragmentActivity() {
                             } finally {
                                 ZionAgentForegroundService.releaseInferenceWakeLock()
                             }
-                            sessionPrefs.edit().putString("model_status", if (ok) "LOADED" else "LOAD_FAILED").apply()
+                            sessionPrefs.edit()
+                                .putString("model_status", if (ok) "LOADED" else "LOAD_FAILED")
+                                .putInt(ZionAgentForegroundService.KEY_MODEL_RESTORE_ATTEMPTS, 0)
+                                .commit()
                             if (!isFinishing && !isDestroyed) runOnUiThread { result.success(ok) }
                         }
                     }
@@ -296,10 +301,10 @@ class MainActivity : FlutterFragmentActivity() {
                             .putFloat(ZionAgentForegroundService.KEY_GENERATION_TEMPERATURE, temperature)
                             .putInt(ZionAgentForegroundService.KEY_GENERATION_RETRIES, 0)
                             .remove(ZionAgentForegroundService.KEY_GENERATION_RESULT)
-                            .apply()
+                            .commit()
                         aiExecutor.execute {
                             ZionAgentForegroundService.acquireInferenceWakeLock(this)
-                            val response = try { llamaBridge.nativeGenerate(prompt, maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
+                            val response = try { llamaBridge.nativeGenerate(prompt.take(32768), maxTokens, temperature) } catch (t: Throwable) { "ERROR: ${t.message ?: "native inference failed"}" } finally {
                                 ZionAgentForegroundService.releaseInferenceWakeLock()
                             }
                             val finalStatus = when {
@@ -311,7 +316,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 .putString(ZionAgentForegroundService.KEY_GENERATION_STATUS, finalStatus)
                                 .putString(ZionAgentForegroundService.KEY_GENERATION_RESULT, response)
                                 .putLong("generation_completed_at", System.currentTimeMillis())
-                                .apply()
+                                .commit()
                             if (!isFinishing && !isDestroyed) runOnUiThread { result.success(response) }
                         }
                     }
@@ -547,8 +552,7 @@ class MainActivity : FlutterFragmentActivity() {
                         "logcat", "-v", "time", "-s",
                         "ZionBootstrap:V", "ZionPTY:V", "ZionTerminal:V"
                     ).redirectErrorStream(true).start()
-                    logcatProcess = process
-                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
+                    logcatProcess = process                    BufferedReader(InputStreamReader(process.inputStream, Charsets.UTF_8)).use { reader ->
                         while (logcatRunning) {
                             val line = reader.readLine() ?: break
                             val sink = terminalLogSink ?: continue
@@ -1097,8 +1101,7 @@ class MainActivity : FlutterFragmentActivity() {
         runOnUiThread {
             AlertDialog.Builder(this)
                 .setTitle(title).setMessage(message)
-                .setPositiveButton(positive) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "positive")) }
-                .setNegativeButton(negative) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "negative")) }
+                .setPositiveButton(positive) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "positive")) }                .setNegativeButton(negative) { _, _ -> result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "negative")) }
                 .setOnCancelListener { result.success(mapOf("available" to true, "status" to "AVAILABLE", "action" to "cancel")) }
                 .show()
         }
