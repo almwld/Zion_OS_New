@@ -160,8 +160,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
   Future<void> _init() async {
     try {
       await _restoreConversation();
-      // Opening the app only discovers models. Native GGUF loading can consume
-      // substantial RAM, so it must be an explicit user action.
       final models = await _agent.llama.discoverModels();
       _availableModels = models
           .where((m) => m.readable && m.path.isNotEmpty && m.sizeBytes > 0 && m.sizeBytes <= 4 * 1024 * 1024 * 1024)
@@ -171,7 +169,37 @@ class _AIChatScreenState extends State<AIChatScreen> {
         (m) => m?.path == _preferredModelPath,
         orElse: () => _availableModels.isEmpty ? null : _availableModels.first,
       );
-      if (_availableModels.isNotEmpty) {
+
+      // Reconnect to the process-wide model before asking the user to load it.
+      // A pending generation is allowed to finish in the foreground service.
+      final restored = await _agent.restoreSession(role: widget.role);
+      if (restored) {
+        final activePath = _agent.llama.currentModel;
+        _selected = _availableModels.cast<LlamaModel?>().firstWhere(
+          (m) => m?.path == activePath,
+          orElse: () => _selected,
+        );
+        _status = 'تمت استعادة جلسة النموذج المحلي.';
+        _error = null;
+
+        final snapshot = await _agent.llama.getSessionState();
+        final status = snapshot['generationStatus']?.toString();
+        final recovered = snapshot['generationResult']?.toString();
+        final completedAt = (snapshot['completedAt'] as num?)?.toInt() ?? 0;
+        final prefs = await SharedPreferences.getInstance();
+        final lastRecoveredAt = prefs.getInt('zion_offline_ai_last_recovered_at_v1') ?? 0;
+        if (completedAt > lastRecoveredAt &&
+            recovered != null && recovered.isNotEmpty &&
+            const {'COMPLETED', 'FAILED', 'INTERRUPTED', 'CANCELLED', 'RESTORE_FAILED', 'MODEL_MISSING'}.contains(status)) {
+          _messages.add(AgentMessage(role: 'assistant', content: recovered));
+          _agent.restoreHistory(_messages);
+          await prefs.setInt('zion_offline_ai_last_recovered_at_v1', completedAt);
+          await _persistConversation();
+          _status = status == 'COMPLETED'
+              ? 'اكتمل الطلب أثناء وجود التطبيق في الخلفية، وتمت استعادة الرد.'
+              : 'استُعيدت حالة آخر طلب: $status';
+        }
+      } else if (_availableModels.isNotEmpty) {
         _error = 'تم العثور على نموذج محلي. اضغط زر تحميل النموذج لبدء المحرك.';
       } else {
         _error = models.isEmpty
@@ -179,7 +207,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             : 'لم يُعثر على نموذج GGUF قابل للقراءة ضمن حد الاكتشاف 4 GiB. يمكنك استيراد نموذج يدوياً.';
       }
     } catch (e) {
-      _error = 'تعذر فحص نماذج الذكاء المحلي: $e';
+      _error = 'تعذر استعادة جلسة الذكاء المحلي: $e';
     }
     if (mounted) setState(() => _loading = false);
     _scrollToEnd();
@@ -397,8 +425,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
         _status = ok ? 'النموذج محمل محلياً دون اتصال.' : null;
         if (ok) {
           _preferredModelPath = model.path;
-          _agent.restoreHistory(_messages);
-        }
+          _agent.restoreHistory(_messages);        }
       });
       if (ok) {
         final prefs = await SharedPreferences.getInstance();
@@ -789,7 +816,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   @override void dispose() {
-    if (_generating) unawaited(_agent.llama.cancelGeneration());
     _input.dispose();
     _inputFocus.dispose();
     _scroll.dispose();
