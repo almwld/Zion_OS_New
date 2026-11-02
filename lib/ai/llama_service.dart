@@ -165,7 +165,18 @@ class LlamaService {
 
   Future<bool> refreshLoadedState() async {
     try {
-      final snapshot = await getSessionState();
+      var snapshot = await getSessionState();
+      if (snapshot.isNotEmpty && snapshot['loaded'] != true &&
+          (snapshot['modelPath']?.toString().isNotEmpty ?? false)) {
+        try {
+          await _channel.invokeMethod<bool>('ensureSession');
+          snapshot = await getSessionState();
+        } on PlatformException {
+          // The saved result remains queryable even if a reconnect attempt fails.
+        } on MissingPluginException {
+          // Preserve the current snapshot for non-Android/test platforms.
+        }
+      }
       if (snapshot.isNotEmpty) {
         _loaded = snapshot['loaded'] == true;
         _modelPath = snapshot['modelPath']?.toString();
