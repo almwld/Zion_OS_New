@@ -80,7 +80,7 @@ Java_com_zion_os_ai_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject, jstring m
 
     if (loraPath) {
         const char * adapterPath = env->GetStringUTFChars(loraPath, nullptr);
-        if (adapterPath && adapterPath[0] != '\\0') {
+        if (adapterPath && adapterPath[0] != '\0') {
             g_lora = llama_adapter_lora_init(g_model, adapterPath);
             env->ReleaseStringUTFChars(loraPath, adapterPath);
             if (!g_lora) { freeLocked(); return JNI_FALSE; }
