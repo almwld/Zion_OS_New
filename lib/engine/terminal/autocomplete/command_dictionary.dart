@@ -29,9 +29,9 @@ class CommandDictionary {
   String? describe(String command)=>_commands[command]?.description;
   List<String> subcommandsOf(String command)=>_commands[command]?.subcommands.keys.toList(growable:false)??const [];
   Future<List<String>> suggestParameters(String command,String currentArg,Map context) async {
-    if(command=='git'&&(currentArg.isEmpty||'checkout'.startsWith(currentArg)||'branch'.startsWith(currentArg))){
+    if(command=='git'&&context['subcommand']=='checkout') {
       final branches=(context['branches'] as List?)?.map((e)=>e.toString()).toList()??const <String>[];
-      return [...subcommandsOf('git'),...branches].where((e)=>e.startsWith(currentArg)).toSet().toList();
+      return branches.where((e)=>e.startsWith(currentArg)).toList();
     }
     return subcommandsOf(command).where((e)=>e.startsWith(currentArg)).toList();
   }
