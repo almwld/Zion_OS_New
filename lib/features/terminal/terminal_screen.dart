@@ -10,6 +10,10 @@ import 'package:sqlite3/sqlite3.dart';
 import '../../engine/terminal/autocomplete/command_dictionary.dart';
 import '../../engine/terminal/autocomplete/command_history.dart';
 import '../../engine/terminal/autocomplete/completion_engine.dart';
+import '../../engine/approval/approval_gate.dart';
+import '../../engine/terminal/terminal_workflow.dart';
+import '../../engine/terminal/workflow_state.dart';
+import '../../engine/terminal/workflow_observability.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
@@ -74,6 +78,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
   CompletionEngine? _completionEngine;
   List<Completion> _completionItems = <Completion>[];
   bool _showAgentCommandBar = false;
+  TerminalWorkflow? _terminalWorkflow;
+  ApprovalGate? _workflowApprovalGate;
+  AgentEventBus? _workflowEvents;
+  StreamSubscription<ApprovalRequest>? _approvalSubscription;
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -108,6 +116,45 @@ class _TerminalScreenState extends State<TerminalScreen> {
     } catch (error) {
       if (mounted) _showTerminalNotice('تعذر تهيئة سجل الإكمال المحلي: $error');
     }
+  }
+
+  void _initializeWorkflowFor(TerminalService service) {
+    final database = _autocompleteDatabase;
+    if (database == null || _terminalWorkflow != null) return;
+    final gate = ApprovalGate();
+    final events = AgentEventBus();
+    final audit = AuditLog(database);
+    _workflowApprovalGate = gate;
+    _workflowEvents = events;
+    _terminalWorkflow = TerminalWorkflow(
+      terminal: service,
+      stateStore: WorkflowStateStore(database),
+      approvalGate: gate,
+      audit: audit,
+      events: events,
+    );
+    _approvalSubscription = gate.requests.listen((request) {
+      unawaited(_handleWorkflowApproval(request, gate));
+    });
+  }
+
+  Future<void> _handleWorkflowApproval(ApprovalRequest request, ApprovalGate gate) async {
+    if (!mounted) {
+      gate.respond(request.id, approved: false, reason: 'واجهة الطرفية غير متاحة.');
+      return;
+    }
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('موافقة مطلوبة'),
+        content: Text('يريد الوكيل تنفيذ:\\n${request.action}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('موافقة')),
+        ],
+      ),
+    );
+    gate.respond(request.id, approved: approved == true, reason: approved == true ? null : 'رفض المستخدم.');
   }
 
   Future<void> _refreshCompletions(String value) async {
@@ -197,7 +244,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final id = _nextId++;
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
-    final service = TerminalService(security);
+    final service = TerminalService(security);\n    _initializeWorkflowFor(service);
     unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
