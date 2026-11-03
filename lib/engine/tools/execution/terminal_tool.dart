@@ -3,67 +3,64 @@ import '../../../agent/core/agent_models.dart';
 import '../../../agent/core/cancellation_token.dart';
 import '../../../agent/tools/tool.dart';
 import '../../environment/agent_environment.dart';
+
 class TerminalTool extends AgentTool {
- final AgentEnvironment environment;TerminalTool(this.environment);
+ final AgentEnvironment environment;
+ TerminalTool(this.environment);
  @override String get name=>'run_command';
- @override String get description=>'تنفيذ أمر محدود داخل جلسة Zion native PTY بعد موافقة المستخدم.';
- @override Map<String,dynamic> get parameters=>const {'command':{'type':'string','required':true},'timeout_seconds':{'type':'integer','required':false},'working_directory':{'type':'string','required':false,'description':'مسار نسبي داخل sandbox/projects'}};
+ @override String get description=>'تشغيل أمر محدود داخل مجلد مشروع sandbox عبر Zion native PTY وبعد موافقة المستخدم.';
+ @override Map<String,dynamic> get parameters=>const {
+  'command':{'type':'string','required':true},
+  'timeout_seconds':{'type':'integer','required':false},
+  'working_directory':{'type':'string','required':false,'description':'مجلد نسبي داخل sandbox/projects'},
+ };
  @override Set<AgentPermission> get permissions=>const {AgentPermission.process};
  @override bool requiresApproval(Map<String,dynamic> p)=>true;
+
  bool _allowed(String command){
-  final v=command.trim();if(v.isEmpty||v.length>2000||RegExp(r'[|><&;\$()\x60\\\r\n\x00]').hasMatch(v))return false;
-  final a=v.split(RegExp(r'\s+'));final exe=a.first;
-  final safeArgs=a.skip(1).toList();
-  if(safeArgs.any((x)=>!RegExp(r'^[A-Za-z0-9_./-]+
-  if(exe=='npm'&&a.length==2)return a[1]=='test';
-  if(exe=='npm'&&a.length==3)return a[1]=='run'&&a[2]=='build';
-  if(exe=='flutter'&&a.length==2)return const {'analyze','test'}.contains(a[1]);
-  if(exe=='dart'&&a.length==2)return const {'analyze','format'}.contains(a[1]);
-  if(exe=='python3'&&a.length==2){final f=a[1];return f.endsWith('.py')&&!f.contains('..')&&(f.startsWith(environment.tempDirectory.path+'/')||f.startsWith(environment.projectsDirectory.path+'/'));}
+  final value=command.trim();
+  if(value.isEmpty||value.length>2000)return false;
+  const forbidden=['|','>','<','&',';','$','(',')','`','\\','\n','\r','\u0000'];
+  if(forbidden.any(value.contains))return false;
+  final args=value.split(RegExp(r'\s+'));
+  final executable=args.first;
+  final rest=args.skip(1).toList();
+  if(rest.any((arg)=>!RegExp(r'^[A-Za-z0-9_./-]+$').hasMatch(arg)||arg.contains('..')||arg.startsWith('-')))return false;
+  if(const {'ls','cat','grep','find','wc','head','tail'}.contains(executable))return true;
+  if(executable=='git'&&rest.isNotEmpty)return const {'status','diff','log'}.contains(rest.first)&&rest.skip(1).every((arg)=>!arg.startsWith('!'));
+  if(executable=='npm'&&rest.length==1)return rest.first=='test';
+  if(executable=='npm'&&rest.length==2)return rest[0]=='run'&&rest[1]=='build';
+  if(executable=='flutter'&&rest.length==1)return const {'analyze','test'}.contains(rest.first);
+  if(executable=='dart'&&rest.length==1)return const {'analyze','format'}.contains(rest.first);
   return false;
  }
- @override Future<StepResult> execute(Map<String,dynamic> p)async{
-  final s=environment.terminal;if(s==null)return StepResult.failure('خدمة Terminal غير متاحة.');
-  final rawCommand=p['command']?.toString()??'';if(!_allowed(rawCommand))return StepResult.failure('الأمر خارج القائمة البيضاء أو يحتوي معاملات shell محظورة.');
-  final directory=await environment.resolveWorkspaceDirectory(p['working_directory']?.toString()??'.');
+
+ String _quote(String value)=>"'"+value.replaceAll("'","'\\''")+"'";
+
+ @override Future<StepResult> execute(Map<String,dynamic> params)async{
+  final service=environment.terminal;
+  if(service==null)return StepResult.failure('خدمة Terminal غير متاحة.');
+  final raw=params['command']?.toString()??'';
+  if(!_allowed(raw))return StepResult.failure('الأمر خارج القائمة البيضاء أو يحتوي معاملات shell محظورة.');
+  final directory=await environment.resolveWorkspaceDirectory(params['working_directory']?.toString()??'.');
   if(directory==null)return StepResult.failure('مجلد العمل غير موجود أو خارج sandbox/projects.');
-  final command="cd '${directory.path.replaceAll("'","'\\''")}' && $rawCommand";
-  final seconds=(p['timeout_seconds'] as num?)?.toInt()??60;if(seconds<1||seconds>1800)return StepResult.failure('المهلة يجب أن تكون بين 1 و1800 ثانية.');
-  final r=await s.executeInInteractive(command,timeout:Duration(seconds:seconds));
-  final data={'stdout':r.stdout,'stderr':r.stderr,'exit_code':r.exitCode,'duration_ms':r.duration.inMilliseconds,'shell':r.shell};
-  return r.exitCode==0?StepResult.success('اكتمل الأمر (exit 0).',data:data,duration:r.duration):StepResult.failure('فشل الأمر (exit ${r.exitCode}): ${r.stderr.isEmpty?r.stdout:r.stderr}',duration:r.duration);
+  final seconds=(params['timeout_seconds'] as num?)?.toInt()??60;
+  if(seconds<1||seconds>1800)return StepResult.failure('المهلة يجب أن تكون بين 1 و1800 ثانية.');
+  final command='cd ${_quote(directory.path)} && $raw';
+  final result=await service.executeInInteractive(command,timeout:Duration(seconds:seconds));
+  final data={'stdout':result.stdout,'stderr':result.stderr,'exit_code':result.exitCode,
+   'duration_ms':result.duration.inMilliseconds,'shell':result.shell,'working_directory':directory.path};
+  return result.exitCode==0
+   ?StepResult.success('اكتمل الأمر (exit 0).',data:data,duration:result.duration)
+   :StepResult.failure('فشل الأمر (exit ${result.exitCode}): ${result.stderr.isEmpty?result.stdout:result.stderr}',duration:result.duration);
  }
- @override Future<StepResult> executeCancellable(Map<String,dynamic> p,CancellationToken? token)async{
-  if(token==null)return execute(p);token.throwIfCancelled();final s=environment.terminal;if(s==null)return StepResult.failure('خدمة Terminal غير متاحة.');
-  final rawCommand=p['command']?.toString()??'';if(!_allowed(rawCommand))return StepResult.failure('الأمر خارج القائمة البيضاء.');
-  final directory=await environment.resolveWorkspaceDirectory(p['working_directory']?.toString()??'.');
-  if(directory==null)return StepResult.failure('مجلد العمل غير موجود أو خارج sandbox/projects.');
-  final command="cd '${directory.path.replaceAll("'","'\\''")}' && $rawCommand";
-  final seconds=(p['timeout_seconds'] as num?)?.toInt()??60;if(seconds<1||seconds>1800)return StepResult.failure('مهلة غير صالحة.');
-  final sub=token.onCancel.listen((_)=>unawaited(s.interruptInteractive()));try{return await execute(p);}finally{await sub.cancel();}
- }
-}).hasMatch(x)||x.contains('..')||x.startsWith('-')))return false;
-  if(const {'ls','cat','grep','find','wc','head','tail'}.contains(exe))return true;
-  if(exe=='git'&&a.length>=2)return const {'status','diff','log'}.contains(a[1])&&safeArgs.skip(1).every((x)=>!x.startsWith('!'));
-  if(exe=='npm'&&a.length==2)return a[1]=='test';
-  if(exe=='npm'&&a.length==3)return a[1]=='run'&&a[2]=='build';
-  if(exe=='flutter'&&a.length==2)return const {'analyze','test'}.contains(a[1]);
-  if(exe=='dart'&&a.length==2)return const {'analyze','format'}.contains(a[1]);
-  if(exe=='python3'&&a.length==2){final f=a[1];return f.endsWith('.py')&&!f.contains('..')&&(f.startsWith(environment.tempDirectory.path+'/')||f.startsWith(environment.projectsDirectory.path+'/'));}
-  return false;
- }
- @override Future<StepResult> execute(Map<String,dynamic> p)async{
-  final s=environment.terminal;if(s==null)return StepResult.failure('خدمة Terminal غير متاحة.');
-  final command=p['command']?.toString()??'';if(!_allowed(command))return StepResult.failure('الأمر خارج القائمة البيضاء أو يحتوي معاملات shell محظورة.');
-  final seconds=(p['timeout_seconds'] as num?)?.toInt()??60;if(seconds<1||seconds>1800)return StepResult.failure('المهلة يجب أن تكون بين 1 و1800 ثانية.');
-  final r=await s.executeInInteractive(command,timeout:Duration(seconds:seconds));
-  final data={'stdout':r.stdout,'stderr':r.stderr,'exit_code':r.exitCode,'duration_ms':r.duration.inMilliseconds,'shell':r.shell};
-  return r.exitCode==0?StepResult.success('اكتمل الأمر (exit 0).',data:data,duration:r.duration):StepResult.failure('فشل الأمر (exit ${r.exitCode}): ${r.stderr.isEmpty?r.stdout:r.stderr}',duration:r.duration);
- }
- @override Future<StepResult> executeCancellable(Map<String,dynamic> p,CancellationToken? token)async{
-  if(token==null)return execute(p);token.throwIfCancelled();final s=environment.terminal;if(s==null)return StepResult.failure('خدمة Terminal غير متاحة.');
-  final command=p['command']?.toString()??'';if(!_allowed(command))return StepResult.failure('الأمر خارج القائمة البيضاء.');
-  final seconds=(p['timeout_seconds'] as num?)?.toInt()??60;if(seconds<1||seconds>1800)return StepResult.failure('مهلة غير صالحة.');
-  final sub=token.onCancel.listen((_)=>unawaited(s.interruptInteractive()));try{return await execute(p);}finally{await sub.cancel();}
+
+ @override Future<StepResult> executeCancellable(Map<String,dynamic> params,CancellationToken? token)async{
+  if(token==null)return execute(params);
+  token.throwIfCancelled();
+  final service=environment.terminal;
+  if(service==null)return StepResult.failure('خدمة Terminal غير متاحة.');
+  final subscription=token.onCancel.listen((_)=>unawaited(service.interruptInteractive()));
+  try{return await execute(params);}finally{await subscription.cancel();}
  }
 }
