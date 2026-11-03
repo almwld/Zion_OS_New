@@ -23,5 +23,6 @@ class FuzzyMatcher {
   static List<String> suggest(String input,List<String> candidates,{int maxDistance=2})=>
     candidates.map((c)=>(value:c,distance:levenshtein(input,c)))
       .where((e)=>e.distance<=maxDistance).toList()
-      ..sort((a,b)=>a.distance.compareTo(b.distance));
+      ..sort((a,b)=>a.distance.compareTo(b.distance))
+      .map((e)=>e.value).toList();
 }
