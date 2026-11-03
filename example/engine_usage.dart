@@ -24,7 +24,7 @@ Future<void> main() async {
   try {
     await engine.switchMode(EngineMode.local);
     final result = await engine.runTask(
-      goal: 'افحص حالة البناء في PR رقم 76، وحدد سبب الفشل واقترح إصلاحاً.',
+      goal: 'أصلح خطأ البناء في PR رقم 76 بعد فحص الفحوص والسجلات والملفات، ثم راقب البناء بعد التعديل.',
       context: const {'owner': 'almwld', 'repo': 'Zion_OS_New', 'pr': 76},
     );
     print(result.report);
