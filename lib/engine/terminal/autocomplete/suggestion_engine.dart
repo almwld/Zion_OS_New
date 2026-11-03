@@ -30,7 +30,7 @@ class SuggestionEngine {
   }
 
   Future<List<Suggestion>> suggestFix(String failedCommand,String error) async {
-    final roots=dictionary.allCommands.map((c)=>c.split(RegExp(r'\s+')).first).toSet().toList();
+    final roots=dictionary.allCommands.map((c)=>c.split(RegExp(r'\s+')).first).where((name)=>name!='python3').toSet().toList();
     final fixes=FuzzyMatcher.suggest(failedCommand.trim().split(RegExp(r'\s+')).first,roots,maxDistance:2);
     return fixes.take(5).map((name)=>Suggestion(command:name,reason:'هل تقصد $name؟ ($error)',type:SuggestionType.fix,confidence:0.7)).toList();
   }
