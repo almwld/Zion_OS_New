@@ -13,7 +13,7 @@ class CompletionEngine {
   final CommandDictionary dictionary;
   final CommandHistory history;
   Future<List<Completion>> complete(String input,int cursorPosition) async {
-    final cursor=cursorPosition.clamp(0,input.length);
+    final cursor=cursorPosition.clamp(0,input.length).toInt();
     final before=input.substring(0,cursor);
     final tokenStart=before.lastIndexOf(' ')+1;
     final current=before.substring(tokenStart);
