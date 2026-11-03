@@ -33,14 +33,14 @@ class RepairSuggestion {
 
 class LLMRepairAdvisor {
   LLMRepairAdvisor({
-    required AIProvider provider,
+    required AIProvider Function() provider,
     CommandPolicy commandPolicy = const CommandPolicy(),
     required PathPolicy pathPolicy,
   })  : _provider = provider,
         _commandPolicy = commandPolicy,
         _pathPolicy = pathPolicy;
 
-  final AIProvider _provider;
+  final AIProvider Function() _provider;
   final CommandPolicy _commandPolicy;
   final PathPolicy _pathPolicy;
 
@@ -82,7 +82,7 @@ $history
 ''';
 
     try {
-      final raw = await _provider.generate(
+      final raw = await _provider().generate(
         systemPrompt: 'أنت مستشار إصلاح. لا تنفذ أوامر ولا تتجاوز سياسات الأمان.',
         prompt: prompt,
         maxTokens: 512,
