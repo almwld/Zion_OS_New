@@ -75,10 +75,10 @@ class CommandRegistry {
     if (value.isEmpty || value.length > 2000) return null;
     final policy = _policy.check(value);
     if (!policy.allowed) return null;
-    if (RegExp(r'[|&;<>$(){}\\[\\]\\x60\\n\\r]').hasMatch(value)) {
+    if (RegExp(r'[|&;<>$(){}\[\]\x60\n\r]').hasMatch(value)) {
       return null;
     }
-    final tokens = value.split(RegExp(r'\\s+'));
+    final tokens = value.split(RegExp(r'\s+'));
     if (tokens.isEmpty || tokens.first.isEmpty) return null;
     final metadata = _commands[tokens.first];
     if (metadata == null) return null;
