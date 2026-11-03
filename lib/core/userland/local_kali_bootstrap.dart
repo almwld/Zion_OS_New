@@ -243,7 +243,8 @@ class ZionLocalKaliBootstrap {
       if (prefix == null) {
         throw StateError('لم يتم العثور على جذر Kali صالح يحتوي bin/bash وbin/sh داخل الأرشيف.');
       }
-        final modes = <({String path, int mode})>[];        final modes = <({String path, int mode})>[];
+        final modes = <({String path, int mode})>[];
+        final links = <({String path, String target})>[];
         for (var i = 0; i < archive.length; i++) {
           final entry = archive[i];
           final normalizedName = _normalizeArchivePath(entry.name);
@@ -267,9 +268,9 @@ class ZionLocalKaliBootstrap {
             if (!_isSafeLinkTarget(relative, target)) {
               throw SecurityException('Unsafe symbolic link in Kali archive: $relative -> $target');
             }
-            await destination.parent.create(recursive: true);
-            try { await Link(destination.path).delete(); } catch (_) {}
-            await Link(destination.path).create(target);
+            // Defer links until regular files are extracted to prevent a link
+            // from redirecting a later archive entry outside the staging tree.
+            links.add((path: destination.path, target: target));
           } else if (entry.isFile) {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
@@ -283,6 +284,18 @@ class ZionLocalKaliBootstrap {
               'استخراج $relative',
             );
           }
+        }
+        for (final item in links) {
+          await File(item.path).parent.create(recursive: true);
+          final type = await FileSystemEntity.type(item.path, followLinks: false);
+          if (type == FileSystemEntityType.link) {
+            await Link(item.path).delete();
+          } else if (type == FileSystemEntityType.directory) {
+            await Directory(item.path).delete(recursive: true);
+          } else if (type == FileSystemEntityType.file) {
+            await File(item.path).delete();
+          }
+          await Link(item.path).create(item.target);
         }
         // Restore executable and directory modes from the verified tar archive.
         // Apply in reverse order so parent directories are chmodded only after
