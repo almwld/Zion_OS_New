@@ -9,8 +9,9 @@ class LocalProvider implements AIProvider {
  @override String get name=>'llama.cpp (محلي)';
  @override EngineMode get mode=>EngineMode.local;
  @override Future<bool> isReady() async {
+  // Terminal repair advice must never trigger an implicit model load.
+  if(!autoLoad)return await llama.nativeLoaded;
   if(await llama.refreshLoadedState())return true;
-  if(!autoLoad)return false;
   final path=modelPath;
   if(path==null||path.trim().isEmpty){final model=await llama.autoLoadBestModel();return model!=null&&llama.isLoaded;}
   return llama.loadModel(path);
