@@ -4,6 +4,12 @@ import 'package:sqlite3/sqlite3.dart';
 import '../agent/core/agent_models.dart';
 import '../agent/core/cancellation_token.dart';
 import '../agent/tools/tool.dart';
+import '../features/terminal/terminal_service.dart';
+import 'environment/agent_environment.dart';
+import 'tools/execution/file_tool.dart';
+import 'tools/execution/python_tool.dart';
+import 'tools/execution/process_control_tool.dart';
+import 'tools/execution/terminal_tool.dart';
 import 'approval/approval_gate.dart';
 import 'config/engine_config.dart';
 import 'config/engine_mode.dart';
@@ -33,6 +39,7 @@ class EngineTaskResult {
 class ZionEngine {
  final EngineConfig config;final ProviderSelector providers;final Database database;
  final GitHubClient? github;final ApprovalGate approvals;final TaskStateStore states;final MemoryStore memory;
+ final AgentEnvironment environment;final bool terminalLease;
  final Map<String,AgentTool> _tools={};final _events=StreamController<EngineEvent>.broadcast();
  bool _initialized=false,_disposed=false;
  BuildMonitor? _buildMonitor;RepairLoop? _repairLoop;
@@ -40,11 +47,14 @@ class ZionEngine {
  Stream<ApprovalRequest> get approvalRequests=>approvals.requests;
  EngineMode get mode=>providers.currentMode;
  ZionEngine({required this.config,required this.providers,required this.database,required this.approvals,
- required this.states,required this.memory,this.github});
+ required this.states,required this.memory,required this.environment,this.terminalLease=false,this.github});
 
  Future<void> init()async{
   if(_disposed)throw StateError('المحرك مغلق');if(_initialized)return;
-  states.init();memory.init();
+  await states.init();await memory.init();
+  await environment.prepareSandbox();
+  _register(TerminalTool(environment));_register(PythonTool(environment));
+  _register(FileTool(environment));_register(ProcessControlTool(environment));
   if(github!=null){
    _buildMonitor=BuildMonitor(github!,interval:config.buildPollInterval,timeout:config.buildTimeout);
    _register(GitHubReadTool(github!));_register(GitHubWriteTool(github!));_register(BuildMonitorTool(_buildMonitor!));
@@ -153,6 +163,7 @@ ${_tools.values.map((t)=>'${t.name}: ${t.description}; parameters=${t.parameters
  Future<void> dispose()async{
   if(_disposed)return;_disposed=true;
   await approvals.dispose();await providers.dispose();await github?.dispose();
+  if(terminalLease)await environment.terminal?.releaseForAgent();
   await _events.close();database.dispose();
  }
 }
