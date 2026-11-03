@@ -32,10 +32,12 @@ class CompletionEngine {
       }
       for(final name in dictionary.allCommands.where((e)=>e.startsWith(current))) {
         if(results.any((e)=>e.text==name))continue;
-        results.add(Completion(text:name,display:name,description:dictionary.describe(name)??'',type:CompletionType.command,replaceStart:tokenStart,replaceEnd:cursor));
+        final root=name.split(RegExp(r'\s+')).first;
+        results.add(Completion(text:name,display:name,description:dictionary.describe(root)??'',type:CompletionType.command,replaceStart:tokenStart,replaceEnd:cursor));
       }
       if(results.isEmpty&&current.isNotEmpty) {
-        final roots=dictionary.allCommands.map((c)=>c.split(RegExp(r'\\s+')).first).where((c)=>c!='python3').toSet().toList();\n        for(final name in FuzzyMatcher.suggest(current,roots,maxDistance:2)) {
+        final roots=dictionary.allCommands.map((c)=>c.split(RegExp(r'\s+')).first).where((c)=>c!='python3').toSet().toList();
+        for(final name in FuzzyMatcher.suggest(current,roots,maxDistance:2)) {
           results.add(Completion(text:name,display:name,description:'هل تقصد $name؟',type:CompletionType.command,replaceStart:tokenStart,replaceEnd:cursor));
         }
       }
