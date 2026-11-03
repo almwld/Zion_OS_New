@@ -8,6 +8,7 @@ Future<void> main() async {
     defaultMode: EngineMode.local,
     localModelPath: '/storage/emulated/0/Download/model.gguf',
     githubToken: String.fromEnvironment('GITHUB_TOKEN'),
+    cloudApiKey: String.fromEnvironment('ZION_CLOUD_API_KEY'),
     githubOwner: 'almwld',
     githubRepo: 'Zion_OS_New',
     requireApprovalForWrite: true,
@@ -30,7 +31,15 @@ Future<void> main() async {
     print(result.report);
 
     // التبديل صريح؛ لا يوجد fallback تلقائي إلى السحابة.
-    // يتطلب الوضع السحابي إعداد مفتاح API في EngineConfig.
+    const cloudKey = String.fromEnvironment('ZION_CLOUD_API_KEY');
+    if (cloudKey.isNotEmpty) {
+      await engine.switchMode(EngineMode.cloud);
+      final cloudResult = await engine.runTask(
+        goal: 'لخص نتائج المهمة السابقة وحدد الخطوة التالية.',
+        context: {'previousTaskId': result.taskId},
+      );
+      print(cloudResult.report);
+    }
   } finally {
     await approvals.cancel();
     await subscription.cancel();
