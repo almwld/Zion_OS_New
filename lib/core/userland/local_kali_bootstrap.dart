@@ -383,7 +383,7 @@ class ZionLocalKaliBootstrap {
         if (lower.contains('rootfs/')) result += 100;
         if (lower.contains('kali-arm64/')) result += 80;
         if (lower.contains('kali/')) result += 40;
-        return result - value.length.clamp(0, 1000);
+        return result - value.length.clamp(0, 1000).toInt();
       }
       return score(b).compareTo(score(a));
     });
