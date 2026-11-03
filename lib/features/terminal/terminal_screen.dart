@@ -113,6 +113,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
         _commandHistory = history;
         _completionEngine = engine;
       });
+      final activeTab = _selectedTab;
+      if (activeTab != null) _initializeWorkflowFor(activeTab.service);
     } catch (error) {
       if (mounted) _showTerminalNotice('تعذر تهيئة سجل الإكمال المحلي: $error');
     }
@@ -185,17 +187,29 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final command = value.trim();
     final tab = _selectedTab;
     if (command.isEmpty || tab == null) return;
-    if (!tab.service.isInteractiveRunning) { _showTerminalNotice('شغّل جلسة PTY أولاً.'); return; }
+    if (!tab.service.isInteractiveRunning) {
+      _showTerminalNotice('شغّل جلسة PTY أولاً.');
+      return;
+    }
     try {
-      await _commandHistory?.record(command);
-      tab.service.write('$command\n');
+      final workflow = _terminalWorkflow;
+      if (workflow == null) {
+        _showTerminalNotice('سير العمل الآمن لم يجهز بعد؛ أعد المحاولة بعد اتصال الجلسة.');
+        return;
+      }
+      final result = await workflow.run(
+        taskId: 'terminal-${DateTime.now().microsecondsSinceEpoch}',
+        goal: 'تنفيذ أمر من شريط الإكمال الذكي',
+        commands: [command],
+      );
+      await _commandHistory?.record(command, exitCode: result.success ? 0 : 1);
       _agentCommandController.clear();
       setState(() => _completionItems = <Completion>[]);
+      _showTerminalNotice(result.success ? 'اكتمل الأمر عبر سير العمل الآمن.' : (result.error ?? 'فشل تنفيذ الأمر.'));
     } catch (error) {
-      _showTerminalNotice('تعذر إرسال الأمر: $error');
+      _showTerminalNotice('تعذر تنفيذ الأمر: $error');
     }
   }
-
 
   Future<void> _initializeFirstTab() async {
     try {
@@ -244,7 +258,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final id = _nextId++;
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
-    final service = TerminalService(security);\n    _initializeWorkflowFor(service);
+    final service = TerminalService(security);
+    _initializeWorkflowFor(service);\n    _initializeWorkflowFor(service);
     unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
