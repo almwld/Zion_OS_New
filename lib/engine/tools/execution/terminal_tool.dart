@@ -25,7 +25,7 @@ class TerminalTool extends AgentTool {
   final args=value.split(RegExp(r'\s+'));
   final executable=args.first;
   final rest=args.skip(1).toList();
-  if(rest.any((arg)=>!RegExp(r'^[A-Za-z0-9_./-]+$').hasMatch(arg)||arg.contains('..')||arg.startsWith('-')))return false;
+  if(rest.any((arg)=>!RegExp(r'^[A-Za-z0-9_./-]+$').hasMatch(arg)||arg.contains('..')||arg.startsWith('-')||arg.startsWith('/')))return false;
   if(const {'ls','cat','grep','find','wc','head','tail'}.contains(executable))return true;
   if(executable=='git'&&rest.isNotEmpty)return const {'status','diff','log'}.contains(rest.first)&&rest.skip(1).every((arg)=>!arg.startsWith('!'));
   if(executable=='npm'&&rest.length==1)return rest.first=='test';
