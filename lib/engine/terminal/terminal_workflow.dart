@@ -100,11 +100,12 @@ class TerminalWorkflow {
       return WorkflowResult.failure('توقفت المهمة أثناء معالجة الأمر "$uncertain". افحص سجل التدقيق وحالة النظام أولاً، ثم استدعِ resume مع retryInterruptedCommand=true فقط بعد التأكد من أن إعادة المحاولة آمنة.');
     }
     if (interruptedCommand != null || pendingRepair != null) {
+      final retryIndex = pendingRepair != null ? (state.context['pendingRepairIndex'] as int? ?? state.nextCommandIndex) : state.nextCommandIndex;
       final cleaned = Map<String,dynamic>.from(state.context)
         ..remove('inFlightCommand')
         ..remove('inFlightCommandIndex')
         ..remove('pendingRepairCommand');
-      state = state.copyWith(phase:WorkflowPhase.paused,context:cleaned);
+      state = state.copyWith(phase:WorkflowPhase.paused,context:cleaned,nextCommandIndex:retryIndex);
       await stateStore.save(state);
     }
     final raw=state.context['requestedCommands'];
@@ -162,14 +163,16 @@ class TerminalWorkflow {
         await stateStore.save(state);
         if(result.exitCode!=0){
           final repairContext = Map<String,dynamic>.from(state.context)
-            ..['pendingRepairCommand'] = command;
+            ..['pendingRepairCommand'] = command
+            ..['pendingRepairIndex'] = index;
           state=state.copyWith(phase:WorkflowPhase.repairing,context:repairContext);
           _currentState=state;
           await stateStore.save(state);
           final repair=await repairCycle.run(taskId:state.taskId,failedCommand:command,stdout:result.stdout,stderr:result.stderr,exitCode:result.exitCode,cancel:cancel);
           attempts.addAll(repair.attempts);
           final repairedContext = Map<String,dynamic>.from(state.context)
-            ..remove('pendingRepairCommand');
+            ..remove('pendingRepairCommand')
+            ..remove('pendingRepairIndex');
           state=state.copyWith(attempts:[...state.attempts,...repair.attempts.map((a)=>a.toJson())],phase:repair.success?WorkflowPhase.executing:WorkflowPhase.failed,context:repairedContext);
           _currentState=state;
           await stateStore.save(state);
