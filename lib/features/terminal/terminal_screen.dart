@@ -593,6 +593,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     try {
       tab?.terminal.write('[Kali] التحقق من أرشيف Kali المحلي...\\r\\n');
       final result = await const ZionLocalKaliBootstrap().install(
+        manualImport: true,
         onProgress: (progress) {
           tab?.terminal.write('[Kali] ${progress.percent}% ${progress.message}\\r\\n');
         },
@@ -1245,6 +1246,7 @@ $request''',
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
               PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
               PopupMenuItem(value: 'paste', child: Text('لصق من الحافظة')),
               PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
@@ -1260,7 +1262,6 @@ $request''',
               PopupMenuItem(value: 'font-15', child: Text('حجم الخط: 15')),
               PopupMenuItem(value: 'font-17', child: Text('حجم الخط: 17')),
               PopupMenuItem(value: 'font-20', child: Text('حجم الخط: 20')),
-              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
               PopupMenuItem(value: 'ctrl-D', child: Text('Ctrl+D')),
               PopupMenuItem(value: 'ctrl-Z', child: Text('Ctrl+Z')),
               PopupMenuItem(value: 'ctrl-L', child: Text('Ctrl+L')),
