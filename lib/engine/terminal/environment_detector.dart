@@ -42,12 +42,10 @@ class EnvironmentDetector {
   Future<EnvironmentReport> report({bool probeKali = false}) async {
     final status = await environment.inspect();
     final zionTools = <String>{};
-    if (status.pythonReady) zionTools.add('python3');
-    if (status.gitReady) zionTools.add('git');
-
+    
     final service = terminal;
     if (status.terminalReady && service != null) {
-      for (final tool in const ['flutter', 'dart']) {
+      for (final tool in const ['python3', 'git', 'flutter', 'dart']) {
         try {
           final result = await service.executeInInteractive(
             'which $tool',
