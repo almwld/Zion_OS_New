@@ -7,7 +7,7 @@ class PolicyResult {
   factory PolicyResult.deny(String reason) => PolicyResult(false, reason: reason);
 }
 
-class CommandPolicy {
+class CommandPolicy {\n  const CommandPolicy();
   static const allowedCommands = <String>{
     'ls','cat','grep','find','wc','head','tail','echo','pwd','whoami','id','uname','df','free','ps','ip','ss','netstat','lsof','which','command','type','file',
     'git status','git diff','git log','git branch','git add','git commit',
@@ -34,7 +34,7 @@ class CommandPolicy {
     if (tokens.any((t) => t.startsWith('/etc/') || t == 'sudo' || t == 'su' || t == 'rm' || t == 'mv' || t == 'dd' || t == 'mkfs' || t == 'shred')) {
       return PolicyResult.deny('العملية محظورة.');
     }
-    return PolicyResult.allow(approval: allowedWithApproval.contains(commandKey));
+    if (tokens.first == 'command' && (tokens.length != 3 || tokens[1] != '-v')) return PolicyResult.deny('يسمح فقط بالأمر command -v.');\n    if (tokens.first == 'python3' && !(tokens.length == 2 && tokens[1] == '--version')) return PolicyResult.deny('تشغيل سكربتات Python غير متاح عبر الطرفية العامة.');\n    if (tokens.first == 'ip' && (tokens.length < 2 || !const {'a','addr','route'}.contains(tokens[1]))) return PolicyResult.deny('يسمح فقط باستعلامات ip للقراءة.');\n    if (tokens.first == 'ps' && tokens.skip(1).any((t)=>t.startsWith('-') && !const {'-a','-u','-x','-ef'}.contains(t))) return PolicyResult.deny('خيارات ps غير معتمدة.');\n    return PolicyResult.allow(approval: allowedWithApproval.contains(commandKey));
   }
 
   List<String> _split(String value) => value.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
