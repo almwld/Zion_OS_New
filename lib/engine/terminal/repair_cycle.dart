@@ -29,7 +29,7 @@ class RepairResult {
 }
 
 class RepairCycle {
-  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel,this.llmAdvisor,OutputTruncator? truncator}) : truncator=truncator??const OutputTruncator();
+  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel,this.llmAdvisor = null,OutputTruncator? truncator}) : truncator=truncator??const OutputTruncator();
   final TerminalService terminal;
   final ErrorClassifier classifier;
   final CommandPolicy commandPolicy;
