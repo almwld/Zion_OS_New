@@ -3,11 +3,11 @@ import '../../../features/terminal/terminal_service.dart';
 
 class ContextProvider {
   ContextProvider({this.terminal});
-  final TerminalService? terminal;
+  final TerminalService? terminal;\n  TerminalService? get _service => terminal ?? TerminalService.activeInteractiveService;
   Future<String> getCurrentPath() async {
     try{
-      if(terminal?.isInteractiveRunning==true){
-        final r=await terminal!.executeInInteractive('pwd',timeout:const Duration(seconds:5));
+      if(_service?.isInteractiveRunning==true){
+        final r=await _service!.executeInInteractive('pwd',timeout:const Duration(seconds:5));
         if(r.exitCode==0&&r.stdout.trim().isNotEmpty)return r.stdout.trim();
       }
     }catch(_){}
@@ -15,7 +15,7 @@ class ContextProvider {
   }
   Future<String?> getCurrentBranch() async {
     try{
-      if(terminal?.isInteractiveRunning!=true)return null;
+      if(_service?.isInteractiveRunning!=true)return null;
       final r=await terminal!.executeInInteractive('git branch --show-current',timeout:const Duration(seconds:5));
       return r.exitCode==0&&r.stdout.trim().isNotEmpty?r.stdout.trim():null;
     }catch(_){return null;}
