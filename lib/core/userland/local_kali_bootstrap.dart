@@ -349,8 +349,11 @@ class ZionLocalKaliBootstrap {
   }
 
   String? _normalizeArchivePath(String value) {
-    final normalized = value.replaceAll('\\\\', '/');
-    if (normalized.startsWith('/') || RegExp(r'^[A-Za-z]:').hasMatch(normalized)) return null;
+    var normalized = value.replaceAll('\\\\', '/');
+    if (RegExp(r'^[A-Za-z]:').hasMatch(normalized)) return null;
+    // Backup tools may store absolute device paths. Treat them as archive-
+    // relative names by stripping the leading slash; never write to that path.
+    normalized = normalized.replaceFirst(RegExp(r'^/+'), '');
     final parts = <String>[];
     for (final part in normalized.split('/')) {
       if (part.isEmpty || part == '.') continue;
@@ -388,7 +391,10 @@ class ZionLocalKaliBootstrap {
   }
 
   bool _isSafeLinkTarget(String relativePath, String target) {
-    if (target.isEmpty || target.startsWith('/') || target.contains('\\\\')) return false;
+    if (target.isEmpty || target.contains('\\\\') || target.contains('\\u0000')) return false;
+    // Absolute symlinks are normal inside Linux rootfs trees and are resolved
+    // by PRoot relative to the guest root, not the Android host filesystem.
+    if (target.startsWith('/')) return !target.split('/').contains('..');
     final parts = relativePath.split('/')..removeLast();
     for (final part in target.split('/')) {
       if (part.isEmpty || part == '.') continue;
@@ -419,6 +425,8 @@ class ZionLocalKaliBootstrap {
         GZipDecoder().decodeStream(input, output, verify: true);
       } else if (starts(<int>[0x42, 0x5a, 0x68])) {
         BZip2Decoder().decodeStream(input, output);
+      } else if (starts(<int>[0x28, 0xb5, 0x2f, 0xfd])) {
+        ZstdDecoder().decodeStream(input, output);
       } else {
         await for (final chunk in source.openRead()) {
           output.writeBytes(chunk);
