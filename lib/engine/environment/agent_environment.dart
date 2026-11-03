@@ -16,6 +16,15 @@ class AgentEnvironment {
   final root=await sandboxRoot.resolveSymbolicLinks();
   for(final d in [projectsDirectory,tempDirectory]){final p=await d.resolveSymbolicLinks();if(p!=root&&!p.startsWith('$root/'))throw FileSystemException('مسار مجلد sandbox خارج الجذر',p);}
  }
+ Future<Directory?> resolveWorkspaceDirectory(String relative)async{
+  if(relative.isEmpty||relative.startsWith('/')||relative.contains('..')||RegExp(r'[^A-Za-z0-9_./-]').hasMatch(relative))return null;
+  final root=await projectsDirectory.resolveSymbolicLinks();
+  final candidate=Directory('${projectsDirectory.path}/$relative');
+  if(!await candidate.exists())return null;
+  final resolved=await candidate.resolveSymbolicLinks();
+  if(resolved!=root&&!resolved.startsWith('$root/'))return null;
+  return Directory(resolved);
+ }
  Future<AgentEnvironmentStatus> inspect()async{
   var t=false,p=false,g=false;String? pv,gv,error;final s=terminal;
   if(s==null){error='لم تُربط خدمة Zion Terminal بالوكيل.';}else{try{
