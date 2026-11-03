@@ -22,7 +22,7 @@ class CloudProvider implements AIProvider {
     final r=await _client.post(uri,headers:{'Authorization':'Bearer $apiKey','Content-Type':'application/json'},body:body).timeout(const Duration(minutes:3));
     if(r.statusCode<200||r.statusCode>=300)throw ProviderException('HTTP ${r.statusCode}: ${r.body}',code:'cloud_http_${r.statusCode}');
     final j=jsonDecode(r.body) as Map<String,dynamic>;
-    final c=(j['choices'] as List?)?.firstOrNull;
+    final choices=j['choices'] as List?;final c=choices==null||choices.isEmpty?null:choices.first;
     final content=c is Map?(c['message'] as Map?)?['content']:null;
     if(content is! String)throw const ProviderException('استجابة المزود لا تحتوي محتوى',code:'invalid_response');
     return content;
