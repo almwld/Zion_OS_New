@@ -437,7 +437,8 @@ class AgentOrchestrator {
         if (entry.metadata['tool'] != null) 'tool': entry.metadata['tool'],
         if (entry.metadata['success'] != null) 'success': entry.metadata['success'],
       },
-    }).toList(growable: false);    final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
+    }).toList(growable: false);
+    final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
     final knowledgeHints = rankedKnowledge.expand((entry) => <String>[
       entry.title,
       entry.domain,
@@ -657,7 +658,8 @@ ${jsonEncode(relevantMemory)}
         'المهارات ذات الصلة:\\n$skillContext\\nالمعرفة المحلية:\\n$knowledgeContext\\n'
         'النتائج السابقة الفعلية:\n$context\n'
         'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
-        'استخدم الأدوات المحلية المتاحة المناسبة للمهمة ومفاتيحها الصحيحة. لا تختلق نتائج ولا تتجاوز موافقات Android أو صلاحيات root التي يطلبها النظام. '        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
+        'استخدم الأدوات المحلية المتاحة المناسبة للمهمة ومفاتيحها الصحيحة. لا تختلق نتائج ولا تتجاوز موافقات Android أو صلاحيات root التي يطلبها النظام. '
+        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
         maxTokens: 512,
         temperature: 0.1,
         cancellationToken: cancellationToken,
