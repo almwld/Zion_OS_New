@@ -27,6 +27,7 @@ class RepairLoop {
    catch(_){return RepairOutcome(success:false,cycles:cycle,report:'تعذر قراءة JSON الخاص بالتعديل');}
    final path=change['filePath']?.toString()??'',content=change['content']?.toString();
    if(path.isEmpty||content==null)return RepairOutcome(success:false,cycles:cycle,report:'مسار الملف أو محتواه مفقود');
+   if(path.startsWith('/')||path.split('/').contains('..'))return RepairOutcome(success:false,cycles:cycle,report:'مسار التعديل خارج حدود المستودع');
    final approval=await approvals.request(ApprovalRequest(id:'$taskId-repair-$cycle',taskId:taskId,
     action:'تعديل الملف $path: ${suggestion.diagnosis}',risk:'مرتفع',
     details:{'filePath':path,'content':content,
