@@ -13,10 +13,10 @@ class CommandPolicy {
     'ls','cat','grep','find','wc','head','tail','echo','pwd','whoami','id','uname','df','free','ps','ip','ss','netstat','lsof','which','command','type','file',
     'git status','git diff','git log','git branch','git add','git commit','git checkout','git cherry-pick','git check-ignore',
     'flutter analyze','flutter test','flutter pub get','flutter build apk','flutter build appbundle','flutter clean','flutter doctor',
-    'dart analyze','dart format','python3','npm run','apt list','apt show','apt install','adb devices','adb version'
+    'dart analyze','dart format','python3','npm run','npm test','apt list','apt show','apt install','adb devices','adb version'
   };
   static const allowedWithApproval=<String>{
-    'git add','git commit','git checkout','git cherry-pick','apt install','flutter build apk','flutter build appbundle','dart format','npm run'
+    'git add','git commit','git checkout','git cherry-pick','apt install','flutter build apk','flutter build appbundle','dart format','npm run','npm test'
   };
   static final RegExp _dangerousChars=RegExp(r'[|&;<>$(){}\[\]\\\x60\n\r]');
 
@@ -37,7 +37,7 @@ class CommandPolicy {
     if(tokens.first=='apt'&&tokens.length>1&&tokens[1]=='install'&&(tokens.length<3||tokens.length>4||tokens.skip(2).any((t)=>t.startsWith('-'))))return PolicyResult.deny('يسمح بتثبيت حزمة محددة فقط وبعد الموافقة.');
     if(tokens.first=='git'&&tokens.length>1&&tokens[1]=='checkout'&&(tokens.length!=3||tokens[2].startsWith('-')))return PolicyResult.deny('يسمح بالانتقال إلى فرع مسمى فقط وبعد الموافقة.');
     if(tokens.first=='git'&&tokens.length>1&&tokens[1]=='cherry-pick'&&(tokens.length!=3||!RegExp(r'^[a-fA-F0-9]{7,40}$').hasMatch(tokens[2])))return PolicyResult.deny('يسمح بانتقاء commit SHA محدد فقط وبعد الموافقة.');
-    if(tokens.first=='npm'&&!(tokens.length==3&&tokens[1]=='run'&&const {'build','test'}.contains(tokens[2])))return PolicyResult.deny('يسمح فقط بـ npm run build أو npm run test.');
+    if(tokens.first=='npm'&&!((tokens.length==2&&tokens[1]=='test')||(tokens.length==3&&tokens[1]=='run'&&const {'build','test'}.contains(tokens[2]))))return PolicyResult.deny('يسمح فقط بـ npm test أو npm run build أو npm run test.');
     if(tokens.first=='adb'&&!(tokens.length==2&&const {'devices','version'}.contains(tokens[1])))return PolicyResult.deny('يسمح فقط باستعلامات adb للقراءة.');
     if(tokens.first=='flutter'&&tokens.length>1&&tokens[1]=='clean'&&tokens.length!=2)return PolicyResult.deny('flutter clean لا يقبل معاملات إضافية.');
     if(tokens.first=='ip') {
@@ -65,7 +65,7 @@ class CommandPolicy {
     }
     if(tokens.first=='dart'&&tokens.length>1)return 'dart ${tokens[1]}';
     if(tokens.first=='apt'&&tokens.length>1)return 'apt ${tokens[1]}';
-    if(tokens.first=='npm'&&tokens.length>1)return 'npm ${tokens[1]}';
+    if(tokens.first=='npm'&&tokens.length>1)return tokens[1]=='run'?'npm run':'npm ${tokens[1]}';
     if(tokens.first=='adb'&&tokens.length>1)return 'adb ${tokens[1]}';
     return tokens.first;
   }
