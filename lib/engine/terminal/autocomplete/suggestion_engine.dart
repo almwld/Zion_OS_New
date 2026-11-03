@@ -21,7 +21,7 @@ class SuggestionEngine {
     for(final e in recent){result.add(Suggestion(command:e.command,reason:'استخدمته ${e.frequency} مرة',type:SuggestionType.frequent,confidence:0.9));}
     if(await context.isFlutterProject()&&!result.any((s)=>s.command=='flutter analyze'))result.add(const Suggestion(command:'flutter analyze',reason:'مشروع Flutter في المجلد الحالي',type:SuggestionType.contextual,confidence:0.8));
     if(await context.isGitRepo()&&!result.any((s)=>s.command=='git status'))result.add(const Suggestion(command:'git status',reason:'مستودع Git نشط',type:SuggestionType.contextual,confidence:0.85));
-    return result.take(limit.clamp(1,20)).toList();
+    return result.take(limit.clamp(1,20).toInt()).toList();
   }
   Future<List<Suggestion>> suggestFix(String failedCommand,String error) async {
     final executable=failedCommand.trim().split(RegExp(r'\s+')).first;
