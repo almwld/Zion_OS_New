@@ -1,5 +1,5 @@
 import 'command_dictionary.dart';
-import 'command_history.dart';
+import 'command_history.dart';\nimport 'context_provider.dart';
 
 enum CompletionType { command,subcommand,parameter,path,value }
 class Completion {
@@ -9,9 +9,9 @@ class Completion {
   final int replaceStart,replaceEnd;
 }
 class CompletionEngine {
-  CompletionEngine({required this.dictionary,required this.history});
+  CompletionEngine({required this.dictionary,required this.history,this.context});
   final CommandDictionary dictionary;
-  final CommandHistory history;
+  final CommandHistory history;\n  final ContextProvider? context;
   Future<List<Completion>> complete(String input,int cursorPosition) async {
     final cursor=cursorPosition.clamp(0,input.length).toInt();
     final before=input.substring(0,cursor);
