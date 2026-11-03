@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../providers/ai_provider.dart';
+import '../config/engine_mode.dart';
 import 'command_policy.dart';
 import 'error_classifier.dart';
 import 'path_policy.dart';
@@ -50,7 +51,11 @@ class LLMRepairAdvisor {
     required String failedCommand,
     bool sensitiveContext = false,
   }) async {
-    if (sensitiveContext) return null;
+    final provider = _provider();
+    final sensitive = sensitiveContext ||
+        _looksSensitive(failedCommand) ||
+        _looksSensitive(error.rawMessage);
+    if (sensitive && provider.mode != EngineMode.local) return null;
 
     final history = previousAttempts.isEmpty
         ? '(لا توجد محاولات سابقة)'
@@ -82,7 +87,7 @@ $history
 ''';
 
     try {
-      final raw = await _provider().generate(
+      final raw = await provider.generate(
         systemPrompt: 'أنت مستشار إصلاح. لا تنفذ أوامر ولا تتجاوز سياسات الأمان.',
         prompt: prompt,
         maxTokens: 512,
@@ -110,6 +115,13 @@ $history
     } catch (_) {
       return null;
     }
+  }
+
+  bool _looksSensitive(String value) {
+    return RegExp(
+      r'(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization:|bearer\\s+[a-z0-9._-]{12,})',
+      caseSensitive: false,
+    ).hasMatch(value);
   }
 
   RepairSuggestion? _parse(String raw) {
