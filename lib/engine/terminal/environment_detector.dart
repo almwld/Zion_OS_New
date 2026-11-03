@@ -42,9 +42,23 @@ class EnvironmentDetector {
   Future<EnvironmentReport> report({bool probeKali = false}) async {
     final status = await environment.inspect();
     final zionTools = <String>{};
-    
+    var zionReady = false;
+
     final service = terminal;
-    if (status.terminalReady && service != null) {
+    if (service != null) {
+      try {
+        final ping = await service.executeInInteractive(
+          'echo ZION_RUNTIME_READY',
+          runtime: 'zion',
+          timeout: const Duration(seconds: 6),
+        );
+        zionReady = ping.exitCode == 0 &&
+            ping.stdout.contains('ZION_RUNTIME_READY');
+      } catch (_) {
+        zionReady = false;
+      }
+    }
+    if (zionReady && service != null) {
       for (final tool in const ['python3', 'git', 'flutter', 'dart', 'npm']) {
         try {
           final result = await service.executeInInteractive(
@@ -94,7 +108,7 @@ class EnvironmentDetector {
     }
 
     return EnvironmentReport(
-      zionReady: status.terminalReady,
+      zionReady: zionReady,
       kaliReady: kaliReady,
       rootfsReady: null,
       toolsByRuntime: {
