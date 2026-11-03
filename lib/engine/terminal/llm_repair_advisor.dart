@@ -118,7 +118,7 @@ $history
 
   bool _looksSensitive(String value) {
     return RegExp(
-      r'(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization:|bearer\\s+[a-z0-9._-]{12,})',
+      r'(api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|authorization:|bearer\s+[a-z0-9._-]{12,})',
       caseSensitive: false,
     ).hasMatch(value);
   }
