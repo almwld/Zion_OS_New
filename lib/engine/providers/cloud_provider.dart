@@ -23,7 +23,8 @@ class CloudProvider implements AIProvider {
     if(r.statusCode<200||r.statusCode>=300)throw ProviderException('HTTP ${r.statusCode}: ${r.body}',code:'cloud_http_${r.statusCode}');
     final j=jsonDecode(r.body) as Map<String,dynamic>;
     final choices=j['choices'] as List?;final c=choices==null||choices.isEmpty?null:choices.first;
-    final content=c is Map?(c['message'] as Map?)?['content']:null;
+    final message = c is Map ? c['message'] : null;
+    final content = message is Map ? message['content'] : null;
     if(content is! String)throw const ProviderException('استجابة المزود لا تحتوي محتوى',code:'invalid_response');
     return content;
    }
