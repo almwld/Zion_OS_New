@@ -18,6 +18,7 @@ import 'memory/memory_layer.dart';
 import 'memory/memory_retriever.dart';
 import 'memory/memory_store.dart';
 import 'providers/provider_selector.dart';
+import 'providers/ai_provider.dart';
 import 'usage/cost_tracker.dart';
 import 'recovery/recovery_engine.dart';
 import 'recovery/repair_loop.dart';
@@ -48,12 +49,22 @@ class ZionEngine {
  Stream<EngineEvent> get events=>_events.stream;
  Stream<ApprovalRequest> get approvalRequests=>approvals.requests;
  EngineMode get mode=>providers.currentMode;
+ List<Map<String,Object?>> get usageSummary=>usage.summary();
+ void clearUsage()=>usage.clear();
+ void _recordUsage(String taskId,String prompt,String output,AIProvider active){
+  usage.record(UsageRecord(taskId:taskId,provider:active.name,model:active.mode==EngineMode.local?'local-model':active.name,
+   inputTokens:(prompt.runes.length/4).ceil(),outputTokens:(output.runes.length/4).ceil(),estimated:true,
+   costUsd:active.mode==EngineMode.local?0.0:null,createdAt:DateTime.now().millisecondsSinceEpoch));
+ }
  ZionEngine({required this.config,required this.providers,required this.database,required this.approvals,
- required this.states,required this.memory,required this.environment,this.terminalLease=false,this.github});
+ required this.states,required this.memory,required this.environment,this.terminalLease=false,this.github}) : usage=CostTracker(database);
 
  Future<void> init()async{
   if(_disposed)throw StateError('المحرك مغلق');if(_initialized)return;
   await states.init();await memory.init();usage.initialize();
+  if(providers.currentMode==EngineMode.unset&&config.defaultMode!=EngineMode.unset){
+   await providers.switchTo(config.defaultMode);
+  }
   await environment.prepareSandbox();
   _register(TerminalTool(environment));_register(PythonTool(environment));
   _register(FileTool(environment));_register(ProcessControlTool(environment));_register(EnvironmentStatusTool(environment));
@@ -61,7 +72,10 @@ class ZionEngine {
    _buildMonitor=BuildMonitor(github!,interval:config.buildPollInterval,timeout:config.buildTimeout);
    _register(GitHubReadTool(github!));_register(GitHubWriteTool(github!));_register(BuildMonitorTool(_buildMonitor!));
    _repairLoop=RepairLoop(config:config,github:github!,approvals:approvals,monitor:_buildMonitor!,
-    provider:()=>providers.current,recovery:RecoveryEngine(()=>providers.current));
+    provider:()=>providers.current,
+    onUsage:(taskId,prompt,output,active)=>_recordUsage(taskId,prompt,output,active),
+    recovery:RecoveryEngine(()=>providers.current,
+      onUsage:(taskId,prompt,output,active)=>_recordUsage(taskId,prompt,output,active)));
   }
   _initialized=true;
  }
