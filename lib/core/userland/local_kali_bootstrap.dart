@@ -312,10 +312,6 @@ class ZionLocalKaliBootstrap {
             throw StateError('تعذر ضبط صلاحيات صدفة Kali: ${item.path}: ${chmod.stderr}');
           }
         }
-      } finally {
-        await tarInput.close();
-      }
-
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
       await _validateKaliRootfs(rootfs);
@@ -496,10 +492,17 @@ class ZionLocalKaliBootstrap {
         BZip2Decoder().decodeStream(input, output);
       } else if (starts(<int>[0x28, 0xb5, 0x2f, 0xfd])) {
         ZstdDecoder().decodeStream(input, output);
-      } else if (header.length >= 2 && header[0] == 0x78 &&
-          const <int>[0x01, 0x5e, 0x9c, 0xda].contains(header[1])) {
-        ZLibDecoder().decodeStream(input, output);
+      } else if (_hasZlibHeader(header)) {
+        ZLibDecoder().decodeStream(input, output, verify: true);
+      } else if (_hasUnsupportedArchiveHeader(header)) {
+        throw StateError(
+          'صيغة الأرشيف غير مدعومة حالياً. الصيغ المدعومة: ZIP وTAR وGZIP وBZIP2 وXZ وZstandard وZLIB. '
+          'لا يمكن فك RAR أو 7z أو LZ4 دون إضافة مفكك مخصص.',
+        );
       } else {
+        // Plain TAR archives are already uncompressed. The TAR decoder below
+        // validates their structure and the Kali rootfs validator checks their
+        // contents before any existing rootfs is replaced.
         await for (final chunk in source.openRead()) {
           output.writeBytes(chunk);
         }
@@ -509,6 +512,28 @@ class ZionLocalKaliBootstrap {
       await output.close();
     }
     return false;
+  }
+
+  bool _hasZlibHeader(List<int> bytes) {
+    if (bytes.length < 2) return false;
+    final cmf = bytes[0];
+    final flg = bytes[1];
+    return (cmf & 0x0f) == 8 &&
+        (cmf >> 4) <= 7 &&
+        ((cmf << 8) | flg) % 31 == 0;
+  }
+
+  bool _hasUnsupportedArchiveHeader(List<int> bytes) {
+    bool starts(List<int> signature) =>
+        bytes.length >= signature.length &&
+        List<int>.generate(signature.length, (i) => bytes[i]).toString() ==
+            signature.toString();
+
+    // 7z, RAR4/RAR5 and LZ4 frame signatures are recognized explicitly so
+    // they are not misreported as malformed TAR archives.
+    return starts(<int>[0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]) ||
+        starts(<int>[0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]) ||
+        starts(<int>[0x04, 0x22, 0x4d, 0x18]);
   }
 
   Future<void> _fixupRootfs(Directory rootfs) async {
