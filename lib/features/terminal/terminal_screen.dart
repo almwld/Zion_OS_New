@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart' show Database;
+import 'package:sqlite3/sqlite3.dart' hide Row;
 import '../../engine/terminal/autocomplete/command_dictionary.dart';
 import '../../engine/terminal/autocomplete/command_history.dart';
 import '../../engine/terminal/autocomplete/completion_engine.dart';
