@@ -1407,7 +1407,7 @@ class MainActivity : FlutterFragmentActivity() {
                 val uri = data.data!!
                 try { contentResolver.takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
                 val name = queryDisplayName(uri)
-                pending?.success(mapOf("available" to true, "status" to "AVAILABLE", "uri" to uri.toString(), "name" to name.ifBlank { uri.lastPathSegment ?: "kali-rootfs.archive" }))
+                pending?.success(mapOf("available" to true, "status" to "AVAILABLE", "uri" to uri.toString(), "name" to (name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment ?: "kali-rootfs.archive")))
             }
             super.onActivityResult(requestCode, resultCode, data)
             return
