@@ -1,6 +1,6 @@
 import 'dart:async';
-import '../../../agent/core/cancellation_token.dart';
-import '../../../features/terminal/terminal_service.dart';
+import '../../agent/core/cancellation_token.dart';
+import '../../features/terminal/terminal_service.dart';
 import '../approval/approval_gate.dart';
 import 'command_policy.dart';
 import 'error_classifier.dart';
