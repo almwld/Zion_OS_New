@@ -6,6 +6,8 @@ import 'error_classifier.dart';
 import 'output_truncator.dart';
 import 'path_policy.dart';
 import 'repair_cycle.dart';
+import 'llm_repair_advisor.dart';
+import 'environment_router.dart';
 import 'workflow_observability.dart';
 import 'workflow_state.dart';
 
@@ -25,9 +27,9 @@ class WorkflowResult {
 }
 
 class TerminalWorkflow {
-  TerminalWorkflow({required this.terminal,required this.stateStore,required this.approvalGate,required this.audit,required this.events,this.commandPolicy=const CommandPolicy(),PathPolicy? pathPolicy,ErrorClassifier? classifier,OutputTruncator? truncator})
+  TerminalWorkflow({required this.terminal,required this.stateStore,required this.approvalGate,required this.audit,required this.events,this.commandPolicy=const CommandPolicy(),PathPolicy? pathPolicy,ErrorClassifier? classifier,OutputTruncator? truncator,LLMRepairAdvisor? llmAdvisor,this.environmentRouter})
     :pathPolicy=pathPolicy??PathPolicy(),classifier=classifier??ErrorClassifier(),truncator=truncator??const OutputTruncator(){
-      repairCycle=RepairCycle(terminal:terminal,classifier:this.classifier,commandPolicy:commandPolicy,pathPolicy:this.pathPolicy,approvalGate:approvalGate,audit:audit,events:events,taskIdProvider:()=>_activeTaskId);
+      repairCycle=RepairCycle(terminal:terminal,classifier:this.classifier,commandPolicy:commandPolicy,pathPolicy:this.pathPolicy,approvalGate:approvalGate,audit:audit,events:events,taskIdProvider:()=>_activeTaskId,llmAdvisor:llmAdvisor);
       stateStore.init();audit.init();
     }
   final TerminalService terminal;
@@ -39,6 +41,7 @@ class TerminalWorkflow {
   final PathPolicy pathPolicy;
   final ErrorClassifier classifier;
   final OutputTruncator truncator;
+  final EnvironmentRouter? environmentRouter;
   late final RepairCycle repairCycle;
   String _activeTaskId='';
   WorkflowState? _currentState;
@@ -62,7 +65,8 @@ class TerminalWorkflow {
       final policy=commandPolicy.check(command);
       if(!policy.allowed||!await pathPolicy.checkAsync(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??'مسار مرفوض',126);continue;}
       try{
-        final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
+        final execution=environmentRouter==null?null:await environmentRouter!.route(command);
+        final result=await terminal.executeInInteractive(command,timeout:execution?.timeout??const Duration(seconds:10),runtime:execution?.runtimeName??'auto');
         final output=truncator.truncate(result.stdout.isEmpty?result.stderr:result.stdout);
         outputs.add('$command → $output');
         await audit.record(taskId:_activeTaskId,action:'recon',command:command,phase:'recon',approved:false,exitCode:result.exitCode,error:result.stderr.isEmpty?null:result.stderr,outputSize:output.length);
@@ -123,7 +127,8 @@ class TerminalWorkflow {
         }
         await audit.record(taskId:state.taskId,action:'execute',command:command,phase:'executing',approved:approved);
         events.emit(WorkflowEvent(taskId:state.taskId,type:'execution',message:'تنفيذ: $command',timestamp:DateTime.now()));
-        final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:30));
+        final execution=environmentRouter==null?null:await environmentRouter!.route(command);
+        final result=await terminal.executeInInteractive(command,timeout:execution?.timeout??const Duration(seconds:30),runtime:execution?.runtimeName??'auto');
         final stdout=truncator.truncate(result.stdout),stderr=truncator.truncate(result.stderr);
         output.add(stdout.isEmpty?stderr:stdout);
         await audit.record(taskId:state.taskId,action:'terminal_run',command:command,phase:'executing',approved:approved,exitCode:result.exitCode,error:stderr.isEmpty?null:stderr,outputSize:stdout.length+stderr.length);
