@@ -23,8 +23,8 @@ class EngineBootstrap {
   final terminalService=terminal??TerminalService.activeInteractiveService;
   final environment=AgentEnvironment(terminal:terminalService,sandboxRoot:sandbox);
   await environment.prepareSandbox();
-  terminalService?.retainForAgent();
   final db=sqlite3.open('${dir.path}/zion_engine.sqlite3');
+  terminalService?.retainForAgent();
   db.execute('PRAGMA journal_mode=WAL');db.execute('PRAGMA foreign_keys=ON');
   final github=config.githubToken==null?null:GitHubClient(token:config.githubToken!);
   final engine=ZionEngine(config:config,providers:ProviderSelector(config:config,llama:llama??LlamaService()),
