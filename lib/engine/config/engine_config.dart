@@ -11,7 +11,7 @@ class EngineConfig {
   final bool requireApprovalForWrite, requireApprovalForNetwork;
 
   const EngineConfig({
-    this.defaultMode = EngineMode.unset,
+    this.defaultMode = EngineMode.local,
     this.localModelPath,
     this.cloudApiKey,
     this.cloudBaseUrl = 'https://api.openai.com/v1',
@@ -38,10 +38,6 @@ class EngineConfig {
     if (maxTokensPerStep < 64) errors.add('maxTokensPerStep يجب ألا يقل عن 64');
     if (maxRepairCycles < 0 || maxRepairCycles > 5) {
       errors.add('maxRepairCycles يجب أن يكون بين 0 و5');
-    }
-    if (defaultMode == EngineMode.local &&
-        (localModelPath?.trim().isEmpty ?? true)) {
-      errors.add('مسار النموذج المحلي مطلوب');
     }
     if (defaultMode == EngineMode.cloud &&
         cloudProviders.where((provider) => provider.isConfigured).isEmpty &&
