@@ -1,4 +1,4 @@
-import '../../environment/agent_environment.dart';
+import '../environment/agent_environment.dart';
 import '../../features/terminal/terminal_service.dart';
 
 class EnvironmentReport {
