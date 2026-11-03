@@ -8,6 +8,10 @@ import 'agent_policy.dart';
 import 'cancellation_token.dart';
 import '../skills/agent_skill_library.dart';
 import '../skills/agent_knowledge_index.dart';
+import 'role_profile.dart';
+import 'role_sequencer.dart';
+import 'role_evaluator.dart';
+import 'skill_selector.dart';
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
@@ -17,6 +21,8 @@ class AgentOrchestrator {
   final AgentPlan Function(String task)? planBuilder;
   final AgentSkillLibrary _skillLibrary = AgentSkillLibrary();
   final AgentKnowledgeIndex _knowledgeIndex = AgentKnowledgeIndex();
+  final SkillSelector _skillSelector = SkillSelector();
+  final RoleEvaluator _roleEvaluator = const RoleEvaluator();
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
@@ -48,9 +54,18 @@ class AgentOrchestrator {
     _state = AgentState.planning;
     _log('بدء المهمة: $clean');
     final results = <StepResult>[];
+    final roleSequence = RoleSequencer(sequence: const [AgentRole.planner, AgentRole.executor, AgentRole.verifier, AgentRole.reporter]);
     try {
+      final plannerRole = roleSequence.begin();
+      _log('تفعيل دور ${plannerRole.name}: ${plannerRole.systemPrompt}');
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean, cancellationToken: cancellationToken);
+      final planEvaluation = _roleEvaluator.evaluatePlan(plan, maxSteps: 32);
+      if (!planEvaluation.accepted) {
+        return AgentResult(success: false, task: clean, steps: results, error: 'رفض تقييم المخطط: ${planEvaluation.feedback}');
+      }
+      final executorHandoff = roleSequence.advance(context: {'task': clean, 'plannedSteps': plan.steps.length}, reason: 'اعتماد بنية الخطة والانتقال إلى التنفيذ');
+      _log('تسليم ${executorHandoff.from.name} → ${executorHandoff.to.name}: ${executorHandoff.reason}');
       _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
         _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
@@ -141,6 +156,9 @@ class AgentOrchestrator {
         }
         cancellationToken?.throwIfCancelled();
         results.add(r);
+        final stepRole = RoleProfile.forRole(AgentRole.executor);
+        final roleEvaluation = _roleEvaluator.evaluateStep(role: stepRole, step: step, result: r);
+        _log('تقييم ${stepRole.name}: ${roleEvaluation.score}/100 — ${roleEvaluation.feedback}');
         await memory.remember(
           kind: 'agent-step',
           text: '${step.description}\n${r.success ? r.summary : (r.error ?? r.summary)}',
@@ -239,6 +257,15 @@ class AgentOrchestrator {
         _state = AgentState.executing;
       }
 
+      final verifierHandoff = roleSequence.advance(context: {'completedSteps': results.length, 'successfulSteps': results.where((item) => item.success).length}, reason: 'انتهاء التنفيذ والانتقال للتحقق');
+      _log('تسليم ${verifierHandoff.from.name} → ${verifierHandoff.to.name}');
+      final verification = results.isNotEmpty && results.every((item) => item.success);
+      if (!verification) {
+        _state = AgentState.failed;
+        return AgentResult(success: false, task: clean, steps: results, error: 'لم تجتز النتائج التحقق النهائي.');
+      }
+      final reporterHandoff = roleSequence.advance(context: {'verified': true, 'resultCount': results.length}, reason: 'اجتياز التحقق وتجهيز التقرير');
+      _log('تسليم ${reporterHandoff.from.name} → ${reporterHandoff.to.name}');
       _state = AgentState.completed;
       final report = _actualResultsSummary(clean, results);
       await memory.remember(
@@ -344,13 +371,13 @@ class AgentOrchestrator {
     ]).toList(growable: false);
     // Cross-feed knowledge hits into procedural skill discovery so the two
     // offline indexes reinforce one another instead of ranking independently.
-    final skillContext = await _skillLibrary.contextFor(
-      task,
+    final selectedSkills = await _skillSelector.select(
+      role: RoleProfile.forRole(AgentRole.planner),
+      task: task,
       hints: knowledgeHints,
-      maxSkills: 3,
-      maxCharsPerSkill: 420,
-      maxTotalChars: 1150,
+      maxChars: 1150,
     );
+    final skillContext = selectedSkills.skillContext;
     final knowledgeContext = await _knowledgeIndex.contextFor(
       task,
       maxEntries: 3,
@@ -375,7 +402,7 @@ $knowledgeContext
 ${jsonEncode(toolCatalog)}
 ذاكرة مختصرة (سياق فقط):
 ${jsonEncode(relevantMemory)}
-أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
+الدور الحالي: ${RoleProfile.forRole(AgentRole.planner).systemPrompt}\nأنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
