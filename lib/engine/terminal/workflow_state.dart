@@ -22,8 +22,8 @@ class WorkflowState {
   final DateTime lastUpdate;
   final Map<String,dynamic> context;
   final int nextCommandIndex;
-  WorkflowState copyWith({WorkflowPhase? phase,List<ExecutedCommand>? commands,List<Map<String,dynamic>>? attempts,DateTime? lastUpdate,int? nextCommandIndex}) =>
-    WorkflowState(taskId:taskId,goal:goal,phase:phase ?? this.phase,commands:commands ?? this.commands,attempts:attempts ?? this.attempts,lastUpdate:lastUpdate ?? DateTime.now(),context:context,nextCommandIndex:nextCommandIndex ?? this.nextCommandIndex);
+  WorkflowState copyWith({WorkflowPhase? phase,List<ExecutedCommand>? commands,List<Map<String,dynamic>>? attempts,DateTime? lastUpdate,int? nextCommandIndex,Map<String,dynamic>? context}) =>
+    WorkflowState(taskId:taskId,goal:goal,phase:phase ?? this.phase,commands:commands ?? this.commands,attempts:attempts ?? this.attempts,lastUpdate:lastUpdate ?? DateTime.now(),context:context ?? this.context,nextCommandIndex:nextCommandIndex ?? this.nextCommandIndex);
   Map<String,dynamic> toJson() => {'taskId':taskId,'goal':goal,'phase':phase.name,'commands':commands.map((e)=>e.toJson()).toList(),'attempts':attempts,'lastUpdate':lastUpdate.toIso8601String(),'context':context,'nextCommandIndex':nextCommandIndex};
   factory WorkflowState.fromJson(Map<String,dynamic> j) => WorkflowState(taskId:j['taskId'] as String,goal:j['goal'] as String,phase:WorkflowPhase.values.firstWhere((e)=>e.name==j['phase'],orElse:()=>WorkflowPhase.failed),commands:(j['commands'] as List? ?? const []).map((e)=>ExecutedCommand.fromJson(Map<String,dynamic>.from(e as Map))).toList(),attempts:(j['attempts'] as List? ?? const []).map((e)=>Map<String,dynamic>.from(e as Map)).toList(),lastUpdate:DateTime.parse(j['lastUpdate'] as String),context:Map<String,dynamic>.from(j['context'] as Map? ?? const {}),nextCommandIndex:j['nextCommandIndex'] as int? ?? 0);
 }
