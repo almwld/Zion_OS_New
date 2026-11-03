@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'package:sqlite3/sqlite3.dart';
-import '../../../security/core/audit_logger.dart';
+import '../../security/core/audit_logger.dart';
 
 class WorkflowEvent {
   const WorkflowEvent({required this.taskId,required this.type,required this.message,this.data=const {},required this.timestamp});
