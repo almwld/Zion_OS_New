@@ -45,7 +45,7 @@ class EnvironmentDetector {
     
     final service = terminal;
     if (status.terminalReady && service != null) {
-      for (final tool in const ['python3', 'git', 'flutter', 'dart']) {
+      for (final tool in const ['python3', 'git', 'flutter', 'dart', 'npm']) {
         try {
           final result = await service.executeInInteractive(
             'which $tool',
