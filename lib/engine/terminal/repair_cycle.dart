@@ -7,6 +7,7 @@ import 'error_classifier.dart';
 import 'path_policy.dart';
 import 'workflow_observability.dart';
 import 'output_truncator.dart';
+import 'llm_repair_advisor.dart';
 
 class RepairAttempt {
   const RepairAttempt({required this.cycle,required this.error,required this.strategy,this.diagnosticOutput=const [],this.repairOutput=const [],required this.verified,this.failureReason});
@@ -28,7 +29,7 @@ class RepairResult {
 }
 
 class RepairCycle {
-  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel,OutputTruncator? truncator}) : truncator=truncator??const OutputTruncator();
+  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel,this.llmAdvisor,OutputTruncator? truncator}) : truncator=truncator??const OutputTruncator();
   final TerminalService terminal;
   final ErrorClassifier classifier;
   final CommandPolicy commandPolicy;
@@ -38,6 +39,7 @@ class RepairCycle {
   final AgentEventBus events;
   final String Function() taskIdProvider;
   final CancellationToken? cancel;
+  final LLMRepairAdvisor? llmAdvisor;
   final OutputTruncator truncator;
 
   Future<RepairResult> run({required String taskId,required String failedCommand,required String stdout,required String stderr,required int exitCode,int maxCycles=3,CancellationToken? cancel}) async {
@@ -94,10 +96,151 @@ class RepairCycle {
         }
         events.emit(WorkflowEvent(taskId:taskId,type:'verification_failed',message:'فشل التحقق في الدورة $cycle',data:{'stderr':truncator.truncate(verify.stderr)},timestamp:DateTime.now()));
         out=truncator.truncate(verify.stdout);err=truncator.truncate(verify.stderr);code=verify.exitCode;
+        if(cycle>=2&&llmAdvisor!=null){
+          final suggestion=await llmAdvisor!.suggest(
+            error:error,
+            previousAttempts:attempts.map((a)=>RepairHistoryEntry(
+              description:a.strategy.description,
+              verified:a.verified,
+              failureReason:a.failureReason,
+            )).toList(),
+            failedCommand:failedCommand,
+          );
+          if(suggestion!=null){
+            final llmAttempt=await _executeLLMSuggestion(
+              suggestion:suggestion,
+              taskId:taskId,
+              cycle:cycle,
+              failedCommand:failedCommand,
+              error:error,
+              strategy:strategy,
+              cancel:cancel??this.cancel,
+            );
+            attempts.add(llmAttempt);
+            if(llmAttempt.verified){
+              return RepairResult(success:true,cyclesUsed:cycle,finalOutput:llmAttempt.repairOutput.join('\\n'),attempts:attempts);
+            }
+            if(llmAttempt.failureReason!=null){
+              out=llmAttempt.diagnosticOutput.join('\\n');
+              err=llmAttempt.failureReason!;
+              code=1;
+            }
+          }
+        }
       }catch(e){return RepairResult.failure('تعذر تنفيذ التحقق: $e',cyclesUsed:cycle,attempts:attempts);}
     }
     events.emit(WorkflowEvent(taskId:taskId,type:'cycle_limit',message:'تم بلوغ حد الإصلاح $cap.',data:{'attempts':attempts.length},timestamp:DateTime.now()));
     await approvalGate.request(ApprovalRequest(id:'$taskId-cycle-limit',taskId:taskId,action:'وصل الإصلاح إلى حد $cap دورات فاشلة؛ هل تريد مراجعة الحالة؟',risk:'متوسط',details:{'command':failedCommand,'attempts':attempts.length},createdAt:DateTime.now()));
     return RepairResult.failure('فشلت $cap دورات إصلاح؛ توقف الوكيل بعد الحد المسموح.',cyclesUsed:cap,attempts:attempts);
   }
+  Future<RepairAttempt> _executeLLMSuggestion({
+    required RepairSuggestion suggestion,
+    required String taskId,
+    required int cycle,
+    required String failedCommand,
+    required ClassifiedError error,
+    required RepairStrategy strategy,
+    CancellationToken? cancel,
+  }) async {
+    final diagnostics=<String>[];
+    final repairs=<String>[];
+    for(final command in suggestion.commands){
+      cancel?.throwIfCancelled();
+      final policy=commandPolicy.check(command);
+      final path=await pathPolicy.checkAsync(command);
+      if(!policy.allowed||!path.allowed){
+        return RepairAttempt(
+          cycle:cycle,error:error,strategy:strategy,
+          diagnosticOutput:diagnostics,
+          repairOutput:repairs,
+          verified:false,
+          failureReason:'رفضت السياسة أمر الإصلاح المقترح: ${policy.reason??path.reason}',
+        );
+      }
+      var approved=false;
+      if(policy.requiresApproval){
+        final decision=await approvalGate.request(ApprovalRequest(
+          id:'$taskId-llm-$cycle-${repairs.length}',
+          taskId:taskId,
+          action:'تنفيذ أمر تشخيص مقترح من مستشار الإصلاح: $command',
+          risk:'متوسط',
+          details:{'command':command,'reasoning':suggestion.reasoning},
+          createdAt:DateTime.now(),
+        ));
+        if(!decision.approved){
+          return RepairAttempt(
+            cycle:cycle,error:error,strategy:strategy,
+            diagnosticOutput:diagnostics,repairOutput:repairs,
+            verified:false,failureReason:'رفض المستخدم الأمر المقترح.',
+          );
+        }
+        approved=true;
+      }
+      try{
+        final result=await terminal.executeInInteractive(
+          command,
+          timeout:const Duration(seconds:30),
+          runtime:'auto',
+        );
+        final output=truncator.truncate([result.stdout,result.stderr].where((s)=>s.isNotEmpty).join('\\n'));
+        diagnostics.add(output);
+        await audit.record(
+          taskId:taskId,
+          action:'llm_repair_diagnostic',
+          command:command,
+          phase:'repairing',
+          approved:approved,
+          exitCode:result.exitCode,
+          error:result.exitCode==0?null:truncator.truncate(result.stderr),
+          outputSize:output.length,
+        );
+        if(result.exitCode!=0){
+          return RepairAttempt(
+            cycle:cycle,error:error,strategy:strategy,
+            diagnosticOutput:diagnostics,repairOutput:repairs,
+            verified:false,failureReason:'فشل الأمر المقترح برمز ${result.exitCode}.',
+          );
+        }
+      }catch(e){
+        return RepairAttempt(
+          cycle:cycle,error:error,strategy:strategy,
+          diagnosticOutput:diagnostics,repairOutput:repairs,
+          verified:false,failureReason:'تعذر تنفيذ التشخيص المقترح: $e',
+        );
+      }
+    }
+    final verifyPolicy=commandPolicy.check(failedCommand);
+    final verifyPath=await pathPolicy.checkAsync(failedCommand);
+    if(!verifyPolicy.allowed||!verifyPath.allowed){
+      return RepairAttempt(
+        cycle:cycle,error:error,strategy:strategy,
+        diagnosticOutput:diagnostics,repairOutput:repairs,
+        verified:false,failureReason:'تعذر إعادة التحقق بعد التشخيص المقترح.',
+      );
+    }
+    final verify=await terminal.executeInInteractive(
+      failedCommand,
+      timeout:const Duration(seconds:60),
+      runtime:'auto',
+    );
+    final finalOutput=truncator.truncate(verify.stdout);
+    await audit.record(
+      taskId:taskId,
+      action:'llm_repair_verify',
+      command:failedCommand,
+      phase:'repairing',
+      approved:false,
+      exitCode:verify.exitCode,
+      error:verify.exitCode==0?null:truncator.truncate(verify.stderr),
+      outputSize:finalOutput.length,
+    );
+    return RepairAttempt(
+      cycle:cycle,error:error,strategy:strategy,
+      diagnosticOutput:diagnostics,
+      repairOutput:[finalOutput],
+      verified:verify.exitCode==0,
+      failureReason:verify.exitCode==0?null:truncator.truncate(verify.stderr),
+    );
+  }
+
 }
