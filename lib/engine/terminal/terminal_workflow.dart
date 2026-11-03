@@ -60,7 +60,7 @@ class TerminalWorkflow {
     final tools=<String,String>{};
     for(final command in commands){
       final policy=commandPolicy.check(command);
-      if(!policy.allowed||!pathPolicy.check(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??'مسار مرفوض',126);continue;}
+      if(!policy.allowed||!await pathPolicy.checkAsync(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??'مسار مرفوض',126);continue;}
       try{
         final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
         final output=truncator.truncate(result.stdout.isEmpty?result.stderr:result.stdout);
@@ -108,7 +108,7 @@ class TerminalWorkflow {
         }
         cancel?.throwIfCancelled();
         final command=commands[index];
-        final policy=commandPolicy.check(command),path=pathPolicy.check(command);
+        final policy=commandPolicy.check(command),path=await pathPolicy.checkAsync(command);
         if(!policy.allowed||!path.allowed){
           final reason=policy.reason??path.reason??'سياسة التنفيذ رفضت الأمر.';
           await audit.record(taskId:state.taskId,action:'rejected',command:command,phase:'executing',approved:false,error:reason);
