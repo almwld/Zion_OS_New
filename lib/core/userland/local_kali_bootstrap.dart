@@ -343,13 +343,13 @@ class ZionLocalKaliBootstrap {
   }
 
   String _safeArchiveFilename(String value) {
-    final name = value.split(RegExp(r'[/\\\\]')).last.trim();
+    final name = value.split(RegExp(r'[/\\]')).last.trim();
     final cleaned = name.replaceAll(RegExp(r'[^A-Za-z0-9._+-]'), '_');
     return cleaned.isEmpty ? 'kali-rootfs.archive' : cleaned;
   }
 
   String? _normalizeArchivePath(String value) {
-    var normalized = value.replaceAll('\\\\', '/');
+    var normalized = value.replaceAll('\\', '/');
     if (RegExp(r'^[A-Za-z]:').hasMatch(normalized)) return null;
     // Backup tools may store absolute device paths. Treat them as archive-
     // relative names by stripping the leading slash; never write to that path.
@@ -391,7 +391,7 @@ class ZionLocalKaliBootstrap {
   }
 
   bool _isSafeLinkTarget(String relativePath, String target) {
-    if (target.isEmpty || target.contains('\\\\') || target.contains('\\u0000')) return false;
+    if (target.isEmpty || target.contains('\\') || target.contains('\u0000')) return false;
     // Absolute symlinks are normal inside Linux rootfs trees and are resolved
     // by PRoot relative to the guest root, not the Android host filesystem.
     if (target.startsWith('/')) return !target.split('/').contains('..');
