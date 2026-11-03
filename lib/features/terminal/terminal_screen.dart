@@ -157,7 +157,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('موافقة مطلوبة'),
-        content: Text('يريد الوكيل تنفيذ:\\n${request.action}'),
+        content: Text('يريد الوكيل تنفيذ:\n${request.action}'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('موافقة')),
@@ -1280,7 +1280,8 @@ $request''',
             onSelect: (index) {
               setState(() => _selectedIndex = index);
               if (index >= 0 && index < _tabs.length) {
-                _tabs[index].service.activateForAgent();\n              _initializeWorkflowFor(_tabs[index].service);
+                _tabs[index].service.activateForAgent();
+                _initializeWorkflowFor(_tabs[index].service);
               }
             },
             onClose: _closeTab,
