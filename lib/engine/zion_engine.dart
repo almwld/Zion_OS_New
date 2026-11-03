@@ -50,6 +50,7 @@ class ZionEngine {
  Stream<ApprovalRequest> get approvalRequests=>approvals.requests;
  EngineMode get mode=>providers.currentMode;
  List<Map<String,Object?>> get usageSummary=>usage.summary();
+ List<Map<String,Object?>> usageSummaryForTask(String taskId)=>usage.summary(taskId:taskId);
  void clearUsage()=>usage.clear();
  void _recordUsage(String taskId,String prompt,String output,AIProvider active){
   usage.record(UsageRecord(taskId:taskId,provider:active.name,model:active.mode==EngineMode.local?'local-model':active.name,
