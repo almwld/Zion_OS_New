@@ -15,7 +15,7 @@ class GitHubReadTool extends AgentTool {
    final action=p['action']?.toString()??'';
    final data=switch(action){
     'get_file'=>await client.getFile(owner,repo,p['path']?.toString()??'',ref:p['ref']?.toString()),
-    'get_tree'=>await client.getTree(owner,repo,p['ref']?.toString()??'HEAD'),
+    'get_tree'=>await client.getTree(owner,repo,p['ref']?.toString()??'main'),
     'get_check_runs'=>await client.getCheckRuns(owner,repo,ref:p['ref']?.toString(),pullNumber:(p['pr'] as num?)?.toInt()),
     'get_workflow_logs'=>{'run_metadata':await client.getWorkflowLogs(owner,repo,(p['run_id'] as num).toInt())},
     _=>throw ArgumentError('إجراء قراءة غير معروف: $action')
