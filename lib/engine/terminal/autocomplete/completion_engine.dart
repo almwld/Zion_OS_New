@@ -35,7 +35,7 @@ class CompletionEngine {
         results.add(Completion(text:name,display:name,description:dictionary.describe(name)??'',type:CompletionType.command,replaceStart:tokenStart,replaceEnd:cursor));
       }
       if(results.isEmpty&&current.isNotEmpty) {
-        for(final name in FuzzyMatcher.suggest(current,dictionary.allCommands,maxDistance:2)) {
+        final roots=dictionary.allCommands.map((c)=>c.split(RegExp(r'\\s+')).first).where((c)=>c!='python3').toSet().toList();\n        for(final name in FuzzyMatcher.suggest(current,roots,maxDistance:2)) {
           results.add(Completion(text:name,display:name,description:'هل تقصد $name؟',type:CompletionType.command,replaceStart:tokenStart,replaceEnd:cursor));
         }
       }
