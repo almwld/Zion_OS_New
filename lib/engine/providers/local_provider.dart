@@ -22,6 +22,6 @@ class LocalProvider implements AIProvider {
   return result;
  }
  @override Future<void> dispose() async {
-  // لا نحرر النموذج المشترك عند تبديل واجهة المحرك.
+  await llama.unloadModel();
  }
 }
