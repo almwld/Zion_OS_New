@@ -22,6 +22,10 @@ import 'terminal/command_policy.dart';
 import 'terminal/path_policy.dart';
 import 'terminal/error_classifier.dart';
 import 'terminal/output_truncator.dart';
+import 'terminal/command_registry.dart';
+import 'terminal/environment_detector.dart';
+import 'terminal/environment_router.dart';
+import 'terminal/llm_repair_advisor.dart';
 import 'zion_engine.dart';
 
 class EngineBootstrap {
@@ -45,10 +49,19 @@ class EngineBootstrap {
       await engine.init();
       final audit=AuditLog(db);
       final events=AgentEventBus();
+      final pathPolicy=PathPolicy();
       final workflow=terminalService==null?null:TerminalWorkflow(
         terminal:terminalService,stateStore:WorkflowStateStore(db),approvalGate:engine.approvals,
-        audit:audit,events:events,commandPolicy:const CommandPolicy(),pathPolicy:PathPolicy(),
-        classifier:ErrorClassifier(),truncator:const OutputTruncator());
+        audit:audit,events:events,commandPolicy:const CommandPolicy(),pathPolicy:pathPolicy,
+        classifier:ErrorClassifier(),truncator:const OutputTruncator(),
+        llmAdvisor:LLMRepairAdvisor(
+          provider:()=>engine.providers.current,
+          pathPolicy:pathPolicy,
+        ),
+        environmentRouter:EnvironmentRouter(
+          detector:EnvironmentDetector(environment:environment,terminal:terminalService),
+          registry:CommandRegistry(),
+        ));
       engine.registerTool(TerminalWorkflowTool(workflow));
       return engine;
     }catch(_){
