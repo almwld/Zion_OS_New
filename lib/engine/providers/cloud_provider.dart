@@ -41,7 +41,7 @@ class CloudProvider implements AIProvider {
      final data=line.substring(5).trim();if(data=='[DONE]')return output.toString();if(data.isEmpty)continue;
      try{
       final event=jsonDecode(data) as Map<String,dynamic>;
-      final choices=event['choices'] as List?;final delta=choices?.isNotEmpty==true?(choices!.first as Map)['delta']:null;
+      final choices=event['choices'] as List?;final delta=(choices != null && choices.isNotEmpty) ? (choices.first as Map)['delta'] : null;
       final text=delta is Map?delta['content']:null;
       if(text is String&&text.isNotEmpty){output.write(text);onChunk(text);}
      }on FormatException{/* تجاهل إطار غير مكتمل */}
