@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:sqlite3/sqlite3.dart';
 import '../agent/core/agent_models.dart';
 import '../agent/core/cancellation_token.dart';
 import '../agent/tools/tool.dart';
