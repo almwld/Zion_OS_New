@@ -72,7 +72,7 @@ class TerminalTool extends AgentTool {
     ];
     if (forbidden.any(value.contains)) return false;
 
-    final args = value.split(RegExp(r'\\s+'));
+    final args = value.split(RegExp(r'\s+'));
     final executable = args.first;
     final rest = args.skip(1).toList();
     if (rest.any((arg) =>
