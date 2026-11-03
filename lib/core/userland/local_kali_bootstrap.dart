@@ -305,11 +305,8 @@ class ZionLocalKaliBootstrap {
 
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
-      if (!await File('${rootfs.path}/bin/sh').exists() ||
-          !await File('${rootfs.path}/bin/bash').exists()) {
-        throw StateError('Kali rootfs extraction did not produce bin/sh and bin/bash.');
-      }
-      progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
+      await _validateKaliRootfs(rootfs);
+      progress(ZionKaliInstallState.fixing, 100, 'تم التحقق من Kali ARM64 وإصلاح rootfs.');
 
       final oldRootfs = Directory(
         targetRootfs.path + '.old-' +
@@ -339,6 +336,55 @@ class ZionLocalKaliBootstrap {
     } catch (e) {
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
       return ZionKaliInstallResult.failure(e);
+    }
+  }
+
+  Future<void> _validateKaliRootfs(Directory rootfs) async {
+    final base = rootfs.path;
+    final bash = File('$base/bin/bash');
+    final shell = File('$base/bin/sh');
+    final env = File('$base/usr/bin/env');
+    final osRelease = File('$base/etc/os-release');
+    if (!await bash.exists() ||
+        !await shell.exists() ||
+        !await env.exists() ||
+        !await osRelease.exists() ||
+        await bash.length() < 100000) {
+      throw StateError('الأرشيف لا يحتوي على Kali rootfs كاملاً: يلزم bin/bash وbin/sh وusr/bin/env وetc/os-release.');
+    }
+    final releaseText = (await osRelease.readAsString()).toLowerCase();
+    if (!releaseText.contains('kali')) {
+      throw StateError('تم رفض الأرشيف: etc/os-release لا يعرّف نظام Kali. لن يتم استبدال rootfs الحالي ببيئة Termux أو Android.');
+    }
+    final header = await bash.openRead(0, 20).fold<List<int>>(
+      <int>[],
+      (bytes, part) => bytes..addAll(part),
+    );
+    if (header.length < 20 ||
+        header[0] != 0x7f ||
+        header[1] != 0x45 ||
+        header[2] != 0x4c ||
+        header[3] != 0x46 ||
+        header[4] != 2 ||
+        header[5] != 1 ||
+        (header[18] | (header[19] << 8)) != 183) {
+      throw StateError('تم رفض الأرشيف: bin/bash ليس ملف Linux ARM64 ELF صالحاً.');
+    }
+    final loaders = <String>[
+      '$base/lib/ld-linux-aarch64.so.1',
+      '$base/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+      '$base/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+    ];
+    var loaderFound = false;
+    for (final loader in loaders) {
+      if (await FileSystemEntity.type(loader, followLinks: false) !=
+          FileSystemEntityType.notFound) {
+        loaderFound = true;
+        break;
+      }
+    }
+    if (!loaderFound) {
+      throw StateError('تم رفض الأرشيف: لم يتم العثور على glibc ARM64 loader.');
     }
   }
 
