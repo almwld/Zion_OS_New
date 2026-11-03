@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:archive/archive.dart';
 import 'package:http/http.dart' as http;
 class GitHubException implements Exception {
  final int statusCode;final String message;final String? documentationUrl;
@@ -45,9 +46,26 @@ class GitHubClient {
   return Map<String,dynamic>.from(await _request('GET','${_repo(owner,repo)}/commits/${Uri.encodeComponent(sha)}/check-runs') as Map);
  }
  Future<String> getWorkflowLogs(String owner,String repo,int runId)async{
-  // نقطة النهاية تعيد أرشيف ZIP؛ نعيد بيانات التشغيل لتجنب الادعاء بأن هذه سجلات نصية.
-  final data=await _request('GET','${_repo(owner,repo)}/actions/runs/$runId') as Map;
-  return const JsonEncoder.withIndent('  ').convert(data);
+  try{
+   final request=http.Request('GET',Uri.parse('$_api${_repo(owner,repo)}/actions/runs/$runId/logs'))..headers.addAll(_headers);
+   final response=await _client.send(request).timeout(const Duration(seconds:60));
+   if(response.statusCode<200||response.statusCode>=300){
+    final body=await response.stream.bytesToString();
+    throw GitHubException(response.statusCode,'تعذر تنزيل سجلات التشغيل: $body');
+   }
+   final bytes=await response.stream.toBytes();
+   final archive=ZipDecoder().decodeBytes(bytes);
+   final output=StringBuffer();
+   for(final file in archive.files){
+    if(!file.isFile)continue;
+    final raw=file.content;
+    if(raw is List<int>){
+     output.writeln('===== ${file.name} =====');
+     output.writeln(utf8.decode(raw,allowMalformed:true));
+    }
+   }
+   return output.toString();
+  }on GitHubException{rethrow;}catch(e){throw GitHubException(0,'فشل استخراج سجلات GitHub Actions: $e');}
  }
  Future<Map<String,dynamic>> updateFile(String owner,String repo,String path,{required String content,required String sha,required String message,required String branch})async{
   final p=path.split('/').map(Uri.encodeComponent).join('/');
