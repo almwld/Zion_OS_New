@@ -7,7 +7,7 @@ class CommandInfo {
 class CommandDictionary {
   CommandDictionary():_commands={
     'git':const CommandInfo(name:'git',description:'نظام إدارة الإصدارات',subcommands:{
-      'status':'عرض حالة المستودع','diff':'عرض الفروقات','log':'سجل الإصدارات','checkout':'الانتقال إلى فرع','cherry-pick':'انتقاء commit','check-ignore':'فحص التجاهل','add':'إضافة إلى staging','commit':'تسجيل تغييرات','branch':'إدارة الفروع','push':'رفع (محظور افتراضياً)','pull':'سحب'
+      'status':'عرض حالة المستودع','diff':'عرض الفروقات','log':'سجل الإصدارات','checkout':'الانتقال إلى فرع','cherry-pick':'انتقاء commit','check-ignore':'فحص التجاهل','add':'إضافة إلى staging','commit':'تسجيل تغييرات','branch':'إدارة الفروع'
     }),
     'flutter':const CommandInfo(name:'flutter',description:'أدوات Flutter',subcommands:{
       'analyze':'تحليل الكود','test':'تشغيل الاختبارات','pub get':'تحديث التبعيات','build apk':'بناء APK','build appbundle':'بناء AAB','clean':'تنظيف مخرجات البناء','doctor':'فحص البيئة'
