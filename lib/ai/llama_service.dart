@@ -16,6 +16,12 @@ class LlamaModel {
 
 class LlamaService {
   static const MethodChannel _channel = MethodChannel('zion.os/ai');
+
+  /// One Dart facade for the process-wide native llama.cpp session.
+  static final LlamaService instance = LlamaService._();
+  factory LlamaService() => instance;
+  LlamaService._();
+
   bool _loaded = false;
   String? _modelPath;
   bool get isLoaded => _loaded;
@@ -108,6 +114,9 @@ class LlamaService {
       _modelPath = null;
       return false;
     }
+    // Reuse an already active native session when the requested model is the
+    // same. This also reattaches the singleton after navigation/recreation.
+    if (await refreshLoadedState() && _modelPath == path) return true;
     // The native bridge frees its old model before loading a replacement.
     // Reset cached state before the call to avoid stale readiness on failures.
     _loaded = false;
@@ -187,7 +196,7 @@ class LlamaService {
       if (!loaded) _modelPath = null;
       return loaded;
     } catch (_) {
-      return _loaded;
+      return false;
     }
   }
 
