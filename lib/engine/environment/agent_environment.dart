@@ -3,7 +3,7 @@ import '../../features/terminal/terminal_service.dart';
 class AgentEnvironmentStatus {
  final bool sandboxReady,terminalReady,pythonReady,gitReady;final String? pythonVersion,gitVersion,terminalError;
  const AgentEnvironmentStatus({required this.sandboxReady,required this.terminalReady,required this.pythonReady,required this.gitReady,this.pythonVersion,this.gitVersion,this.terminalError});
- bool get isReady=>sandboxReady&&terminalReady&&gitReady;
+ bool get isReady=>sandboxReady&&terminalReady&&pythonReady&&gitReady;
  Map<String,dynamic> toJson()=>{'sandboxReady':sandboxReady,'terminalReady':terminalReady,'pythonReady':pythonReady,'gitReady':gitReady,'pythonVersion':pythonVersion,'gitVersion':gitVersion,'terminalError':terminalError};
 }
 class AgentEnvironment {
