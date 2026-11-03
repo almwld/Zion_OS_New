@@ -11,7 +11,7 @@ class FileTool extends AgentTool {
  @override bool requiresApproval(Map<String,dynamic> p)=>p['operation']=='write';
  Future<FileSystemEntity?> _resolve(String input,{required bool allowMissing})async{
   if(input.trim().isEmpty||input.contains('\u0000'))return null;
-  final root=await environment.sandboxRoot.resolveSymbolicLinks();final candidate=File(input).isAbsolute?input:'$root/$input';
+  final root=await environment.sandboxRoot.resolveSymbolicLinks();final candidate=input.startsWith('/')?input:'$root/$input';
   final normalized=Uri.file(candidate).normalizePath().toFilePath();if(normalized!=root&&!normalized.startsWith('$root/'))return null;
   final type=FileSystemEntity.typeSync(normalized,followLinks:false);
   if(type==FileSystemEntityType.link){final target=await Link(normalized).resolveSymbolicLinks();if(target!=root&&!target.startsWith('$root/'))return null;return FileSystemEntity.typeSync(target)==FileSystemEntityType.directory?Directory(target):File(target);}
