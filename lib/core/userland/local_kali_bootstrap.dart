@@ -66,13 +66,15 @@ class ZionLocalKaliBootstrap {
     if (!await file.exists()) return ZionKaliInstallState.notFound;
     try {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if (json['state'] == 'READY' &&
-          await File('${ZionLocalKaliConfig.rootfs(filesDir).path}/bin/bash').exists() &&
-          await File('${ZionLocalKaliConfig.rootfs(filesDir).path}/bin/sh').exists()) {
-        return ZionKaliInstallState.ready;
-      }
-    } catch (_) {}
-    return ZionKaliInstallState.error;
+      if (json['state'] != 'READY') return ZionKaliInstallState.error;
+
+      // A stale READY marker from an older Userland import is not proof that
+      // Kali exists. Revalidate distro identity, ARM64 ELF and glibc loader.
+      await _validateKaliRootfs(ZionLocalKaliConfig.rootfs(filesDir));
+      return ZionKaliInstallState.ready;
+    } catch (_) {
+      return ZionKaliInstallState.error;
+    }
   }
 
   Future<ZionKaliInstallResult> install({
