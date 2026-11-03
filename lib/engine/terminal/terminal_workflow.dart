@@ -41,6 +41,18 @@ class TerminalWorkflow {
   final OutputTruncator truncator;
   late final RepairCycle repairCycle;
   String _activeTaskId='';
+  WorkflowState? _currentState;
+
+  Future<void> _persistRecon(String command,String stdout,String stderr,int exitCode) async {
+    final current=_currentState;
+    if(current==null)return;
+    final updated=current.copyWith(commands:[
+      ...current.commands,
+      ExecutedCommand(command:command,stdout:truncator.truncate(stdout),stderr:truncator.truncate(stderr),exitCode:exitCode,timestamp:DateTime.now())
+    ]);
+    _currentState=updated;
+    await stateStore.save(updated);
+  }
 
   Future<ReconResult> recon() async {
     const commands=<String>['whoami','id','pwd','ls -la','uname -a','df -h','git status','command -v flutter'];
@@ -48,15 +60,16 @@ class TerminalWorkflow {
     final tools=<String,String>{};
     for(final command in commands){
       final policy=commandPolicy.check(command);
-      if(!policy.allowed||!pathPolicy.check(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');continue;}
+      if(!policy.allowed||!pathPolicy.check(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??'مسار مرفوض',126);continue;}
       try{
         final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
         final output=truncator.truncate(result.stdout.isEmpty?result.stderr:result.stdout);
         outputs.add('$command → $output');
         await audit.record(taskId:_activeTaskId,action:'recon',command:command,phase:'recon',approved:false,exitCode:result.exitCode,error:result.stderr.isEmpty?null:result.stderr,outputSize:output.length);
         events.emit(WorkflowEvent(taskId:_activeTaskId,type:'recon_step',message:'استطلاع: $command',data:{'exitCode':result.exitCode,'output':output},timestamp:DateTime.now()));
+        await _persistRecon(command,result.stdout,result.stderr,result.exitCode);
         if(command.startsWith('command -v '))tools[command.substring(11)]=result.exitCode==0?output:'غير متاح';
-      }catch(e){outputs.add('$command → تعذر التنفيذ: $e');await audit.record(taskId:_activeTaskId,action:'recon_error',command:command,phase:'recon',approved:false,error:e.toString());}
+      }catch(e){outputs.add('$command → تعذر التنفيذ: $e');await audit.record(taskId:_activeTaskId,action:'recon_error',command:command,phase:'recon',approved:false,error:e.toString());await _persistRecon(command,'',e.toString(),-1);}
     }
     events.emit(WorkflowEvent(taskId:_activeTaskId,type:'recon',message:'اكتمل الاستطلاع الأولي',data:{'commands':outputs},timestamp:DateTime.now()));
     return ReconResult(systemInfo:{'identity':outputs.isNotEmpty?outputs[0]:'','workingDirectory':outputs.length>2?outputs[2]:''},tools:tools,paths:{'workspace':outputs.length>2?outputs[2]:''},output:outputs);
@@ -83,10 +96,11 @@ class TerminalWorkflow {
   Future<WorkflowResult> _execute(WorkflowState initial,List<String> commands,{CancellationToken? cancel,bool performRecon=false}) async {
     _activeTaskId=initial.taskId;
     var state=initial;
+    _currentState=initial;
     final attempts=<RepairAttempt>[];
     final output=<String>[];
     try{
-      if(performRecon){await recon();state=state.copyWith(phase:WorkflowPhase.executing);await stateStore.save(state);}
+      if(performRecon){await recon();state=await stateStore.load(state.taskId)??state;state=state.copyWith(phase:WorkflowPhase.executing);_currentState=state;await stateStore.save(state);}
       for(var index=state.nextCommandIndex;index<commands.length;index++){
         if(cancel?.isCancelled==true){
           state=state.copyWith(phase:WorkflowPhase.paused,nextCommandIndex:index);await stateStore.save(state);
@@ -114,18 +128,19 @@ class TerminalWorkflow {
         output.add(stdout.isEmpty?stderr:stdout);
         await audit.record(taskId:state.taskId,action:'terminal_run',command:command,phase:'executing',approved:approved,exitCode:result.exitCode,error:stderr.isEmpty?null:stderr,outputSize:stdout.length+stderr.length);
         final record=ExecutedCommand(command:command,stdout:stdout,stderr:stderr,exitCode:result.exitCode,timestamp:DateTime.now(),approved:approved);
-        state=state.copyWith(commands:[...state.commands,record],nextCommandIndex:index+1);await stateStore.save(state);
+        state=state.copyWith(commands:[...state.commands,record],nextCommandIndex:index+1);_currentState=state;await stateStore.save(state);
         if(result.exitCode!=0){
           state=state.copyWith(phase:WorkflowPhase.repairing);await stateStore.save(state);
           final repair=await repairCycle.run(taskId:state.taskId,failedCommand:command,stdout:result.stdout,stderr:result.stderr,exitCode:result.exitCode,cancel:cancel);
           attempts.addAll(repair.attempts);
           state=state.copyWith(attempts:[...state.attempts,...repair.attempts.map((a)=>a.toJson())],phase:repair.success?WorkflowPhase.executing:WorkflowPhase.failed);
+          _currentState=state;
           await stateStore.save(state);
           if(!repair.success)return WorkflowResult.failure(repair.error??'فشل الإصلاح.',cycles:repair.cyclesUsed,attempts:attempts,output:output.join('\n'));
           if(repair.finalOutput!=null)output.add(truncator.truncate(repair.finalOutput!));
         }
       }
-      state=state.copyWith(phase:WorkflowPhase.completed);await stateStore.save(state);
+      state=state.copyWith(phase:WorkflowPhase.completed);_currentState=state;await stateStore.save(state);
       events.emit(WorkflowEvent(taskId:state.taskId,type:'completed',message:'اكتملت المهمة بنجاح.',data:{'commands':commands.length},timestamp:DateTime.now()));
       return WorkflowResult(success:true,repairCyclesUsed:attempts.fold(0,(n,a)=>n+a.cycle),finalOutput:output.join('\n'),attempts:attempts);
     }catch(e){
