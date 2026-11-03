@@ -3,10 +3,17 @@ import '../../../agent/core/agent_models.dart';
 import '../../../agent/core/cancellation_token.dart';
 import '../../../agent/tools/tool.dart';
 import '../../environment/agent_environment.dart';
+import '../../terminal/command_registry.dart';
+import '../../terminal/environment_detector.dart';
+import '../../terminal/environment_router.dart';
 
 class TerminalTool extends AgentTool {
  final AgentEnvironment environment;
- TerminalTool(this.environment);
+ TerminalTool(this.environment,{EnvironmentRouter? router}) : router=router??EnvironmentRouter(
+  detector:EnvironmentDetector(environment:environment,terminal:environment.terminal),
+  registry:CommandRegistry(),
+ );
+ final EnvironmentRouter router;
  @override String get name=>'run_command';
  @override String get description=>'تشغيل أمر محدود داخل مجلد مشروع sandbox عبر Zion native PTY وبعد موافقة المستخدم.';
  @override Map<String,dynamic> get parameters=>const {
@@ -46,8 +53,9 @@ class TerminalTool extends AgentTool {
   if(directory==null)return StepResult.failure('مجلد العمل غير موجود أو خارج sandbox/projects.');
   final seconds=(params['timeout_seconds'] as num?)?.toInt()??60;
   if(seconds<1||seconds>1800)return StepResult.failure('المهلة يجب أن تكون بين 1 و1800 ثانية.');
+  final execution=await router.route(raw);
   final command='cd ${_quote(directory.path)} && $raw';
-  final result=await service.executeInInteractive(command,timeout:Duration(seconds:seconds));
+  final result=await service.executeInInteractive(command,timeout:execution.timeout.inSeconds>seconds?Duration(seconds:seconds):execution.timeout,runtime:execution.runtimeName);
   final data={'stdout':result.stdout,'stderr':result.stderr,'exit_code':result.exitCode,
    'duration_ms':result.duration.inMilliseconds,'shell':result.shell,'working_directory':directory.path};
   return result.exitCode==0
