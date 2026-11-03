@@ -62,7 +62,7 @@ class ZionEngine {
 
  Future<void> init()async{
   if(_disposed)throw StateError('المحرك مغلق');if(_initialized)return;
-  await states.init();await memory.init();usage.initialize();
+  states.init();memory.init();usage.initialize();
   if(providers.currentMode==EngineMode.unset&&config.defaultMode!=EngineMode.unset){
    await providers.switchTo(config.defaultMode);
   }
@@ -70,7 +70,7 @@ class ZionEngine {
   _register(TerminalTool(environment));_register(PythonTool(environment));
   _register(FileTool(environment));_register(ProcessControlTool(environment));_register(EnvironmentStatusTool(environment));
   if(github!=null){
-   _buildMonitor=BuildMonitor(github!,interval:config.buildPollInterval,timeout:config.buildTimeout);
+   _buildMonitor=BuildMonitor(github:github!,interval:config.buildPollInterval,timeout:config.buildTimeout);
    _register(GitHubReadTool(github!));_register(GitHubWriteTool(github!));_register(BuildMonitorTool(_buildMonitor!));
    _repairLoop=RepairLoop(config:config,github:github!,approvals:approvals,monitor:_buildMonitor!,
     provider:()=>providers.current,
