@@ -21,7 +21,7 @@ class FileTool extends AgentTool {
  @override Future<StepResult> execute(Map<String,dynamic> p)async{
   final op=p['operation']?.toString()??'',path=p['path']?.toString()??'';
   try{await environment.prepareSandbox();
-   if(op=='read'){final f=await _resolve(path,allowMissing:false);if(f is! File)return StepResult.failure('الملف غير موجود أو المسار غير آمن.');final s=await f.readAsString();return StepResult.success('تمت قراءة الملف.',data:{'path':f.path,'content':s.length>100000?s.substring(0,100000):s,'truncated':s.length>100000});}
+   if(op=='read'){final f=await _resolve(path,allowMissing:false);if(f is! File)return StepResult.failure('الملف غير موجود أو المسار غير آمن.');final length=await f.length();final bytes=await f.openRead(0,100000).fold<List<int>>(<int>[],(all,chunk)=>all..addAll(chunk));final s=String.fromCharCodes(bytes);return StepResult.success('تمت قراءة الملف.',data:{'path':f.path,'content':s,'truncated':length>100000});}
    if(op=='list'){final d=await _resolve(path,allowMissing:false);if(d is! Directory)return StepResult.failure('المجلد غير موجود أو المسار غير آمن.');final items=await d.list(followLinks:false).map((e)=>e.uri.pathSegments.last).take(1000).toList();return StepResult.success('عدد العناصر: ${items.length}.',data:{'entries':items});}
    if(op=='write'){final c=p['content'];if(c is! String||c.length>1000000)return StepResult.failure('محتوى الكتابة غير صالح أو يتجاوز 1MB.');final f=await _resolve(path,allowMissing:true);if(f is! File)return StepResult.failure('المسار غير صالح أو خارج sandbox.');await f.writeAsString(c,flush:true);return StepResult.success('تمت كتابة الملف داخل sandbox.',data:{'path':f.path,'bytes':await f.length()});}
    return StepResult.failure('عملية غير معروفة: $op');
