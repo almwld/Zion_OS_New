@@ -6,7 +6,7 @@ class StoredTaskState {
  const StoredTaskState({required this.taskId,required this.goal,required this.status,this.context=const {},this.steps=const [],required this.createdAt,required this.updatedAt,this.error});
  Map<String,dynamic> toJson()=>{'taskId':taskId,'goal':goal,'status':status,'context':context,'steps':steps,'createdAt':createdAt.toIso8601String(),'updatedAt':updatedAt.toIso8601String(),'error':error};
  factory StoredTaskState.fromJson(Map<String,dynamic> j)=>StoredTaskState(taskId:j['taskId'] as String,goal:j['goal'] as String,status:j['status'] as String,
- context:Map<String,dynamic>.from(j['context'] as Map???const {}),steps:(j['steps'] as List? ??const []).map((e)=>Map<String,dynamic>.from(e as Map)).toList(),
+ context:Map<String,dynamic>.from(j['context'] as Map? ?? const {}),steps:(j['steps'] as List? ??const []).map((e)=>Map<String,dynamic>.from(e as Map)).toList(),
  createdAt:DateTime.parse(j['createdAt'] as String),updatedAt:DateTime.parse(j['updatedAt'] as String),error:j['error'] as String?);
 }
 class TaskStateStore {
