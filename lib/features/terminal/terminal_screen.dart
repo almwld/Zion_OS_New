@@ -52,6 +52,7 @@ class _TerminalTab {
   final TerminalController controller;
   StreamSubscription<String>? outputSubscription;
   bool connected = false;
+  String? kaliRootfsPath;
   String recentOutput = '';
 }
 
@@ -270,6 +271,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
     }
   }
 
+  Future<String?> _findSavedKaliRootfs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final support = await getApplicationSupportDirectory();
+      final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+      final candidates = <String?>[
+        saved,
+        '${support.path}/home/.zion/dists/kali/rootfs',
+      ];
+      for (final candidate in candidates) {
+        if (candidate == null || !candidate.startsWith('/')) continue;
+        final bash = File('$candidate/bin/bash');
+        final shell = File('$candidate/bin/sh');
+        final release = File('$candidate/etc/os-release');
+        if (!await bash.exists() || !await shell.exists() || !await release.exists()) continue;
+        if (!(await release.readAsString()).toLowerCase().contains('kali')) continue;
+        return candidate;
+      }
+    } catch (_) {
+      // A missing preference or inaccessible local rootfs leaves the regular
+      // terminal startup path available; it never fabricates a Kali install.
+    }
+    return null;
+  }
+
   Future<void> _createTabSafely() async {
     try {
       await _createTab(autoStart: true);
@@ -358,7 +384,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (autoStart) {
       if (mounted) setState(() => _starting = true);
       try {
-        tab.connected = await service.startInteractive();
+        tab.kaliRootfsPath = await _findSavedKaliRootfs();
+        tab.connected = await service.startInteractive(
+          kaliRootfsPath: tab.kaliRootfsPath,
+        );
         if (!tab.connected) {
           const message = '\r\n[Zion] لم تبدأ جلسة الطرفية. تحقق من توفر PTY وصلاحيات النظام.\r\n';
           tab.recentOutput += message;
@@ -414,7 +443,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
     } else {
       if (mounted) setState(() => _starting = true);
       try {
-        final connected = await tab.service.startInteractive();
+        final connected = await tab.service.startInteractive(
+          kaliRootfsPath: tab.kaliRootfsPath,
+        );
         if (mounted) {
           setState(() {
             tab.connected = connected;
@@ -686,6 +717,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     try {
       if (tab.service.isInteractiveRunning) await tab.service.stopInteractive();
       tab.name = 'kali-' + tab.id.toString();
+      tab.kaliRootfsPath = path;
       tab.terminal.write('\\r\\n[Zion] تشغيل Kali من rootfs المحلي دون نسخ الملفات: $path\\r\\n');
       final connected = await tab.service.startInteractive(kaliRootfsPath: path);
       if (mounted) {
