@@ -11,6 +11,8 @@ import 'role_profile.dart';
 import 'role_sequencer.dart';
 import 'role_evaluator.dart';
 import 'skill_selector.dart';
+import '../../engine/verification/verification_engine.dart';
+import '../../engine/verification/tool_result_verifier.dart';
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
@@ -21,6 +23,7 @@ class AgentOrchestrator {
   final AgentKnowledgeIndex _knowledgeIndex = AgentKnowledgeIndex();
   final SkillSelector _skillSelector = SkillSelector();
   final RoleEvaluator _roleEvaluator = const RoleEvaluator();
+  final VerificationEngine _verificationEngine = VerificationEngine([const ToolResultVerifier()]);
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
@@ -153,6 +156,7 @@ class AgentOrchestrator {
           );
         }
         cancellationToken?.throwIfCancelled();
+        r = await _verifyToolResult(r, tool: step.tool, stepId: step.id);
         results.add(r);
         final stepRole = RoleProfile.forStep(step);
         _log('الدور المتخصص للخطوة ${step.id}: ${stepRole.name}');
@@ -229,6 +233,7 @@ class AgentOrchestrator {
               );
             }
             cancellationToken?.throwIfCancelled();
+            ar = await _verifyToolResult(ar, tool: alt.tool, stepId: alt.id);
             results.add(ar);
             recovered = ar.success;
             await memory.remember(
@@ -295,6 +300,29 @@ class AgentOrchestrator {
         _state = AgentState.idle;
       }
     }
+  }
+
+  Future<StepResult> _verifyToolResult(
+    StepResult result, {
+    required String tool,
+    required String stepId,
+  }) async {
+    final checks = await _verificationEngine.verifyAll({
+      'result': result,
+      'tool': tool,
+      'stepId': stepId,
+    });
+    final failures = checks.where((check) => !check.passed).toList();
+    if (failures.isEmpty) {
+      _log('اجتاز ناتج الأداة $tool التحقق بعد التنفيذ.');
+      return result;
+    }
+    final details = failures.map((check) => check.details).join('؛ ');
+    _log('فشل التحقق من ناتج الأداة $tool: $details');
+    return StepResult.failure(
+      'فشل التحقق بعد تنفيذ $tool: $details',
+      duration: result.duration,
+    );
   }
 
   Future<bool> _waitForApproval(
