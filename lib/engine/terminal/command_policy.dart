@@ -7,7 +7,9 @@ class PolicyResult {
   factory PolicyResult.deny(String reason) => PolicyResult(false, reason: reason);
 }
 
-class CommandPolicy {\n  const CommandPolicy();
+class CommandPolicy {
+  const CommandPolicy();
+
   static const allowedCommands = <String>{
     'ls','cat','grep','find','wc','head','tail','echo','pwd','whoami','id','uname','df','free','ps','ip','ss','netstat','lsof','which','command','type','file',
     'git status','git diff','git log','git branch','git add','git commit',
@@ -17,8 +19,7 @@ class CommandPolicy {\n  const CommandPolicy();
   static const allowedWithApproval = <String>{
     'git add','git commit','flutter build apk','flutter build appbundle','dart format'
   };
-  static final RegExp _dangerousChars = RegExp(r'[|&;<>\$(){}\[\]\\\x60\n\r]');
-  static final RegExp _token = RegExp(r'''^(?:[A-Za-z0-9_./:@%+=,-]+|"[^"\n]*"|'[^'\n]*')$''');
+  static final RegExp _dangerousChars = RegExp(r'''[|&;<>$(){}\[\]\\`\n\r]''');
 
   PolicyResult check(String command) {
     final value = command.trim();
@@ -26,18 +27,31 @@ class CommandPolicy {\n  const CommandPolicy();
     if (value.contains('\u0000') || value.contains('\n') || value.contains('\r')) return PolicyResult.deny('الأسطر المتعددة غير مسموحة.');
     final commitMessage = value.startsWith('git commit -m ') && _validQuotedCommit(value);
     if (_dangerousChars.hasMatch(value) && !commitMessage) return PolicyResult.deny('يحتوي الأمر على محارف shell خطرة.');
-    final tokens = _split(value);
+    final tokens = value.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     if (tokens.isEmpty) return PolicyResult.deny('تعذر تحليل الأمر.');
     final commandKey = _commandKey(tokens);
     if (!allowedCommands.contains(commandKey)) return PolicyResult.deny('الأمر أو مجموعة الأوامر غير موجودة في القائمة البيضاء: $commandKey');
     if (tokens.any((t) => t == '..' || t.contains('../') || t.contains('/..'))) return PolicyResult.deny('المسار يتضمن انتقالاً خارج المجلد.');
-    if (tokens.any((t) => t.startsWith('/etc/') || t == 'sudo' || t == 'su' || t == 'rm' || t == 'mv' || t == 'dd' || t == 'mkfs' || t == 'shred')) {
+    if (tokens.any((t) => t.startsWith('/etc/') || const {'sudo','su','rm','mv','dd','mkfs','shred'}.contains(t))) {
       return PolicyResult.deny('العملية محظورة.');
     }
-    if (tokens.first == 'command' && (tokens.length != 3 || tokens[1] != '-v')) return PolicyResult.deny('يسمح فقط بالأمر command -v.');\n    if (tokens.first == 'python3' && !(tokens.length == 2 && tokens[1] == '--version')) return PolicyResult.deny('تشغيل سكربتات Python غير متاح عبر الطرفية العامة.');\n    if (tokens.first == 'ip' && (tokens.length < 2 || !const {'a','addr','route'}.contains(tokens[1]))) return PolicyResult.deny('يسمح فقط باستعلامات ip للقراءة.');\n    if (tokens.first == 'ps' && tokens.skip(1).any((t)=>t.startsWith('-') && !const {'-a','-u','-x','-ef'}.contains(t))) return PolicyResult.deny('خيارات ps غير معتمدة.');\n    return PolicyResult.allow(approval: allowedWithApproval.contains(commandKey));
+    if (tokens.first == 'command' && (tokens.length != 3 || tokens[1] != '-v')) return PolicyResult.deny('يسمح فقط بالأمر command -v.');
+    if (tokens.first == 'python3' && !(tokens.length == 2 && tokens[1] == '--version')) return PolicyResult.deny('تشغيل سكربتات Python غير متاح عبر الطرفية العامة.');
+    if (tokens.first == 'ip') {
+      if (tokens.length < 2 || !const {'a','addr','route'}.contains(tokens[1])) return PolicyResult.deny('يسمح فقط باستعلامات ip للقراءة.');
+      if (tokens.length > 2 && !(tokens[1] == 'route' && const {'show','list'}.contains(tokens[2]))) return PolicyResult.deny('خيارات ip غير القرائية محظورة.');
+      if (tokens.length > 3 && tokens.skip(3).any((t)=>const {'add','del','delete','replace','flush','change'}.contains(t))) return PolicyResult.deny('تغيير إعدادات الشبكة محظور.');
+    }
+    if (tokens.first == 'find' && tokens.any((t)=>const {'-exec','-execdir','-delete','-ok','-okdir'}.contains(t))) return PolicyResult.deny('عمليات find التي تنفذ أو تحذف ملفات محظورة.');
+    if (tokens.first == 'git' && tokens.length > 2) {
+      final args=tokens.skip(2);
+      if (tokens[1]=='branch' && args.any((t)=>const {'-d','-D','-m','-M','-c','-C'}.contains(t))) return PolicyResult.deny('تعديل الفروع محظور من سير العمل التلقائي.');
+      if ((tokens[1]=='diff'||tokens[1]=='log') && args.any((t)=>t=='--output'||t.startsWith('--output='))) return PolicyResult.deny('كتابة مخرجات Git إلى ملف غير مسموحة.');
+    }
+    if (tokens.first == 'ps' && tokens.skip(1).any((t)=>t.startsWith('-') && !const {'-a','-u','-x','-ef'}.contains(t))) return PolicyResult.deny('خيارات ps غير معتمدة.');
+    return PolicyResult.allow(approval: allowedWithApproval.contains(commandKey));
   }
 
-  List<String> _split(String value) => value.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
   String _commandKey(List<String> t) {
     if (t.first == 'git' && t.length > 1) return 'git ${t[1]}';
     if (t.first == 'flutter' && t.length > 1) {
@@ -48,8 +62,7 @@ class CommandPolicy {\n  const CommandPolicy();
     if (t.first == 'dart' && t.length > 1) return 'dart ${t[1]}';
     return t.first;
   }
-  bool _validQuotedCommit(String value) {
-    final match = RegExp(r'''^git commit -m "(?:[^"\\]|\\.){1,200}"$''').firstMatch(value);
-    return match != null;
-  }
+
+  bool _validQuotedCommit(String value) =>
+      RegExp(r'''^git commit -m "(?:[^"\\]|\\.){1,200}"$''').hasMatch(value);
 }
