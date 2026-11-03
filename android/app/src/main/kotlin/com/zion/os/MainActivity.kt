@@ -438,7 +438,7 @@ class MainActivity : FlutterFragmentActivity() {
                         }
                         pendingKaliResult = result
                         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                            type = "application/octet-stream"
+                            type = "*/*"
                             addCategory(Intent.CATEGORY_OPENABLE)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
                         }
@@ -1407,7 +1407,7 @@ class MainActivity : FlutterFragmentActivity() {
                 val uri = data.data!!
                 try { contentResolver.takePersistableUriPermission(uri, data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
                 val name = queryDisplayName(uri)
-                pending?.success(mapOf("available" to (name == "kali-nethunter-rootfs-minimal-arm64.tar.xz"), "status" to "AVAILABLE", "uri" to uri.toString(), "name" to name))
+                pending?.success(mapOf("available" to name.isNotBlank(), "status" to "AVAILABLE", "uri" to uri.toString(), "name" to name))
             }
             super.onActivityResult(requestCode, resultCode, data)
             return
