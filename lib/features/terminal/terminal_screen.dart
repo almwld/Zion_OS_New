@@ -5,10 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' hide Row;
+import '../../engine/terminal/autocomplete/command_dictionary.dart';
+import '../../engine/terminal/autocomplete/command_history.dart';
+import '../../engine/terminal/autocomplete/completion_engine.dart';
+import '../../engine/terminal/autocomplete/suggestion_engine.dart';
+import '../../engine/terminal/autocomplete/context_provider.dart';
+import '../../engine/approval/approval_gate.dart';
+import '../../engine/terminal/terminal_workflow.dart';
+import '../../engine/terminal/workflow_state.dart';
+import '../../engine/terminal/workflow_observability.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
 import '../../core/userland/local_kali_bootstrap.dart';
+import '../../engine/providers/local_provider.dart';
+import '../../engine/terminal/llm_repair_advisor.dart';
+import '../../engine/terminal/path_policy.dart';
 
 import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
@@ -41,6 +55,7 @@ class _TerminalTab {
   final TerminalController controller;
   StreamSubscription<String>? outputSubscription;
   bool connected = false;
+  String? kaliRootfsPath;
   String recentOutput = '';
 }
 
@@ -63,6 +78,18 @@ class _TerminalScreenState extends State<TerminalScreen> {
   TerminalPalette _palette = TerminalPalette.zion;
   static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
   String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
+  final TextEditingController _agentCommandController = TextEditingController();
+  Database? _autocompleteDatabase;
+  CommandHistory? _commandHistory;
+  CompletionEngine? _completionEngine;
+  List<Completion> _completionItems = <Completion>[];
+  SuggestionEngine? _suggestionEngine;
+  List<Suggestion> _suggestionItems = <Suggestion>[];
+  bool _showAgentCommandBar = false;
+  TerminalWorkflow? _terminalWorkflow;
+  ApprovalGate? _workflowApprovalGate;
+  AgentEventBus? _workflowEvents;
+  StreamSubscription<ApprovalRequest>? _approvalSubscription;
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -71,6 +98,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    unawaited(_initializeAutocomplete());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
@@ -80,6 +108,157 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   static const int _maxSessions = 8;
+
+  Future<void> _initializeAutocomplete() async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final database = sqlite3.open('${directory.path}/zion_terminal_history.sqlite3');
+      final history = CommandHistory(database)..init();
+      final dictionary = CommandDictionary();
+      final contextProvider = ContextProvider();
+      final engine = CompletionEngine(dictionary: dictionary, history: history, context: contextProvider);
+      final suggestions = SuggestionEngine(history: history, dictionary: dictionary, context: contextProvider);
+      if (!mounted) { database.dispose(); return; }
+      setState(() {
+        _autocompleteDatabase = database;
+        _commandHistory = history;
+        _completionEngine = engine;
+        _suggestionEngine = suggestions;
+      });
+      final activeTab = _selectedTab;
+      if (activeTab != null) _initializeWorkflowFor(activeTab.service);
+    } catch (error) {
+      if (mounted) _showTerminalNotice('تعذر تهيئة سجل الإكمال المحلي: $error');
+    }
+  }
+
+  void _initializeWorkflowFor(TerminalService service) {
+    final database = _autocompleteDatabase;
+    if (database == null) return;
+    final gate = _workflowApprovalGate ?? ApprovalGate();
+    final events = _workflowEvents ?? AgentEventBus();
+    final audit = AuditLog(database);
+    _workflowApprovalGate = gate;
+    _workflowEvents = events;
+    _terminalWorkflow = TerminalWorkflow(
+      terminal: service,
+      stateStore: WorkflowStateStore(database),
+      approvalGate: gate,
+      audit: audit,
+      events: events,
+      llmAdvisor: LLMRepairAdvisor(
+        provider: () => LocalProvider(llama: _ai, autoLoad: false),
+        pathPolicy: PathPolicy(),
+      ),
+    );
+    _approvalSubscription ??= gate.requests.listen((request) {
+      unawaited(_handleWorkflowApproval(request, gate));
+    });
+  }
+
+  Future<void> _handleWorkflowApproval(ApprovalRequest request, ApprovalGate gate) async {
+    if (!mounted) {
+      gate.respond(request.id, approved: false, reason: 'واجهة الطرفية غير متاحة.');
+      return;
+    }
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('موافقة مطلوبة'),
+        content: Text('يريد الوكيل تنفيذ:\n${request.action}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('رفض')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('موافقة')),
+        ],
+      ),
+    );
+    gate.respond(request.id, approved: approved == true, reason: approved == true ? null : 'رفض المستخدم.');
+  }
+
+  Future<void> _refreshSuggestions() async {
+    final engine = _suggestionEngine;
+    if (engine == null) return;
+    try {
+      final items = await engine.suggest(limit: 5);
+      if (mounted) setState(() => _suggestionItems = items);
+    } catch (_) {}
+  }
+
+  Future<void> _showErrorSuggestion(String command, String error) async {
+    final engine = _suggestionEngine;
+    if (engine == null) return;
+    final fixes = await engine.suggestFix(command, error);
+    if (fixes.isEmpty || !mounted) return;
+    final selected = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('اقتراح تصحيح'),
+        content: Text('هل تقصد: ${fixes.first.command}؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('لا')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('نعم')),
+        ],
+      ),
+    );
+    if (selected == true && mounted) {
+      _agentCommandController.text = fixes.first.command;
+      _agentCommandController.selection = TextSelection.collapsed(offset: _agentCommandController.text.length);
+      await _refreshCompletions(_agentCommandController.text);
+    }
+  }
+
+  Future<void> _refreshCompletions(String value) async {
+    final engine = _completionEngine;
+    if (engine == null) return;
+    try {
+      final position = _agentCommandController.selection.baseOffset;
+      final items = await engine.complete(value, position < 0 ? value.length : position);
+      if (mounted && value == _agentCommandController.text) setState(() => _completionItems = items);
+    } catch (_) {
+      if (mounted) setState(() => _completionItems = <Completion>[]);
+    }
+  }
+
+  void _applyCompletion(Completion completion) {
+    final text = _agentCommandController.text;
+    final start = completion.replaceStart.clamp(0, text.length).toInt();
+    final end = completion.replaceEnd.clamp(start, text.length).toInt();
+    final updated = text.replaceRange(start, end, completion.text);
+    _agentCommandController.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: start + completion.text.length),
+    );
+    unawaited(_refreshCompletions(updated));
+  }
+
+  Future<void> _submitAgentCommand(String value) async {
+    final command = value.trim();
+    final tab = _selectedTab;
+    if (command.isEmpty || tab == null) return;
+    if (!tab.service.isInteractiveRunning) {
+      _showTerminalNotice('شغّل جلسة PTY أولاً.');
+      return;
+    }
+    try {
+      final workflow = _terminalWorkflow;
+      if (workflow == null) {
+        _showTerminalNotice('سير العمل الآمن لم يجهز بعد؛ أعد المحاولة بعد اتصال الجلسة.');
+        return;
+      }
+      final result = await workflow.run(
+        taskId: 'terminal-${DateTime.now().microsecondsSinceEpoch}',
+        goal: 'تنفيذ أمر من شريط الإكمال الذكي',
+        commands: [command],
+      );
+      await _commandHistory?.record(command, exitCode: result.success ? 0 : 1);
+      _agentCommandController.clear();
+      setState(() => _completionItems = <Completion>[]);
+      _showTerminalNotice(result.success ? 'اكتمل الأمر عبر سير العمل الآمن.' : (result.error ?? 'فشل تنفيذ الأمر.'));
+      if (!result.success) await _showErrorSuggestion(command, result.error ?? '');
+    } catch (error) {
+      _showTerminalNotice('تعذر تنفيذ الأمر: $error');
+    }
+  }
 
   Future<void> _initializeFirstTab() async {
     try {
@@ -97,6 +276,31 @@ class _TerminalScreenState extends State<TerminalScreen> {
         setState(() => _startupError = 'تعذر تهيئة الطرفية بأمان: $error');
       }
     }
+  }
+
+  Future<String?> _findSavedKaliRootfs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final support = await getApplicationSupportDirectory();
+      final saved = prefs.getString(_kaliRootfsPreferenceKey)?.trim();
+      final candidates = <String?>[
+        saved,
+        '${support.path}/home/.zion/dists/kali/rootfs',
+      ];
+      for (final candidate in candidates) {
+        if (candidate == null || !candidate.startsWith('/')) continue;
+        final bash = File('$candidate/bin/bash');
+        final shell = File('$candidate/bin/sh');
+        final release = File('$candidate/etc/os-release');
+        if (!await bash.exists() || !await shell.exists() || !await release.exists()) continue;
+        if (!(await release.readAsString()).toLowerCase().contains('kali')) continue;
+        return candidate;
+      }
+    } catch (_) {
+      // A missing preference or inaccessible local rootfs leaves the regular
+      // terminal startup path available; it never fabricates a Kali install.
+    }
+    return null;
   }
 
   Future<void> _createTabSafely() async {
@@ -129,6 +333,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
     final service = TerminalService(security);
+    _initializeWorkflowFor(service);
     unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
@@ -184,7 +389,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
     if (autoStart) {
       if (mounted) setState(() => _starting = true);
       try {
-        tab.connected = await service.startInteractive();
+        tab.kaliRootfsPath = await _findSavedKaliRootfs();
+        tab.connected = await service.startInteractive(
+          kaliRootfsPath: tab.kaliRootfsPath,
+        );
         if (!tab.connected) {
           const message = '\r\n[Zion] لم تبدأ جلسة الطرفية. تحقق من توفر PTY وصلاحيات النظام.\r\n';
           tab.recentOutput += message;
@@ -240,7 +448,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
     } else {
       if (mounted) setState(() => _starting = true);
       try {
-        final connected = await tab.service.startInteractive();
+        final connected = await tab.service.startInteractive(
+          kaliRootfsPath: tab.kaliRootfsPath,
+        );
         if (mounted) {
           setState(() {
             tab.connected = connected;
@@ -419,6 +629,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     try {
       tab?.terminal.write('[Kali] التحقق من أرشيف Kali المحلي...\\r\\n');
       final result = await const ZionLocalKaliBootstrap().install(
+        manualImport: true,
         onProgress: (progress) {
           tab?.terminal.write('[Kali] ${progress.percent}% ${progress.message}\\r\\n');
         },
@@ -511,6 +722,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     try {
       if (tab.service.isInteractiveRunning) await tab.service.stopInteractive();
       tab.name = 'kali-' + tab.id.toString();
+      tab.kaliRootfsPath = path;
       tab.terminal.write('\\r\\n[Zion] تشغيل Kali من rootfs المحلي دون نسخ الملفات: $path\\r\\n');
       final connected = await tab.service.startInteractive(kaliRootfsPath: path);
       if (mounted) {
@@ -543,17 +755,19 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget _buildToolbar() => Container(
     height: 42, color: _palette.surface,
     child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      _toolbarButton(Icons.stop_circle_outlined, 'Ctrl+C — إيقاف الأمر الجاري', () => _sendControl('C')),
       _toolbarButton(Icons.copy, 'نسخ المخرجات', _copyOutput),
       _toolbarButton(Icons.content_paste, 'لصق', _paste),
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
       _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
-      _toolbarButton(Icons.archive_outlined, 'تثبيت Kali من الأرشيف المحلي', _installKaliFromLocalArchive),
+      _toolbarButton(Icons.archive_outlined, 'استيراد نسخة Kali المضغوطة يدوياً', _installKaliFromLocalArchive),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
       _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
       _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
       _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
+      _toolbarButton(Icons.auto_fix_high, 'الإكمال الذكي للطرفية', () { setState(() => _showAgentCommandBar = !_showAgentCommandBar); if (_showAgentCommandBar) unawaited(_refreshSuggestions()); }),
       _toolbarButton(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, 'ملء الشاشة', () => unawaited(_toggleFullscreen())),
     ])),
   );
@@ -562,6 +776,75 @@ class _TerminalScreenState extends State<TerminalScreen> {
     tooltip: tooltip, onPressed: onPressed, icon: Icon(icon, color: _palette.foreground.withOpacity(0.85), size: 19),
     constraints: const BoxConstraints(minWidth: 42, minHeight: 42), padding: EdgeInsets.zero,
   );
+
+
+  Widget _buildAgentCommandBar() {
+    return Material(
+      color: _palette.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _agentCommandController,
+              autofocus: true,
+              textInputAction: TextInputAction.send,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'اكتب أمراً للحصول على إكمال واقتراحات…',
+                hintStyle: TextStyle(color: _palette.foreground.withOpacity(0.55)),
+                prefixIcon: Icon(Icons.terminal, color: _palette.accent),
+                suffixIcon: IconButton(
+                  tooltip: 'إرسال للطرفية',
+                  onPressed: () => unawaited(_submitAgentCommand(_agentCommandController.text)),
+                  icon: Icon(Icons.send, color: _palette.accent),
+                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+              ),
+              onChanged: _refreshCompletions,
+              onSubmitted: _submitAgentCommand,
+            ),
+            if (_agentCommandController.text.isEmpty && _suggestionItems.isNotEmpty)
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: _suggestionItems.map((item) => Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6, top: 5),
+                    child: ActionChip(
+                      label: Text(item.command, style: TextStyle(color: _palette.foreground, fontSize: 11)),
+                      avatar: Icon(Icons.bolt, size: 14, color: _palette.accent),
+                      backgroundColor: _palette.background,
+                      onPressed: () { _agentCommandController.text = item.command; _agentCommandController.selection = TextSelection.collapsed(offset: item.command.length); unawaited(_refreshCompletions(item.command)); },
+                    ),
+                  )).toList(),
+                ),
+              ),
+            if (_completionItems.isNotEmpty)
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: _completionItems.map((item) => Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6, top: 5),
+                    child: ActionChip(
+                      label: Text(item.display, style: TextStyle(color: _palette.foreground, fontSize: 11)),
+                      avatar: Icon(Icons.subdirectory_arrow_right, size: 14, color: _palette.accent),
+                      backgroundColor: _palette.background,
+                      onPressed: () => _applyCompletion(item),
+                    ),
+                  )).toList(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildQuickCommands() {
     const commands = <Map<String, Object>>[
@@ -890,6 +1173,9 @@ $request''',
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _arabicOverlayRefreshTimer?.cancel();
+    unawaited(_approvalSubscription?.cancel());
+    _agentCommandController.dispose();
+    _autocompleteDatabase?.dispose();
     if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
@@ -1001,6 +1287,7 @@ $request''',
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
               PopupMenuItem(value: 'copy', child: Text('نسخ المخرجات')),
               PopupMenuItem(value: 'paste', child: Text('لصق من الحافظة')),
               PopupMenuItem(value: 'history', child: Text('البحث في السجل')),
@@ -1016,7 +1303,6 @@ $request''',
               PopupMenuItem(value: 'font-15', child: Text('حجم الخط: 15')),
               PopupMenuItem(value: 'font-17', child: Text('حجم الخط: 17')),
               PopupMenuItem(value: 'font-20', child: Text('حجم الخط: 20')),
-              PopupMenuItem(value: 'ctrl-C', child: Text('Ctrl+C')),
               PopupMenuItem(value: 'ctrl-D', child: Text('Ctrl+D')),
               PopupMenuItem(value: 'ctrl-Z', child: Text('Ctrl+Z')),
               PopupMenuItem(value: 'ctrl-L', child: Text('Ctrl+L')),
@@ -1037,12 +1323,14 @@ $request''',
               setState(() => _selectedIndex = index);
               if (index >= 0 && index < _tabs.length) {
                 _tabs[index].service.activateForAgent();
+                _initializeWorkflowFor(_tabs[index].service);
               }
             },
             onClose: _closeTab,
             palette: _palette,
           ),
           if (_showToolbar) _buildToolbar(),
+          if (_showAgentCommandBar) _buildAgentCommandBar(),
           if (_startupError != null)
             Container(
               width: double.infinity,
@@ -1378,9 +1666,9 @@ class _ExtraKeys extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const keys = <MapEntry<String, String>>[
+      MapEntry('CTRL-C', '\x03'),
       MapEntry('ESC', '\x1b'),
       MapEntry('TAB', '\t'),
-      MapEntry('CTRL-C', '\x03'),
       MapEntry('CTRL-D', '\x04'),
       MapEntry('ALT', '\x1b'),
       MapEntry('←', '\x1b[D'),

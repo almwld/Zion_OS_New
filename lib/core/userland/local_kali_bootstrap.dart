@@ -66,17 +66,20 @@ class ZionLocalKaliBootstrap {
     if (!await file.exists()) return ZionKaliInstallState.notFound;
     try {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if (json['state'] == 'READY' &&
-          json['sha256'] == ZionLocalKaliConfig.expectedSha256 &&
-          await ZionLocalKaliConfig.rootfs(filesDir).exists()) {
-        return ZionKaliInstallState.ready;
-      }
-    } catch (_) {}
-    return ZionKaliInstallState.error;
+      if (json['state'] != 'READY') return ZionKaliInstallState.error;
+
+      // A stale READY marker from an older Userland import is not proof that
+      // Kali exists. Revalidate distro identity, ARM64 ELF and glibc loader.
+      await _validateKaliRootfs(ZionLocalKaliConfig.rootfs(filesDir));
+      return ZionKaliInstallState.ready;
+    } catch (_) {
+      return ZionKaliInstallState.error;
+    }
   }
 
   Future<ZionKaliInstallResult> install({
     void Function(ZionKaliProgress progress)? onProgress,
+    bool manualImport = false,
   }) async {
     final filesDir = await _filesDir();
     final downloads = ZionLocalKaliConfig.downloads(filesDir);
@@ -84,26 +87,31 @@ class ZionLocalKaliBootstrap {
     await downloads.create(recursive: true);
     await userland.create(recursive: true);
     await ZionLocalKaliConfig.logs(filesDir).create(recursive: true);
+    Directory? stagingRootfs;
+    File? importedArchive;
+    File? decompressedTar;
 
     void progress(ZionKaliInstallState state, int percent, String message) {
       onProgress?.call(ZionKaliProgress(state, percent.clamp(0, 100), message));
     }
 
     try {
-      final direct = await findLocalPackage();
-      var discovered = direct == null ? await discoverPackages() : const <Map<String, dynamic>>[];
-      if (direct == null && discovered.isEmpty) {
-        // Android's scoped storage may hide another app's Download entry.
-        // Use the system document picker as a permission-safe fallback.
+      final direct = manualImport ? null : await findLocalPackage();
+      var discovered = direct == null && !manualImport
+          ? await discoverPackages()
+          : const <Map<String, dynamic>>[];
+      if (manualImport || (direct == null && discovered.isEmpty)) {
         try {
           final picked = await _storage.invokeMethod<Map<dynamic, dynamic>>('pickKaliPackage');
           final pickedMap = picked == null ? null : Map<String, dynamic>.from(picked);
           if (pickedMap?['available'] == true && pickedMap?['uri'] is String) {
             discovered = <Map<String, dynamic>>[
-              <String, dynamic>{'uri': pickedMap!['uri']},
+              <String, dynamic>{'uri': pickedMap!['uri'], 'name': pickedMap['name']?.toString() ?? 'kali-rootfs.archive'},
             ];
           }
-        } catch (_) {}
+        } catch (error) {
+          if (manualImport) throw StateError('تعذر فتح منتقي أرشيف Kali: $error');
+        }
       }
       if (direct == null && discovered.isEmpty) {
         progress(ZionKaliInstallState.notFound, 0,
@@ -114,9 +122,14 @@ class ZionLocalKaliBootstrap {
         ));
       }
 
+      final selectedName = discovered.isNotEmpty
+          ? (discovered.first['name']?.toString() ?? 'kali-rootfs.archive')
+          : ZionLocalKaliConfig.expectedFilename;
+      final safeName = _safeArchiveFilename(selectedName);
       final internal = File(
-        '${downloads.path}/${ZionLocalKaliConfig.expectedFilename}',
+        '${downloads.path}/import-${DateTime.now().microsecondsSinceEpoch}-$safeName',
       );
+      importedArchive = internal;
       progress(ZionKaliInstallState.copying, 0,
           'نسخ حزمة Kali إلى مساحة Zion الخاصة...');
       var copied = false;
@@ -180,18 +193,17 @@ class ZionLocalKaliBootstrap {
       progress(ZionKaliInstallState.copying, 100, 'تم نسخ الحزمة إلى مساحة Zion الخاصة.');
 
       final size = await internal.length();
-      if (size != ZionLocalKaliConfig.expectedSize) {
-        throw StateError(
-          'حجم Kali غير صحيح: $size، المتوقع ${ZionLocalKaliConfig.expectedSize}.',
-        );
-      }
-
-      progress(ZionKaliInstallState.verifying, 0, 'التحقق من SHA-256...');
+      if (size <= 0) throw StateError('أرشيف Kali فارغ.');
       final digest = await _sha256(internal);
-      if (digest != ZionLocalKaliConfig.expectedSha256) {
-        throw SecurityException('SHA-256 mismatch: $digest');
+      if (selectedName == ZionLocalKaliConfig.expectedFilename) {
+        if (size != ZionLocalKaliConfig.expectedSize) {
+          throw StateError('حجم حزمة Kali الرسمية غير صحيح: $size.');
+        }
+        if (digest != ZionLocalKaliConfig.expectedSha256) {
+          throw SecurityException('SHA-256 mismatch: $digest');
+        }
       }
-      progress(ZionKaliInstallState.verifying, 100, 'SHA-256 صحيح.');
+      progress(ZionKaliInstallState.verifying, 100, 'اكتمل التحقق من الأرشيف.');
 
       final targetRootfs = ZionLocalKaliConfig.rootfs(filesDir);
       await targetRootfs.parent.create(recursive: true);
@@ -199,38 +211,56 @@ class ZionLocalKaliBootstrap {
         targetRootfs.path + '.staging-' +
             DateTime.now().microsecondsSinceEpoch.toString(),
       );
+      stagingRootfs = rootfs;
       await rootfs.create(recursive: true);
 
-      progress(ZionKaliInstallState.decompressing, 10, 'فك ضغط tar.xz...');
-      final tarPath = '${downloads.path}/kali-arm64.tar';
-      final input = InputFileStream(internal.path);
-      final output = OutputFileStream(tarPath);
-      try {
-        XZDecoder().decodeStream(input, output, verify: true, throwOnError: true);
-      } finally {
-        await input.close();
-        await output.close();
-      }
-      progress(ZionKaliInstallState.decompressing, 100, 'تم فك ضغط xz.');
+      progress(ZionKaliInstallState.decompressing, 10, 'التعرف على صيغة الأرشيف وفك الضغط...');
+      final tarPath = '${downloads.path}/kali-import-${DateTime.now().microsecondsSinceEpoch}.tar';
+      decompressedTar = File(tarPath);
+      final isZip = await _prepareArchiveForExtraction(internal, File(tarPath));
+      progress(ZionKaliInstallState.decompressing, 100, 'اكتمل تجهيز الأرشيف.');
 
-      progress(ZionKaliInstallState.extracting, 0, 'استخراج rootfs...');
-      final tarInput = InputFileStream(tarPath);
-      try {
-        final archive = TarDecoder().decodeStream(
-          tarInput,
-          callback: (entry) {
-            final name = entry.name;
-            if (name.contains('..') || name.startsWith('/') || name.startsWith(r'\')) {
-              throw SecurityException('Unsafe tar path: $name');
-            }
-          },
-        );
-        final prefix = '${ZionLocalKaliConfig.rootfsName}/';
+      progress(ZionKaliInstallState.extracting, 0, 'اكتشاف جذر Kali واستخراج rootfs...');
+      Archive archive;
+      if (isZip) {
+        final zipInput = InputFileStream(internal.path);
+        try {
+          archive = ZipDecoder().decodeStream(zipInput);
+        } finally {
+          await zipInput.close();
+        }
+      } else {
+        final tarInput = InputFileStream(tarPath);
+        try {
+          archive = TarDecoder().decodeStream(
+            tarInput,
+            callback: (entry) {
+              if (_normalizeArchivePath(entry.name) == null) {
+                throw SecurityException('Unsafe archive path: ${entry.name}');
+              }
+            },
+          );
+        } finally {
+          await tarInput.close();
+        }
+      }
+      if (archive.length > 250000) {
+        throw StateError('الأرشيف يتجاوز الحد الآمن لعدد عناصر rootfs.');
+      }
+      final prefix = _detectRootfsPrefix(archive);
+      if (prefix == null) {
+        throw StateError('لم يتم العثور على جذر Kali صالح يحتوي bin/bash وbin/sh داخل الأرشيف.');
+      }
         final modes = <({String path, int mode})>[];
+        final links = <({String path, String target})>[];
         for (var i = 0; i < archive.length; i++) {
           final entry = archive[i];
-          if (!entry.name.startsWith(prefix)) continue;
-          final relative = entry.name.substring(prefix.length);
+          final normalizedName = _normalizeArchivePath(entry.name);
+          if (normalizedName == null) {
+            throw SecurityException('Unsafe archive path: ${entry.name}');
+          }
+          if (!normalizedName.startsWith(prefix)) continue;
+          final relative = normalizedName.substring(prefix.length);
           if (relative.isEmpty) continue;
           final destination = File('${rootfs.path}/$relative');
           if (!destination.absolute.path.startsWith('${rootfs.absolute.path}/')) {
@@ -242,9 +272,13 @@ class ZionLocalKaliBootstrap {
             await Directory(destination.path).create(recursive: true);
             modes.add((path: destination.path, mode: entry.unixPermissions & 0x1ff));
           } else if (entry.isSymbolicLink) {
-            await destination.parent.create(recursive: true);
-            try { await Link(destination.path).delete(); } catch (_) {}
-            await Link(destination.path).create(entry.symbolicLink!);
+            final target = entry.symbolicLink ?? '';
+            if (!_isSafeLinkTarget(relative, target)) {
+              throw SecurityException('Unsafe symbolic link in Kali archive: $relative -> $target');
+            }
+            // Defer links until regular files are extracted to prevent a link
+            // from redirecting a later archive entry outside the staging tree.
+            links.add((path: destination.path, target: target));
           } else if (entry.isFile) {
             if (relative == 'dev' || relative.startsWith('dev/')) continue;
             await destination.parent.create(recursive: true);
@@ -258,6 +292,18 @@ class ZionLocalKaliBootstrap {
               'استخراج $relative',
             );
           }
+        }
+        for (final item in links) {
+          await File(item.path).parent.create(recursive: true);
+          final type = await FileSystemEntity.type(item.path, followLinks: false);
+          if (type == FileSystemEntityType.link) {
+            await Link(item.path).delete();
+          } else if (type == FileSystemEntityType.directory) {
+            await Directory(item.path).delete(recursive: true);
+          } else if (type == FileSystemEntityType.file) {
+            await File(item.path).delete();
+          }
+          await Link(item.path).create(item.target);
         }
         // Restore executable and directory modes from the verified tar archive.
         // Apply in reverse order so parent directories are chmodded only after
@@ -274,17 +320,10 @@ class ZionLocalKaliBootstrap {
             throw StateError('تعذر ضبط صلاحيات صدفة Kali: ${item.path}: ${chmod.stderr}');
           }
         }
-      } finally {
-        await tarInput.close();
-      }
-
       progress(ZionKaliInstallState.fixing, 0, 'إصلاح rootfs...');
       await _fixupRootfs(rootfs);
-      if (!await File('${rootfs.path}/bin/sh').exists() ||
-          !await File('${rootfs.path}/bin/bash').exists()) {
-        throw StateError('Kali rootfs extraction did not produce bin/sh and bin/bash.');
-      }
-      progress(ZionKaliInstallState.fixing, 100, 'تم إصلاح rootfs.');
+      await _validateKaliRootfs(rootfs);
+      progress(ZionKaliInstallState.fixing, 100, 'تم التحقق من Kali ARM64 وإصلاح rootfs.');
 
       final oldRootfs = Directory(
         targetRootfs.path + '.old-' +
@@ -302,7 +341,8 @@ class ZionLocalKaliBootstrap {
       }
 
       await _saveState(filesDir, 'READY', extra: <String, Object>{
-        'sha256': ZionLocalKaliConfig.expectedSha256,
+        'archive_sha256': digest,
+        'archive_name': selectedName,
         'size_bytes': await _directorySize(targetRootfs),
         'rootfs_path': 'home/.zion/dists/kali/rootfs',
       });
@@ -311,9 +351,202 @@ class ZionLocalKaliBootstrap {
       progress(ZionKaliInstallState.ready, 100, 'Kali جاهز للتشغيل.');
       return ZionKaliInstallResult.success(targetRootfs);
     } catch (e) {
+      // Remove incomplete import artifacts. The active rootfs is untouched
+      // until the staged archive passes all Kali and ARM64 checks.
+      try { if (stagingRootfs != null && await stagingRootfs.exists()) await stagingRootfs.delete(recursive: true); } catch (_) {}
+      try { if (importedArchive != null && await importedArchive.exists()) await importedArchive.delete(); } catch (_) {}
+      try { if (decompressedTar != null && await decompressedTar.exists()) await decompressedTar.delete(); } catch (_) {}
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
       return ZionKaliInstallResult.failure(e);
     }
+  }
+
+  Future<void> _validateKaliRootfs(Directory rootfs) async {
+    final base = rootfs.path;
+    final bash = File('$base/bin/bash');
+    final shell = File('$base/bin/sh');
+    final env = File('$base/usr/bin/env');
+    final osRelease = File('$base/etc/os-release');
+    if (!await bash.exists() ||
+        !await shell.exists() ||
+        !await env.exists() ||
+        !await osRelease.exists() ||
+        await bash.length() < 100000) {
+      throw StateError('الأرشيف لا يحتوي على Kali rootfs كاملاً: يلزم bin/bash وbin/sh وusr/bin/env وetc/os-release.');
+    }
+    final releaseText = (await osRelease.readAsString()).toLowerCase();
+    if (!releaseText.contains('kali')) {
+      throw StateError('تم رفض الأرشيف: etc/os-release لا يعرّف نظام Kali. لن يتم استبدال rootfs الحالي ببيئة Termux أو Android.');
+    }
+    final header = await bash.openRead(0, 20).fold<List<int>>(
+      <int>[],
+      (bytes, part) => bytes..addAll(part),
+    );
+    if (header.length < 20 ||
+        header[0] != 0x7f ||
+        header[1] != 0x45 ||
+        header[2] != 0x4c ||
+        header[3] != 0x46 ||
+        header[4] != 2 ||
+        header[5] != 1 ||
+        (header[18] | (header[19] << 8)) != 183) {
+      throw StateError('تم رفض الأرشيف: bin/bash ليس ملف Linux ARM64 ELF صالحاً.');
+    }
+    final loaders = <String>[
+      '$base/lib/ld-linux-aarch64.so.1',
+      '$base/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+      '$base/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1',
+    ];
+    var loaderFound = false;
+    for (final loader in loaders) {
+      if (await FileSystemEntity.type(loader, followLinks: false) !=
+          FileSystemEntityType.notFound) {
+        loaderFound = true;
+        break;
+      }
+    }
+    if (!loaderFound) {
+      throw StateError('تم رفض الأرشيف: لم يتم العثور على glibc ARM64 loader.');
+    }
+  }
+
+  String _safeArchiveFilename(String value) {
+    final name = value.split(RegExp(r'[/\\]')).last.trim();
+    final cleaned = name.replaceAll(RegExp(r'[^A-Za-z0-9._+-]'), '_');
+    return cleaned.isEmpty ? 'kali-rootfs.archive' : cleaned;
+  }
+
+  String? _normalizeArchivePath(String value) {
+    var normalized = value.replaceAll('\\', '/');
+    if (RegExp(r'^[A-Za-z]:').hasMatch(normalized)) return null;
+    // Backup tools may store absolute device paths. Treat them as archive-
+    // relative names by stripping the leading slash; never write to that path.
+    normalized = normalized.replaceFirst(RegExp(r'^/+'), '');
+    final parts = <String>[];
+    for (final part in normalized.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') return null;
+      parts.add(part);
+    }
+    return parts.join('/');
+  }
+
+  String? _detectRootfsPrefix(Archive archive) {
+    final names = <String>{};
+    for (final entry in archive.files) {
+      final name = _normalizeArchivePath(entry.name);
+      if (name != null) names.add(name);
+    }
+    final candidates = <String>[];
+    for (final name in names) {
+      // usr-merged Debian/Kali archives may contain usr/bin/bash plus a
+      // root-level bin -> usr/bin symlink rather than a bin/bash entry.
+      if (name.endsWith('usr/bin/bash')) {
+        final prefix = name.substring(0, name.length - 'usr/bin/bash'.length);
+        if (names.contains('${prefix}usr/bin/sh') &&
+            names.contains('${prefix}bin')) {
+          candidates.add(prefix);
+        }
+        continue;
+      }
+      if (!name.endsWith('bin/bash')) continue;
+      final prefix = name.substring(0, name.length - 'bin/bash'.length);
+      if (names.contains('${prefix}bin/sh')) candidates.add(prefix);
+    }
+    if (candidates.isEmpty) return null;
+    candidates.sort((a, b) {
+      int score(String value) {
+        final lower = value.toLowerCase();
+        var result = 0;
+        if (lower.contains('rootfs/')) result += 100;
+        if (lower.contains('kali-arm64/')) result += 80;
+        if (lower.contains('kali/')) result += 40;
+        return result - value.length.clamp(0, 1000).toInt();
+      }
+      return score(b).compareTo(score(a));
+    });
+    return candidates.first;
+  }
+
+  bool _isSafeLinkTarget(String relativePath, String target) {
+    if (target.isEmpty || target.contains('\\') || target.contains('\u0000')) return false;
+    // Absolute symlinks are normal inside Linux rootfs trees and are resolved
+    // by PRoot relative to the guest root, not the Android host filesystem.
+    if (target.startsWith('/')) return !target.split('/').contains('..');
+    final parts = relativePath.split('/')..removeLast();
+    for (final part in target.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (parts.isEmpty) return false;
+        parts.removeLast();
+      } else {
+        parts.add(part);
+      }
+    }
+    return true;
+  }
+
+  Future<bool> _prepareArchiveForExtraction(File source, File tarDestination) async {
+    final header = await source.openRead(0, 6).fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk));
+    bool starts(List<int> signature) => header.length >= signature.length &&
+        List<int>.generate(signature.length, (i) => header[i]).toString() == signature.toString();
+    if (starts(<int>[0x50, 0x4b, 0x03, 0x04]) || starts(<int>[0x50, 0x4b, 0x05, 0x06])) {
+      return true;
+    }
+    await tarDestination.parent.create(recursive: true);
+    final input = InputFileStream(source.path);
+    final output = OutputFileStream(tarDestination.path);
+    try {
+      if (starts(<int>[0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00])) {
+        XZDecoder().decodeStream(input, output, verify: true, throwOnError: true);
+      } else if (starts(<int>[0x1f, 0x8b])) {
+        GZipDecoder().decodeStream(input, output, verify: true);
+      } else if (starts(<int>[0x42, 0x5a, 0x68])) {
+        BZip2Decoder().decodeStream(input, output);
+      } else if (starts(<int>[0x28, 0xb5, 0x2f, 0xfd])) {
+        ZstdDecoder().decodeStream(input, output);
+      } else if (_hasZlibHeader(header)) {
+        ZLibDecoder().decodeStream(input, output, verify: true);
+      } else if (_hasUnsupportedArchiveHeader(header)) {
+        throw StateError(
+          'صيغة الأرشيف غير مدعومة حالياً. الصيغ المدعومة: ZIP وTAR وGZIP وBZIP2 وXZ وZstandard وZLIB. '
+          'لا يمكن فك RAR أو 7z أو LZ4 دون إضافة مفكك مخصص.',
+        );
+      } else {
+        // Plain TAR archives are already uncompressed. The TAR decoder below
+        // validates their structure and the Kali rootfs validator checks their
+        // contents before any existing rootfs is replaced.
+        await for (final chunk in source.openRead()) {
+          output.writeBytes(chunk);
+        }
+      }
+    } finally {
+      await input.close();
+      await output.close();
+    }
+    return false;
+  }
+
+  bool _hasZlibHeader(List<int> bytes) {
+    if (bytes.length < 2) return false;
+    final cmf = bytes[0];
+    final flg = bytes[1];
+    return (cmf & 0x0f) == 8 &&
+        (cmf >> 4) <= 7 &&
+        ((cmf << 8) | flg) % 31 == 0;
+  }
+
+  bool _hasUnsupportedArchiveHeader(List<int> bytes) {
+    bool starts(List<int> signature) =>
+        bytes.length >= signature.length &&
+        List<int>.generate(signature.length, (i) => bytes[i]).toString() ==
+            signature.toString();
+
+    // 7z, RAR4/RAR5 and LZ4 frame signatures are recognized explicitly so
+    // they are not misreported as malformed TAR archives.
+    return starts(<int>[0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]) ||
+        starts(<int>[0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]) ||
+        starts(<int>[0x04, 0x22, 0x4d, 0x18]);
   }
 
   Future<void> _fixupRootfs(Directory rootfs) async {
@@ -440,7 +673,7 @@ class ZionLocalKaliBootstrap {
     await file.parent.create(recursive: true);
     final data = <String, Object>{
       'version': '1.0.0',
-      'sha256': ZionLocalKaliConfig.expectedSha256,
+      'sha256': extra['archive_sha256']?.toString() ?? 'manual-import',
       'installed_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
       'state': state,
       ...extra,

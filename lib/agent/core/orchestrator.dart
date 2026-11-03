@@ -6,8 +6,13 @@ import '../tools/tool_registry.dart';
 import 'agent_models.dart';
 import 'agent_policy.dart';
 import 'cancellation_token.dart';
-import '../skills/agent_skill_library.dart';
 import '../skills/agent_knowledge_index.dart';
+import 'role_profile.dart';
+import 'role_sequencer.dart';
+import 'role_evaluator.dart';
+import 'skill_selector.dart';
+import '../../engine/verification/verification_engine.dart';
+import '../../engine/verification/tool_result_verifier.dart';
 
 class AgentOrchestrator {
   late final ToolRegistry tools;
@@ -15,8 +20,10 @@ class AgentOrchestrator {
   final LongTermAIMemory memory;
   final LlamaService ai;
   final AgentPlan Function(String task)? planBuilder;
-  final AgentSkillLibrary _skillLibrary = AgentSkillLibrary();
   final AgentKnowledgeIndex _knowledgeIndex = AgentKnowledgeIndex();
+  final SkillSelector _skillSelector = SkillSelector();
+  final RoleEvaluator _roleEvaluator = const RoleEvaluator();
+  final VerificationEngine _verificationEngine = VerificationEngine([const ToolResultVerifier()]);
   final StreamController<AgentEvent> _events=StreamController<AgentEvent>.broadcast();
   AgentState _state=AgentState.idle;
   bool _running=false;
@@ -48,9 +55,19 @@ class AgentOrchestrator {
     _state = AgentState.planning;
     _log('بدء المهمة: $clean');
     final results = <StepResult>[];
+    final roleStepCounts = <AgentRole, int>{};
+    final roleSequence = RoleSequencer(sequence: const [AgentRole.planner, AgentRole.executor, AgentRole.verifier, AgentRole.reporter]);
     try {
+      final plannerRole = roleSequence.begin();
+      _log('تفعيل دور ${plannerRole.name}: ${plannerRole.systemPrompt}');
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean, cancellationToken: cancellationToken);
+      final planEvaluation = _roleEvaluator.evaluatePlan(plan, maxSteps: 32);
+      if (!planEvaluation.accepted) {
+        return AgentResult(success: false, task: clean, steps: results, error: 'رفض تقييم المخطط: ${planEvaluation.feedback}');
+      }
+      final executorHandoff = roleSequence.advance(context: {'task': clean, 'plannedSteps': plan.steps.length}, reason: 'اعتماد بنية الخطة والانتقال إلى التنفيذ');
+      _log('تسليم ${executorHandoff.from.name} → ${executorHandoff.to.name}: ${executorHandoff.reason}');
       _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
         _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
@@ -60,6 +77,19 @@ class AgentOrchestrator {
       for (var i = 0; i < plan.steps.length; i++) {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
+        final stepRole = RoleProfile.forStep(step);
+        final roleStepsUsed = roleStepCounts[stepRole.role] ?? 0;
+        if (!stepRole.allowsTool(step.tool)) {
+          final reason = 'الدور ${stepRole.name} غير مخوّل باستخدام الأداة ${step.tool}.';
+          _log('رفض الخطوة قبل التنفيذ: $reason');
+          return AgentResult(success: false, task: clean, steps: results, error: reason);
+        }
+        if (roleStepsUsed >= stepRole.maxSteps) {
+          final reason = 'تم بلوغ حد الخطوات المسموح لدور ${stepRole.name} (${stepRole.maxSteps}).';
+          _log(reason);
+          return AgentResult(success: false, task: clean, steps: results, error: reason);
+        }
+        roleStepCounts[stepRole.role] = roleStepsUsed + 1;
         final params = _resolveParams(step.params, results);
         final tool = tools.getTool(step.tool);
         if (tool == null) {
@@ -140,6 +170,16 @@ class AgentOrchestrator {
           );
         }
         cancellationToken?.throwIfCancelled();
+        r = await _verifyToolResult(r, tool: step.tool, stepId: step.id);
+        _log('الدور المتخصص للخطوة ${step.id}: ${stepRole.name}');
+        final roleEvaluation = _roleEvaluator.evaluateStep(role: stepRole, step: step, result: r);
+        _log('تقييم ${stepRole.name}: ${roleEvaluation.score}/100 — ${roleEvaluation.feedback}');
+        if (!roleEvaluation.accepted && r.success) {
+          r = StepResult.failure(
+            'رفض تقييم الدور ${stepRole.name}: ${roleEvaluation.feedback}',
+            duration: r.duration,
+          );
+        }
         results.add(r);
         await memory.remember(
           kind: 'agent-step',
@@ -172,7 +212,13 @@ class AgentOrchestrator {
               _log('تم تجاهل البديل لأنه يكرر الخطوة الفاشلة نفسها.');
               break;
             }
-            final d = policy.evaluate(tool: alt.tool, params: altParams);
+            final alternativeRole = RoleProfile.forStep(alt);
+            final alternativeRoleSteps = roleStepCounts[alternativeRole.role] ?? 0;
+            if (!alternativeRole.allowsTool(alt.tool) ||
+                alternativeRoleSteps >= alternativeRole.maxSteps) {
+              _log('تم رفض البديل قبل التنفيذ: الأداة خارج نطاق دور ${alternativeRole.name} أو تجاوز حد خطواته.');
+              break;
+            }            final d = policy.evaluate(tool: alt.tool, params: altParams);
             if (d.risk == AgentRisk.blocked || alt.risk == AgentRisk.blocked) {
               _log('تم حظر خطة الاستعادة بواسطة سياسة الأمان.');
               break;
@@ -212,8 +258,22 @@ class AgentOrchestrator {
               );
             }
             cancellationToken?.throwIfCancelled();
+            ar = await _verifyToolResult(ar, tool: alt.tool, stepId: alt.id);
+            roleStepCounts[alternativeRole.role] = alternativeRoleSteps + 1;
+            final alternativeEvaluation = _roleEvaluator.evaluateStep(
+              role: alternativeRole,
+              step: alt,
+              result: ar,
+            );
+            if (!alternativeEvaluation.accepted && ar.success) {
+              ar = StepResult.failure(
+                'رفض تقييم دور الاستعادة ${alternativeRole.name}: ${alternativeEvaluation.feedback}',
+                duration: ar.duration,
+              );
+            }
             results.add(ar);
             recovered = ar.success;
+            _log('تقييم الاستعادة ${alternativeRole.name}: ${alternativeEvaluation.score}/100 — ${alternativeEvaluation.feedback}');
             await memory.remember(
               kind: 'agent-recovery',
               text: '${alt.description}\n${ar.success ? ar.summary : (ar.error ?? ar.summary)}',
@@ -239,6 +299,15 @@ class AgentOrchestrator {
         _state = AgentState.executing;
       }
 
+      final verifierHandoff = roleSequence.advance(context: {'completedSteps': results.length, 'successfulSteps': results.where((item) => item.success).length}, reason: 'انتهاء التنفيذ والانتقال للتحقق');
+      _log('تسليم ${verifierHandoff.from.name} → ${verifierHandoff.to.name}');
+      final verification = results.isNotEmpty && results.last.success;
+      if (!verification) {
+        _state = AgentState.failed;
+        return AgentResult(success: false, task: clean, steps: results, error: 'لم تجتز النتائج التحقق النهائي.');
+      }
+      final reporterHandoff = roleSequence.advance(context: {'verified': true, 'resultCount': results.length}, reason: 'اجتياز التحقق وتجهيز التقرير');
+      _log('تسليم ${reporterHandoff.from.name} → ${reporterHandoff.to.name}');
       _state = AgentState.completed;
       final report = _actualResultsSummary(clean, results);
       await memory.remember(
@@ -269,6 +338,29 @@ class AgentOrchestrator {
         _state = AgentState.idle;
       }
     }
+  }
+
+  Future<StepResult> _verifyToolResult(
+    StepResult result, {
+    required String tool,
+    required String stepId,
+  }) async {
+    final checks = await _verificationEngine.verifyAll({
+      'result': result,
+      'tool': tool,
+      'stepId': stepId,
+    });
+    final failures = checks.where((check) => !check.passed).toList();
+    if (failures.isEmpty) {
+      _log('اجتاز ناتج الأداة $tool التحقق بعد التنفيذ.');
+      return result;
+    }
+    final details = failures.map((check) => check.details).join('؛ ');
+    _log('فشل التحقق من ناتج الأداة $tool: $details');
+    return StepResult.failure(
+      'فشل التحقق بعد تنفيذ $tool: $details',
+      duration: result.duration,
+    );
   }
 
   Future<bool> _waitForApproval(
@@ -322,7 +414,17 @@ class AgentOrchestrator {
 
   Future<AgentPlan> _createPlan(String task, {CancellationToken? cancellationToken}) async {
     final injectedPlanBuilder = planBuilder;
-    if (injectedPlanBuilder != null) return injectedPlanBuilder(task);
+    if (injectedPlanBuilder != null) {
+      final injectedPlan = injectedPlanBuilder(task);
+      // Injected planners (including deterministic/offline integrations) may
+      // omit AgentPlan.task because the task is already supplied separately.
+      // Normalize it before structural evaluation so valid plans are not
+      // silently rejected and the orchestrator does not fall back to idle.
+      return AgentPlan(
+        task: injectedPlan.task.trim().isEmpty ? task : injectedPlan.task,
+        steps: injectedPlan.steps,
+      );
+    }
     await memory.load();
     // Keep input within the native 2048-token context so both planning
     // and recovery remain reliable on-device. The local model still authors
@@ -344,13 +446,13 @@ class AgentOrchestrator {
     ]).toList(growable: false);
     // Cross-feed knowledge hits into procedural skill discovery so the two
     // offline indexes reinforce one another instead of ranking independently.
-    final skillContext = await _skillLibrary.contextFor(
-      task,
+    final selectedSkills = await _skillSelector.select(
+      role: RoleProfile.forRole(AgentRole.planner),
+      task: task,
       hints: knowledgeHints,
-      maxSkills: 3,
-      maxCharsPerSkill: 420,
-      maxTotalChars: 1150,
+      maxChars: 1150,
     );
+    final skillContext = selectedSkills.skillContext;
     final knowledgeContext = await _knowledgeIndex.contextFor(
       task,
       maxEntries: 3,
@@ -375,7 +477,7 @@ $knowledgeContext
 ${jsonEncode(toolCatalog)}
 ذاكرة مختصرة (سياق فقط):
 ${jsonEncode(relevantMemory)}
-أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
+الدور الحالي: ${RoleProfile.forRole(AgentRole.planner).systemPrompt}\nأنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
@@ -538,11 +640,20 @@ ${jsonEncode(relevantMemory)}
       final summary = entry.value.summary.length > 120 ? entry.value.summary.substring(0, 120) : entry.value.summary;
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ $summary؛ ${output.length > 280 ? output.substring(0, 280) : output}';
     }).join('\\n');
-    final skillContext = await _skillLibrary.contextFor('${failedStep.description} $error', maxSkills: 2, maxCharsPerSkill: 200, maxTotalChars: 340);
-    final knowledgeContext = await _knowledgeIndex.contextFor('${failedStep.description} $error', maxEntries: 2, maxTotalChars: 260);
+    final recoveryRole = failedStep.permission == AgentPermission.localWrite || failedStep.permission == AgentPermission.externalSideEffect
+        ? RoleProfile.forRole(AgentRole.coder)
+        : RoleProfile.forRole(AgentRole.analyst);
+    final selectedSkills = await _skillSelector.select(
+      role: recoveryRole,
+      task: '${failedStep.description} $error',
+      hints: [failedStep.tool],
+      maxChars: 600,
+    );
+    final skillContext = selectedSkills.skillContext;
+    final knowledgeContext = selectedSkills.knowledgeContext;
     late final String response;
     response = await _generateModel(
-        'تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
+        'أنت الآن في دور ${recoveryRole.name}. ${recoveryRole.systemPrompt} تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
         'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
         'المهارات ذات الصلة:\\n$skillContext\\nالمعرفة المحلية:\\n$knowledgeContext\\n'
         'النتائج السابقة الفعلية:\n$context\n'
