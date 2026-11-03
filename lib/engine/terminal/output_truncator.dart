@@ -1,11 +1,12 @@
+import 'dart:convert';
+
 class OutputTruncator {
   static const int maxBytes = 100 * 1024;
   const OutputTruncator();
   String truncate(String output) {
-    final bytes = output.codeUnits;
+    final bytes = utf8.encode(output);
     if (bytes.length <= maxBytes) return output;
-    var end = maxBytes;
-    if (end > 0 && end < output.length && output.codeUnitAt(end - 1) >= 0xD800 && output.codeUnitAt(end - 1) <= 0xDBFF) end--;
-    return '${output.substring(0, end)}\n...[اقتُطع: ${output.length - end} محرفاً]';
+    final preview = utf8.decode(bytes.take(maxBytes).toList(), allowMalformed: true);
+    return '$preview\\n...[اقتُطع: ${output.length - preview.length} محرفاً]';
   }
 }
