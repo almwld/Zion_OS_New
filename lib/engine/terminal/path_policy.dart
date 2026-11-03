@@ -32,7 +32,7 @@ class PathPolicy {
   final List<String> forbiddenPaths;
 
   List<String> extractPaths(String command) {
-    final tokens = command.split(RegExp(r'\\s+'));
+    final tokens = command.split(RegExp(r'\s+'));
     return tokens
         .map((token) =>
             token.replaceAll(RegExp(r'''^["']|["']$'''), ''))
@@ -52,7 +52,7 @@ class PathPolicy {
     }
 
     final parts = command
-        .split(RegExp(r'\\s+'))
+        .split(RegExp(r'\s+'))
         .map((part) => part.replaceAll(RegExp(r'''^["']|["']$'''), ''))
         .toList();
 
