@@ -131,20 +131,46 @@ class ProviderSelector {
       );
     } catch (_) {
       if (active.mode != EngineMode.cloud) rethrow;
-      final local = _localProvider();
-      if (!await local.isReady()) rethrow;
-      output = await local.generate(
-        prompt: prompt,
-        systemPrompt: systemPrompt,
-        maxTokens: maxTokens,
-        temperature: temperature,
-        onChunk: onChunk,
-        cancellation: cancellation,
-      );
-      responseProvider = local;
-      _current = local;
-      _mode = EngineMode.local;
-      usedFallback = true;
+
+      var cloudSucceeded = false;
+      for (final candidate in _configuredCloudProviders()) {
+        if (identical(candidate, active)) continue;
+        try {
+          if (!await candidate.isReady()) continue;
+          output = await candidate.generate(
+            prompt: prompt,
+            systemPrompt: systemPrompt,
+            maxTokens: maxTokens,
+            temperature: temperature,
+            onChunk: onChunk,
+            cancellation: cancellation,
+          );
+          responseProvider = candidate;
+          _current = candidate;
+          _mode = EngineMode.cloud;
+          cloudSucceeded = true;
+          break;
+        } catch (_) {
+          // Continue to the next explicitly configured provider.
+        }
+      }
+
+      if (!cloudSucceeded) {
+        final local = _localProvider();
+        if (!await local.isReady()) rethrow;
+        output = await local.generate(
+          prompt: prompt,
+          systemPrompt: systemPrompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          onChunk: onChunk,
+          cancellation: cancellation,
+        );
+        responseProvider = local;
+        _current = local;
+        _mode = EngineMode.local;
+        usedFallback = true;
+      }
     }
 
     // Counts are estimates until a provider supplies normalized usage data.
@@ -153,9 +179,9 @@ class ProviderSelector {
     return ProviderGeneration(
       text: output,
       provider: responseProvider.name,
-      model: responseProvider.mode == EngineMode.local
-          ? 'local-model'
-          : responseProvider.name,
+      model: responseProvider is CloudProvider
+          ? responseProvider.model
+          : 'local-model',
       inputTokens: inputTokens,
       outputTokens: outputTokens,
       tokenCountsEstimated: true,
