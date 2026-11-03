@@ -1,5 +1,6 @@
 import 'dart:io';
 import '../../../agent/core/agent_models.dart';
+import '../../../agent/core/cancellation_token.dart';
 import '../../../agent/tools/tool.dart';
 import '../../environment/agent_environment.dart';
 class PythonTool extends AgentTool {
@@ -9,7 +10,13 @@ class PythonTool extends AgentTool {
  @override Map<String,dynamic> get parameters=>const {'code':{'type':'string','required':true},'timeout_seconds':{'type':'integer','required':false}};
  @override Set<AgentPermission> get permissions=>const {AgentPermission.process,AgentPermission.localWrite};
  @override bool requiresApproval(Map<String,dynamic> p)=>true;
- String _quote(String v)=>"'\${v.replaceAll("'","'\\''")}'";
+ String _quote(String v) => "'" + v.replaceAll("'", "'\\''") + "'";
+ @override Future<StepResult> executeCancellable(Map<String,dynamic> p,CancellationToken? token)async{
+  if(token==null)return execute(p);token.throwIfCancelled();
+  final service=environment.terminal;if(service==null)return StepResult.failure('خدمة Terminal غير متاحة.');
+  final subscription=token.onCancel.listen((_)=>service.interruptInteractive());
+  try{return await execute(p);}finally{await subscription.cancel();}
+ }
  @override Future<StepResult> execute(Map<String,dynamic> p)async{
   final terminal=environment.terminal;if(terminal==null)return StepResult.failure('خدمة Terminal غير متاحة.');
   final code=p['code']?.toString();if(code==null||code.trim().isEmpty||code.length>100000)return StepResult.failure('كود Python فارغ أو يتجاوز 100KB.');
