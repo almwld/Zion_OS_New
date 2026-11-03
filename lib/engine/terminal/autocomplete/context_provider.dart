@@ -33,7 +33,7 @@ class ContextProvider {
       if(!await dir.exists())return const [];
       final files=await dir.list(followLinks:false).toList();
       files.sort((a,b)=>b.statSync().modified.compareTo(a.statSync().modified));
-      return files.take(limit.clamp(1,50)).map((e)=>e.uri.pathSegments.isEmpty?e.path:e.uri.pathSegments.last).toList();
+      return files.take(limit.clamp(1,50).toInt()).map((e)=>e.uri.pathSegments.isEmpty?e.path:e.uri.pathSegments.last).toList();
     }catch(_){return const [];}
   }
   Future<bool> isFlutterProject() async => File('${await getCurrentPath()}/pubspec.yaml').exists();
