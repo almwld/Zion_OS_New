@@ -49,6 +49,16 @@ class GitHubClient {
   if(commitSha==null||commitSha.isEmpty)throw const GitHubException(422,'تعذر تحديد SHA للمرجع');
   return Map<String,dynamic>.from(await _request('GET','${_repo(owner,repo)}/commits/${Uri.encodeComponent(commitSha)}/check-runs') as Map);
  }
+ Future<String?> getLatestFailedWorkflowLogs(String owner,String repo,String branch)async{
+  final query='?branch=${Uri.encodeQueryComponent(branch)}&per_page=20';
+  final response=await _request('GET','${_repo(owner,repo)}/actions/runs$query') as Map;
+  final runs=(response['workflow_runs'] as List? ??const []).whereType<Map>().toList();
+  final failed=runs.where((r)=>r['status']=='completed'&&r['conclusion']!='success').toList();
+  if(failed.isEmpty)return null;
+  final runId=(failed.first['id'] as num?)?.toInt();
+  if(runId==null)return null;
+  return getWorkflowLogs(owner,repo,runId);
+ }
  Future<String> getWorkflowLogs(String owner,String repo,int runId)async{
   try{
    final request=http.Request('GET',Uri.parse('$_api${_repo(owner,repo)}/actions/runs/$runId/logs'))..headers.addAll(_headers);
