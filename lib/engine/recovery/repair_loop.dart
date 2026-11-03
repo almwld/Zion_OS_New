@@ -17,9 +17,6 @@ class RepairLoop {
   var reason=failure;final max=config.maxRepairCycles.clamp(0,5).toInt();
   for(var cycle=1;cycle<=max;cycle++){
    final suggestion=await recovery.suggest(goal:goal,failure:reason,logs:logs,context:{'owner':owner,'repo':repo,'branch':branch,'cycle':cycle});
-   final approval=await approvals.request(ApprovalRequest(id:'$taskId-repair-$cycle',taskId:taskId,
-    action:'تعديل مقترح: ${suggestion.diagnosis}',risk:'مرتفع',details:{'prompt':suggestion.repairPrompt,'branch':branch},createdAt:DateTime.now()));
-   if(!approval.approved)return RepairOutcome(success:false,cycles:cycle,report:'رُفض الإصلاح: ${approval.reason??''}');
    final raw=await provider().generate(systemPrompt:'أخرج JSON فقط بالمفاتيح filePath وcontent وcommitMessage. تعديل ملف واحد فقط.',
     prompt:'أصلح المشكلة دون تغيير غير ذي صلة. الهدف: $goal\nالتشخيص: ${suggestion.diagnosis}\nالخطة: ${suggestion.repairPrompt}\nالسجلات: $logs',
     maxTokens:config.maxTokensPerStep,temperature:0.1);
@@ -28,6 +25,12 @@ class RepairLoop {
    catch(_){return RepairOutcome(success:false,cycles:cycle,report:'تعذر قراءة JSON الخاص بالتعديل');}
    final path=change['filePath']?.toString()??'',content=change['content']?.toString();
    if(path.isEmpty||content==null)return RepairOutcome(success:false,cycles:cycle,report:'مسار الملف أو محتواه مفقود');
+   final approval=await approvals.request(ApprovalRequest(id:'$taskId-repair-$cycle',taskId:taskId,
+    action:'تعديل الملف $path: ${suggestion.diagnosis}',risk:'مرتفع',
+    details:{'filePath':path,'contentPreview':content.length>8000?content.substring(0,8000):content,
+      'commitMessage':change['commitMessage']?.toString()??'fix: repair build failure','branch':branch},
+    createdAt:DateTime.now()));
+   if(!approval.approved)return RepairOutcome(success:false,cycles:cycle,report:'رُفض الإصلاح: ${approval.reason??''}');
    final current=await github.getFile(owner,repo,path,ref:branch);
    final sha=current['sha']?.toString();if(sha==null)return RepairOutcome(success:false,cycles:cycle,report:'تعذر الحصول على SHA للملف');
    await github.updateFile(owner,repo,path,content:content,sha:sha,branch:branch,message:change['commitMessage']?.toString()??'fix: repair build failure');
