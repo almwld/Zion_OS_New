@@ -1666,9 +1666,9 @@ class _ExtraKeys extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const keys = <MapEntry<String, String>>[
+      MapEntry('CTRL-C', '\x03'),
       MapEntry('ESC', '\x1b'),
       MapEntry('TAB', '\t'),
-      MapEntry('CTRL-C', '\x03'),
       MapEntry('CTRL-D', '\x04'),
       MapEntry('ALT', '\x1b'),
       MapEntry('←', '\x1b[D'),
