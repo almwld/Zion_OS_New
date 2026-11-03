@@ -417,6 +417,16 @@ class ZionLocalKaliBootstrap {
     }
     final candidates = <String>[];
     for (final name in names) {
+      // usr-merged Debian/Kali archives may contain usr/bin/bash plus a
+      // root-level bin -> usr/bin symlink rather than a bin/bash entry.
+      if (name.endsWith('usr/bin/bash')) {
+        final prefix = name.substring(0, name.length - 'usr/bin/bash'.length);
+        if (names.contains('${prefix}usr/bin/sh') &&
+            names.contains('${prefix}bin')) {
+          candidates.add(prefix);
+        }
+        continue;
+      }
       if (!name.endsWith('bin/bash')) continue;
       final prefix = name.substring(0, name.length - 'bin/bash'.length);
       if (names.contains('${prefix}bin/sh')) candidates.add(prefix);
