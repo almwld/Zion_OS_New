@@ -38,12 +38,12 @@ class RepairCycle {
   final String Function() taskIdProvider;
   final CancellationToken? cancel;
 
-  Future<RepairResult> run({required String taskId,required String failedCommand,required String stdout,required String stderr,required int exitCode,int maxCycles=3}) async {
+  Future<RepairResult> run({required String taskId,required String failedCommand,required String stdout,required String stderr,required int exitCode,int maxCycles=3,CancellationToken? cancel}) async {
     var out=stdout,err=stderr,code=exitCode;
     final attempts=<RepairAttempt>[];
-    final cap=maxCycles.clamp(1,3);
+    final cap=maxCycles.clamp(1,3).toInt();
     for(var cycle=1;cycle<=cap;cycle++){
-      cancel?.throwIfCancelled();
+      (cancel ?? this.cancel)?.throwIfCancelled();
       final error=classifier.classify(out,err,code,command:failedCommand);
       events.emit(WorkflowEvent(taskId:taskId,type:'classification',message:'تصنيف الخطأ: ${error.type.name}',data:{'cycle':cycle,'error':error.rawMessage},timestamp:DateTime.now()));
       final strategy=classifier.suggestStrategy(error);
@@ -53,7 +53,7 @@ class RepairCycle {
       }
       final diagnostics=<String>[];
       for(final command in strategy.diagnosticCommands){
-        cancel?.throwIfCancelled();
+        (cancel ?? this.cancel)?.throwIfCancelled();
         final policy=commandPolicy.check(command),path=pathPolicy.check(command);
         if(!policy.allowed||!path.allowed){diagnostics.add('مرفوض: ${policy.reason??path.reason}');continue;}
         try{
