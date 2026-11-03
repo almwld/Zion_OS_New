@@ -48,13 +48,15 @@ class TerminalWorkflow {
     final tools=<String,String>{};
     for(final command in commands){
       final policy=commandPolicy.check(command);
-      if(!policy.allowed||!pathPolicy.check(command).allowed){outputs.add('$command: مرفوض');continue;}
+      if(!policy.allowed||!pathPolicy.check(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');continue;}
       try{
         final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
         final output=truncator.truncate(result.stdout.isEmpty?result.stderr:result.stdout);
         outputs.add('$command → $output');
+        await audit.record(taskId:_activeTaskId,action:'recon',command:command,phase:'recon',approved:false,exitCode:result.exitCode,error:result.stderr.isEmpty?null:result.stderr,outputSize:output.length);
+        events.emit(WorkflowEvent(taskId:_activeTaskId,type:'recon_step',message:'استطلاع: $command',data:{'exitCode':result.exitCode,'output':output},timestamp:DateTime.now()));
         if(command.startsWith('command -v '))tools[command.substring(11)]=result.exitCode==0?output:'غير متاح';
-      }catch(e){outputs.add('$command → تعذر التنفيذ: $e');}
+      }catch(e){outputs.add('$command → تعذر التنفيذ: $e');await audit.record(taskId:_activeTaskId,action:'recon_error',command:command,phase:'recon',approved:false,error:e.toString());}
     }
     events.emit(WorkflowEvent(taskId:_activeTaskId,type:'recon',message:'اكتمل الاستطلاع الأولي',data:{'commands':outputs},timestamp:DateTime.now()));
     return ReconResult(systemInfo:{'identity':outputs.isNotEmpty?outputs[0]:'','workingDirectory':outputs.length>2?outputs[2]:''},tools:tools,paths:{'workspace':outputs.length>2?outputs[2]:''},output:outputs);
