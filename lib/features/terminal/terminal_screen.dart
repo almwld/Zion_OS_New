@@ -1223,7 +1223,7 @@ $request''',
             onSelect: (index) {
               setState(() => _selectedIndex = index);
               if (index >= 0 && index < _tabs.length) {
-                _tabs[index].service.activateForAgent();
+                _tabs[index].service.activateForAgent();\n              _initializeWorkflowFor(_tabs[index].service);
               }
             },
             onClose: _closeTab,
