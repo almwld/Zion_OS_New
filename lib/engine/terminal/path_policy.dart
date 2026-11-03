@@ -81,7 +81,7 @@ class PathPolicy {
   ///
   /// لا يستخدم realpath عبر shell؛ فمسارات Kali/PRoot لا تمثل مسارات
   /// نظام ملفات Android، ولا يجوز تفسيرها باستخدام Dart على المضيف.
-  Future<PolicyResult> checkAsync(String command) async {
+  Future<PolicyResult> checkAsync(String command, {String? workingDirectory}) async {
     final lexical = check(command);
     if (!lexical.allowed) return lexical;
 
@@ -91,9 +91,92 @@ class PathPolicy {
       roots.add(_normalize(resolved ?? root));
     }
 
-    for (final raw in extractPaths(command)) {
-      if (!raw.startsWith('/') && !raw.startsWith('~/')) continue;
-      final hostPath = _normalize(_expand(raw));
+    final candidates = <String>{...extractPaths(command)};
+    if (workingDirectory != null) {
+      final tokens = command
+          .split(RegExp(r'\\s+'))
+          .map((token) => token.replaceAll(RegExp(r'''^["']|["']
+      final resolved = await _resolveExistingPath(hostPath);
+      if (resolved == null) {
+        // لا يمكن إثبات سلامة المسار غير الموجود؛ يبقى الفحص النصي فقط.
+        continue;
+      }
+      final canonical = _normalize(resolved);
+      if (!roots.any((root) =>
+          canonical == root || canonical.startsWith('$root/'))) {
+        return PolicyResult.deny(
+          'الرابط الرمزي يشير إلى مسار خارج الجذور المسموحة: $raw',
+        );
+      }
+    }
+    return PolicyResult.allow();
+  }
+
+  Future<String?> _resolveExistingPath(String path) async {
+    var candidate = path;
+    final suffix = <String>[];
+    while (candidate.isNotEmpty) {
+      try {
+        final type = await FileSystemEntity.type(candidate, followLinks: false);
+        if (type != FileSystemEntityType.notFound) {
+          final entity = type == FileSystemEntityType.directory
+              ? Directory(candidate)
+              : File(candidate);
+          final resolved = await entity.resolveSymbolicLinks();
+          return suffix.isEmpty
+              ? resolved
+              : '$resolved/${suffix.reversed.join('/')}';
+        }
+      } on FileSystemException {
+        // نواصل إلى أقرب مجلد موجود، ثم نعيد إلحاق بقية المسار.
+      }
+      final separator = candidate.lastIndexOf('/');
+      if (separator <= 0) return null;
+      suffix.add(candidate.substring(separator + 1));
+      candidate = candidate.substring(0, separator);
+    }
+    return null;
+  }
+
+  String _expand(String path) {
+    if (!path.startsWith('~/')) return path;
+    final home = Platform.environment['HOME'] ??
+        '/data/data/com.zion.os/files/home';
+    return '$home/${path.substring(2)}';
+  }
+
+  String _normalize(String path) {
+    final parts = <String>[];
+    for (final part in path.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (parts.isNotEmpty) parts.removeLast();
+      } else {
+        parts.add(part);
+      }
+    }
+    return '/${parts.join('/')}';
+  }
+}
+''), ''))
+          .toList();
+      if (tokens.isNotEmpty &&
+          const {'ls', 'cat', 'grep', 'find', 'wc', 'head', 'tail'}
+              .contains(tokens.first)) {
+        for (final token in tokens.skip(1)) {
+          if (token.isNotEmpty && !token.startsWith('-')) {
+            candidates.add(token);
+          }
+        }
+      }
+    }
+
+    for (final raw in candidates) {
+      final isAbsolute = raw.startsWith('/') || raw.startsWith('~/');
+      if (!isAbsolute && workingDirectory == null) continue;
+      final hostPath = _normalize(isAbsolute
+          ? _expand(raw)
+          : '$workingDirectory/$raw');
       final resolved = await _resolveExistingPath(hostPath);
       if (resolved == null) {
         // لا يمكن إثبات سلامة المسار غير الموجود؛ يبقى الفحص النصي فقط.
