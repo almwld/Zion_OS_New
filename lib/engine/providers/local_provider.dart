@@ -2,12 +2,15 @@ import '../../ai/llama_service.dart';
 import '../config/engine_mode.dart';
 import 'ai_provider.dart';
 class LocalProvider implements AIProvider {
- final LlamaService llama; final String? modelPath;
- LocalProvider({required this.llama,this.modelPath});
+ final LlamaService llama;
+ final String? modelPath;
+ final bool autoLoad;
+ LocalProvider({required this.llama,this.modelPath,this.autoLoad = true});
  @override String get name=>'llama.cpp (محلي)';
  @override EngineMode get mode=>EngineMode.local;
  @override Future<bool> isReady() async {
   if(await llama.refreshLoadedState())return true;
+  if(!autoLoad)return false;
   final path=modelPath;
   if(path==null||path.trim().isEmpty){final model=await llama.autoLoadBestModel();return model!=null&&llama.isLoaded;}
   return llama.loadModel(path);
