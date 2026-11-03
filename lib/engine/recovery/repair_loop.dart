@@ -16,7 +16,9 @@ class RepairLoop {
  Future<RepairOutcome> run({required String taskId,required String owner,required String repo,required String branch,required String goal,required String failure,required String logs})async{
   var reason=failure;var currentLogs=logs;final max=config.maxRepairCycles.clamp(0,5).toInt();
   for(var cycle=1;cycle<=max;cycle++){
-   try{final fetched=await github.getLatestFailedWorkflowLogs(owner,repo,branch);if(fetched!=null&&fetched.isNotEmpty)currentLogs=fetched;}catch(_){}\n   final failureLogs=monitor.extractFailureReason(currentLogs);\n   final suggestion=await recovery.suggest(goal:goal,failure:reason,logs:failureLogs,context:{'owner':owner,'repo':repo,'branch':branch,'cycle':cycle});
+   try{final fetched=await github.getLatestFailedWorkflowLogs(owner,repo,branch);if(fetched!=null&&fetched.isNotEmpty)currentLogs=fetched;}catch(_){}
+   final failureLogs=monitor.extractFailureReason(currentLogs);
+   final suggestion=await recovery.suggest(goal:goal,failure:reason,logs:failureLogs,context:{'owner':owner,'repo':repo,'branch':branch,'cycle':cycle});
    final raw=await provider().generate(systemPrompt:'أخرج JSON فقط بالمفاتيح filePath وcontent وcommitMessage. تعديل ملف واحد فقط.',
     prompt:'أصلح المشكلة دون تغيير غير ذي صلة. الهدف: $goal\nالتشخيص: ${suggestion.diagnosis}\nالخطة: ${suggestion.repairPrompt}\nالسجلات: $failureLogs',
     maxTokens:config.maxTokensPerStep,temperature:0.1);
