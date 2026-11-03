@@ -723,7 +723,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
       _toolbarButton(Icons.history, 'سجل الأوامر', _showHistorySearch),
       _toolbarButton(Icons.terminal, 'تشغيل Kali المحلي', _startKaliFromLocalRootfs),
-      _toolbarButton(Icons.archive_outlined, 'تثبيت Kali من الأرشيف المحلي', _installKaliFromLocalArchive),
+      _toolbarButton(Icons.archive_outlined, 'استيراد نسخة Kali المضغوطة يدوياً', _installKaliFromLocalArchive),
       _toolbarButton(Icons.translate, 'قراءة المخرجات العربية', _showReadableOutput),
       _toolbarButton(_showArabicOverlay ? Icons.subtitles : Icons.subtitles_off, 'إظهار/إخفاء طبقة قراءة العربية', () => setState(() => _showArabicOverlay = !_showArabicOverlay)),
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
