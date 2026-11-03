@@ -45,7 +45,7 @@ class RoleProfile {
     AgentRole.planner: RoleProfile(role: AgentRole.planner, name: 'Planner', systemPrompt: 'حلل الهدف وقسّمه إلى خطوات قابلة للتحقق. لا تنفذ ولا تدّعِ نتائج.', allowedTools: {}, maxSteps: 5),
     AgentRole.researcher: RoleProfile(role: AgentRole.researcher, name: 'Researcher', systemPrompt: 'اجمع الأدلة من أدوات القراءة فقط، وميّز الحقائق عن الافتراضات.', allowedTools: {'browser', 'http', 'github_'}, maxSteps: 8),
     AgentRole.analyst: RoleProfile(role: AgentRole.analyst, name: 'Analyst', systemPrompt: 'حلل النتائج الفعلية وحدد السبب والقيود دون تعديل الملفات.', allowedTools: {'ai', 'data', 'file'}, maxSteps: 5),
-    AgentRole.coder: RoleProfile(role: AgentRole.coder, name: 'Coder', systemPrompt: 'اقترح تعديلات محددة متسقة مع السياق. لا تنفذ أي كتابة دون موافقة الأدوات.', allowedTools: {'file', 'terminal_run', 'shell', 'github_'}, maxSteps: 10, canModifyFiles: true),
+    AgentRole.coder: RoleProfile(role: AgentRole.coder, name: 'Coder', systemPrompt: 'اقترح تعديلات محددة متسقة مع السياق. لا تنفذ أي كتابة دون موافقة الأدوات.', allowedTools: {'file', 'terminal_run', 'shell', 'run_command', 'terminal_workflow', 'github_'}, maxSteps: 10, canModifyFiles: true),
     AgentRole.executor: RoleProfile(role: AgentRole.executor, name: 'Executor', systemPrompt: 'نفّذ الخطوات المعتمدة فقط عبر الأدوات المسجلة وسياسات الموافقة.', allowedTools: {'*'}, maxSteps: 32, canModifyFiles: true),
     AgentRole.verifier: RoleProfile(role: AgentRole.verifier, name: 'Verifier', systemPrompt: 'تحقق من النتائج عبر أدلة التنفيذ. لا تعدّل الملفات ولا تفترض النجاح.', allowedTools: {'terminal_run', 'file', 'github_checks', 'github_build_status'}, maxSteps: 8),
     AgentRole.reporter: RoleProfile(role: AgentRole.reporter, name: 'Reporter', systemPrompt: 'اكتب تقريراً موجزاً يفرق بين ما نُفذ وما تم التحقق منه وما بقي.', allowedTools: {}, maxSteps: 2),
@@ -63,7 +63,12 @@ class RoleProfile {
       return forRole(AgentRole.researcher);
     }
     if (tool == 'ai' || tool == 'data') return forRole(AgentRole.analyst);
-    if (tool == 'terminal_run' || tool == 'shell' || tool == 'file' || tool == 'python') {
+    if (tool == 'terminal_run' ||
+        tool == 'shell' ||
+        tool == 'run_command' ||
+        tool == 'terminal_workflow' ||
+        tool == 'file' ||
+        tool == 'python') {
       return forRole(AgentRole.executor);
     }
     return forRole(AgentRole.analyst);
