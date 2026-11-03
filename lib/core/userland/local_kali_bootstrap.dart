@@ -427,6 +427,9 @@ class ZionLocalKaliBootstrap {
         BZip2Decoder().decodeStream(input, output);
       } else if (starts(<int>[0x28, 0xb5, 0x2f, 0xfd])) {
         ZstdDecoder().decodeStream(input, output);
+      } else if (header.length >= 2 && header[0] == 0x78 &&
+          const <int>[0x01, 0x5e, 0x9c, 0xda].contains(header[1])) {
+        ZLibDecoder().decodeStream(input, output);
       } else {
         await for (final chunk in source.openRead()) {
           output.writeBytes(chunk);
