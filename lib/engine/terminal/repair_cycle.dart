@@ -65,7 +65,7 @@ class RepairCycle {
         if(!policy.allowed||!path.allowed){diagnostics.add('مرفوض: ${policy.reason??path.reason}');continue;}
         try{
           final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
-          final text=[result.stdout,result.stderr].where((s)=>s.isNotEmpty).join('\n');
+          final text=truncator.truncate([result.stdout,result.stderr].where((s)=>s.isNotEmpty).join('\n'));
           diagnostics.add(text);
           await audit.record(taskId:taskId,action:'diagnostic',command:command,phase:'repairing',approved:false,exitCode:result.exitCode,outputSize:text.length);
         }catch(e){diagnostics.add('تعذر التشخيص: $e');await audit.record(taskId:taskId,action:'diagnostic_error',command:command,phase:'repairing',approved:false,error:e.toString());}
@@ -87,12 +87,12 @@ class RepairCycle {
         final verified=verify.exitCode==0;
         final attempt=RepairAttempt(cycle:cycle,error:error,strategy:strategy,diagnosticOutput:diagnostics,repairOutput:repairs,verified:verified,failureReason:verified?null:truncator.truncate(verify.stderr));
         attempts.add(attempt);
-        await audit.record(taskId:taskId,action:'verify',command:failedCommand,phase:'repairing',approved:false,exitCode:verify.exitCode,error:verify.stderr,outputSize:verify.stdout.length);
+        await audit.record(taskId:taskId,action:'verify',command:failedCommand,phase:'repairing',approved:false,exitCode:verify.exitCode,error:truncator.truncate(verify.stderr),outputSize:truncator.truncate(verify.stdout).length);
         if(verified){
-          events.emit(WorkflowEvent(taskId:taskId,type:'verified',message:'نجح التحقق بعد الدورة $cycle',data:{'output':verify.stdout},timestamp:DateTime.now()));
+          events.emit(WorkflowEvent(taskId:taskId,type:'verified',message:'نجح التحقق بعد الدورة $cycle',data:{'output':truncator.truncate(verify.stdout)},timestamp:DateTime.now()));
           return RepairResult(success:true,cyclesUsed:cycle,finalOutput:truncator.truncate(verify.stdout),attempts:attempts);
         }
-        events.emit(WorkflowEvent(taskId:taskId,type:'verification_failed',message:'فشل التحقق في الدورة $cycle',data:{'stderr':verify.stderr},timestamp:DateTime.now()));
+        events.emit(WorkflowEvent(taskId:taskId,type:'verification_failed',message:'فشل التحقق في الدورة $cycle',data:{'stderr':truncator.truncate(verify.stderr)},timestamp:DateTime.now()));
         out=truncator.truncate(verify.stdout);err=truncator.truncate(verify.stderr);code=verify.exitCode;
       }catch(e){return RepairResult.failure('تعذر تنفيذ التحقق: $e',cyclesUsed:cycle,attempts:attempts);}
     }
