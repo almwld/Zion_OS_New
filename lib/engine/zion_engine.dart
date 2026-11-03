@@ -59,6 +59,7 @@ class ZionEngine {
   if(!_events.isClosed)_events.add(EngineEvent(taskId:id,type:type,message:message,timestamp:DateTime.now(),data:data));
  }
  Future<void> switchMode(EngineMode mode)=>providers.switchTo(mode);
+ bool respondToApproval(String requestId,{required bool approved,String? reason})=>approvals.respond(requestId,approved:approved,reason:reason);
 
  Future<EngineTaskResult> runTask({required String goal,Map<String,dynamic> context=const {},CancellationToken? cancellationToken})async{
   if(!_initialized)await init();if(_disposed)throw StateError('المحرك مغلق');
