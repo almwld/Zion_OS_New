@@ -20,6 +20,9 @@ import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
 import '../../core/userland/local_kali_bootstrap.dart';
+import '../../engine/providers/local_provider.dart';
+import '../../engine/terminal/llm_repair_advisor.dart';
+import '../../engine/terminal/path_policy.dart';
 
 import '../../security/core/security_core.dart';
 import 'arabic_shaper.dart';
@@ -143,6 +146,10 @@ class _TerminalScreenState extends State<TerminalScreen> {
       approvalGate: gate,
       audit: audit,
       events: events,
+      llmAdvisor: LLMRepairAdvisor(
+        provider: () => LocalProvider(llama: _ai, autoLoad: false),
+        pathPolicy: PathPolicy(),
+      ),
     );
     _approvalSubscription = gate.requests.listen((request) {
       unawaited(_handleWorkflowApproval(request, gate));
