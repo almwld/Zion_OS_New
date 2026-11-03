@@ -88,11 +88,25 @@ class TerminalWorkflow {
     return _execute(state,commands,cancel:cancel,performRecon:true);
   }
 
-  Future<WorkflowResult> resume(String taskId) async {
+  Future<WorkflowResult> resume(String taskId, {bool retryInterruptedCommand = false}) async {
     final state=await stateStore.load(taskId);
     if(state==null)return WorkflowResult.failure('لا توجد مهمة محفوظة بالمعرّف $taskId.');
     if(state.phase==WorkflowPhase.completed)return WorkflowResult(success:true,finalOutput:state.commands.map((c)=>c.stdout).join('\n'));
     if(state.phase==WorkflowPhase.failed)return WorkflowResult.failure('المهمة محفوظة بحالة فشل.');
+    final interruptedCommand = state.context['inFlightCommand'];
+    final pendingRepair = state.context['pendingRepairCommand'];
+    if ((interruptedCommand != null || pendingRepair != null) && !retryInterruptedCommand) {
+      final uncertain = interruptedCommand ?? pendingRepair;
+      return WorkflowResult.failure('توقفت المهمة أثناء معالجة الأمر "$uncertain". افحص سجل التدقيق وحالة النظام أولاً، ثم استدعِ resume مع retryInterruptedCommand=true فقط بعد التأكد من أن إعادة المحاولة آمنة.');
+    }
+    if (interruptedCommand != null || pendingRepair != null) {
+      final cleaned = Map<String,dynamic>.from(state.context)
+        ..remove('inFlightCommand')
+        ..remove('inFlightCommandIndex')
+        ..remove('pendingRepairCommand');
+      state = state.copyWith(phase:WorkflowPhase.paused,context:cleaned);
+      await stateStore.save(state);
+    }
     final raw=state.context['requestedCommands'];
     if(raw is! List)return WorkflowResult.failure('الحالة لا تحتوي قائمة الأوامر الأصلية ولا يمكن استئنافها بأمان.');
     return _execute(state,raw.map((e)=>e.toString()).toList(),performRecon:state.phase==WorkflowPhase.recon);
@@ -126,6 +140,12 @@ class TerminalWorkflow {
           if(!decision.approved)return WorkflowResult.failure('رفض المستخدم تنفيذ الأمر: $command',attempts:attempts,output:output.join('\n'));
           approved=true;
         }
+        final inFlightContext = Map<String,dynamic>.from(state.context)
+          ..['inFlightCommand'] = command
+          ..['inFlightCommandIndex'] = index;
+        state = state.copyWith(phase:WorkflowPhase.executing,context:inFlightContext);
+        _currentState = state;
+        await stateStore.save(state);
         await audit.record(taskId:state.taskId,action:'execute',command:command,phase:'executing',approved:approved);
         events.emit(WorkflowEvent(taskId:state.taskId,type:'execution',message:'تنفيذ: $command',timestamp:DateTime.now()));
         final execution=environmentRouter==null?null:await environmentRouter!.route(command);
@@ -134,12 +154,23 @@ class TerminalWorkflow {
         output.add(stdout.isEmpty?stderr:stdout);
         await audit.record(taskId:state.taskId,action:'terminal_run',command:command,phase:'executing',approved:approved,exitCode:result.exitCode,error:stderr.isEmpty?null:stderr,outputSize:stdout.length+stderr.length);
         final record=ExecutedCommand(command:command,stdout:stdout,stderr:stderr,exitCode:result.exitCode,timestamp:DateTime.now(),approved:approved);
-        state=state.copyWith(commands:[...state.commands,record],nextCommandIndex:index+1);_currentState=state;await stateStore.save(state);
+        final completedContext = Map<String,dynamic>.from(state.context)
+          ..remove('inFlightCommand')
+          ..remove('inFlightCommandIndex');
+        state=state.copyWith(commands:[...state.commands,record],nextCommandIndex:index+1,context:completedContext);
+        _currentState=state;
+        await stateStore.save(state);
         if(result.exitCode!=0){
-          state=state.copyWith(phase:WorkflowPhase.repairing);await stateStore.save(state);
+          final repairContext = Map<String,dynamic>.from(state.context)
+            ..['pendingRepairCommand'] = command;
+          state=state.copyWith(phase:WorkflowPhase.repairing,context:repairContext);
+          _currentState=state;
+          await stateStore.save(state);
           final repair=await repairCycle.run(taskId:state.taskId,failedCommand:command,stdout:result.stdout,stderr:result.stderr,exitCode:result.exitCode,cancel:cancel);
           attempts.addAll(repair.attempts);
-          state=state.copyWith(attempts:[...state.attempts,...repair.attempts.map((a)=>a.toJson())],phase:repair.success?WorkflowPhase.executing:WorkflowPhase.failed);
+          final repairedContext = Map<String,dynamic>.from(state.context)
+            ..remove('pendingRepairCommand');
+          state=state.copyWith(attempts:[...state.attempts,...repair.attempts.map((a)=>a.toJson())],phase:repair.success?WorkflowPhase.executing:WorkflowPhase.failed,context:repairedContext);
           _currentState=state;
           await stateStore.save(state);
           if(!repair.success)return WorkflowResult.failure(repair.error??'فشل الإصلاح.',cycles:repair.cyclesUsed,attempts:attempts,output:output.join('\n'));
@@ -150,7 +181,8 @@ class TerminalWorkflow {
       events.emit(WorkflowEvent(taskId:state.taskId,type:'completed',message:'اكتملت المهمة بنجاح.',data:{'commands':commands.length},timestamp:DateTime.now()));
       return WorkflowResult(success:true,repairCyclesUsed:attempts.fold(0,(n,a)=>n+a.cycle),finalOutput:output.join('\n'),attempts:attempts);
     }catch(e){
-      state=state.copyWith(phase:e.toString().contains('cancel')?WorkflowPhase.paused:WorkflowPhase.failed);await stateStore.save(state);
+      final hasInFlight = state.context['inFlightCommand'] != null || state.context['pendingRepairCommand'] != null;
+      state=state.copyWith(phase:hasInFlight || e.toString().contains('cancel')?WorkflowPhase.paused:WorkflowPhase.failed);await stateStore.save(state);
       return WorkflowResult.failure('تعذر إكمال سير العمل: $e',cycles:attempts.fold(0,(n,a)=>n+a.cycle),attempts:attempts,output:output.join('\n'));
     }
   }
