@@ -61,6 +61,13 @@ class CommandRegistry {
       timeout: Duration(seconds: 60),
       requiresWrite: true,
     ),
+    'npm': CommandMetadata(
+      preferredRuntime: 'auto',
+      requiredTools: {'npm'},
+      timeout: Duration(minutes: 10),
+      requiresWrite: true,
+      requiresApproval: true,
+    ),
     'python3': CommandMetadata(
       preferredRuntime: 'auto',
       requiredTools: {'python3'},
