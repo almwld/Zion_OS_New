@@ -55,6 +55,7 @@ class AgentOrchestrator {
     _state = AgentState.planning;
     _log('بدء المهمة: $clean');
     final results = <StepResult>[];
+    final roleStepCounts = <AgentRole, int>{};
     final roleSequence = RoleSequencer(sequence: const [AgentRole.planner, AgentRole.executor, AgentRole.verifier, AgentRole.reporter]);
     try {
       final plannerRole = roleSequence.begin();
@@ -76,6 +77,19 @@ class AgentOrchestrator {
       for (var i = 0; i < plan.steps.length; i++) {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
+        final stepRole = RoleProfile.forStep(step);
+        final roleStepsUsed = roleStepCounts[stepRole.role] ?? 0;
+        if (!stepRole.allowsTool(step.tool)) {
+          final reason = 'الدور ${stepRole.name} غير مخوّل باستخدام الأداة ${step.tool}.';
+          _log('رفض الخطوة قبل التنفيذ: $reason');
+          return AgentResult(success: false, task: clean, steps: results, error: reason);
+        }
+        if (roleStepsUsed >= stepRole.maxSteps) {
+          final reason = 'تم بلوغ حد الخطوات المسموح لدور ${stepRole.name} (${stepRole.maxSteps}).';
+          _log(reason);
+          return AgentResult(success: false, task: clean, steps: results, error: reason);
+        }
+        roleStepCounts[stepRole.role] = roleStepsUsed + 1;
         final params = _resolveParams(step.params, results);
         final tool = tools.getTool(step.tool);
         if (tool == null) {
@@ -157,11 +171,16 @@ class AgentOrchestrator {
         }
         cancellationToken?.throwIfCancelled();
         r = await _verifyToolResult(r, tool: step.tool, stepId: step.id);
-        results.add(r);
-        final stepRole = RoleProfile.forStep(step);
         _log('الدور المتخصص للخطوة ${step.id}: ${stepRole.name}');
         final roleEvaluation = _roleEvaluator.evaluateStep(role: stepRole, step: step, result: r);
         _log('تقييم ${stepRole.name}: ${roleEvaluation.score}/100 — ${roleEvaluation.feedback}');
+        if (!roleEvaluation.accepted && r.success) {
+          r = StepResult.failure(
+            'رفض تقييم الدور ${stepRole.name}: ${roleEvaluation.feedback}',
+            duration: r.duration,
+          );
+        }
+        results.add(r);
         await memory.remember(
           kind: 'agent-step',
           text: '${step.description}\n${r.success ? r.summary : (r.error ?? r.summary)}',
@@ -191,6 +210,13 @@ class AgentOrchestrator {
             }
             if (alt.tool == step.tool && jsonEncode(altParams) == jsonEncode(params)) {
               _log('تم تجاهل البديل لأنه يكرر الخطوة الفاشلة نفسها.');
+              break;
+            }
+            final alternativeRole = RoleProfile.forStep(alt);
+            final alternativeRoleSteps = roleStepCounts[alternativeRole.role] ?? 0;
+            if (!alternativeRole.allowsTool(alt.tool) ||
+                alternativeRoleSteps >= alternativeRole.maxSteps) {
+              _log('تم رفض البديل قبل التنفيذ: الأداة خارج نطاق دور ${alternativeRole.name} أو تجاوز حد خطواته.');
               break;
             }
             final d = policy.evaluate(tool: alt.tool, params: altParams);
@@ -234,8 +260,21 @@ class AgentOrchestrator {
             }
             cancellationToken?.throwIfCancelled();
             ar = await _verifyToolResult(ar, tool: alt.tool, stepId: alt.id);
+            roleStepCounts[alternativeRole.role] = alternativeRoleSteps + 1;
+            final alternativeEvaluation = _roleEvaluator.evaluateStep(
+              role: alternativeRole,
+              step: alt,
+              result: ar,
+            );
+            if (!alternativeEvaluation.accepted && ar.success) {
+              ar = StepResult.failure(
+                'رفض تقييم دور الاستعادة ${alternativeRole.name}: ${alternativeEvaluation.feedback}',
+                duration: ar.duration,
+              );
+            }
             results.add(ar);
             recovered = ar.success;
+            _log('تقييم الاستعادة ${alternativeRole.name}: ${alternativeEvaluation.score}/100 — ${alternativeEvaluation.feedback}');
             await memory.remember(
               kind: 'agent-recovery',
               text: '${alt.description}\n${ar.success ? ar.summary : (ar.error ?? ar.summary)}',
