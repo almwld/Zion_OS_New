@@ -122,9 +122,9 @@ class _TerminalScreenState extends State<TerminalScreen> {
 
   void _initializeWorkflowFor(TerminalService service) {
     final database = _autocompleteDatabase;
-    if (database == null || _terminalWorkflow != null) return;
-    final gate = ApprovalGate();
-    final events = AgentEventBus();
+    if (database == null) return;
+    final gate = _workflowApprovalGate ?? ApprovalGate();
+    final events = _workflowEvents ?? AgentEventBus();
     final audit = AuditLog(database);
     _workflowApprovalGate = gate;
     _workflowEvents = events;
@@ -259,7 +259,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
     final terminal = Terminal(maxLines: 1200);
     final controller = TerminalController();
     final service = TerminalService(security);
-    _initializeWorkflowFor(service);\n    _initializeWorkflowFor(service);
+    _initializeWorkflowFor(service);
     unawaited(service.loadHistory());
     final tab = _TerminalTab(
       id: id,
