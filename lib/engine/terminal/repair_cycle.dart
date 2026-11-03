@@ -47,9 +47,14 @@ class RepairCycle {
       final error=classifier.classify(out,err,code,command:failedCommand);
       events.emit(WorkflowEvent(taskId:taskId,type:'classification',message:'تصنيف الخطأ: ${error.type.name}',data:{'cycle':cycle,'error':error.rawMessage},timestamp:DateTime.now()));
       final strategy=classifier.suggestStrategy(error);
-      if(error.type==ErrorType.unknown || error.type==ErrorType.outOfMemory){
+      if(error.type==ErrorType.unknown) {
         attempts.add(RepairAttempt(cycle:cycle,error:error,strategy:strategy,verified:false,failureReason:strategy.description));
-        return RepairResult.failure(error.type==ErrorType.unknown?'خطأ غير مفهوم؛ يلزم تدخل المستخدم.':'نفدت الذاكرة؛ أوقفت الإصلاح الآلي.',cyclesUsed:cycle,attempts:attempts);
+        await approvalGate.request(ApprovalRequest(id:'$taskId-unknown-$cycle',taskId:taskId,action:'خطأ غير مفهوم يتطلب مراجعة: ${error.rawMessage}',risk:'متوسط',details:{'command':failedCommand},createdAt:DateTime.now()));
+        return RepairResult.failure('خطأ غير مفهوم؛ أوقف الوكيل التنفيذ وطلب مراجعة المستخدم.',cyclesUsed:cycle,attempts:attempts);
+      }
+      if(error.type==ErrorType.outOfMemory) {
+        attempts.add(RepairAttempt(cycle:cycle,error:error,strategy:strategy,verified:false,failureReason:strategy.description));
+        return RepairResult.failure('نفدت الذاكرة؛ أوقفت الإصلاح الآلي.',cyclesUsed:cycle,attempts:attempts);
       }
       final diagnostics=<String>[];
       for(final command in strategy.diagnosticCommands){
@@ -89,6 +94,7 @@ class RepairCycle {
         out=verify.stdout;err=verify.stderr;code=verify.exitCode;
       }catch(e){return RepairResult.failure('تعذر تنفيذ التحقق: $e',cyclesUsed:cycle,attempts:attempts);}
     }
-    return RepairResult.failure('فشلت $cap دورات إصلاح.',cyclesUsed:cap,attempts:attempts);
+    await approvalGate.request(ApprovalRequest(id:'$taskId-cycle-limit',taskId:taskId,action:'وصل الإصلاح إلى حد $cap دورات فاشلة؛ هل تريد مراجعة الحالة؟',risk:'متوسط',details:{'command':failedCommand,'attempts':attempts.length},createdAt:DateTime.now()));
+    return RepairResult.failure('فشلت $cap دورات إصلاح؛ توقف الوكيل بعد الحد المسموح.',cyclesUsed:cap,attempts:attempts);
   }
 }
