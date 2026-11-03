@@ -51,12 +51,9 @@ class LLMRepairAdvisor {
     required String failedCommand,
     bool sensitiveContext = false,
   }) async {
-    final provider = _provider();
     final sensitive = sensitiveContext ||
         _looksSensitive(failedCommand) ||
         _looksSensitive(error.rawMessage);
-    if (sensitive && provider.mode != EngineMode.local) return null;
-
     final history = previousAttempts.isEmpty
         ? '(لا توجد محاولات سابقة)'
         : previousAttempts
@@ -64,7 +61,7 @@ class LLMRepairAdvisor {
                 '- ${attempt.description}: '
                 '${attempt.verified ? 'نجح' : 'فشل'} '
                 '${attempt.failureReason ?? ''}')
-            .join('\\n');
+            .join('\n');
 
     final prompt = '''
 حلل فشل الأمر واقترح خطوات تشخيص أو إصلاح محدودة وآمنة.
@@ -87,6 +84,8 @@ $history
 ''';
 
     try {
+      final provider = _provider();
+      if (sensitive && provider.mode != EngineMode.local) return null;
       final raw = await provider.generate(
         systemPrompt: 'أنت مستشار إصلاح. لا تنفذ أوامر ولا تتجاوز سياسات الأمان.',
         prompt: prompt,
