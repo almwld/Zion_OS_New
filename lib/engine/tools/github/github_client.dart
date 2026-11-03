@@ -43,7 +43,11 @@ class GitHubClient {
   var sha=ref;
   if((sha==null||sha.isEmpty)&&pullNumber!=null){final pr=await _request('GET','${_repo(owner,repo)}/pulls/$pullNumber') as Map;sha=(pr['head'] as Map?)?['sha']?.toString();}
   if(sha==null||sha.isEmpty)throw const GitHubException(422,'يلزم تحديد ref أو رقم PR');
-  return Map<String,dynamic>.from(await _request('GET','${_repo(owner,repo)}/commits/${Uri.encodeComponent(sha)}/check-runs') as Map);
+  // تحويل اسم الفرع أو الوسم إلى SHA قبل استدعاء Check Runs.
+  final commit=await _request('GET','${_repo(owner,repo)}/commits/${Uri.encodeComponent(sha)}') as Map;
+  final commitSha=commit['sha']?.toString();
+  if(commitSha==null||commitSha.isEmpty)throw const GitHubException(422,'تعذر تحديد SHA للمرجع');
+  return Map<String,dynamic>.from(await _request('GET','${_repo(owner,repo)}/commits/${Uri.encodeComponent(commitSha)}/check-runs') as Map);
  }
  Future<String> getWorkflowLogs(String owner,String repo,int runId)async{
   try{
