@@ -16,7 +16,7 @@ class SuggestionEngine {
   final CommandDictionary dictionary;
   final ContextProvider context;
   Future<List<Suggestion>> suggest({int limit=5}) async {
-    final recent=await history.matching('',limit:limit.clamp(1,20));
+    final recent=await history.matching('',limit:limit.clamp(1,20).toInt());
     final result=<Suggestion>[];
     for(final e in recent){result.add(Suggestion(command:e.command,reason:'استخدمته ${e.frequency} مرة',type:SuggestionType.frequent,confidence:0.9));}
     if(await context.isFlutterProject()&&!result.any((s)=>s.command=='flutter analyze'))result.add(const Suggestion(command:'flutter analyze',reason:'مشروع Flutter في المجلد الحالي',type:SuggestionType.contextual,confidence:0.8));
