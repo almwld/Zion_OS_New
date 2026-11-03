@@ -26,7 +26,7 @@ class CommandPolicy {
     if (value.isEmpty || value.length > 2000) return PolicyResult.deny('الأمر فارغ أو يتجاوز 2000 محرف.');
     if (value.contains('\u0000') || value.contains('\n') || value.contains('\r')) return PolicyResult.deny('الأسطر المتعددة غير مسموحة.');
     final commitMessage = value.startsWith('git commit -m ') && _validQuotedCommit(value);
-    if (_dangerousChars.hasMatch(value) && !commitMessage) return PolicyResult.deny('يحتوي الأمر على محارف shell خطرة.');
+    if ((value.contains('`') || _dangerousChars.hasMatch(value)) && !commitMessage) return PolicyResult.deny('يحتوي الأمر على محارف shell خطرة.');
     final tokens = value.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     if (tokens.isEmpty) return PolicyResult.deny('تعذر تحليل الأمر.');
     final commandKey = _commandKey(tokens);
@@ -42,7 +42,7 @@ class CommandPolicy {
       if (tokens.length > 2 && !(tokens[1] == 'route' && const {'show','list'}.contains(tokens[2]))) return PolicyResult.deny('خيارات ip غير القرائية محظورة.');
       if (tokens.length > 3 && tokens.skip(3).any((t)=>const {'add','del','delete','replace','flush','change'}.contains(t))) return PolicyResult.deny('تغيير إعدادات الشبكة محظور.');
     }
-    if (tokens.first == 'find' && tokens.any((t)=>const {'-exec','-execdir','-delete','-ok','-okdir'}.contains(t))) return PolicyResult.deny('عمليات find التي تنفذ أو تحذف ملفات محظورة.');
+    if (tokens.first == 'git' && tokens.length > 2 && tokens[1] == 'add' && tokens.skip(2).any((t)=>const {'.','-A','--all'}.contains(t))) return PolicyResult.deny('git add . و--all غير مسموحين؛ حدّد الملفات صراحة.');\n    if (tokens.first == 'find' && tokens.any((t)=>const {'-exec','-execdir','-delete','-ok','-okdir'}.contains(t))) return PolicyResult.deny('عمليات find التي تنفذ أو تحذف ملفات محظورة.');
     if (tokens.first == 'git' && tokens.length > 2) {
       final args=tokens.skip(2);
       if (tokens[1]=='branch' && args.any((t)=>const {'-d','-D','-m','-M','-c','-C'}.contains(t))) return PolicyResult.deny('تعديل الفروع محظور من سير العمل التلقائي.');
