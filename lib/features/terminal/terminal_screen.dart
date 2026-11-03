@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
+import '../../engine/terminal/autocomplete/command_dictionary.dart';
+import '../../engine/terminal/autocomplete/command_history.dart';
+import '../../engine/terminal/autocomplete/completion_engine.dart';
 import 'package:xterm2/xterm.dart';
 
 import '../../ai/llama_service.dart';
@@ -63,6 +68,12 @@ class _TerminalScreenState extends State<TerminalScreen> {
   TerminalPalette _palette = TerminalPalette.zion;
   static const String _kaliRootfsPreferenceKey = 'zion_terminal_kali_rootfs_path_v1';
   String _kaliRootfsPath = '/storage/emulated/0/Download/Kali';
+  final TextEditingController _agentCommandController = TextEditingController();
+  Database? _autocompleteDatabase;
+  CommandHistory? _commandHistory;
+  CompletionEngine? _completionEngine;
+  List<Completion> _completionItems = <Completion>[];
+  bool _showAgentCommandBar = false;
 
   _TerminalTab? get _selectedTab =>
       _tabs.isEmpty ? null : _tabs[_selectedIndex.clamp(0, _tabs.length - 1)];
@@ -71,6 +82,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    unawaited(_initializeAutocomplete());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         // Terminal startup creates only the PTY. Heavy local AI loading is lazy.
@@ -80,6 +92,63 @@ class _TerminalScreenState extends State<TerminalScreen> {
   }
 
   static const int _maxSessions = 8;
+
+  Future<void> _initializeAutocomplete() async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final database = sqlite3.open('${directory.path}/zion_terminal_history.sqlite3');
+      final history = CommandHistory(database)..init();
+      final engine = CompletionEngine(dictionary: CommandDictionary(), history: history);
+      if (!mounted) { database.dispose(); return; }
+      setState(() {
+        _autocompleteDatabase = database;
+        _commandHistory = history;
+        _completionEngine = engine;
+      });
+    } catch (error) {
+      if (mounted) _showTerminalNotice('تعذر تهيئة سجل الإكمال المحلي: $error');
+    }
+  }
+
+  Future<void> _refreshCompletions(String value) async {
+    final engine = _completionEngine;
+    if (engine == null) return;
+    try {
+      final position = _agentCommandController.selection.baseOffset;
+      final items = await engine.complete(value, position < 0 ? value.length : position);
+      if (mounted && value == _agentCommandController.text) setState(() => _completionItems = items);
+    } catch (_) {
+      if (mounted) setState(() => _completionItems = <Completion>[]);
+    }
+  }
+
+  void _applyCompletion(Completion completion) {
+    final text = _agentCommandController.text;
+    final start = completion.replaceStart.clamp(0, text.length).toInt();
+    final end = completion.replaceEnd.clamp(start, text.length).toInt();
+    final updated = text.replaceRange(start, end, completion.text);
+    _agentCommandController.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: start + completion.text.length),
+    );
+    unawaited(_refreshCompletions(updated));
+  }
+
+  Future<void> _submitAgentCommand(String value) async {
+    final command = value.trim();
+    final tab = _selectedTab;
+    if (command.isEmpty || tab == null) return;
+    if (!tab.service.isInteractiveRunning) { _showTerminalNotice('شغّل جلسة PTY أولاً.'); return; }
+    try {
+      await _commandHistory?.record(command);
+      tab.service.write('$command\n');
+      _agentCommandController.clear();
+      setState(() => _completionItems = <Completion>[]);
+    } catch (error) {
+      _showTerminalNotice('تعذر إرسال الأمر: $error');
+    }
+  }
+
 
   Future<void> _initializeFirstTab() async {
     try {
@@ -160,6 +229,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
         // Coalesce bursty PTY chunks so the overlay updates without rebuilding
         // the whole terminal for every byte.
         _arabicOverlayRefreshTimer?.cancel();
+    _agentCommandController.dispose();
+    _autocompleteDatabase?.dispose();
         _arabicOverlayRefreshTimer = Timer(const Duration(milliseconds: 120), () {
           if (mounted) setState(() {});
         });
@@ -554,6 +625,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
       _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
       _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
+      _toolbarButton(Icons.auto_fix_high, 'الإكمال الذكي للطرفية', () => setState(() => _showAgentCommandBar = !_showAgentCommandBar)),
       _toolbarButton(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, 'ملء الشاشة', () => unawaited(_toggleFullscreen())),
     ])),
   );
@@ -562,6 +634,59 @@ class _TerminalScreenState extends State<TerminalScreen> {
     tooltip: tooltip, onPressed: onPressed, icon: Icon(icon, color: _palette.foreground.withOpacity(0.85), size: 19),
     constraints: const BoxConstraints(minWidth: 42, minHeight: 42), padding: EdgeInsets.zero,
   );
+
+
+  Widget _buildAgentCommandBar() {
+    return Material(
+      color: _palette.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 7, 10, 5),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _agentCommandController,
+              autofocus: true,
+              textInputAction: TextInputAction.send,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: TextStyle(color: _palette.foreground, fontFamily: 'monospace', fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'اكتب أمراً للحصول على إكمال واقتراحات…',
+                hintStyle: TextStyle(color: _palette.foreground.withOpacity(0.55)),
+                prefixIcon: Icon(Icons.terminal, color: _palette.accent),
+                suffixIcon: IconButton(
+                  tooltip: 'إرسال للطرفية',
+                  onPressed: () => unawaited(_submitAgentCommand(_agentCommandController.text)),
+                  icon: Icon(Icons.send, color: _palette.accent),
+                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(9)),
+              ),
+              onChanged: _refreshCompletions,
+              onSubmitted: _submitAgentCommand,
+            ),
+            if (_completionItems.isNotEmpty)
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: _completionItems.map((item) => Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6, top: 5),
+                    child: ActionChip(
+                      label: Text(item.display, style: TextStyle(color: _palette.foreground, fontSize: 11)),
+                      avatar: Icon(Icons.subdirectory_arrow_right, size: 14, color: _palette.accent),
+                      backgroundColor: _palette.background,
+                      onPressed: () => _applyCompletion(item),
+                    ),
+                  )).toList(),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildQuickCommands() {
     const commands = <Map<String, Object>>[
@@ -1043,6 +1168,7 @@ $request''',
             palette: _palette,
           ),
           if (_showToolbar) _buildToolbar(),
+          if (_showAgentCommandBar) _buildAgentCommandBar(),
           if (_startupError != null)
             Container(
               width: double.infinity,
