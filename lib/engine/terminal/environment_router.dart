@@ -29,7 +29,8 @@ class EnvironmentRouter {
         _hasRequiredTools(report, 'zion', metadata.requiredTools);
     if (!zionHasTools &&
         report.kaliReady == null &&
-        metadata.requiredTools.isNotEmpty) {
+        (metadata.requiredTools.isNotEmpty ||
+            selection == EnvironmentSelection.kaliOnly)) {
       report = _cachedReport = await detector.report(probeKali: true);
     }
     final preferred = metadata.preferredRuntime;
