@@ -26,7 +26,7 @@ class CommandDictionary {
   };
   final Map<String,CommandInfo> _commands;
   List<String> get allCommands=>const [
-    'ls','cat','grep','find','wc','head','tail','echo','pwd','whoami','id','uname','df','free','ps','ip','ss','netstat','lsof','which','type','file',
+    'ls','cat','grep','find','wc','head','tail','echo','pwd','whoami','id','uname','df','free','ps','ip a','ip addr','ip route','ss','netstat','lsof','which','type','file',
     'git status','git diff','git log','git branch','git add','git commit','git checkout','git cherry-pick','git check-ignore',
     'flutter analyze','flutter test','flutter pub get','flutter build apk','flutter build appbundle','flutter clean','flutter doctor',
     'dart analyze','dart format','python3 --version','apt list','apt show','apt install','adb devices','adb version'
