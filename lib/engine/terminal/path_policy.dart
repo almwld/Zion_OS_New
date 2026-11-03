@@ -5,13 +5,14 @@ class PathPolicy {
   PathPolicy({List<String>? allowedRoots,List<String>? forbiddenPaths})
       : allowedRoots=List.unmodifiable(allowedRoots??const [
           '/data/data/com.zion.os/files/zion_agent_sandbox',
+          '/data/user/0/com.zion.os/files/zion_agent_sandbox',
           '/data/data/com.zion.os/files/sandbox',
           '/storage/emulated/0/Download/zion_workspace',
           '~/Zion_OS_New',
         ]),
         forbiddenPaths=List.unmodifiable(forbiddenPaths??const [
           '/etc/shadow','/etc/sudoers','/proc/','/sys/','/storage/emulated/0/DCIM',
-          '/WhatsApp','/Telegram','/sdcard/.ssh','.env','.aws','.config'
+          '/WhatsApp','/Telegram','/sdcard/.ssh','.ssh','.env','.aws','.config'
         ]);
   final List<String> allowedRoots;
   final List<String> forbiddenPaths;
