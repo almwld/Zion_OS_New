@@ -23,6 +23,7 @@ class BuildMonitor {
  }
  String extractFailureReason(String logs,{int maxLines=50}){
   final lines=logs.split(RegExp(r'\r?\n')).where((e)=>e.trim().isNotEmpty).toList();
-  return (lines.length<=maxLines?lines:lines.sublist(lines.length-maxLines)).join('\n');
+  final limit=maxLines.clamp(1,50).toInt();
+  return (lines.length<=limit?lines:lines.sublist(lines.length-limit)).join('\n');
  }
 }
