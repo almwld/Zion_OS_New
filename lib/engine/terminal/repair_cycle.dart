@@ -6,6 +6,7 @@ import 'command_policy.dart';
 import 'error_classifier.dart';
 import 'path_policy.dart';
 import 'workflow_observability.dart';
+import 'output_truncator.dart';
 
 class RepairAttempt {
   const RepairAttempt({required this.cycle,required this.error,required this.strategy,this.diagnosticOutput=const [],this.repairOutput=const [],required this.verified,this.failureReason});
@@ -27,7 +28,7 @@ class RepairResult {
 }
 
 class RepairCycle {
-  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel});
+  RepairCycle({required this.terminal,required this.classifier,required this.commandPolicy,required this.pathPolicy,required this.approvalGate,required this.audit,required this.events,required this.taskIdProvider,this.cancel,OutputTruncator? truncator}) : truncator=truncator??const OutputTruncator();
   final TerminalService terminal;
   final ErrorClassifier classifier;
   final CommandPolicy commandPolicy;
@@ -37,9 +38,10 @@ class RepairCycle {
   final AgentEventBus events;
   final String Function() taskIdProvider;
   final CancellationToken? cancel;
+  final OutputTruncator truncator;
 
   Future<RepairResult> run({required String taskId,required String failedCommand,required String stdout,required String stderr,required int exitCode,int maxCycles=3,CancellationToken? cancel}) async {
-    var out=stdout,err=stderr,code=exitCode;
+    var out=truncator.truncate(stdout),err=truncator.truncate(stderr),code=exitCode;
     final attempts=<RepairAttempt>[];
     final cap=maxCycles.clamp(1,3).toInt();
     for(var cycle=1;cycle<=cap;cycle++){
@@ -66,7 +68,7 @@ class RepairCycle {
           final text=[result.stdout,result.stderr].where((s)=>s.isNotEmpty).join('\n');
           diagnostics.add(text);
           await audit.record(taskId:taskId,action:'diagnostic',command:command,phase:'repairing',approved:false,exitCode:result.exitCode,outputSize:text.length);
-        }catch(e){diagnostics.add('تعذر التشخيص: $e');}
+        }catch(e){diagnostics.add('تعذر التشخيص: $e');await audit.record(taskId:taskId,action:'diagnostic_error',command:command,phase:'repairing',approved:false,error:e.toString());}
       }
       events.emit(WorkflowEvent(taskId:taskId,type:'diagnostic',message:'اكتمل التشخيص للدورة $cycle',data:{'output':diagnostics},timestamp:DateTime.now()));
       final repairs=<String>[];
@@ -83,17 +85,18 @@ class RepairCycle {
       try{
         final verify=await terminal.executeInInteractive(failedCommand,timeout:const Duration(seconds:60));
         final verified=verify.exitCode==0;
-        final attempt=RepairAttempt(cycle:cycle,error:error,strategy:strategy,diagnosticOutput:diagnostics,repairOutput:repairs,verified:verified,failureReason:verified?null:verify.stderr);
+        final attempt=RepairAttempt(cycle:cycle,error:error,strategy:strategy,diagnosticOutput:diagnostics,repairOutput:repairs,verified:verified,failureReason:verified?null:truncator.truncate(verify.stderr));
         attempts.add(attempt);
         await audit.record(taskId:taskId,action:'verify',command:failedCommand,phase:'repairing',approved:false,exitCode:verify.exitCode,error:verify.stderr,outputSize:verify.stdout.length);
         if(verified){
           events.emit(WorkflowEvent(taskId:taskId,type:'verified',message:'نجح التحقق بعد الدورة $cycle',data:{'output':verify.stdout},timestamp:DateTime.now()));
-          return RepairResult(success:true,cyclesUsed:cycle,finalOutput:verify.stdout,attempts:attempts);
+          return RepairResult(success:true,cyclesUsed:cycle,finalOutput:truncator.truncate(verify.stdout),attempts:attempts);
         }
         events.emit(WorkflowEvent(taskId:taskId,type:'verification_failed',message:'فشل التحقق في الدورة $cycle',data:{'stderr':verify.stderr},timestamp:DateTime.now()));
-        out=verify.stdout;err=verify.stderr;code=verify.exitCode;
+        out=truncator.truncate(verify.stdout);err=truncator.truncate(verify.stderr);code=verify.exitCode;
       }catch(e){return RepairResult.failure('تعذر تنفيذ التحقق: $e',cyclesUsed:cycle,attempts:attempts);}
     }
+    events.emit(WorkflowEvent(taskId:taskId,type:'cycle_limit',message:'تم بلوغ حد الإصلاح $cap.',data:{'attempts':attempts.length},timestamp:DateTime.now()));
     await approvalGate.request(ApprovalRequest(id:'$taskId-cycle-limit',taskId:taskId,action:'وصل الإصلاح إلى حد $cap دورات فاشلة؛ هل تريد مراجعة الحالة؟',risk:'متوسط',details:{'command':failedCommand,'attempts':attempts.length},createdAt:DateTime.now()));
     return RepairResult.failure('فشلت $cap دورات إصلاح؛ توقف الوكيل بعد الحد المسموح.',cyclesUsed:cap,attempts:attempts);
   }
