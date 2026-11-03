@@ -49,10 +49,28 @@ class CostTracker {
     );
   }
 
-  List<Map<String, Object?>> summary() {
-    return database.select(
-      'SELECT provider, model, COUNT(*) AS requests, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, CASE WHEN COUNT(cost_usd)=COUNT(*) THEN SUM(cost_usd) ELSE NULL END AS cost_usd FROM ai_usage GROUP BY provider,model ORDER BY requests DESC',
-    ).map((row) => Map<String, Object?>.from(row)).toList(growable: false);
+  List<Map<String, Object?>> summary({String? taskId}) {
+    const columns = '''
+      provider,
+      model,
+      COUNT(*) AS requests,
+      SUM(input_tokens) AS input_tokens,
+      SUM(output_tokens) AS output_tokens,
+      SUM(estimated) AS estimated_requests,
+      SUM(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unknown_cost_requests,
+      CASE WHEN COUNT(cost_usd)=COUNT(*) THEN SUM(cost_usd) ELSE NULL END AS cost_usd
+    ''';
+    final rows = taskId == null
+        ? database.select(
+            'SELECT $columns FROM ai_usage GROUP BY provider,model ORDER BY requests DESC',
+          )
+        : database.select(
+            'SELECT $columns FROM ai_usage WHERE task_id = ? GROUP BY provider,model ORDER BY requests DESC',
+            [taskId],
+          );
+    return rows
+        .map((row) => Map<String, Object?>.from(row))
+        .toList(growable: false);
   }
 
   void clear() => database.execute('DELETE FROM ai_usage');
