@@ -156,7 +156,8 @@ class AgentOrchestrator {
         }
         cancellationToken?.throwIfCancelled();
         results.add(r);
-        final stepRole = RoleProfile.forRole(AgentRole.executor);
+        final stepRole = RoleProfile.forStep(step);
+        _log('الدور المتخصص للخطوة ${step.id}: ${stepRole.name}');
         final roleEvaluation = _roleEvaluator.evaluateStep(role: stepRole, step: step, result: r);
         _log('تقييم ${stepRole.name}: ${roleEvaluation.score}/100 — ${roleEvaluation.feedback}');
         await memory.remember(
@@ -565,11 +566,20 @@ ${jsonEncode(relevantMemory)}
       final summary = entry.value.summary.length > 120 ? entry.value.summary.substring(0, 120) : entry.value.summary;
       return 'الخطوة ${entry.key + 1}: ${entry.value.success ? 'نجاح' : 'فشل'}؛ $summary؛ ${output.length > 280 ? output.substring(0, 280) : output}';
     }).join('\\n');
-    final skillContext = await _skillLibrary.contextFor('${failedStep.description} $error', maxSkills: 2, maxCharsPerSkill: 200, maxTotalChars: 340);
-    final knowledgeContext = await _knowledgeIndex.contextFor('${failedStep.description} $error', maxEntries: 2, maxTotalChars: 260);
+    final recoveryRole = failedStep.permission == AgentPermission.localWrite || failedStep.permission == AgentPermission.externalSideEffect
+        ? RoleProfile.forRole(AgentRole.coder)
+        : RoleProfile.forRole(AgentRole.analyst);
+    final selectedSkills = await _skillSelector.select(
+      role: recoveryRole,
+      task: '${failedStep.description} $error',
+      hints: [failedStep.tool],
+      maxChars: 600,
+    );
+    final skillContext = selectedSkills.skillContext;
+    final knowledgeContext = selectedSkills.knowledgeContext;
     late final String response;
     response = await _generateModel(
-        'تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
+        'أنت الآن في دور ${recoveryRole.name}. ${recoveryRole.systemPrompt} تعذرت خطوة في مهمة Zion Super Agent. افحص الخطأ والنتائج الفعلية، ثم اقترح بديلاً عملياً واحداً لا يعيد الخطوة نفسها دون تغيير. '
         'المهمة الفاشلة: ${failedStep.description}\nالأداة: ${failedStep.tool}\nالخطأ: $error\n'
         'المهارات ذات الصلة:\\n$skillContext\\nالمعرفة المحلية:\\n$knowledgeContext\\n'
         'النتائج السابقة الفعلية:\n$context\n'
