@@ -750,6 +750,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
   Widget _buildToolbar() => Container(
     height: 42, color: _palette.surface,
     child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      _toolbarButton(Icons.stop_circle_outlined, 'Ctrl+C — إيقاف الأمر الجاري', () => _sendControl('C')),
       _toolbarButton(Icons.copy, 'نسخ المخرجات', _copyOutput),
       _toolbarButton(Icons.content_paste, 'لصق', _paste),
       _toolbarButton(Icons.clear_all, 'مسح الشاشة', _clear),
