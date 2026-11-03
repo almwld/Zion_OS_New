@@ -18,6 +18,7 @@ import 'memory/memory_layer.dart';
 import 'memory/memory_retriever.dart';
 import 'memory/memory_store.dart';
 import 'providers/provider_selector.dart';
+import 'usage/cost_tracker.dart';
 import 'recovery/recovery_engine.dart';
 import 'recovery/repair_loop.dart';
 import 'state/task_state_store.dart';
@@ -40,7 +41,7 @@ class EngineTaskResult {
 class ZionEngine {
  final EngineConfig config;final ProviderSelector providers;final Database database;
  final GitHubClient? github;final ApprovalGate approvals;final TaskStateStore states;final MemoryStore memory;
- final AgentEnvironment environment;final bool terminalLease;
+ final AgentEnvironment environment;final bool terminalLease;late final CostTracker usage;
  final Map<String,AgentTool> _tools={};final _events=StreamController<EngineEvent>.broadcast();
  bool _initialized=false,_disposed=false;
  BuildMonitor? _buildMonitor;RepairLoop? _repairLoop;
@@ -52,7 +53,7 @@ class ZionEngine {
 
  Future<void> init()async{
   if(_disposed)throw StateError('المحرك مغلق');if(_initialized)return;
-  await states.init();await memory.init();
+  await states.init();await memory.init();usage.initialize();
   await environment.prepareSandbox();
   _register(TerminalTool(environment));_register(PythonTool(environment));
   _register(FileTool(environment));_register(ProcessControlTool(environment));_register(EnvironmentStatusTool(environment));
@@ -94,7 +95,23 @@ ${_tools.values.map((t)=>'${t.name}: ${t.description}; parameters=${t.parameters
     final memoryContext=MemoryRetriever(memory).buildContext(goal,limit:10);
     final history=results.map(jsonEncode).join('\n');
     final prompt='الهدف: $goal\nالسياق: $context\nالذاكرة ذات الصلة:\n$memoryContext\nنتائج التنفيذ:\n$history\nأخرج JSON للخطوة التالية أو التقرير النهائي.';
-    final raw=await providers.current.generate(prompt:prompt,systemPrompt:system,maxTokens:config.maxTokensPerStep,temperature:0.1);
+    final generation=await providers.generateTracked(
+      prompt:prompt,
+      systemPrompt:system,
+      maxTokens:config.maxTokensPerStep,
+      temperature:0.1,
+    );
+    usage.record(UsageRecord(
+      taskId:id,
+      provider:generation.provider,
+      model:generation.model,
+      inputTokens:generation.inputTokens,
+      outputTokens:generation.outputTokens,
+      estimated:generation.tokenCountsEstimated,
+      costUsd:providers.currentMode==EngineMode.local?0.0:null,
+      createdAt:DateTime.now().millisecondsSinceEpoch,
+    ));
+    final raw=generation.text;
     final decision=_parse(raw);
     if(decision['type']=='final'){
      var success=decision['success']==true;var report=decision['report']?.toString()??'انتهت المهمة دون تقرير';
