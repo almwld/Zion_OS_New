@@ -10,6 +10,8 @@ import 'package:sqlite3/sqlite3.dart';
 import '../../engine/terminal/autocomplete/command_dictionary.dart';
 import '../../engine/terminal/autocomplete/command_history.dart';
 import '../../engine/terminal/autocomplete/completion_engine.dart';
+import '../../engine/terminal/autocomplete/suggestion_engine.dart';
+import '../../engine/terminal/autocomplete/context_provider.dart';
 import '../../engine/approval/approval_gate.dart';
 import '../../engine/terminal/terminal_workflow.dart';
 import '../../engine/terminal/workflow_state.dart';
@@ -77,6 +79,8 @@ class _TerminalScreenState extends State<TerminalScreen> {
   CommandHistory? _commandHistory;
   CompletionEngine? _completionEngine;
   List<Completion> _completionItems = <Completion>[];
+  SuggestionEngine? _suggestionEngine;
+  List<Suggestion> _suggestionItems = <Suggestion>[];
   bool _showAgentCommandBar = false;
   TerminalWorkflow? _terminalWorkflow;
   ApprovalGate? _workflowApprovalGate;
@@ -106,12 +110,16 @@ class _TerminalScreenState extends State<TerminalScreen> {
       final directory = await getApplicationSupportDirectory();
       final database = sqlite3.open('${directory.path}/zion_terminal_history.sqlite3');
       final history = CommandHistory(database)..init();
-      final engine = CompletionEngine(dictionary: CommandDictionary(), history: history);
+      final dictionary = CommandDictionary();
+      final contextProvider = ContextProvider();
+      final engine = CompletionEngine(dictionary: dictionary, history: history, context: contextProvider);
+      final suggestions = SuggestionEngine(history: history, dictionary: dictionary, context: contextProvider);
       if (!mounted) { database.dispose(); return; }
       setState(() {
         _autocompleteDatabase = database;
         _commandHistory = history;
         _completionEngine = engine;
+        _suggestionEngine = suggestions;
       });
       final activeTab = _selectedTab;
       if (activeTab != null) _initializeWorkflowFor(activeTab.service);
@@ -157,6 +165,38 @@ class _TerminalScreenState extends State<TerminalScreen> {
       ),
     );
     gate.respond(request.id, approved: approved == true, reason: approved == true ? null : 'رفض المستخدم.');
+  }
+
+  Future<void> _refreshSuggestions() async {
+    final engine = _suggestionEngine;
+    if (engine == null) return;
+    try {
+      final items = await engine.suggest(limit: 5);
+      if (mounted) setState(() => _suggestionItems = items);
+    } catch (_) {}
+  }
+
+  Future<void> _showErrorSuggestion(String command, String error) async {
+    final engine = _suggestionEngine;
+    if (engine == null) return;
+    final fixes = await engine.suggestFix(command, error);
+    if (fixes.isEmpty || !mounted) return;
+    final selected = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('اقتراح تصحيح'),
+        content: Text('هل تقصد: ${fixes.first.command}؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('لا')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('نعم')),
+        ],
+      ),
+    );
+    if (selected == true && mounted) {
+      _agentCommandController.text = fixes.first.command;
+      _agentCommandController.selection = TextSelection.collapsed(offset: _agentCommandController.text.length);
+      await _refreshCompletions(_agentCommandController.text);
+    }
   }
 
   Future<void> _refreshCompletions(String value) async {
@@ -206,6 +246,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _agentCommandController.clear();
       setState(() => _completionItems = <Completion>[]);
       _showTerminalNotice(result.success ? 'اكتمل الأمر عبر سير العمل الآمن.' : (result.error ?? 'فشل تنفيذ الأمر.'));
+      if (!result.success) await _showErrorSuggestion(command, result.error ?? '');
     } catch (error) {
       _showTerminalNotice('تعذر تنفيذ الأمر: $error');
     }
@@ -687,7 +728,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
       _toolbarButton(Icons.palette_outlined, 'الثيم', _showThemeSelector),
       _toolbarButton(Icons.settings_outlined, 'الإعدادات', _showSettings),
       _toolbarButton(Icons.bolt, 'الأوامر السريعة', () => setState(() => _showQuickCommands = !_showQuickCommands)),
-      _toolbarButton(Icons.auto_fix_high, 'الإكمال الذكي للطرفية', () => setState(() => _showAgentCommandBar = !_showAgentCommandBar)),
+      _toolbarButton(Icons.auto_fix_high, 'الإكمال الذكي للطرفية', () { setState(() => _showAgentCommandBar = !_showAgentCommandBar); if (_showAgentCommandBar) unawaited(_refreshSuggestions()); }),
       _toolbarButton(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, 'ملء الشاشة', () => unawaited(_toggleFullscreen())),
     ])),
   );
@@ -728,6 +769,22 @@ class _TerminalScreenState extends State<TerminalScreen> {
               onChanged: _refreshCompletions,
               onSubmitted: _submitAgentCommand,
             ),
+            if (_agentCommandController.text.isEmpty && _suggestionItems.isNotEmpty)
+              SizedBox(
+                height: 42,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: _suggestionItems.map((item) => Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 6, top: 5),
+                    child: ActionChip(
+                      label: Text(item.command, style: TextStyle(color: _palette.foreground, fontSize: 11)),
+                      avatar: Icon(Icons.bolt, size: 14, color: _palette.accent),
+                      backgroundColor: _palette.background,
+                      onPressed: () { _agentCommandController.text = item.command; _agentCommandController.selection = TextSelection.collapsed(offset: item.command.length); unawaited(_refreshCompletions(item.command)); },
+                    ),
+                  )).toList(),
+                ),
+              ),
             if (_completionItems.isNotEmpty)
               SizedBox(
                 height: 42,
