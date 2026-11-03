@@ -63,7 +63,8 @@ class TerminalWorkflow {
     final tools=<String,String>{};
     for(final command in commands){
       final policy=commandPolicy.check(command);
-      if(!policy.allowed||!await pathPolicy.checkAsync(command).allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??'مسار مرفوض',126);continue;}
+      final path=await pathPolicy.checkAsync(command);
+      if(!policy.allowed||!path.allowed){outputs.add('$command: مرفوض');await audit.record(taskId:_activeTaskId,action:'recon_rejected',command:command,phase:'recon',approved:false,error:policy.reason??path.reason??'مسار مرفوض');await _persistRecon(command,'',policy.reason??path.reason??'مسار مرفوض',126);continue;}
       try{
         final execution=environmentRouter==null?null:await environmentRouter!.route(command);
         final result=await terminal.executeInInteractive(command,timeout:execution?.timeout??const Duration(seconds:10),runtime:execution?.runtimeName??'auto');
