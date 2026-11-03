@@ -217,8 +217,8 @@ class AgentOrchestrator {
             if (!alternativeRole.allowsTool(alt.tool) ||
                 alternativeRoleSteps >= alternativeRole.maxSteps) {
               _log('تم رفض البديل قبل التنفيذ: الأداة خارج نطاق دور ${alternativeRole.name} أو تجاوز حد خطواته.');
-              break;            }
-            final d = policy.evaluate(tool: alt.tool, params: altParams);
+              break;
+            }            final d = policy.evaluate(tool: alt.tool, params: altParams);
             if (d.risk == AgentRisk.blocked || alt.risk == AgentRisk.blocked) {
               _log('تم حظر خطة الاستعادة بواسطة سياسة الأمان.');
               break;
@@ -437,8 +437,7 @@ class AgentOrchestrator {
         if (entry.metadata['tool'] != null) 'tool': entry.metadata['tool'],
         if (entry.metadata['success'] != null) 'success': entry.metadata['success'],
       },
-    }).toList(growable: false);
-    final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
+    }).toList(growable: false);    final rankedKnowledge = await _knowledgeIndex.rank(task, limit: 4);
     final knowledgeHints = rankedKnowledge.expand((entry) => <String>[
       entry.title,
       entry.domain,
@@ -446,7 +445,8 @@ class AgentOrchestrator {
     ]).toList(growable: false);
     // Cross-feed knowledge hits into procedural skill discovery so the two
     // offline indexes reinforce one another instead of ranking independently.
-    final selectedSkills = await _skillSelector.select(      role: RoleProfile.forRole(AgentRole.planner),
+    final selectedSkills = await _skillSelector.select(
+      role: RoleProfile.forRole(AgentRole.planner),
       task: task,
       hints: knowledgeHints,
       maxChars: 1150,
@@ -657,15 +657,15 @@ ${jsonEncode(relevantMemory)}
         'المهارات ذات الصلة:\\n$skillContext\\nالمعرفة المحلية:\\n$knowledgeContext\\n'
         'النتائج السابقة الفعلية:\n$context\n'
         'الأدوات ومعاملاتها المتاحة: ${jsonEncode(toolCatalog)}\n'
-        'استخدم الأدوات المحلية المتاحة المناسبة للمهمة ومفاتيحها الصحيحة. لا تختلق نتائج ولا تتجاوز موافقات Android أو صلاحيات root التي يطلبها النظام. '
-        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
+        'استخدم الأدوات المحلية المتاحة المناسبة للمهمة ومفاتيحها الصحيحة. لا تختلق نتائج ولا تتجاوز موافقات Android أو صلاحيات root التي يطلبها النظام. '        'إذا تعذر إيجاد بديل آمن فأعد {"steps":[]} . أعد JSON فقط.',
         maxTokens: 512,
         temperature: 0.1,
         cancellationToken: cancellationToken,
       );
     if (response.trim().isEmpty || response.startsWith('ERROR:')) {
       _log('تعذر الحصول على خطة إصلاح من النموذج المحلي: ${response.trim()}');
-      return null;    }
+      return null;
+    }
     final plan = _parsePlan(response, task: 'استعادة: ${failedStep.description}');
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
