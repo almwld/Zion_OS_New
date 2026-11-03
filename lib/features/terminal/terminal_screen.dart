@@ -151,7 +151,7 @@ class _TerminalScreenState extends State<TerminalScreen> {
         pathPolicy: PathPolicy(),
       ),
     );
-    _approvalSubscription = gate.requests.listen((request) {
+    _approvalSubscription ??= gate.requests.listen((request) {
       unawaited(_handleWorkflowApproval(request, gate));
     });
   }
@@ -365,8 +365,6 @@ class _TerminalScreenState extends State<TerminalScreen> {
         // Coalesce bursty PTY chunks so the overlay updates without rebuilding
         // the whole terminal for every byte.
         _arabicOverlayRefreshTimer?.cancel();
-    _agentCommandController.dispose();
-    _autocompleteDatabase?.dispose();
         _arabicOverlayRefreshTimer = Timer(const Duration(milliseconds: 120), () {
           if (mounted) setState(() {});
         });
@@ -1175,6 +1173,9 @@ $request''',
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _arabicOverlayRefreshTimer?.cancel();
+    unawaited(_approvalSubscription?.cancel());
+    _agentCommandController.dispose();
+    _autocompleteDatabase?.dispose();
     if (_isFullscreen) unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     unawaited(_ai.unloadModel());
     for (final tab in _tabs) {
