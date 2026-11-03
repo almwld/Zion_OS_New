@@ -104,7 +104,8 @@ class TerminalWorkflow {
       final cleaned = Map<String,dynamic>.from(state.context)
         ..remove('inFlightCommand')
         ..remove('inFlightCommandIndex')
-        ..remove('pendingRepairCommand');
+        ..remove('pendingRepairCommand')
+        ..remove('pendingRepairIndex');
       state = state.copyWith(phase:WorkflowPhase.paused,context:cleaned,nextCommandIndex:retryIndex);
       await stateStore.save(state);
     }
