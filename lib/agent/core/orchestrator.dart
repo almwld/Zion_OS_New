@@ -217,8 +217,7 @@ class AgentOrchestrator {
             if (!alternativeRole.allowsTool(alt.tool) ||
                 alternativeRoleSteps >= alternativeRole.maxSteps) {
               _log('تم رفض البديل قبل التنفيذ: الأداة خارج نطاق دور ${alternativeRole.name} أو تجاوز حد خطواته.');
-              break;
-            }
+              break;            }
             final d = policy.evaluate(tool: alt.tool, params: altParams);
             if (d.risk == AgentRisk.blocked || alt.risk == AgentRisk.blocked) {
               _log('تم حظر خطة الاستعادة بواسطة سياسة الأمان.');
@@ -415,7 +414,17 @@ class AgentOrchestrator {
 
   Future<AgentPlan> _createPlan(String task, {CancellationToken? cancellationToken}) async {
     final injectedPlanBuilder = planBuilder;
-    if (injectedPlanBuilder != null) return injectedPlanBuilder(task);
+    if (injectedPlanBuilder != null) {
+      final injectedPlan = injectedPlanBuilder(task);
+      // Injected planners (including deterministic/offline integrations) may
+      // omit AgentPlan.task because the task is already supplied separately.
+      // Normalize it before structural evaluation so valid plans are not
+      // silently rejected and the orchestrator does not fall back to idle.
+      return AgentPlan(
+        task: injectedPlan.task.trim().isEmpty ? task : injectedPlan.task,
+        steps: injectedPlan.steps,
+      );
+    }
     await memory.load();
     // Keep input within the native 2048-token context so both planning
     // and recovery remain reliable on-device. The local model still authors
@@ -437,8 +446,7 @@ class AgentOrchestrator {
     ]).toList(growable: false);
     // Cross-feed knowledge hits into procedural skill discovery so the two
     // offline indexes reinforce one another instead of ranking independently.
-    final selectedSkills = await _skillSelector.select(
-      role: RoleProfile.forRole(AgentRole.planner),
+    final selectedSkills = await _skillSelector.select(      role: RoleProfile.forRole(AgentRole.planner),
       task: task,
       hints: knowledgeHints,
       maxChars: 1150,
@@ -657,8 +665,7 @@ ${jsonEncode(relevantMemory)}
       );
     if (response.trim().isEmpty || response.startsWith('ERROR:')) {
       _log('تعذر الحصول على خطة إصلاح من النموذج المحلي: ${response.trim()}');
-      return null;
-    }
+      return null;    }
     final plan = _parsePlan(response, task: 'استعادة: ${failedStep.description}');
     return plan?.steps.isNotEmpty == true ? plan!.steps.first : null;
   }
