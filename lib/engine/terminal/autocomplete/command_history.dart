@@ -30,7 +30,7 @@ class CommandHistory {
     final rows=db.select('SELECT command,frequency,last_used,exit_code FROM command_history ORDER BY frequency DESC,last_used DESC LIMIT 500');
     final entries=rows.map(_entry).toList();
     final ranked=FuzzyMatcher.suggest(partial,entries.map((e)=>e.command).toList(),maxDistance:3);
-    return ranked.take(limit.clamp(1,50)).map((c)=>entries.firstWhere((e)=>e.command==c)).toList();
+    return ranked.take(limit.clamp(1,50).toInt()).map((c)=>entries.firstWhere((e)=>e.command==c)).toList();
   }
   HistoryEntry _entry(Row r)=>HistoryEntry(command:r['command'] as String,frequency:r['frequency'] as int,lastUsed:DateTime.fromMillisecondsSinceEpoch(r['last_used'] as int),exitCode:r['exit_code'] as int);
   String _escape(String value)=>value.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_');
