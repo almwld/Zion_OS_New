@@ -14,7 +14,7 @@ class RepairLoop {
  final GitHubClient github;final BuildMonitor monitor;final AIProvider Function() provider;
  RepairLoop({required this.config,required this.recovery,required this.approvals,required this.github,required this.monitor,required this.provider});
  Future<RepairOutcome> run({required String taskId,required String owner,required String repo,required String branch,required String goal,required String failure,required String logs})async{
-  var reason=failure;final max=config.maxRepairCycles.clamp(0,5);
+  var reason=failure;final max=config.maxRepairCycles.clamp(0,5).toInt();
   for(var cycle=1;cycle<=max;cycle++){
    final suggestion=await recovery.suggest(goal:goal,failure:reason,logs:logs,context:{'owner':owner,'repo':repo,'branch':branch,'cycle':cycle});
    final approval=await approvals.request(ApprovalRequest(id:'$taskId-repair-$cycle',taskId:taskId,
