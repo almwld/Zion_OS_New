@@ -35,7 +35,7 @@ class CostTracker {
 
   void record(UsageRecord item) {
     database.execute(
-      'INSERT INTO ai_usage(task_id,provider,model,input_tokens,output_tokens,estimated,cost_usd,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO ai_usage(task_id,provider,model,input_tokens,output_tokens,estimated,cost_usd,created_at) VALUES(?,?,?,?,?,?,?,?)',
       [
         item.taskId,
         item.provider,
