@@ -10,6 +10,7 @@ import 'tools/execution/file_tool.dart';
 import 'tools/execution/python_tool.dart';
 import 'tools/execution/process_control_tool.dart';
 import 'tools/execution/terminal_tool.dart';
+import 'tools/execution/environment_status_tool.dart';
 import 'approval/approval_gate.dart';
 import 'config/engine_config.dart';
 import 'config/engine_mode.dart';
@@ -54,7 +55,7 @@ class ZionEngine {
   await states.init();await memory.init();
   await environment.prepareSandbox();
   _register(TerminalTool(environment));_register(PythonTool(environment));
-  _register(FileTool(environment));_register(ProcessControlTool(environment));
+  _register(FileTool(environment));_register(ProcessControlTool(environment));_register(EnvironmentStatusTool(environment));
   if(github!=null){
    _buildMonitor=BuildMonitor(github!,interval:config.buildPollInterval,timeout:config.buildTimeout);
    _register(GitHubReadTool(github!));_register(GitHubWriteTool(github!));_register(BuildMonitorTool(_buildMonitor!));
