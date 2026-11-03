@@ -24,7 +24,14 @@ class EnvironmentRouter {
       );
     }
 
-    final report = _cachedReport ??= await detector.report();
+    var report = _cachedReport ??= await detector.report();
+    final zionHasTools = report.zionReady &&
+        _hasRequiredTools(report, 'zion', metadata.requiredTools);
+    if (!zionHasTools &&
+        report.kaliReady == null &&
+        metadata.requiredTools.isNotEmpty) {
+      report = _cachedReport = await detector.report(probeKali: true);
+    }
     final preferred = metadata.preferredRuntime;
 
     if (selection == EnvironmentSelection.zionOnly) {
