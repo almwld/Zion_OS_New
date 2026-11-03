@@ -61,7 +61,7 @@ class RepairCycle {
       final diagnostics=<String>[];
       for(final command in strategy.diagnosticCommands){
         (cancel ?? this.cancel)?.throwIfCancelled();
-        final policy=commandPolicy.check(command),path=pathPolicy.check(command);
+        final policy=commandPolicy.check(command),path=await pathPolicy.checkAsync(command);
         if(!policy.allowed||!path.allowed){diagnostics.add('مرفوض: ${policy.reason??path.reason}');continue;}
         try{
           final result=await terminal.executeInInteractive(command,timeout:const Duration(seconds:10));
@@ -80,7 +80,7 @@ class RepairCycle {
         repairs.add('تمت الموافقة؛ لم يُنفذ أمر نظامي غير مدرج في سياسة التنفيذ.');
       }
       events.emit(WorkflowEvent(taskId:taskId,type:'repair',message:'تقييم الإصلاح: ${strategy.description}',data:{'output':repairs},timestamp:DateTime.now()));
-      final verifyPolicy=commandPolicy.check(failedCommand),verifyPath=pathPolicy.check(failedCommand);
+      final verifyPolicy=commandPolicy.check(failedCommand),verifyPath=await pathPolicy.checkAsync(failedCommand);
       if(!verifyPolicy.allowed||!verifyPath.allowed)return RepairResult.failure('تعذر إعادة التحقق لأن الأمر غير مسموح: ${verifyPolicy.reason??verifyPath.reason}',cyclesUsed:cycle,attempts:attempts);
       try{
         final verify=await terminal.executeInInteractive(failedCommand,timeout:const Duration(seconds:60));
