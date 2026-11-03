@@ -6,7 +6,6 @@ import '../tools/tool_registry.dart';
 import 'agent_models.dart';
 import 'agent_policy.dart';
 import 'cancellation_token.dart';
-import '../skills/agent_skill_library.dart';
 import '../skills/agent_knowledge_index.dart';
 import 'role_profile.dart';
 import 'role_sequencer.dart';
@@ -19,7 +18,6 @@ class AgentOrchestrator {
   final LongTermAIMemory memory;
   final LlamaService ai;
   final AgentPlan Function(String task)? planBuilder;
-  final AgentSkillLibrary _skillLibrary = AgentSkillLibrary();
   final AgentKnowledgeIndex _knowledgeIndex = AgentKnowledgeIndex();
   final SkillSelector _skillSelector = SkillSelector();
   final RoleEvaluator _roleEvaluator = const RoleEvaluator();
@@ -260,7 +258,7 @@ class AgentOrchestrator {
 
       final verifierHandoff = roleSequence.advance(context: {'completedSteps': results.length, 'successfulSteps': results.where((item) => item.success).length}, reason: 'انتهاء التنفيذ والانتقال للتحقق');
       _log('تسليم ${verifierHandoff.from.name} → ${verifierHandoff.to.name}');
-      final verification = results.isNotEmpty && results.every((item) => item.success);
+      final verification = results.isNotEmpty && results.last.success;
       if (!verification) {
         _state = AgentState.failed;
         return AgentResult(success: false, task: clean, steps: results, error: 'لم تجتز النتائج التحقق النهائي.');
