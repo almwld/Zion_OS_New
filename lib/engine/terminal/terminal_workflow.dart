@@ -89,7 +89,7 @@ class TerminalWorkflow {
   }
 
   Future<WorkflowResult> resume(String taskId, {bool retryInterruptedCommand = false}) async {
-    final state=await stateStore.load(taskId);
+    var state=await stateStore.load(taskId);
     if(state==null)return WorkflowResult.failure('لا توجد مهمة محفوظة بالمعرّف $taskId.');
     if(state.phase==WorkflowPhase.completed)return WorkflowResult(success:true,finalOutput:state.commands.map((c)=>c.stdout).join('\n'));
     if(state.phase==WorkflowPhase.failed)return WorkflowResult.failure('المهمة محفوظة بحالة فشل.');
