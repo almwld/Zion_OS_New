@@ -138,7 +138,7 @@ class PathPolicy {
             await FileSystemEntity.type(candidate, followLinks: false);
         if (type != FileSystemEntityType.notFound) {
           final resolved =
-              await FileSystemEntity.resolveSymbolicLinks(candidate);
+              await File(candidate).resolveSymbolicLinks();
           return suffix.isEmpty
               ? resolved
               : '$resolved/${suffix.reversed.join('/')}';
