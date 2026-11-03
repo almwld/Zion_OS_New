@@ -85,6 +85,9 @@ class ZionLocalKaliBootstrap {
     await downloads.create(recursive: true);
     await userland.create(recursive: true);
     await ZionLocalKaliConfig.logs(filesDir).create(recursive: true);
+    Directory? stagingRootfs;
+    File? importedArchive;
+    File? decompressedTar;
 
     void progress(ZionKaliInstallState state, int percent, String message) {
       onProgress?.call(ZionKaliProgress(state, percent.clamp(0, 100), message));
@@ -124,6 +127,7 @@ class ZionLocalKaliBootstrap {
       final internal = File(
         '${downloads.path}/import-${DateTime.now().microsecondsSinceEpoch}-$safeName',
       );
+      importedArchive = internal;
       progress(ZionKaliInstallState.copying, 0,
           'نسخ حزمة Kali إلى مساحة Zion الخاصة...');
       var copied = false;
@@ -205,10 +209,12 @@ class ZionLocalKaliBootstrap {
         targetRootfs.path + '.staging-' +
             DateTime.now().microsecondsSinceEpoch.toString(),
       );
+      stagingRootfs = rootfs;
       await rootfs.create(recursive: true);
 
       progress(ZionKaliInstallState.decompressing, 10, 'التعرف على صيغة الأرشيف وفك الضغط...');
       final tarPath = '${downloads.path}/kali-import-${DateTime.now().microsecondsSinceEpoch}.tar';
+      decompressedTar = File(tarPath);
       final isZip = await _prepareArchiveForExtraction(internal, File(tarPath));
       progress(ZionKaliInstallState.decompressing, 100, 'اكتمل تجهيز الأرشيف.');
 
@@ -343,6 +349,11 @@ class ZionLocalKaliBootstrap {
       progress(ZionKaliInstallState.ready, 100, 'Kali جاهز للتشغيل.');
       return ZionKaliInstallResult.success(targetRootfs);
     } catch (e) {
+      // Remove incomplete import artifacts. The active rootfs is untouched
+      // until the staged archive passes all Kali and ARM64 checks.
+      try { if (stagingRootfs != null && await stagingRootfs.exists()) await stagingRootfs.delete(recursive: true); } catch (_) {}
+      try { if (importedArchive != null && await importedArchive.exists()) await importedArchive.delete(); } catch (_) {}
+      try { if (decompressedTar != null && await decompressedTar.exists()) await decompressedTar.delete(); } catch (_) {}
       await _saveState(filesDir, 'ERROR', extra: <String, Object>{'error': e.toString()});
       return ZionKaliInstallResult.failure(e);
     }
