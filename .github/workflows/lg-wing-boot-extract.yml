@@ -1,0 +1,213 @@
+name: Extract LG Wing F100EMW boot.img
+
+on:
+  workflow_dispatch:
+    inputs:
+      firmware_url:
+        description: "Optional direct KDZ download URL (must not require CAPTCHA/login). Leave blank to use firmware/F100EMW.kdz committed/uploaded to the repository."
+        required: false
+        type: string
+      expected_kernel:
+        description: "Kernel release expected in boot.img"
+        required: true
+        default: "4.19.157-perf+"
+        type: string
+  push:
+    paths:
+      - "firmware/F100EMW.kdz"
+      - ".github/workflows/lg-wing-boot-extract.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lg-wing-boot-extract-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract-boot:
+    name: Download / extract / verify boot image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      KDZ_NAME: F100EMW.kdz
+      EXPECTED_KERNEL: ${{ inputs.expected_kernel || '4.19.157-perf+' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove large preinstalled SDK/tool caches to make room for KDZ + extracted partitions.
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL /usr/share/dotnet 2>/dev/null || true
+          sudo apt-get clean
+          df -h /
+          available_kib=$(df -Pk / | awk 'NR==2 {print $4}')
+          available_gib=$((available_kib / 1024 / 1024))
+          echo "Available disk: ${available_gib} GiB"
+          if (( available_gib < 14 )); then
+            echo "::error::Runner has less than 14 GiB free; refusing to start firmware extraction."
+            exit 1
+          fi
+
+      - name: Download KDZ from supplied direct URL or use uploaded file
+        shell: bash
+        env:
+          FIRMWARE_URL: ${{ inputs.firmware_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p firmware work output
+          if [[ -n "${FIRMWARE_URL//[[:space:]]/}" ]]; then
+            case "$FIRMWARE_URL" in
+              *lg-firmwares.com*|*lgfirmwares.com*)
+                echo "::error::lg-firmwares.com requires CAPTCHA and is intentionally not used by Actions. Supply a genuine direct-download URL or upload the KDZ."
+                exit 2
+                ;;
+            esac
+            echo "Downloading KDZ from the supplied direct URL (no credentials/CAPTCHA automation)."
+            curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 \
+              --max-time 21600 --continue-at - "$FIRMWARE_URL" --output "firmware/$KDZ_NAME"
+          elif [[ -f "firmware/$KDZ_NAME" ]]; then
+            echo "Using repository-provided firmware/$KDZ_NAME"
+          else
+            cat <<'EOF'
+          ::error::No direct KDZ URL or firmware file was provided.
+          Upload the official F100EMW KDZ to the repository at firmware/F100EMW.kdz
+          (or provide it through an approved external direct-download URL in workflow_dispatch),
+          then rerun this workflow. Do not use CAPTCHA-protected lg-firmwares.com links.
+          EOF
+            exit 2
+          fi
+          test -s "firmware/$KDZ_NAME"
+          ls -lh "firmware/$KDZ_NAME"
+          file "firmware/$KDZ_NAME" || true
+          sha256sum "firmware/$KDZ_NAME" | tee output/kdz.sha256
+
+      - name: Install extraction dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             git python3 python3-pip python3-venv python3-dev             build-essential p7zip-full unzip zip xz-utils zstd lz4             android-sdk-libsparse-utils device-tree-compiler             liblzma-dev libssl-dev curl wget file cpio bc rsync
+          python3 -m pip install --break-system-packages --upgrade pip setuptools wheel || true
+
+      - name: Prepare DumprX firmware extractor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/DumprX/DumprX.git work/DumprX
+          cd work/DumprX
+          chmod +x setup.sh dumper.sh
+          sudo timeout 45m ./setup.sh
+
+      - name: Extract KDZ partitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/DumprX
+          timeout 300m ./dumper.sh "$GITHUB_WORKSPACE/firmware/$KDZ_NAME" 2>&1 | tee "$GITHUB_WORKSPACE/output/dumprx.log"
+          echo "Searching extracted files for boot/vendor_boot partitions..."
+          find . -type f \( -iname 'boot.img' -o -iname 'boot_*.img' -o -iname 'boot*.bin' -o -iname 'vendor_boot.img' -o -iname 'xbl_config.img' \) -printf '%p (%s bytes)\n' | tee "$GITHUB_WORKSPACE/output/partition-candidates.txt"
+          mapfile -d '' boot_candidates < <(find . -type f \( -iname 'boot.img' -o -iname 'boot_*.img' -o -iname 'boot*.bin' \) -size +1M -print0)
+          if (( ${#boot_candidates[@]} == 0 )); then
+            echo "::error::No boot image was found by DumprX. Review output/dumprx.log and provide the KDZ or extracted boot image manually."
+            exit 3
+          fi
+          # Prefer an exact boot.img, otherwise use the largest matching boot partition candidate.
+          chosen=""
+          for candidate in "${boot_candidates[@]}"; do
+            if [[ "$(basename "$candidate")" == "boot.img" ]]; then chosen="$candidate"; break; fi
+          done
+          if [[ -z "$chosen" ]]; then
+            chosen=$(printf '%s\n' "${boot_candidates[@]}" | xargs -r stat -c '%s %n' | sort -nr | head -n1 | cut -d' ' -f2-)
+          fi
+          cp "$chosen" "$GITHUB_WORKSPACE/output/boot.img"
+          echo "Selected boot image: $chosen"
+          file "$GITHUB_WORKSPACE/output/boot.img" | tee "$GITHUB_WORKSPACE/output/boot-file-type.txt"
+          sha256sum "$GITHUB_WORKSPACE/output/boot.img" | tee "$GITHUB_WORKSPACE/output/boot.sha256"
+          for optional in vendor_boot.img xbl_config.img; do
+            found=$(find . -type f -iname "$optional" -size +1M -print -quit || true)
+            if [[ -n "$found" ]]; then cp "$found" "$GITHUB_WORKSPACE/output/$optional"; fi
+          done
+
+      - name: Verify kernel release string
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [[ ! -s output/boot.img ]]; then
+            echo "Boot image unavailable; kernel verification skipped." | tee output/kernel-verification.txt
+            exit 0
+          fi
+          strings -a output/boot.img > output/boot.strings.txt || true
+          matches=$(grep -F "$EXPECTED_KERNEL" output/boot.strings.txt | head -n 20 || true)
+          if [[ -n "$matches" ]]; then
+            {
+              echo "RESULT=EXPECTED_KERNEL_FOUND"
+              echo "Expected kernel release '$EXPECTED_KERNEL' was found in strings output."
+              printf '%s\n' "$matches"
+            } | tee output/kernel-verification.txt
+            echo "Kernel check: expected release found."
+          else
+            other=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+[^[:space:]]*' output/boot.strings.txt | grep -E '(^4\.|kernel|perf)' | sort -u | head -n 30 || true)
+            {
+              echo "RESULT=EXPECTED_KERNEL_NOT_FOUND"
+              echo "Expected release '$EXPECTED_KERNEL' was not found by strings -a."
+              echo "This alone does not prove the kernel differs; compressed kernels may hide the release string."
+              echo "Other candidate version strings:"
+              printf '%s\n' "${other:-No obvious alternative version strings found}"
+            } | tee output/kernel-verification.txt
+            echo "::warning::Expected kernel release '$EXPECTED_KERNEL' was not found in strings output; inspect output/kernel-verification.txt."
+          fi
+
+      - name: Upload boot image artifact
+        if: always() && hashFiles('output/boot.img') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: lg-wing-boot-img
+          path: |
+            output/boot.img
+            output/boot.sha256
+            output/kernel-verification.txt
+            output/boot-file-type.txt
+            output/vendor_boot.img
+            output/xbl_config.img
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lg-wing-kdz-extraction-diagnostics
+          path: |
+            output/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 14
+
+      - name: Add summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## LG Wing F100EMW boot extraction"
+            echo ""
+            echo "- KDZ source: supplied direct URL or `firmware/F100EMW.kdz`"
+            echo "- Expected kernel release: `$EXPECTED_KERNEL`"
+            if [[ -s output/boot.img ]]; then
+              echo "- boot.img: extracted"
+              echo "- SHA-256: `$(sha256sum output/boot.img | awk '{print $1}')`"
+            else
+              echo "- boot.img: **not extracted**"
+            fi
+            if [[ -f output/kernel-verification.txt ]]; then
+              echo ""
+              cat output/kernel-verification.txt
+            fi
+            echo ""
+            echo "No flashing or device modification is performed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
