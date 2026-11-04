@@ -461,6 +461,10 @@ ${jsonEncode(relevantMemory)}
         if (rawParams != null && rawParams is! Map) return null;
         final params = Map<String, dynamic>.from(rawParams is Map ? rawParams : const {});
         if (!params.keys.every(tool.parameters.containsKey)) return null;
+        if (params.entries.any((entry) =>
+            !_matchesToolParameterType(tool.parameters[entry.key]!, entry.value))) {
+          return null;
+        }
         if (!tool.supports(params)) return null;
         steps.add(AgentStep(
           id: id,
@@ -477,6 +481,34 @@ ${jsonEncode(relevantMemory)}
       return AgentPlan(task: task, steps: steps);
     } catch (_) {
       return null;
+    }
+  }
+
+  bool _matchesToolParameterType(dynamic declaration, dynamic value) {
+    final type = declaration.toString().trim();
+    switch (type) {
+      case 'string':
+        return value is String;
+      case 'int':
+        return value is int;
+      case 'double':
+        return value is num;
+      case 'bool':
+        return value is bool;
+      case 'dynamic':
+        return true;
+      case 'Map<String,String>':
+      case 'Map<String, String>':
+        return value is Map &&
+            value.keys.every((key) => key is String) &&
+            value.values.every((item) => item is String);
+      default:
+        // Enumerated declarations such as "GET | POST" are string-valued
+        // contracts; descriptive declarations remain validated by tool.supports.
+        if (type.contains('|')) return value is String;
+        if (type.startsWith('List<')) return value is List;
+        if (type.startsWith('Map<')) return value is Map;
+        return true;
     }
   }
 
