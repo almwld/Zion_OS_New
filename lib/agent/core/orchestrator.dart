@@ -389,7 +389,7 @@ $knowledgeContext
 ${jsonEncode(toolCatalog)}
 ذاكرة مختصرة (سياق فقط):
 ${jsonEncode(relevantMemory)}
-أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
+أنشئ خطة عملية مرتبة من 1 إلى 8 خطوات. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
@@ -427,13 +427,29 @@ ${jsonEncode(relevantMemory)}
       if (decoded is! Map<String, dynamic>) return null;
       if (decoded.keys.any((key) => key != 'steps' && key != 'task')) return null;
       final rawSteps = decoded['steps'];
-      if (rawSteps is! List || rawSteps.isEmpty || rawSteps.length > 32) return null;
+      if (rawSteps is! List || rawSteps.isEmpty || rawSteps.length > maxPlanSteps) return null;
+      if (decoded['task'] != null && decoded['task'] is! String) return null;
 
       final steps = <AgentStep>[];
       final ids = <String>{};
       for (var index = 0; index < rawSteps.length; index++) {
         final raw = rawSteps[index];
         if (raw is! Map) return null;
+        const allowedStepFields = <String>{
+          'id',
+          'description',
+          'tool',
+          'params',
+          'requiresEvaluation',
+          'requiresApproval',
+          'permission',
+          'risk',
+        };
+        if (raw.keys.any((key) => key is! String || !allowedStepFields.contains(key))) {
+          return null;
+        }
+        if (raw['requiresEvaluation'] != null && raw['requiresEvaluation'] is! bool) return null;
+        if (raw['requiresApproval'] != null && raw['requiresApproval'] is! bool) return null;
         final id = (raw['id'] ?? (index + 1)).toString().trim();
         final description = raw['description']?.toString().trim() ?? '';
         final toolName = raw['tool']?.toString().trim() ?? '';
