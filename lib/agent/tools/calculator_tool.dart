@@ -42,7 +42,7 @@ class _ArithmeticParser {
   _ArithmeticParser(String source) {
     var offset = 0;
     while (offset < source.length) {
-      final match = RegExp(r'\\s*(\\d+(?:\\.\\d*)?|\\.\\d+|[()+\\-*/%^])')
+      final match = RegExp(r'\s*(\d+(?:\.\d*)?|\.\d+|[()+\-*/%^])')
           .matchAsPrefix(source, offset);
       if (match == null) {
         if (source.substring(offset).trim().isEmpty) break;
