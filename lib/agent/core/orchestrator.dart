@@ -411,11 +411,21 @@ ${jsonEncode(relevantMemory)}
 
   AgentPlan? _parsePlan(String response, {String task = ''}) {
     try {
-      final start = response.indexOf('{');
-      final end = response.lastIndexOf('}');
-      if (start < 0 || end <= start) return null;
-      final decoded = jsonDecode(response.substring(start, end + 1));
-      if (decoded is! Map) return null;
+      var normalized = response.trim();
+      final fence = String.fromCharCodes([96, 96, 96]);
+      if (normalized.startsWith(fence)) {
+        normalized = normalized.substring(3).trim();
+        if (normalized.toLowerCase().startsWith('json')) {
+          normalized = normalized.substring(4).trim();
+        }
+        if (!normalized.endsWith(fence)) return null;
+        normalized = normalized.substring(0, normalized.length - 3).trim();
+      }
+      // Parse the complete response. Do not salvage JSON from surrounding
+      // prose, because that can hide malformed or injected model output.
+      final decoded = jsonDecode(normalized);
+      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded.keys.any((key) => key != 'steps' && key != 'task')) return null;
       final rawSteps = decoded['steps'];
       if (rawSteps is! List || rawSteps.isEmpty || rawSteps.length > 32) return null;
 
