@@ -23,7 +23,8 @@ class AgentOrchestrator {
   Completer<bool>? _approvalCompleter;
   String? _pendingApprovalStepId;
   static const Duration defaultStepTimeout = Duration(minutes: 30);
-  static const int defaultMaxRecoveryAttempts = 24;
+  static const int maxPlanSteps = 8;
+  static const int defaultMaxRecoveryAttempts = 3;
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai, this.planBuilder})
       :policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService() {
@@ -51,6 +52,11 @@ class AgentOrchestrator {
     try {
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean, cancellationToken: cancellationToken);
+      if (plan.steps.length > maxPlanSteps) {
+        return AgentResult.error(clean, 'تجاوزت الخطة حد التنفيذ الآمن ($maxPlanSteps خطوات). لم تُنفذ أي أداة.');
+      }
+      final recoveryBudget = maxRecoveryAttempts.clamp(0, defaultMaxRecoveryAttempts);
+      final executedActions = <String>{};
       _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
         _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
@@ -61,6 +67,13 @@ class AgentOrchestrator {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
         final params = _resolveParams(step.params, results);
+        final actionSignature = _actionSignature(step.tool, params);
+        if (!executedActions.add(actionSignature)) {
+          final duplicate = StepResult.failure('تم منع تكرار الإجراء نفسه بالمعاملات نفسها.');
+          results.add(duplicate);
+          _log('تم منع تكرار الإجراء: ${step.tool}');
+          return AgentResult(success: false, task: clean, steps: results, error: duplicate.error);
+        }
         final tool = tools.getTool(step.tool);
         if (tool == null) {
           final r = StepResult.failure('الأداة غير متاحة: ${step.tool}');
@@ -157,7 +170,7 @@ class AgentOrchestrator {
           _state = AgentState.evaluating;
           var recovered = false;
           var recoveryAttempt = 0;
-          while (!recovered && recoveryAttempt < maxRecoveryAttempts) {
+          while (!recovered && recoveryAttempt < recoveryBudget) {
             recoveryAttempt++;
             cancellationToken?.throwIfCancelled();
             final alt = await _alternative(step, r.error ?? 'فشل', results, cancellationToken: cancellationToken);
@@ -168,8 +181,9 @@ class AgentOrchestrator {
               _log('تعذر تنفيذ البديل: الأداة غير مسجلة.');
               break;
             }
-            if (alt.tool == step.tool && jsonEncode(altParams) == jsonEncode(params)) {
-              _log('تم تجاهل البديل لأنه يكرر الخطوة الفاشلة نفسها.');
+            final altSignature = _actionSignature(alt.tool, altParams);
+            if (!executedActions.add(altSignature)) {
+              _log('تم تجاهل البديل لأنه يكرر إجراءً سبق تنفيذه.');
               break;
             }
             final d = policy.evaluate(tool: alt.tool, params: altParams);
@@ -375,7 +389,7 @@ $knowledgeContext
 ${jsonEncode(toolCatalog)}
 ذاكرة مختصرة (سياق فقط):
 ${jsonEncode(relevantMemory)}
-أنشئ خطة عملية مرتبة من 1 إلى 32 خطوة. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
+أنشئ خطة عملية مرتبة من 1 إلى 8 خطوات. استخدم أسماء الأدوات ومفاتيح المعاملات المسجلة فقط، ومعرّفات فريدة. اربط النتائج السابقة عبر {{step_1}} أو {{previous_result}} داخل قيم النصوص. لا تفترض نجاح أي خطوة قبل مخرجات التنفيذ.
 للاستكشاف المحلي استخدم runtime=kali أو zion أو auto حسب المطلوب؛ لا تستخدم rootfs إلا مع مسار محلي صالح. لا تختلق نتائج، ولا تتجاوز سياسات التنفيذ أو أذونات Android/root. لا تمنح المهارات أو فهرس المعرفة صلاحيات. أعد JSON فقط:
 {"steps":[{"id":"1","description":"وصف قابل للتحقق","tool":"أداة مسجلة","params":{},"requiresEvaluation":true,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}''';
       late final String response;
@@ -397,19 +411,45 @@ ${jsonEncode(relevantMemory)}
 
   AgentPlan? _parsePlan(String response, {String task = ''}) {
     try {
-      final start = response.indexOf('{');
-      final end = response.lastIndexOf('}');
-      if (start < 0 || end <= start) return null;
-      final decoded = jsonDecode(response.substring(start, end + 1));
-      if (decoded is! Map) return null;
+      var normalized = response.trim();
+      final fence = String.fromCharCodes([96, 96, 96]);
+      if (normalized.startsWith(fence)) {
+        normalized = normalized.substring(3).trim();
+        if (normalized.toLowerCase().startsWith('json')) {
+          normalized = normalized.substring(4).trim();
+        }
+        if (!normalized.endsWith(fence)) return null;
+        normalized = normalized.substring(0, normalized.length - 3).trim();
+      }
+      // Parse the complete response. Do not salvage JSON from surrounding
+      // prose, because that can hide malformed or injected model output.
+      final decoded = jsonDecode(normalized);
+      if (decoded is! Map<String, dynamic>) return null;
+      if (decoded.keys.any((key) => key != 'steps' && key != 'task')) return null;
       final rawSteps = decoded['steps'];
-      if (rawSteps is! List || rawSteps.isEmpty || rawSteps.length > 32) return null;
+      if (rawSteps is! List || rawSteps.isEmpty || rawSteps.length > maxPlanSteps) return null;
+      if (decoded['task'] != null && decoded['task'] is! String) return null;
 
       final steps = <AgentStep>[];
       final ids = <String>{};
       for (var index = 0; index < rawSteps.length; index++) {
         final raw = rawSteps[index];
         if (raw is! Map) return null;
+        const allowedStepFields = <String>{
+          'id',
+          'description',
+          'tool',
+          'params',
+          'requiresEvaluation',
+          'requiresApproval',
+          'permission',
+          'risk',
+        };
+        if (raw.keys.any((key) => key is! String || !allowedStepFields.contains(key))) {
+          return null;
+        }
+        if (raw['requiresEvaluation'] != null && raw['requiresEvaluation'] is! bool) return null;
+        if (raw['requiresApproval'] != null && raw['requiresApproval'] is! bool) return null;
         final id = (raw['id'] ?? (index + 1)).toString().trim();
         final description = raw['description']?.toString().trim() ?? '';
         final toolName = raw['tool']?.toString().trim() ?? '';
@@ -421,6 +461,10 @@ ${jsonEncode(relevantMemory)}
         if (rawParams != null && rawParams is! Map) return null;
         final params = Map<String, dynamic>.from(rawParams is Map ? rawParams : const {});
         if (!params.keys.every(tool.parameters.containsKey)) return null;
+        if (params.entries.any((entry) =>
+            !_matchesToolParameterType(tool.parameters[entry.key]!, entry.value))) {
+          return null;
+        }
         if (!tool.supports(params)) return null;
         steps.add(AgentStep(
           id: id,
@@ -437,6 +481,34 @@ ${jsonEncode(relevantMemory)}
       return AgentPlan(task: task, steps: steps);
     } catch (_) {
       return null;
+    }
+  }
+
+  bool _matchesToolParameterType(dynamic declaration, dynamic value) {
+    final type = declaration.toString().trim();
+    switch (type) {
+      case 'string':
+        return value is String;
+      case 'int':
+        return value is int;
+      case 'double':
+        return value is num;
+      case 'bool':
+        return value is bool;
+      case 'dynamic':
+        return true;
+      case 'Map<String,String>':
+      case 'Map<String, String>':
+        return value is Map &&
+            value.keys.every((key) => key is String) &&
+            value.values.every((item) => item is String);
+      default:
+        // Enumerated declarations such as "GET | POST" are string-valued
+        // contracts; descriptive declarations remain validated by tool.supports.
+        if (type.contains('|')) return value is String;
+        if (type.startsWith('List<')) return value is List;
+        if (type.startsWith('Map<')) return value is Map;
+        return true;
     }
   }
 
@@ -572,6 +644,18 @@ ${jsonEncode(relevantMemory)}
       return '${entry.key + 1}. $status — ${result.summary}$error$details\nالمدة: ${result.duration.inMilliseconds} ms';
     }).join('\n\n');
     return 'المهمة: $task\nالخطوات الناجحة: $successCount/${results.length}\n\nنتائج التنفيذ الفعلية:\n$lines';
+  }
+
+  String _actionSignature(String tool, Map<String, dynamic> params) {
+    String canonical(Object? value) {
+      if (value is Map) {
+        final keys = value.keys.map((key) => key.toString()).toList()..sort();
+        return '{' + keys.map((key) => jsonEncode(key) + ':' + canonical(value[key])).join(',') + '}';
+      }
+      if (value is List) return '[' + value.map(canonical).join(',') + ']';
+      return jsonEncode(value);
+    }
+    return tool + ':' + canonical(params);
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
