@@ -23,7 +23,8 @@ class AgentOrchestrator {
   Completer<bool>? _approvalCompleter;
   String? _pendingApprovalStepId;
   static const Duration defaultStepTimeout = Duration(minutes: 30);
-  static const int defaultMaxRecoveryAttempts = 24;
+  static const int maxPlanSteps = 8;
+  static const int defaultMaxRecoveryAttempts = 3;
 
   AgentOrchestrator({ToolRegistry? tools,AgentPolicy? policy,LongTermAIMemory? memory,LlamaService? ai, this.planBuilder})
       :policy=policy??const AgentPolicy(),memory=memory??LongTermAIMemory(),ai=ai??LlamaService() {
@@ -51,6 +52,11 @@ class AgentOrchestrator {
     try {
       cancellationToken?.throwIfCancelled();
       final plan = await _createPlan(clean, cancellationToken: cancellationToken);
+      if (plan.steps.length > maxPlanSteps) {
+        return AgentResult.error(clean, 'تجاوزت الخطة حد التنفيذ الآمن ($maxPlanSteps خطوات). لم تُنفذ أي أداة.');
+      }
+      final recoveryBudget = maxRecoveryAttempts.clamp(0, defaultMaxRecoveryAttempts);
+      final executedActions = <String>{};
       _log('الخطة: ${plan.steps.length} خطوة.');
       if (approveReviewed) {
         _log('لن يتم تجاوز الموافقات؛ كل خطوة حساسة تتطلب موافقة منفصلة.');
@@ -61,6 +67,13 @@ class AgentOrchestrator {
         cancellationToken?.throwIfCancelled();
         final step = plan.steps[i];
         final params = _resolveParams(step.params, results);
+        final actionSignature = _actionSignature(step.tool, params);
+        if (!executedActions.add(actionSignature)) {
+          final duplicate = StepResult.failure('تم منع تكرار الإجراء نفسه بالمعاملات نفسها.');
+          results.add(duplicate);
+          _log('تم منع تكرار الإجراء: ${step.tool}');
+          return AgentResult(success: false, task: clean, steps: results, error: duplicate.error);
+        }
         final tool = tools.getTool(step.tool);
         if (tool == null) {
           final r = StepResult.failure('الأداة غير متاحة: ${step.tool}');
@@ -157,7 +170,7 @@ class AgentOrchestrator {
           _state = AgentState.evaluating;
           var recovered = false;
           var recoveryAttempt = 0;
-          while (!recovered && recoveryAttempt < maxRecoveryAttempts) {
+          while (!recovered && recoveryAttempt < recoveryBudget) {
             recoveryAttempt++;
             cancellationToken?.throwIfCancelled();
             final alt = await _alternative(step, r.error ?? 'فشل', results, cancellationToken: cancellationToken);
@@ -168,8 +181,9 @@ class AgentOrchestrator {
               _log('تعذر تنفيذ البديل: الأداة غير مسجلة.');
               break;
             }
-            if (alt.tool == step.tool && jsonEncode(altParams) == jsonEncode(params)) {
-              _log('تم تجاهل البديل لأنه يكرر الخطوة الفاشلة نفسها.');
+            final altSignature = _actionSignature(alt.tool, altParams);
+            if (!executedActions.add(altSignature)) {
+              _log('تم تجاهل البديل لأنه يكرر إجراءً سبق تنفيذه.');
               break;
             }
             final d = policy.evaluate(tool: alt.tool, params: altParams);
@@ -572,6 +586,18 @@ ${jsonEncode(relevantMemory)}
       return '${entry.key + 1}. $status — ${result.summary}$error$details\nالمدة: ${result.duration.inMilliseconds} ms';
     }).join('\n\n');
     return 'المهمة: $task\nالخطوات الناجحة: $successCount/${results.length}\n\nنتائج التنفيذ الفعلية:\n$lines';
+  }
+
+  String _actionSignature(String tool, Map<String, dynamic> params) {
+    String canonical(Object? value) {
+      if (value is Map) {
+        final keys = value.keys.map((key) => key.toString()).toList()..sort();
+        return '{' + keys.map((key) => jsonEncode(key) + ':' + canonical(value[key])).join(',') + '}';
+      }
+      if (value is List) return '[' + value.map(canonical).join(',') + ']';
+      return jsonEncode(value);
+    }
+    return tool + ':' + canonical(params);
   }
 
   void _log(String message)=>_events.add(AgentEvent(timestamp:DateTime.now(),message:message,state:_state));
