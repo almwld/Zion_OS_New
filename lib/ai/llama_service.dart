@@ -197,6 +197,10 @@ class LlamaService {
       if (!loaded) LlamaService._sharedModelPath = null;
       return loaded;
     } catch (_) {
+      // A failed native refresh must never leave stale "ready" state visible
+      // to another screen or agent facade.
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
       return false;
     }
   }
