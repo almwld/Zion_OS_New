@@ -132,4 +132,32 @@ void main() {
     expect(service.currentModel, '/models/shared-qwen.gguf');
   });
 
+
+  test('failed native refresh clears stale shared readiness', () async {
+    final service = LlamaService();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      if (call.method == 'sessionState') {
+        return <String, Object?>{
+          'loaded': true,
+          'modelPath': '/models/previous.gguf',
+        };
+      }
+      return null;
+    });
+    expect(await service.refreshLoadedState(), isTrue);
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      if (call.method == 'sessionState') {
+        throw StateError('native session unavailable');
+      }
+      return null;
+    });
+
+    expect(await service.refreshLoadedState(), isFalse);
+    expect(service.isLoaded, isFalse);
+    expect(service.currentModel, isNull);
+  });
+
 }
