@@ -465,6 +465,14 @@ ${sharedNotes.join('\n\n')}
         maxRecoveryAttempts: 8,
       );
       if (!mounted) return;
+      if (!result.success && (result.error ?? '').contains('يرجى تحميل النموذج من واجهة Offline AI أولاً')) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('يرجى تحميل النموذج من واجهة Offline AI أولاً.'),
+            behavior: SnackBarBehavior.floating,
+          ));
+      }
       setState(() {
         _result = result;
         _appendMessage({
@@ -503,7 +511,7 @@ ${sharedNotes.join('\n\n')}
     try {
       final ai = _runtime.orchestrator.ai;
       if (!await ai.refreshLoadedState()) {
-        throw StateError('النموذج المحلي غير محمّل؛ حمّل GGUF أولاً ثم أعد المحاولة.');
+        throw StateError('يرجى تحميل النموذج من واجهة Offline AI أولاً.');
       }
       // Collaboration roles are model prompts, not system/tool tasks. Routing
       // them through AgentRuntime caused its task verifier to reject ordinary

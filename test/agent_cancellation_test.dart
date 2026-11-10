@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/widgets.dart';
+import 'package:project_zion/ai/llama_service.dart';
 import 'package:project_zion/agent/core/agent_models.dart';
 import 'package:project_zion/agent/core/agent_runtime.dart';
 import 'package:project_zion/agent/core/agent_policy.dart';
@@ -272,5 +273,49 @@ void main() {
     expect(runtime.activeSession?.state, AgentState.cancelled);
     await runtime.dispose();
   });
+
+  test('Super Agent refreshes native model readiness before planning', () async {
+    const channel = MethodChannel('zion.os/ai');
+    var generationCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'sessionState':
+          return <String, Object?>{
+            'loaded': true,
+            'modelPath': '/models/qwen.gguf',
+            'modelStatus': 'LOADED',
+            'generationStatus': 'IDLE',
+          };
+        case 'generate':
+          generationCalls++;
+          if (generationCalls == 1) {
+            return '{"steps":[{"id":"1","description":"تحليل محلي","tool":"ai","params":{"prompt":"نفذ التحليل","maxTokens":32,"temperature":0.2},"requiresEvaluation":false,"requiresApproval":false,"permission":"readOnly","risk":"safe"}]}';
+          }
+          return 'اكتمل التحليل المحلي';
+        default:
+          return null;
+      }
+    });
+
+    final ai = LlamaService();
+    expect(ai.isLoaded, isFalse,
+        reason: 'This simulates a fresh Dart facade after Offline AI loaded the native model.');
+
+    final orchestrator = AgentOrchestrator(ai: ai);
+    try {
+      final result = await orchestrator.executeTask('حلل المهمة محلياً');
+      expect(result.success, isTrue, reason: result.error);
+      expect(generationCalls, 2,
+          reason: 'One generation plans the task and the next executes its AI step.');
+      expect(ai.isLoaded, isTrue);
+      expect(ai.currentModel, '/models/qwen.gguf');
+    } finally {
+      orchestrator.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    }
+  });
+
 }
 

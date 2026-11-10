@@ -16,10 +16,17 @@ class LlamaModel {
 
 class LlamaService {
   static const MethodChannel _channel = MethodChannel('zion.os/ai');
-  bool _loaded = false;
-  String? _modelPath;
-  bool get isLoaded => _loaded;
-  String? get currentModel => _modelPath;
+
+  /// All Dart service facades observe one process-wide native session.
+  /// Keep the constructor generative so existing test doubles can subclass it.
+  static final LlamaService instance = LlamaService();
+  static bool _sharedLoaded = false;
+  static String? _sharedModelPath;
+
+  LlamaService();
+
+  bool get isLoaded => _sharedLoaded;
+  String? get currentModel => _sharedModelPath;
 
   Future<List<LlamaModel>> discoverModels() async {
     try {
@@ -104,14 +111,17 @@ class LlamaService {
     double loraScale = 1.0,
   }) async {
     if (path.trim().isEmpty || threads < 1) {
-      _loaded = false;
-      _modelPath = null;
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
       return false;
     }
+    // Reuse an already active native session when the requested model is the
+    // same. This also reattaches the singleton after navigation/recreation.
+    if (await refreshLoadedState() && LlamaService._sharedModelPath == path) return true;
     // The native bridge frees its old model before loading a replacement.
     // Reset cached state before the call to avoid stale readiness on failures.
-    _loaded = false;
-    _modelPath = null;
+    LlamaService._sharedLoaded = false;
+    LlamaService._sharedModelPath = null;
     try {
       final ok = await _channel.invokeMethod<bool>('loadModel', {
         'path': path,
@@ -119,16 +129,16 @@ class LlamaService {
         if (loraPath != null && loraPath.isNotEmpty) 'loraPath': loraPath,
         'loraScale': loraScale > 0 ? loraScale : 1.0,
       }) ?? false;
-      _loaded = ok;
-      _modelPath = ok ? path : null;
+      LlamaService._sharedLoaded = ok;
+      LlamaService._sharedModelPath = ok ? path : null;
       return ok;
     } on PlatformException {
-      _loaded = false;
-      _modelPath = null;
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
       return false;
     } on MissingPluginException {
-      _loaded = false;
-      _modelPath = null;
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
       return false;
     }
   }
@@ -178,16 +188,20 @@ class LlamaService {
         }
       }
       if (snapshot.isNotEmpty) {
-        _loaded = snapshot['loaded'] == true;
-        _modelPath = snapshot['modelPath']?.toString();
-        return _loaded;
+        LlamaService._sharedLoaded = snapshot['loaded'] == true;
+        LlamaService._sharedModelPath = snapshot['modelPath']?.toString();
+        return LlamaService._sharedLoaded;
       }
       final loaded = await nativeLoaded;
-      _loaded = loaded;
-      if (!loaded) _modelPath = null;
+      LlamaService._sharedLoaded = loaded;
+      if (!loaded) LlamaService._sharedModelPath = null;
       return loaded;
     } catch (_) {
-      return _loaded;
+      // A failed native refresh must never leave stale "ready" state visible
+      // to another screen or agent facade.
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
+      return false;
     }
   }
 
@@ -225,8 +239,8 @@ class LlamaService {
     } on MissingPluginException {
       // Keep teardown idempotent if the native AI bridge is not present.
     } finally {
-      _loaded = false;
-      _modelPath = null;
+      LlamaService._sharedLoaded = false;
+      LlamaService._sharedModelPath = null;
     }
   }
 
