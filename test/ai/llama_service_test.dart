@@ -83,4 +83,36 @@ void main() {
 
     expect(await service.generate('hello'), contains('غير محمل'));
   });
+
+  test('LlamaService constructors share one Dart facade', () {
+    expect(identical(LlamaService(), LlamaService()), isTrue);
+  });
+
+  test('loading the already-active GGUF reuses the native session', () async {
+    var loadCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      switch (call.method) {
+        case 'sessionState':
+          return <String, Object?>{
+            'loaded': true,
+            'modelPath': '/models/shared-qwen.gguf',
+            'modelStatus': 'LOADED',
+            'generationStatus': 'IDLE',
+          };
+        case 'loadModel':
+          loadCalls++;
+          return true;
+        default:
+          return null;
+      }
+    });
+
+    final service = LlamaService();
+    expect(await service.loadModel('/models/shared-qwen.gguf'), isTrue);
+    expect(loadCalls, 0,
+        reason: 'Navigating between AI surfaces must not reload the active GGUF.');
+    expect(service.currentModel, '/models/shared-qwen.gguf');
+  });
+
 }
