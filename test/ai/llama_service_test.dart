@@ -84,8 +84,25 @@ void main() {
     expect(await service.generate('hello'), contains('غير محمل'));
   });
 
-  test('LlamaService constructors share one Dart facade', () {
-    expect(identical(LlamaService(), LlamaService()), isTrue);
+  test('LlamaService constructors share process-wide readiness state', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) async {
+      if (call.method == 'sessionState') {
+        return <String, Object?>{
+          'loaded': true,
+          'modelPath': '/models/shared-qwen.gguf',
+          'modelStatus': 'LOADED',
+          'generationStatus': 'IDLE',
+        };
+      }
+      return null;
+    });
+
+    final loader = LlamaService();
+    final terminalFacade = LlamaService();
+    expect(await loader.refreshLoadedState(), isTrue);
+    expect(terminalFacade.isLoaded, isTrue);
+    expect(terminalFacade.currentModel, '/models/shared-qwen.gguf');
   });
 
   test('loading the already-active GGUF reuses the native session', () async {
