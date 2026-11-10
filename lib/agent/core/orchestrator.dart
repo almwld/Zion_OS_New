@@ -392,7 +392,7 @@ ${jsonEncode(relevantMemory)}
       _log('رفض خطة النموذج لأنها غير صالحة: $excerpt');
       throw StateError('تعذر اعتماد خطة صالحة من النموذج المحلي. لم تُنفذ أي خطوة؛ صحح حالة النموذج أو أعد المحاولة.');
     }
-    throw StateError('النموذج المحلي غير جاهز للتخطيط. لم تُنفذ أي خطوة ولم تُستخدم خطة احتياطية.');
+    throw StateError('يرجى تحميل النموذج من واجهة Offline AI أولاً. لم تُنفذ أي خطوة.');
   }
 
   AgentPlan? _parsePlan(String response, {String task = ''}) {
@@ -507,10 +507,9 @@ ${jsonEncode(relevantMemory)}
   }
 
   Future<bool> _nativeAiAvailable() async {
-    // LlamaService instances are lightweight facades over one process-wide
-    // native GGUF session. Offline AI may load the model through a different
-    // Dart instance, so the local cached isLoaded flag is not authoritative.
-    // Synchronize with the foreground service/native runtime before planning.
+    // Dart state may be stale when Offline AI loaded the GGUF through another
+    // route or the Android Activity/Flutter engine was recreated. Always ask
+    // the native session snapshot and synchronize this shared facade.
     try {
       return await ai.refreshLoadedState();
     } catch (_) {
