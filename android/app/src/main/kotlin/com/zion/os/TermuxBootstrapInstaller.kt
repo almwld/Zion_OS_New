@@ -6,6 +6,8 @@ import android.util.Log
 import com.termux.app.TermuxInstaller
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -126,6 +128,8 @@ internal object TermuxBootstrapInstaller {
             Os.chmod(staging.absolutePath, 448) // 0700
 
             val symlinks = mutableListOf<Pair<String, String>>()
+            val manifestSymlinks = mutableListOf<Pair<String, String>>()
+            val manifestSymlinkPaths = mutableSetOf<String>()
             var entries = 0
             var extractedBytes = 0L
             val buffer = ByteArray(16 * 1024)
@@ -133,55 +137,119 @@ internal object TermuxBootstrapInstaller {
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     if (++entries > MAX_ENTRIES) throw IllegalStateException("Bootstrap has too many entries")
-                    val name = entry.name
-                    if (name == "SYMLINKS.txt") {
-                        // Do not close this reader: it wraps ZipInputStream,
-                        // which must remain open for the following ZIP entries.
-                        val reader = BufferedReader(InputStreamReader(zip, Charsets.UTF_8))
-                        while (true) {
-                            val line = reader.readLine() ?: break
-                            if (line.isBlank()) continue
-                            val split = line.split('←')
-                            if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
-                                throw IllegalStateException("Malformed SYMLINKS.txt line")
+                    val name = normalizeBootstrapEntryPath(entry.name)
+
+                    when (name) {
+                        "SYMLINKS.txt" -> {
+                            val bytes = readZipEntryBytes(zip)
+                            extractedBytes += bytes.size.toLong()
+                            if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
+                                throw IllegalStateException("Bootstrap expanded beyond safety limit")
                             }
-                            val linkFile = safeChild(staging, split[1])
-                            val target = rewriteTermuxPrefix(split[0], prefix)
-                            symlinks += target to linkFile.absolutePath
-                            ensureParent(linkFile.parentFile)
-                        }
-                    } else {
-                        val target = safeChild(staging, name)
-                        if (entry.isDirectory) {
-                            if (!target.exists() && !target.mkdirs() && !target.isDirectory) {
-                                throw IllegalStateException("Cannot create directory: $name")
-                            }
-                            Os.chmod(target.absolutePath, 448) // 0700
-                        } else {
-                            ensureParent(target.parentFile)
-                            FileOutputStream(target).use { out ->
-                                while (true) {
-                                    val count = zip.read(buffer)
-                                    if (count < 0) break
-                                    extractedBytes += count
-                                    if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
-                                        throw IllegalStateException("Bootstrap expanded beyond safety limit")
-                                    }
-                                    out.write(buffer, 0, count)
+                            String(bytes, Charsets.UTF_8).lineSequence().forEach { line ->
+                                if (line.isBlank()) return@forEach
+                                val split = line.split('←')
+                                if (split.size != 2 || split[0].isBlank() || split[1].isBlank()) {
+                                    throw IllegalStateException("Malformed SYMLINKS.txt line")
                                 }
-                                out.fd.sync()
+                                val linkName = normalizeBootstrapEntryPath(split[1])
+                                val linkFile = safeChild(staging, linkName)
+                                val target = rewriteTermuxPrefix(split[0], prefix)
+                                symlinks += target to linkFile.absolutePath
+                                ensureParent(linkFile.parentFile)
                             }
-                            Os.chmod(target.absolutePath, if (isExecutablePath(name)) 448 else 384)
+                        }
+                        "zion-manifest.json" -> {
+                            val bytes = readZipEntryBytes(zip)
+                            extractedBytes += bytes.size.toLong()
+                            if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
+                                throw IllegalStateException("Bootstrap expanded beyond safety limit")
+                            }
+                            val manifest = JSONObject(String(bytes, Charsets.UTF_8))
+                            if (manifest.optString("format") != "zion-userland-v1") {
+                                throw IllegalStateException("Unsupported Zion Userland manifest format")
+                            }
+                            val declared = manifest.optJSONArray("symlinks")
+                                ?: throw IllegalStateException("Zion Userland manifest has no symlinks array")
+                            for (index in 0 until declared.length()) {
+                                val item = declared.optJSONObject(index)
+                                    ?: throw IllegalStateException("Invalid symlink record at index $index")
+                                val linkName = normalizeBootstrapEntryPath(item.optString("path"))
+                                val target = item.optString("target")
+                                if (target.isBlank() || target.startsWith("/") || target.contains('\u0000')) {
+                                    throw IllegalStateException("Unsafe manifest symlink target: $linkName -> $target")
+                                }
+                                val linkFile = safeChild(staging, linkName)
+                                val resolvedTarget = File(linkFile.parentFile, target).canonicalPath
+                                val rootPath = staging.canonicalPath.trimEnd(File.separatorChar)
+                                if (resolvedTarget != rootPath &&
+                                    !resolvedTarget.startsWith(rootPath + File.separator)) {
+                                    throw IllegalStateException("Manifest symlink escapes staging: $linkName -> $target")
+                                }
+                                manifestSymlinkPaths += linkName
+                                manifestSymlinks += target to linkFile.absolutePath
+                            }
+                        }
+                        else -> {
+                            val target = safeChild(staging, name)
+                            if (entry.isDirectory) {
+                                if (!target.exists() && !target.mkdirs() && !target.isDirectory) {
+                                    throw IllegalStateException("Cannot create directory: $name")
+                                }
+                                Os.chmod(target.absolutePath, 448) // 0700
+                            } else {
+                                ensureParent(target.parentFile)
+                                FileOutputStream(target).use { out ->
+                                    while (true) {
+                                        val count = zip.read(buffer)
+                                        if (count < 0) break
+                                        extractedBytes += count
+                                        if (extractedBytes > MAX_UNCOMPRESSED_BYTES) {
+                                            throw IllegalStateException("Bootstrap expanded beyond safety limit")
+                                        }
+                                        out.write(buffer, 0, count)
+                                    }
+                                    out.fd.sync()
+                                }
+                                Os.chmod(target.absolutePath, if (isExecutablePath(name)) 448 else 384)
+                            }
                         }
                     }
                     zip.closeEntry()
                 }
             }
 
-            if (symlinks.isEmpty()) throw IllegalStateException("Bootstrap archive has no SYMLINKS.txt")
+            if (symlinks.isEmpty() && manifestSymlinks.isEmpty()) {
+                throw IllegalStateException("Bootstrap archive has no supported symlink metadata")
+            }
+
+            // Zion's generated archive stores paths below usr/ and declares
+            // symlinks in zion-manifest.json. The source Termux archive instead
+            // stores paths at the ZIP root and declares links in SYMLINKS.txt.
+            // Normalize both formats before validating and creating links.
+            for ((target, link) in manifestSymlinks) {
+                val linkFile = File(link)
+                if (linkFile.exists() || readlinkOrNull(link) != null) {
+                    if (linkFile.isDirectory || !linkFile.isFile || !linkFile.delete()) {
+                        throw IllegalStateException("Cannot replace manifest symlink placeholder: $link")
+                    }
+                }
+                Os.symlink(target, link)
+            }
             for ((target, link) in symlinks) {
-                if (File(link).exists() || readlinkOrNull(link) != null) {
-                    throw IllegalStateException("Symlink destination already exists: $link")
+                // ZIP cannot represent POSIX symlinks portably. Termux bootstrap
+                // archives may therefore contain a regular placeholder at the
+                // declared link path. Replace only regular-file placeholders;
+                // never delete a directory or an existing symbolic link.
+                val linkFile = File(link)
+                val existingLink = readlinkOrNull(link)
+                if (existingLink != null) {
+                    throw IllegalStateException("Symlink destination is already a symlink: $link")
+                }
+                if (linkFile.exists()) {
+                    if (!linkFile.isFile || !linkFile.delete()) {
+                        throw IllegalStateException("Cannot replace Termux symlink placeholder: $link")
+                    }
                 }
                 Os.symlink(target, link)
             }
@@ -631,10 +699,16 @@ internal object TermuxBootstrapInstaller {
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     if (++entries > MAX_ENTRIES) return false
-                    val name = entry.name.removePrefix("./").trimStart('/')
+                    val name = try { normalizeBootstrapEntryPath(entry.name) } catch (_: Throwable) { return false }
                     if (name == "bin/bash" || name == "usr/bin/bash") hasBash = true
                     if (name == "bin/apt" || name == "usr/bin/apt") hasApt = true
-                    if (name == "SYMLINKS.txt" || name == "usr/SYMLINKS.txt") hasSymlinks = true
+                    // Zion-converted bootstrap archives may carry symlink metadata
+                    // in zion-manifest.json instead of Termux's SYMLINKS.txt.
+                    // The entry name has already been normalized, so both usr/
+                    // prefixed and upstream layouts are handled consistently.
+                    if (name == "SYMLINKS.txt" || name == "zion-manifest.json") {
+                        hasSymlinks = true
+                    }
                     while (true) {
                         val count = zip.read(buffer)
                         if (count < 0) break
@@ -649,6 +723,37 @@ internal object TermuxBootstrapInstaller {
             Log.v(TAG, "ZIP candidate rejected at offset=$offset: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
+    }
+
+    /**
+     * Accept both upstream Termux ZIP paths (bin/...) and Zion-converted
+     * payload paths (usr/bin/...). Reject traversal instead of silently
+     * trimming leading slashes into a different path.
+     */
+    private fun normalizeBootstrapEntryPath(value: String): String {
+        var path = value.replace('\\', '/')
+        while (path.startsWith("./")) path = path.substring(2)
+        if (path.isEmpty() || path == "usr" || path == "usr/") return "."
+        if (path.startsWith("/") || path.contains('\u0000')) {
+            throw IllegalStateException("Unsafe absolute bootstrap path: $value")
+        }
+        if (path.split('/').any { it == ".." }) {
+            throw IllegalStateException("Bootstrap path traversal rejected: $value")
+        }
+        if (path.startsWith("usr/")) path = path.removePrefix("usr/")
+        if (path.isEmpty()) return "."
+        return path
+    }
+
+    private fun readZipEntryBytes(zip: ZipInputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val count = zip.read(buffer)
+            if (count < 0) break
+            output.write(buffer, 0, count)
+        }
+        return output.toByteArray()
     }
 
     private fun safeChild(root: File, relative: String): File {
